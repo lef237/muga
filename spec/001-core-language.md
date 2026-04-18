@@ -38,7 +38,9 @@ This form is parsed uniformly and resolved later:
 
 - if `x` is not defined in the current scope, it may introduce a new immutable binding
 - if `x` is already a mutable binding in the current scope, it updates that binding
-- if `x` is already an immutable binding in the current scope, it is an error
+- if `x` is already any immutable name in the current scope, it is an error
+
+For `x = e`, current-scope immutable names include ordinary immutable bindings, function names, and parameters.
 
 The exact static resolution rules are normative in [002-name-resolution.md](./002-name-resolution.md).
 
@@ -63,7 +65,12 @@ The language has the following core constructs:
 - `while` statements
 - expression statements
 
-Blocks may appear in expression position. When a block is evaluated as an expression, its value is the value of its final expression.
+To keep the grammar unambiguous, v1 distinguishes:
+
+- statement blocks, which contain ordinary statements
+- value blocks, which end in a required final expression and therefore produce a value
+
+Function bodies and `if` expressions use value blocks.
 
 `if` without `else` is statement-only. `if` with `else` may appear in expression position and yields the branch result value.
 
@@ -95,15 +102,15 @@ stmt              := assign_like_stmt
 assign_like_stmt  := "mut" IDENT "=" expr
                    | IDENT "=" expr
 
-func_decl         := "fn" IDENT "(" params? ")" return_annot? block_expr
+func_decl         := "fn" IDENT "(" params? ")" return_annot? value_block
 return_annot      := "->" type_expr
 
 params            := param ("," param)*
 param             := IDENT
                    | IDENT ":" type_expr
 
-while_stmt        := "while" expr block_expr
-if_stmt           := "if" expr block_expr ("else" block_expr)?
+while_stmt        := "while" expr stmt_block
+if_stmt           := "if" expr stmt_block ("else" stmt_block)?
 expr_stmt         := expr
 
 expr              := literal
@@ -112,16 +119,22 @@ expr              := literal
                    | anon_fn
                    | binary_expr
                    | if_expr
-                   | block_expr
                    | "(" expr ")"
 
-if_expr           := "if" expr block_expr "else" block_expr
+if_expr           := "if" expr value_block "else" value_block
 call_expr         := expr "(" args? ")"
 args              := expr ("," expr)*
 
-anon_fn           := "fn" "(" params? ")" return_annot? block_expr
-block_expr        := "{" stmt* expr? "}"
+anon_fn           := "fn" "(" params? ")" return_annot? value_block
+stmt_block        := "{" stmt* "}"
+value_block       := "{" non_expr_stmt* expr "}"
+non_expr_stmt     := assign_like_stmt
+                   | func_decl
+                   | if_stmt
+                   | while_stmt
 ```
+
+In a value block, only non-expression statements may appear before the final expression. This reserves a single trailing expression slot and keeps final-expression return syntax deterministic.
 
 ## 6. Execution-Oriented Summary
 

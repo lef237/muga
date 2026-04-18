@@ -47,7 +47,9 @@ x = e
 
 - If `x` is undefined in the current scope, introduce a new immutable binding.
 - If `x` is already defined as mutable in the current scope, update it.
-- If `x` is already defined as immutable in the current scope, this is an error.
+- If `x` is already any immutable name in the current scope, this is an error.
+
+Here, current-scope immutable names include ordinary immutable bindings, function names, and parameters.
 
 ### 1.3 Design note
 
@@ -283,15 +285,16 @@ stmt         := assign_like_stmt
 assign_like_stmt := "mut" IDENT "=" expr
                   | IDENT "=" expr
 
-func_decl    := "fn" IDENT "(" params? ")" block
+func_decl    := "fn" IDENT "(" params? ")" return_annot? value_block
+return_annot := "->" type_expr
 
 params       := param ("," param)*
 param        := IDENT
               | IDENT ":" type_expr
 
-if_stmt      := "if" expr block ("else" block)?
-while_stmt   := "while" expr block
-block        := "{" stmt* "}"
+if_stmt      := "if" expr stmt_block ("else" stmt_block)?
+while_stmt   := "while" expr stmt_block
+stmt_block   := "{" stmt* "}"
 
 expr_stmt    := expr
 
@@ -300,12 +303,19 @@ expr         := literal
               | call_expr
               | anon_fn
               | binary_expr
+              | if_expr
               | "(" expr ")"
 
 call_expr    := expr "(" args? ")"
 args         := expr ("," expr)*
 
-anon_fn      := "fn" "(" params? ")" block
+anon_fn      := "fn" "(" params? ")" return_annot? value_block
+if_expr      := "if" expr value_block "else" value_block
+value_block  := "{" non_expr_stmt* expr "}"
+non_expr_stmt := assign_like_stmt
+               | func_decl
+               | if_stmt
+               | while_stmt
 ```
 
 ### Important note
@@ -316,6 +326,8 @@ The grammar intentionally does **not** distinguish syntactically between:
 - updating an existing mutable binding
 
 That distinction is made by static semantic rules during name resolution.
+
+To keep final-expression return syntax unambiguous in v1, value-producing blocks reserve a single trailing expression slot. Earlier statements inside a value block must be non-expression statements.
 
 ---
 
@@ -329,7 +341,7 @@ Rule A: mut x = e
 Rule B: x = e
 - if x does not exist in current scope: introduce immutable binding
 - if x exists as mutable in current scope: update it
-- if x exists as immutable in current scope: error
+- if x exists as any immutable name in current scope: error
 
 Rule C: shadowing
 - introducing a new binding with the same name as any enclosing-scope binding is an error

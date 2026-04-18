@@ -6,7 +6,13 @@ This document defines the expected diagnostic categories for the v1 split specif
 
 Trigger:
 
-- `x = e` where `x` is an immutable binding in the current scope
+- `x = e` where `x` is any immutable name in the current scope
+
+This includes:
+
+- immutable local bindings
+- function bindings
+- parameter bindings
 
 Recommended message:
 

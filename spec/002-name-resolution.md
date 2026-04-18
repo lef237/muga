@@ -66,12 +66,14 @@ x = e
 the resolver applies the following rules in order:
 
 1. If `x` exists in the current scope as a mutable binding, this is an update of that binding.
-2. If `x` exists in the current scope as an immutable binding, reject the program as an immutable update.
+2. If `x` exists in the current scope as an immutable local binding, function binding, or parameter binding, reject the program as an immutable update.
 3. If `x` does not exist in the current scope and an enclosing scope contains a mutable binding named `x`, reject the program as an outer-scope mutation.
 4. If `x` does not exist in the current scope and an enclosing scope contains an immutable binding, function binding, or parameter binding named `x`, reject the program as prohibited shadowing.
 5. Otherwise, introduce a new immutable binding `x` in the current scope.
 
 Rule 3 is the v1 interpretation of non-local stateful assignment. Outer-scope reads are allowed, but outer-scope writes are not.
+
+In other words, `x = e` may update only a mutable binding in the current scope. Every current-scope immutable name, including parameters and function names, rejects `x = e`.
 
 ## 6. Function Name Predeclaration
 
