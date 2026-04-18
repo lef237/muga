@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod diagnostic;
+pub mod hir;
 pub mod lexer;
 pub mod parser;
 pub mod resolver;
@@ -10,6 +11,7 @@ pub mod typing;
 
 use ast::Program;
 use diagnostic::Diagnostic;
+use hir::Program as HirProgram;
 use runtime::RunOutcome;
 
 pub fn check_source(source: &str) -> Result<Program, Vec<Diagnostic>> {
@@ -26,7 +28,12 @@ pub fn check_source(source: &str) -> Result<Program, Vec<Diagnostic>> {
     }
 }
 
-pub fn run_source(source: &str) -> Result<RunOutcome, Vec<Diagnostic>> {
+pub fn compile_source(source: &str) -> Result<HirProgram, Vec<Diagnostic>> {
     let program = check_source(source)?;
+    Ok(hir::lower(&program))
+}
+
+pub fn run_source(source: &str) -> Result<RunOutcome, Vec<Diagnostic>> {
+    let program = compile_source(source)?;
     runtime::run(&program)
 }

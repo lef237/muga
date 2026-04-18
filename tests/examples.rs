@@ -65,6 +65,66 @@ fn builtin_print_captures_output_and_returns_argument() {
 }
 
 #[test]
+fn compile_source_lowers_functions_into_hir_table() {
+    let source = r#"
+fn main() -> Int {
+  add = fn(x: Int) -> Int {
+    x + 1
+  }
+  add(41)
+}
+"#;
+    let program = muga::compile_source(source).unwrap();
+    assert_eq!(program.functions.len(), 2);
+    assert_eq!(program.functions[0].name.as_deref(), Some("main"));
+    assert_eq!(program.functions[1].name, None);
+}
+
+#[test]
+fn closures_capture_outer_bindings() {
+    let source = r#"
+fn main() -> Int {
+  base = 41
+  add = fn(x: Int) -> Int {
+    x + base
+  }
+  add(1)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn mutually_recursive_functions_run() {
+    let source = r#"
+fn even(n: Int) -> Bool {
+  if n == 0 {
+    true
+  } else {
+    odd(n - 1)
+  }
+}
+
+fn odd(n: Int) -> Bool {
+  if n == 0 {
+    false
+  } else {
+    even(n - 1)
+  }
+}
+
+fn main() -> Bool {
+  even(10)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "true");
+}
+
+#[test]
 fn runtime_reports_division_by_zero() {
     let source = r#"
 fn main() -> Int {
