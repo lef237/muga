@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-use crate::{ast::*, diagnostic::Diagnostic, span::Span};
+use crate::{diagnostic::Diagnostic, hir::*, span::Span};
 
 type EnvRef = Rc<RefCell<Env>>;
 
@@ -9,7 +9,7 @@ pub enum Value {
     Int(i64),
     Bool(bool),
     String(String),
-    Function(Rc<FunctionValue>),
+    Function(Rc<ClosureValue>),
     Builtin(BuiltinFunction),
 }
 
@@ -35,7 +35,7 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
     let output = Rc::new(RefCell::new(Vec::new()));
     let root = Rc::new(RefCell::new(Env::new(None, true, output.clone())));
     install_prelude(&root);
-    execute_scope_statements(&program.statements, &root)?;
+    execute_scope_statements(program, &program.statements, &root)?;
 
     match lookup_any(&root, "main") {
         None => Ok(RunOutcome {
@@ -46,14 +46,15 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
             value: Value::Function(function),
             ..
         }) => {
-            if !function.params.is_empty() {
+            let def = function.definition(program);
+            if !def.params.is_empty() {
                 return Err(vec![Diagnostic::new(
                     "R001",
                     "`main` must be a zero-argument function to be used as the CLI entrypoint",
-                    function.span,
+                    def.span,
                 )]);
             }
-            let value = call_function(&function, Vec::new())?;
+            let value = call_function(program, &function, Vec::new())?;
             Ok(RunOutcome {
                 main_result: Some(value),
                 output_lines: output.borrow().clone(),
@@ -68,11 +69,15 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionValue {
-    params: Vec<String>,
-    body: ValueBlock,
+pub struct ClosureValue {
+    function: FunctionId,
     env: EnvRef,
-    span: Span,
+}
+
+impl ClosureValue {
+    fn definition<'a>(&self, program: &'a Program) -> &'a Function {
+        &program.functions[self.function]
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -118,42 +123,36 @@ impl Env {
     }
 }
 
-fn execute_scope_statements(statements: &[Stmt], env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
-    predeclare_functions(statements, env)?;
+fn execute_scope_statements(
+    program: &Program,
+    statements: &[Stmt],
+    env: &EnvRef,
+) -> Result<(), Vec<Diagnostic>> {
+    predeclare_functions(statements, env);
     for statement in statements {
         match statement {
-            Stmt::FuncDecl(_) => {}
-            _ => execute_stmt(statement, env)?,
+            Stmt::Function(_) => {}
+            _ => execute_stmt(program, statement, env)?,
         }
     }
     Ok(())
 }
 
-fn execute_stmt(statement: &Stmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
+fn execute_stmt(program: &Program, statement: &Stmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
     match statement {
-        Stmt::Assign(stmt) => {
-            execute_assign(stmt, env)?;
-        }
-        Stmt::FuncDecl(_) => {}
+        Stmt::Assign(stmt) => execute_assign(program, stmt, env)?,
+        Stmt::Function(_) => {}
         Stmt::If(stmt) => {
-            let condition = eval_expr(&stmt.condition, env)?;
+            let condition = eval_expr(program, &stmt.condition, env)?;
             match condition {
                 Value::Bool(true) => {
-                    let child = Rc::new(RefCell::new(Env::new(
-                        Some(env.clone()),
-                        false,
-                        env.borrow().output.clone(),
-                    )));
-                    execute_scope_statements(&stmt.then_branch.statements, &child)?;
+                    let child = child_env(env, false);
+                    execute_scope_statements(program, &stmt.then_branch.statements, &child)?;
                 }
                 Value::Bool(false) => {
                     if let Some(else_branch) = &stmt.else_branch {
-                        let child = Rc::new(RefCell::new(Env::new(
-                            Some(env.clone()),
-                            false,
-                            env.borrow().output.clone(),
-                        )));
-                        execute_scope_statements(&else_branch.statements, &child)?;
+                        let child = child_env(env, false);
+                        execute_scope_statements(program, &else_branch.statements, &child)?;
                     }
                 }
                 _ => {
@@ -166,15 +165,11 @@ fn execute_stmt(statement: &Stmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
             }
         }
         Stmt::While(stmt) => loop {
-            let condition = eval_expr(&stmt.condition, env)?;
+            let condition = eval_expr(program, &stmt.condition, env)?;
             match condition {
                 Value::Bool(true) => {
-                    let child = Rc::new(RefCell::new(Env::new(
-                        Some(env.clone()),
-                        false,
-                        env.borrow().output.clone(),
-                    )));
-                    execute_scope_statements(&stmt.body.statements, &child)?;
+                    let child = child_env(env, false);
+                    execute_scope_statements(program, &stmt.body.statements, &child)?;
                 }
                 Value::Bool(false) => break,
                 _ => {
@@ -187,15 +182,18 @@ fn execute_stmt(statement: &Stmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
             }
         },
         Stmt::Expr(stmt) => {
-            let _ = eval_expr(&stmt.expr, env)?;
+            let _ = eval_expr(program, &stmt.expr, env)?;
         }
     }
-
     Ok(())
 }
 
-fn execute_assign(stmt: &AssignStmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
-    let value = eval_expr(&stmt.value, env)?;
+fn execute_assign(
+    program: &Program,
+    stmt: &AssignStmt,
+    env: &EnvRef,
+) -> Result<(), Vec<Diagnostic>> {
+    let value = eval_expr(program, &stmt.value, env)?;
 
     if stmt.mutable {
         if env.borrow().bindings.contains_key(&stmt.name) {
@@ -265,7 +263,7 @@ fn execute_assign(stmt: &AssignStmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>
     Ok(())
 }
 
-fn eval_expr(expr: &Expr, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
+fn eval_expr(program: &Program, expr: &Expr, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
     match expr {
         Expr::Int(expr) => Ok(Value::Int(expr.value)),
         Expr::Bool(expr) => Ok(Value::Bool(expr.value)),
@@ -280,7 +278,7 @@ fn eval_expr(expr: &Expr, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
                 )]
             }),
         Expr::Unary(expr) => {
-            let value = eval_expr(&expr.expr, env)?;
+            let value = eval_expr(program, &expr.expr, env)?;
             match (expr.op, value) {
                 (UnaryOp::Neg, Value::Int(value)) => Ok(Value::Int(-value)),
                 (UnaryOp::Not, Value::Bool(value)) => Ok(Value::Bool(!value)),
@@ -292,18 +290,18 @@ fn eval_expr(expr: &Expr, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
             }
         }
         Expr::Binary(expr) => {
-            let left = eval_expr(&expr.left, env)?;
-            let right = eval_expr(&expr.right, env)?;
+            let left = eval_expr(program, &expr.left, env)?;
+            let right = eval_expr(program, &expr.right, env)?;
             eval_binary(expr, left, right)
         }
         Expr::Call(expr) => {
-            let callee = eval_expr(&expr.callee, env)?;
+            let callee = eval_expr(program, &expr.callee, env)?;
             let mut args = Vec::with_capacity(expr.args.len());
             for arg in &expr.args {
-                args.push(eval_expr(arg, env)?);
+                args.push(eval_expr(program, arg, env)?);
             }
             match callee {
-                Value::Function(function) => call_function(&function, args),
+                Value::Function(function) => call_function(program, &function, args),
                 Value::Builtin(builtin) => call_builtin(builtin, args, env, expr.span),
                 _ => Err(vec![Diagnostic::new(
                     "R010",
@@ -313,10 +311,10 @@ fn eval_expr(expr: &Expr, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
             }
         }
         Expr::If(expr) => {
-            let condition = eval_expr(&expr.condition, env)?;
+            let condition = eval_expr(program, &expr.condition, env)?;
             match condition {
-                Value::Bool(true) => eval_value_block(&expr.then_branch, env),
-                Value::Bool(false) => eval_value_block(&expr.else_branch, env),
+                Value::Bool(true) => eval_value_block(program, &expr.then_branch, env),
+                Value::Bool(false) => eval_value_block(program, &expr.else_branch, env),
                 _ => Err(vec![Diagnostic::new(
                     "R003",
                     "`if` condition did not evaluate to Bool",
@@ -324,11 +322,9 @@ fn eval_expr(expr: &Expr, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
                 )]),
             }
         }
-        Expr::Fn(expr) => Ok(Value::Function(Rc::new(FunctionValue {
-            params: expr.params.iter().map(|param| param.name.clone()).collect(),
-            body: expr.body.clone(),
+        Expr::Closure(expr) => Ok(Value::Function(Rc::new(ClosureValue {
+            function: expr.function,
             env: env.clone(),
-            span: expr.span,
         }))),
     }
 }
@@ -364,26 +360,31 @@ fn eval_binary(expr: &BinaryExpr, left: Value, right: Value) -> Result<Value, Ve
     }
 }
 
-fn eval_value_block(block: &ValueBlock, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
-    let child = Rc::new(RefCell::new(Env::new(
-        Some(env.clone()),
-        false,
-        env.borrow().output.clone(),
-    )));
-    execute_scope_statements(&block.statements, &child)?;
-    eval_expr(&block.expr, &child)
+fn eval_value_block(
+    program: &Program,
+    block: &ValueBlock,
+    env: &EnvRef,
+) -> Result<Value, Vec<Diagnostic>> {
+    let child = child_env(env, false);
+    execute_scope_statements(program, &block.statements, &child)?;
+    eval_expr(program, &block.expr, &child)
 }
 
-fn call_function(function: &FunctionValue, args: Vec<Value>) -> Result<Value, Vec<Diagnostic>> {
-    if function.params.len() != args.len() {
+fn call_function(
+    program: &Program,
+    function: &ClosureValue,
+    args: Vec<Value>,
+) -> Result<Value, Vec<Diagnostic>> {
+    let definition = function.definition(program);
+    if definition.params.len() != args.len() {
         return Err(vec![Diagnostic::new(
             "R012",
             format!(
                 "expected {} arguments but found {}",
-                function.params.len(),
+                definition.params.len(),
                 args.len()
             ),
-            function.span,
+            definition.span,
         )]);
     }
 
@@ -392,18 +393,18 @@ fn call_function(function: &FunctionValue, args: Vec<Value>) -> Result<Value, Ve
         true,
         function.env.borrow().output.clone(),
     )));
-    for (param, arg) in function.params.iter().zip(args) {
+    for (param, arg) in definition.params.iter().zip(args) {
         env.borrow_mut().bindings.insert(
             param.clone(),
             Binding {
                 mutable: false,
                 value: arg,
-                span: function.span,
+                span: definition.span,
             },
         );
     }
-    execute_scope_statements(&function.body.statements, &env)?;
-    eval_expr(&function.body.expr, &env)
+    execute_scope_statements(program, &definition.body.statements, &env)?;
+    eval_expr(program, &definition.body.expr, &env)
 }
 
 fn call_builtin(
@@ -437,34 +438,22 @@ fn call_builtin(
     }
 }
 
-fn predeclare_functions(statements: &[Stmt], env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
+fn predeclare_functions(statements: &[Stmt], env: &EnvRef) {
     for statement in statements {
-        if let Stmt::FuncDecl(func) = statement {
-            if env.borrow().bindings.contains_key(&func.name) {
-                return Err(vec![Diagnostic::new(
-                    "R004",
-                    format!("duplicate binding `{}` in the current scope", func.name),
-                    func.span,
-                )]);
-            }
-
-            let function = Value::Function(Rc::new(FunctionValue {
-                params: func.params.iter().map(|param| param.name.clone()).collect(),
-                body: func.body.clone(),
-                env: env.clone(),
-                span: func.span,
-            }));
+        if let Stmt::Function(func) = statement {
             env.borrow_mut().bindings.insert(
                 func.name.clone(),
                 Binding {
                     mutable: false,
-                    value: function,
+                    value: Value::Function(Rc::new(ClosureValue {
+                        function: func.function,
+                        env: env.clone(),
+                    })),
                     span: func.span,
                 },
             );
         }
     }
-    Ok(())
 }
 
 fn install_prelude(env: &EnvRef) {
@@ -476,6 +465,14 @@ fn install_prelude(env: &EnvRef) {
             span: Span::default(),
         },
     );
+}
+
+fn child_env(parent: &EnvRef, function_boundary: bool) -> EnvRef {
+    Rc::new(RefCell::new(Env::new(
+        Some(parent.clone()),
+        function_boundary,
+        parent.borrow().output.clone(),
+    )))
 }
 
 fn lookup_any(env: &EnvRef, name: &str) -> Option<Binding> {
@@ -521,23 +518,17 @@ fn lookup_in_current_function_env(env: &EnvRef, name: &str) -> Option<EnvRef> {
 }
 
 fn lookup_beyond_current_function(env: &EnvRef, name: &str) -> Option<Binding> {
+    let mut first_boundary_seen = false;
     let mut current = Some(env.clone());
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
-        let stop = borrowed.function_boundary;
-        let parent = borrowed.parent.clone();
-        drop(borrowed);
-        if stop {
-            current = parent;
-            break;
+        if first_boundary_seen {
+            if let Some(binding) = borrowed.bindings.get(name) {
+                return Some(binding.clone());
+            }
         }
-        current = parent;
-    }
-
-    while let Some(candidate) = current {
-        let borrowed = candidate.borrow();
-        if let Some(binding) = borrowed.bindings.get(name) {
-            return Some(binding.clone());
+        if borrowed.function_boundary {
+            first_boundary_seen = true;
         }
         current = borrowed.parent.clone();
     }
