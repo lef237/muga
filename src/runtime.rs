@@ -10,6 +10,7 @@ pub enum Value {
     Bool(bool),
     String(String),
     Function(Rc<FunctionValue>),
+    Builtin(BuiltinFunction),
 }
 
 impl fmt::Display for Value {
@@ -19,6 +20,7 @@ impl fmt::Display for Value {
             Self::Bool(value) => write!(f, "{value}"),
             Self::String(value) => write!(f, "{value}"),
             Self::Function(_) => write!(f, "<function>"),
+            Self::Builtin(builtin) => write!(f, "<builtin:{}>", builtin.name()),
         }
     }
 }
@@ -26,14 +28,20 @@ impl fmt::Display for Value {
 #[derive(Clone, Debug)]
 pub struct RunOutcome {
     pub main_result: Option<Value>,
+    pub output_lines: Vec<String>,
 }
 
 pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
-    let root = Rc::new(RefCell::new(Env::new(None, true)));
+    let output = Rc::new(RefCell::new(Vec::new()));
+    let root = Rc::new(RefCell::new(Env::new(None, true, output.clone())));
+    install_prelude(&root);
     execute_scope_statements(&program.statements, &root)?;
 
     match lookup_any(&root, "main") {
-        None => Ok(RunOutcome { main_result: None }),
+        None => Ok(RunOutcome {
+            main_result: None,
+            output_lines: output.borrow().clone(),
+        }),
         Some(Binding {
             value: Value::Function(function),
             ..
@@ -48,6 +56,7 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
             let value = call_function(&function, Vec::new())?;
             Ok(RunOutcome {
                 main_result: Some(value),
+                output_lines: output.borrow().clone(),
             })
         }
         Some(binding) => Err(vec![Diagnostic::new(
@@ -66,6 +75,19 @@ pub struct FunctionValue {
     span: Span,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum BuiltinFunction {
+    Print,
+}
+
+impl BuiltinFunction {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Print => "print",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Binding {
     mutable: bool,
@@ -78,14 +100,20 @@ struct Env {
     bindings: HashMap<String, Binding>,
     parent: Option<EnvRef>,
     function_boundary: bool,
+    output: Rc<RefCell<Vec<String>>>,
 }
 
 impl Env {
-    fn new(parent: Option<EnvRef>, function_boundary: bool) -> Self {
+    fn new(
+        parent: Option<EnvRef>,
+        function_boundary: bool,
+        output: Rc<RefCell<Vec<String>>>,
+    ) -> Self {
         Self {
             bindings: HashMap::new(),
             parent,
             function_boundary,
+            output,
         }
     }
 }
@@ -111,12 +139,20 @@ fn execute_stmt(statement: &Stmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
             let condition = eval_expr(&stmt.condition, env)?;
             match condition {
                 Value::Bool(true) => {
-                    let child = Rc::new(RefCell::new(Env::new(Some(env.clone()), false)));
+                    let child = Rc::new(RefCell::new(Env::new(
+                        Some(env.clone()),
+                        false,
+                        env.borrow().output.clone(),
+                    )));
                     execute_scope_statements(&stmt.then_branch.statements, &child)?;
                 }
                 Value::Bool(false) => {
                     if let Some(else_branch) = &stmt.else_branch {
-                        let child = Rc::new(RefCell::new(Env::new(Some(env.clone()), false)));
+                        let child = Rc::new(RefCell::new(Env::new(
+                            Some(env.clone()),
+                            false,
+                            env.borrow().output.clone(),
+                        )));
                         execute_scope_statements(&else_branch.statements, &child)?;
                     }
                 }
@@ -133,7 +169,11 @@ fn execute_stmt(statement: &Stmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
             let condition = eval_expr(&stmt.condition, env)?;
             match condition {
                 Value::Bool(true) => {
-                    let child = Rc::new(RefCell::new(Env::new(Some(env.clone()), false)));
+                    let child = Rc::new(RefCell::new(Env::new(
+                        Some(env.clone()),
+                        false,
+                        env.borrow().output.clone(),
+                    )));
                     execute_scope_statements(&stmt.body.statements, &child)?;
                 }
                 Value::Bool(false) => break,
@@ -264,6 +304,7 @@ fn eval_expr(expr: &Expr, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
             }
             match callee {
                 Value::Function(function) => call_function(&function, args),
+                Value::Builtin(builtin) => call_builtin(builtin, args, env, expr.span),
                 _ => Err(vec![Diagnostic::new(
                     "R010",
                     "attempted to call a non-function value",
@@ -297,6 +338,9 @@ fn eval_binary(expr: &BinaryExpr, left: Value, right: Value) -> Result<Value, Ve
         (BinaryOp::Add, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left + right)),
         (BinaryOp::Sub, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left - right)),
         (BinaryOp::Mul, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left * right)),
+        (BinaryOp::Div, Value::Int(_), Value::Int(0)) => {
+            Err(vec![Diagnostic::new("R013", "division by zero", expr.span)])
+        }
         (BinaryOp::Div, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left / right)),
         (BinaryOp::Lt, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left < right)),
         (BinaryOp::LtEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left <= right)),
@@ -321,7 +365,11 @@ fn eval_binary(expr: &BinaryExpr, left: Value, right: Value) -> Result<Value, Ve
 }
 
 fn eval_value_block(block: &ValueBlock, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
-    let child = Rc::new(RefCell::new(Env::new(Some(env.clone()), false)));
+    let child = Rc::new(RefCell::new(Env::new(
+        Some(env.clone()),
+        false,
+        env.borrow().output.clone(),
+    )));
     execute_scope_statements(&block.statements, &child)?;
     eval_expr(&block.expr, &child)
 }
@@ -339,7 +387,11 @@ fn call_function(function: &FunctionValue, args: Vec<Value>) -> Result<Value, Ve
         )]);
     }
 
-    let env = Rc::new(RefCell::new(Env::new(Some(function.env.clone()), true)));
+    let env = Rc::new(RefCell::new(Env::new(
+        Some(function.env.clone()),
+        true,
+        function.env.borrow().output.clone(),
+    )));
     for (param, arg) in function.params.iter().zip(args) {
         env.borrow_mut().bindings.insert(
             param.clone(),
@@ -352,6 +404,37 @@ fn call_function(function: &FunctionValue, args: Vec<Value>) -> Result<Value, Ve
     }
     execute_scope_statements(&function.body.statements, &env)?;
     eval_expr(&function.body.expr, &env)
+}
+
+fn call_builtin(
+    builtin: BuiltinFunction,
+    args: Vec<Value>,
+    env: &EnvRef,
+    span: Span,
+) -> Result<Value, Vec<Diagnostic>> {
+    match builtin {
+        BuiltinFunction::Print => {
+            if args.len() != 1 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 1 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let value = args.into_iter().next().expect("checked length");
+            match &value {
+                Value::Int(_) | Value::Bool(_) | Value::String(_) => {
+                    env.borrow().output.borrow_mut().push(value.to_string());
+                    Ok(value)
+                }
+                Value::Function(_) | Value::Builtin(_) => Err(vec![Diagnostic::new(
+                    "R014",
+                    "`print` accepts only Int, Bool, or String",
+                    span,
+                )]),
+            }
+        }
+    }
 }
 
 fn predeclare_functions(statements: &[Stmt], env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
@@ -382,6 +465,17 @@ fn predeclare_functions(statements: &[Stmt], env: &EnvRef) -> Result<(), Vec<Dia
         }
     }
     Ok(())
+}
+
+fn install_prelude(env: &EnvRef) {
+    env.borrow_mut().bindings.insert(
+        "print".to_string(),
+        Binding {
+            mutable: false,
+            value: Value::Builtin(BuiltinFunction::Print),
+            span: Span::default(),
+        },
+    );
 }
 
 fn lookup_any(env: &EnvRef, name: &str) -> Option<Binding> {
