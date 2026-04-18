@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-use crate::{diagnostic::Diagnostic, hir::*, span::Span};
+use crate::{bytecode::*, diagnostic::Diagnostic, span::Span};
 
 type EnvRef = Rc<RefCell<Env>>;
 
@@ -35,7 +35,7 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
     let output = Rc::new(RefCell::new(Vec::new()));
     let root = Rc::new(RefCell::new(Env::new(None, true, output.clone())));
     install_prelude(&root);
-    execute_scope_statements(program, &program.statements, &root)?;
+    let _ = execute_chunk(program, &program.entry, root.clone())?;
 
     match lookup_any(&root, "main") {
         None => Ok(RunOutcome {
@@ -46,12 +46,12 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
             value: Value::Function(function),
             ..
         }) => {
-            let def = function.definition(program);
-            if !def.params.is_empty() {
+            let definition = function.definition(program);
+            if !definition.params.is_empty() {
                 return Err(vec![Diagnostic::new(
                     "R001",
                     "`main` must be a zero-argument function to be used as the CLI entrypoint",
-                    def.span,
+                    definition.span,
                 )]);
             }
             let value = call_function(program, &function, Vec::new())?;
@@ -123,251 +123,227 @@ impl Env {
     }
 }
 
-fn execute_scope_statements(
-    program: &Program,
-    statements: &[Stmt],
-    env: &EnvRef,
-) -> Result<(), Vec<Diagnostic>> {
-    predeclare_functions(statements, env);
-    for statement in statements {
-        match statement {
-            Stmt::Function(_) => {}
-            _ => execute_stmt(program, statement, env)?,
-        }
-    }
-    Ok(())
-}
+fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option<Value>, Vec<Diagnostic>> {
+    let mut stack = Vec::<Value>::new();
+    let mut current_env = env;
+    let mut pc = 0usize;
 
-fn execute_stmt(program: &Program, statement: &Stmt, env: &EnvRef) -> Result<(), Vec<Diagnostic>> {
-    match statement {
-        Stmt::Assign(stmt) => execute_assign(program, stmt, env)?,
-        Stmt::Function(_) => {}
-        Stmt::If(stmt) => {
-            let condition = eval_expr(program, &stmt.condition, env)?;
-            match condition {
-                Value::Bool(true) => {
-                    let child = child_env(env, false);
-                    execute_scope_statements(program, &stmt.then_branch.statements, &child)?;
-                }
-                Value::Bool(false) => {
-                    if let Some(else_branch) = &stmt.else_branch {
-                        let child = child_env(env, false);
-                        execute_scope_statements(program, &else_branch.statements, &child)?;
+    while let Some(instruction) = chunk.instructions.get(pc) {
+        match instruction {
+            Instruction::LoadInt(value) => stack.push(Value::Int(*value)),
+            Instruction::LoadBool(value) => stack.push(Value::Bool(*value)),
+            Instruction::LoadString(value) => stack.push(Value::String(value.clone())),
+            Instruction::LoadName { name, span } => {
+                let Some(binding) = lookup_any(&current_env, name) else {
+                    return Err(vec![Diagnostic::new(
+                        "R008",
+                        format!("unresolved runtime name `{name}`"),
+                        *span,
+                    )]);
+                };
+                stack.push(binding.value);
+            }
+            Instruction::Assign {
+                name,
+                mutable,
+                span,
+            } => {
+                let value = pop_value(&mut stack, *span, "R015", "missing value for assignment")?;
+                execute_assign(&current_env, name, *mutable, value, *span)?;
+            }
+            Instruction::DefineFunction {
+                name,
+                function,
+                span,
+            } => {
+                current_env.borrow_mut().bindings.insert(
+                    name.clone(),
+                    Binding {
+                        mutable: false,
+                        value: Value::Function(Rc::new(ClosureValue {
+                            function: *function,
+                            env: current_env.clone(),
+                        })),
+                        span: *span,
+                    },
+                );
+            }
+            Instruction::MakeClosure { function } => {
+                stack.push(Value::Function(Rc::new(ClosureValue {
+                    function: *function,
+                    env: current_env.clone(),
+                })));
+            }
+            Instruction::UnaryNeg { span } => {
+                let value = pop_value(&mut stack, *span, "R015", "missing operand for unary operator")?;
+                match value {
+                    Value::Int(value) => stack.push(Value::Int(-value)),
+                    _ => {
+                        return Err(vec![Diagnostic::new(
+                            "R009",
+                            "invalid operand for unary operator",
+                            *span,
+                        )]);
                     }
                 }
-                _ => {
-                    return Err(vec![Diagnostic::new(
-                        "R003",
-                        "`if` condition did not evaluate to Bool",
-                        stmt.condition.span(),
-                    )]);
+            }
+            Instruction::UnaryNot { span } => {
+                let value = pop_value(&mut stack, *span, "R015", "missing operand for unary operator")?;
+                match value {
+                    Value::Bool(value) => stack.push(Value::Bool(!value)),
+                    _ => {
+                        return Err(vec![Diagnostic::new(
+                            "R009",
+                            "invalid operand for unary operator",
+                            *span,
+                        )]);
+                    }
                 }
             }
-        }
-        Stmt::While(stmt) => loop {
-            let condition = eval_expr(program, &stmt.condition, env)?;
-            match condition {
-                Value::Bool(true) => {
-                    let child = child_env(env, false);
-                    execute_scope_statements(program, &stmt.body.statements, &child)?;
-                }
-                Value::Bool(false) => break,
-                _ => {
-                    return Err(vec![Diagnostic::new(
-                        "R003",
-                        "`while` condition did not evaluate to Bool",
-                        stmt.condition.span(),
-                    )]);
+            Instruction::Binary { op, span } => {
+                let right = pop_value(&mut stack, *span, "R015", "missing right operand")?;
+                let left = pop_value(&mut stack, *span, "R015", "missing left operand")?;
+                let value = eval_binary(*op, left, right, *span)?;
+                stack.push(value);
+            }
+            Instruction::Call { argc, span } => {
+                let args = pop_args(&mut stack, *argc, *span)?;
+                let callee = pop_value(&mut stack, *span, "R015", "missing callee for call")?;
+                let value = call_value(program, callee, args, &current_env, *span)?;
+                stack.push(value);
+            }
+            Instruction::JumpIfFalse { target, span } => {
+                let condition = pop_value(&mut stack, *span, "R015", "missing condition for jump")?;
+                match condition {
+                    Value::Bool(false) => {
+                        pc = *target;
+                        continue;
+                    }
+                    Value::Bool(true) => {}
+                    _ => {
+                        return Err(vec![Diagnostic::new(
+                            "R003",
+                            "`if`/`while` condition did not evaluate to Bool",
+                            *span,
+                        )]);
+                    }
                 }
             }
-        },
-        Stmt::Expr(stmt) => {
-            let _ = eval_expr(program, &stmt.expr, env)?;
+            Instruction::Jump { target } => {
+                pc = *target;
+                continue;
+            }
+            Instruction::PushScope => {
+                current_env = child_env(&current_env, false);
+            }
+            Instruction::PopScope => {
+                let parent = current_env.borrow().parent.clone().expect("scope must have parent");
+                current_env = parent;
+            }
+            Instruction::Pop => {
+                let _ = pop_value(&mut stack, Span::default(), "R015", "missing value to discard")?;
+            }
+            Instruction::Return => {
+                let value = pop_value(
+                    &mut stack,
+                    Span::default(),
+                    "R015",
+                    "missing return value at end of function",
+                )?;
+                return Ok(Some(value));
+            }
         }
+        pc += 1;
     }
-    Ok(())
+
+    Ok(None)
 }
 
 fn execute_assign(
-    program: &Program,
-    stmt: &AssignStmt,
     env: &EnvRef,
+    name: &str,
+    mutable: bool,
+    value: Value,
+    span: Span,
 ) -> Result<(), Vec<Diagnostic>> {
-    let value = eval_expr(program, &stmt.value, env)?;
-
-    if stmt.mutable {
-        if env.borrow().bindings.contains_key(&stmt.name) {
+    if mutable {
+        if env.borrow().bindings.contains_key(name) {
             return Err(vec![Diagnostic::new(
                 "R004",
-                format!("duplicate binding `{}` in the current scope", stmt.name),
-                stmt.span,
+                format!("duplicate binding `{name}` in the current scope"),
+                span,
             )]);
         }
-        if lookup_any_enclosing(env, &stmt.name).is_some() {
+        if lookup_any_enclosing(env, name).is_some() {
             return Err(vec![Diagnostic::new(
                 "R005",
-                format!("shadowing is prohibited for `{}`", stmt.name),
-                stmt.span,
+                format!("shadowing is prohibited for `{name}`"),
+                span,
             )]);
         }
         env.borrow_mut().bindings.insert(
-            stmt.name.clone(),
+            name.to_string(),
             Binding {
                 mutable: true,
                 value,
-                span: stmt.span,
+                span,
             },
         );
         return Ok(());
     }
 
-    if let Some(target_env) = lookup_in_current_function_env(env, &stmt.name) {
+    if let Some(target_env) = lookup_in_current_function_env(env, name) {
         let mut target = target_env.borrow_mut();
-        let binding = target
-            .bindings
-            .get_mut(&stmt.name)
-            .expect("binding must exist");
+        let binding = target.bindings.get_mut(name).expect("binding must exist");
         if binding.mutable {
             binding.value = value;
-            binding.span = stmt.span;
+            binding.span = span;
             return Ok(());
         }
         return Err(vec![Diagnostic::new(
             "R006",
-            format!("cannot update immutable binding `{}`", stmt.name),
-            stmt.span,
+            format!("cannot update immutable binding `{name}`"),
+            span,
         )]);
     }
 
-    if let Some(binding) = lookup_beyond_current_function(env, &stmt.name) {
+    if let Some(binding) = lookup_beyond_current_function(env, name) {
         let code = if binding.mutable { "R007" } else { "R005" };
         let message = if binding.mutable {
-            format!(
-                "cannot update outer-scope mutable binding `{}` in v1",
-                stmt.name
-            )
+            format!("cannot update outer-scope mutable binding `{name}` in v1")
         } else {
-            format!("shadowing is prohibited for `{}`", stmt.name)
+            format!("shadowing is prohibited for `{name}`")
         };
-        return Err(vec![Diagnostic::new(code, message, stmt.span)]);
+        return Err(vec![Diagnostic::new(code, message, span)]);
     }
 
     env.borrow_mut().bindings.insert(
-        stmt.name.clone(),
+        name.to_string(),
         Binding {
             mutable: false,
             value,
-            span: stmt.span,
+            span,
         },
     );
     Ok(())
 }
 
-fn eval_expr(program: &Program, expr: &Expr, env: &EnvRef) -> Result<Value, Vec<Diagnostic>> {
-    match expr {
-        Expr::Int(expr) => Ok(Value::Int(expr.value)),
-        Expr::Bool(expr) => Ok(Value::Bool(expr.value)),
-        Expr::String(expr) => Ok(Value::String(expr.value.clone())),
-        Expr::Ident(expr) => lookup_any(env, &expr.name)
-            .map(|binding| binding.value)
-            .ok_or_else(|| {
-                vec![Diagnostic::new(
-                    "R008",
-                    format!("unresolved runtime name `{}`", expr.name),
-                    expr.span,
-                )]
-            }),
-        Expr::Unary(expr) => {
-            let value = eval_expr(program, &expr.expr, env)?;
-            match (expr.op, value) {
-                (UnaryOp::Neg, Value::Int(value)) => Ok(Value::Int(-value)),
-                (UnaryOp::Not, Value::Bool(value)) => Ok(Value::Bool(!value)),
-                _ => Err(vec![Diagnostic::new(
-                    "R009",
-                    "invalid operand for unary operator",
-                    expr.span,
-                )]),
-            }
-        }
-        Expr::Binary(expr) => {
-            let left = eval_expr(program, &expr.left, env)?;
-            let right = eval_expr(program, &expr.right, env)?;
-            eval_binary(expr, left, right)
-        }
-        Expr::Call(expr) => {
-            let callee = eval_expr(program, &expr.callee, env)?;
-            let mut args = Vec::with_capacity(expr.args.len());
-            for arg in &expr.args {
-                args.push(eval_expr(program, arg, env)?);
-            }
-            match callee {
-                Value::Function(function) => call_function(program, &function, args),
-                Value::Builtin(builtin) => call_builtin(builtin, args, env, expr.span),
-                _ => Err(vec![Diagnostic::new(
-                    "R010",
-                    "attempted to call a non-function value",
-                    expr.span,
-                )]),
-            }
-        }
-        Expr::If(expr) => {
-            let condition = eval_expr(program, &expr.condition, env)?;
-            match condition {
-                Value::Bool(true) => eval_value_block(program, &expr.then_branch, env),
-                Value::Bool(false) => eval_value_block(program, &expr.else_branch, env),
-                _ => Err(vec![Diagnostic::new(
-                    "R003",
-                    "`if` condition did not evaluate to Bool",
-                    expr.condition.span(),
-                )]),
-            }
-        }
-        Expr::Closure(expr) => Ok(Value::Function(Rc::new(ClosureValue {
-            function: expr.function,
-            env: env.clone(),
-        }))),
-    }
-}
-
-fn eval_binary(expr: &BinaryExpr, left: Value, right: Value) -> Result<Value, Vec<Diagnostic>> {
-    match (expr.op, left, right) {
-        (BinaryOp::Add, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left + right)),
-        (BinaryOp::Sub, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left - right)),
-        (BinaryOp::Mul, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left * right)),
-        (BinaryOp::Div, Value::Int(_), Value::Int(0)) => {
-            Err(vec![Diagnostic::new("R013", "division by zero", expr.span)])
-        }
-        (BinaryOp::Div, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left / right)),
-        (BinaryOp::Lt, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left < right)),
-        (BinaryOp::LtEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left <= right)),
-        (BinaryOp::Gt, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left > right)),
-        (BinaryOp::GtEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left >= right)),
-        (BinaryOp::EqEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left == right)),
-        (BinaryOp::EqEq, Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left == right)),
-        (BinaryOp::EqEq, Value::String(left), Value::String(right)) => {
-            Ok(Value::Bool(left == right))
-        }
-        (BinaryOp::BangEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left != right)),
-        (BinaryOp::BangEq, Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left != right)),
-        (BinaryOp::BangEq, Value::String(left), Value::String(right)) => {
-            Ok(Value::Bool(left != right))
-        }
+fn call_value(
+    program: &Program,
+    callee: Value,
+    args: Vec<Value>,
+    env: &EnvRef,
+    span: Span,
+) -> Result<Value, Vec<Diagnostic>> {
+    match callee {
+        Value::Function(function) => call_function(program, &function, args),
+        Value::Builtin(builtin) => call_builtin(builtin, args, env, span),
         _ => Err(vec![Diagnostic::new(
-            "R011",
-            "invalid operands for binary operator",
-            expr.span,
+            "R010",
+            "attempted to call a non-function value",
+            span,
         )]),
     }
-}
-
-fn eval_value_block(
-    program: &Program,
-    block: &ValueBlock,
-    env: &EnvRef,
-) -> Result<Value, Vec<Diagnostic>> {
-    let child = child_env(env, false);
-    execute_scope_statements(program, &block.statements, &child)?;
-    eval_expr(program, &block.expr, &child)
 }
 
 fn call_function(
@@ -403,8 +379,14 @@ fn call_function(
             },
         );
     }
-    execute_scope_statements(program, &definition.body.statements, &env)?;
-    eval_expr(program, &definition.body.expr, &env)
+
+    execute_chunk(program, &definition.chunk, env)?.ok_or_else(|| {
+        vec![Diagnostic::new(
+            "R015",
+            "function did not produce a value",
+            definition.span,
+        )]
+    })
 }
 
 fn call_builtin(
@@ -438,22 +420,60 @@ fn call_builtin(
     }
 }
 
-fn predeclare_functions(statements: &[Stmt], env: &EnvRef) {
-    for statement in statements {
-        if let Stmt::Function(func) = statement {
-            env.borrow_mut().bindings.insert(
-                func.name.clone(),
-                Binding {
-                    mutable: false,
-                    value: Value::Function(Rc::new(ClosureValue {
-                        function: func.function,
-                        env: env.clone(),
-                    })),
-                    span: func.span,
-                },
-            );
+fn eval_binary(op: BinaryOp, left: Value, right: Value, span: Span) -> Result<Value, Vec<Diagnostic>> {
+    match (op, left, right) {
+        (BinaryOp::Add, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left + right)),
+        (BinaryOp::Sub, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left - right)),
+        (BinaryOp::Mul, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left * right)),
+        (BinaryOp::Div, Value::Int(_), Value::Int(0)) => {
+            Err(vec![Diagnostic::new("R013", "division by zero", span)])
         }
+        (BinaryOp::Div, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left / right)),
+        (BinaryOp::Lt, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left < right)),
+        (BinaryOp::LtEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left <= right)),
+        (BinaryOp::Gt, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left > right)),
+        (BinaryOp::GtEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left >= right)),
+        (BinaryOp::EqEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left == right)),
+        (BinaryOp::EqEq, Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left == right)),
+        (BinaryOp::EqEq, Value::String(left), Value::String(right)) => Ok(Value::Bool(left == right)),
+        (BinaryOp::BangEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left != right)),
+        (BinaryOp::BangEq, Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left != right)),
+        (BinaryOp::BangEq, Value::String(left), Value::String(right)) => {
+            Ok(Value::Bool(left != right))
+        }
+        _ => Err(vec![Diagnostic::new(
+            "R011",
+            "invalid operands for binary operator",
+            span,
+        )]),
     }
+}
+
+fn pop_args(stack: &mut Vec<Value>, argc: usize, span: Span) -> Result<Vec<Value>, Vec<Diagnostic>> {
+    if stack.len() < argc {
+        return Err(vec![Diagnostic::new(
+            "R015",
+            "missing call arguments on stack",
+            span,
+        )]);
+    }
+    let mut args = Vec::with_capacity(argc);
+    for _ in 0..argc {
+        args.push(stack.pop().expect("checked length"));
+    }
+    args.reverse();
+    Ok(args)
+}
+
+fn pop_value(
+    stack: &mut Vec<Value>,
+    span: Span,
+    code: &'static str,
+    message: &'static str,
+) -> Result<Value, Vec<Diagnostic>> {
+    stack
+        .pop()
+        .ok_or_else(|| vec![Diagnostic::new(code, message, span)])
 }
 
 fn install_prelude(env: &EnvRef) {
