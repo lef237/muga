@@ -24,6 +24,18 @@ add = fn(a, b) {
 
 The binding is immutable, so the function name cannot later be updated with `=`.
 
+Example:
+
+```txt
+fn add(a: Int, b: Int) {
+  a + b
+}
+
+add = fn(x: Int, y: Int) {
+  x - y
+}   # error: function bindings are immutable
+```
+
 ## 2. Anonymous Functions
 
 Anonymous functions are expressions.
