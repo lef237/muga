@@ -6,7 +6,7 @@ This programming language incorporates the concept of muga, featuring a simple a
 
 ---
 
-現状このリポジトリは、言語仕様の草案のみを含んでいる。今後、仕様を分割し、例を追加し、実装準備ができる状態にする予定である。
+現状このリポジトリには、v1 仕様草案と Rust 実装の最初の実行系が入っている。
 
 ## 現在の方針
 
@@ -57,9 +57,11 @@ This programming language incorporates the concept of muga, featuring a simple a
 
 ## Rust Implementation
 
-- 構文解析、名前解決、型検査、interpreter を実装中
+- 構文解析、名前解決、型検査、HIR lowering、bytecode compiler、VM runtime を実装中
+- HIR と bytecode の名前は symbol interning で管理している
 - `check` は front-end の検証のみ行う
-- `run` は front-end を通した後、zero-argument の `main()` があればその戻り値を表示する
+- `run` は front-end を通し、HIR に lower して bytecode に compile した後で実行する
+- `run` は zero-argument の `main()` があればその戻り値を表示する
 - prelude builtin として `print` を実装済み
 - `print(x)` は `Int` / `Bool` / `String` を 1 行出力し、その値を返す
 
@@ -78,3 +80,4 @@ cargo run -- path/to/file.muga
 
 - [samples/sum_to.muga](./samples/sum_to.muga)
 - [samples/print_sum.muga](./samples/print_sum.muga)
+- [samples/closure_capture.muga](./samples/closure_capture.muga)
