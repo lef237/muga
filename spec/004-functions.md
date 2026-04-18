@@ -191,5 +191,6 @@ Functions in v1 are ordinary immutable bindings of function values, with:
 - immutable parameters
 - final-expression returns
 - lexical closure capture for readable outer bindings
+- access to the prelude builtin `print`
 - inference-first signatures
 - limited, explicit requirements for direct recursion and mutual recursion
