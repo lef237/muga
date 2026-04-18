@@ -175,7 +175,7 @@ assign_like_stmt  := "mut" IDENT "=" expr
                    | IDENT "=" expr
 
 func_decl         := "fn" IDENT "(" params? ")" return_annot? value_block
-return_annot      := "->" type_expr
+return_annot      := ":" type_expr
 
 params            := param ("," param)*
 param             := IDENT
