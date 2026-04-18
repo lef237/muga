@@ -36,6 +36,9 @@ fn main() -> ExitCode {
         },
         "run" => match muga::run_source(&source) {
             Ok(outcome) => {
+                for line in outcome.output_lines {
+                    println!("{line}");
+                }
                 if let Some(value) = outcome.main_result {
                     println!("{value}");
                 } else {

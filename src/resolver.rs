@@ -16,6 +16,7 @@ pub fn resolve(program: &Program) -> Vec<Diagnostic> {
         scopes: vec![ScopeFrame::new(true)],
         diagnostics: Vec::new(),
     };
+    resolver.install_prelude();
     resolver.resolve_scope_statements(&program.statements);
     resolver.diagnostics
 }
@@ -40,6 +41,10 @@ struct Resolver {
 }
 
 impl Resolver {
+    fn install_prelude(&mut self) {
+        self.insert_current("print".to_string(), BindingKind::Function);
+    }
+
     fn resolve_scope_statements(&mut self, statements: &[Stmt]) {
         self.predeclare_functions(statements);
         for statement in statements {

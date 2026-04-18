@@ -309,7 +309,17 @@ type_expr := "Int" | "Bool" | "String"
 
 There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
 
-### 7.3 Operator typing rules
+### 7.3 Prelude built-ins
+
+The v1 prelude currently provides:
+
+- `print`
+
+`print` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output, and returns that same value.
+
+Because `print` accepts several concrete types, it does not by itself make an unconstrained parameter uniquely inferable.
+
+### 7.4 Operator typing rules
 
 The built-in operator typing rules are:
 
@@ -321,7 +331,7 @@ The built-in operator typing rules are:
 
 String concatenation is not part of v1. Therefore, `+` is `Int`-only.
 
-### 7.4 Local bindings
+### 7.5 Local bindings
 
 Local variable types are inferred from the right-hand side.
 
@@ -334,13 +344,13 @@ name = "a"  # name : String
 
 Mutable updates must preserve the original type exactly. v1 does not define implicit conversions or subtyping.
 
-### 7.5 Function return types
+### 7.6 Function return types
 
 A function's return type is inferred from the final expression, or from all branches if control flow branches.
 
 All branches must agree on the same type.
 
-### 7.6 Parameter type inference
+### 7.7 Parameter type inference
 
 Parameter types may be omitted if they can be inferred uniquely from usage.
 
@@ -354,7 +364,7 @@ fn inc(x) {
 
 If the language has only `Int` arithmetic here, `x` may be inferred as `Int`.
 
-### 7.7 Inference boundary
+### 7.8 Inference boundary
 
 v1 intentionally uses local-only inference.
 
@@ -371,7 +381,7 @@ Disallowed:
 - propagating constraints across unrelated top-level declarations
 - polymorphic generalization
 
-### 7.8 When type annotations are required
+### 7.9 When type annotations are required
 
 Type annotations are required only when inference cannot determine a unique type.
 
@@ -391,7 +401,7 @@ fn id_int(x: Int) -> Int {
 }
 ```
 
-### 7.9 Recursion rule
+### 7.10 Recursion rule
 
 To keep the implementation simpler in v1:
 
