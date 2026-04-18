@@ -11,6 +11,11 @@ The language uses lexical scopes arranged as a tree.
 - each function body introduces a child scope
 - function parameters belong to the function-body scope
 
+For update resolution, function scopes are also boundaries:
+
+- a mutable binding may be updated from nested blocks in the same function
+- a mutable binding may not be updated across a function boundary
+
 Lookup for expression names searches:
 
 1. the current scope
@@ -67,13 +72,15 @@ the resolver applies the following rules in order:
 
 1. If `x` exists in the current scope as a mutable binding, this is an update of that binding.
 2. If `x` exists in the current scope as an immutable local binding, function binding, or parameter binding, reject the program as an immutable update.
-3. If `x` does not exist in the current scope and an enclosing scope contains a mutable binding named `x`, reject the program as an outer-scope mutation.
-4. If `x` does not exist in the current scope and an enclosing scope contains an immutable binding, function binding, or parameter binding named `x`, reject the program as prohibited shadowing.
-5. Otherwise, introduce a new immutable binding `x` in the current scope.
+3. If `x` does not exist in the current scope but an enclosing scope in the same function contains a mutable binding named `x`, this is an update of the nearest such binding.
+4. If `x` does not exist in the current scope but an enclosing scope in the same function contains an immutable binding, function binding, or parameter binding named `x`, reject the program as an immutable update.
+5. If `x` is not found in the current function and an outer function scope contains a mutable binding named `x`, reject the program as an outer-scope mutation.
+6. If `x` is not found in the current function and an outer function scope contains an immutable binding, function binding, or parameter binding named `x`, reject the program as prohibited shadowing.
+7. Otherwise, introduce a new immutable binding `x` in the current scope.
 
-Rule 3 is the v1 interpretation of non-local stateful assignment. Outer-scope reads are allowed, but outer-scope writes are not.
+Rule 5 is the v1 interpretation of non-local stateful assignment across function boundaries. Reads may cross a function boundary, but writes may not.
 
-In other words, `x = e` may update only a mutable binding in the current scope. Every current-scope immutable name, including parameters and function names, rejects `x = e`.
+In other words, `x = e` may update a mutable binding in the current scope or in an enclosing block of the same function. Every immutable name in that same function region rejects `x = e`, and writes across a function boundary are disallowed.
 
 ## 6. Function Name Predeclaration
 
@@ -116,14 +123,28 @@ mut total = 0
 total = total + 1
 ```
 
-### 8.2 Invalid immutable update
+### 8.2 Valid enclosing-block update in the same function
+
+```txt
+fn sum_to(n: Int) {
+  mut i = 0
+
+  while i < n {
+    i = i + 1
+  }
+
+  i
+}
+```
+
+### 8.3 Invalid immutable update
 
 ```txt
 x = 1
 x = 2
 ```
 
-### 8.3 Invalid shadowing
+### 8.4 Invalid shadowing
 
 ```txt
 flag = true
@@ -134,7 +155,7 @@ if flag {
 }
 ```
 
-### 8.4 Invalid outer-scope mutation
+### 8.5 Invalid outer-scope mutation
 
 ```txt
 mut total = 0

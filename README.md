@@ -17,8 +17,12 @@ This programming language incorporates the concept of muga, featuring a simple a
 - `x = e` は現在スコープの mutable 既存名なら更新
 - `x = e` は現在スコープの immutable 既存名ならエラー
 - shadowing 禁止
-- outer scope の更新は禁止
+- 同一関数内の内側 block からは enclosing mutable を更新可能
+- 関数境界をまたぐ outer scope の更新は禁止
 - 型注釈は原則省略し、推論不能な場合のみ必須
+- 文区切りは改行、コメントは `#`
+- source で書ける型注釈は `Int`, `Bool`, `String` のみ
+- 型推論は local-only
 
 ## 仕様ドキュメント
 

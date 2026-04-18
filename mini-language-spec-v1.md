@@ -80,11 +80,11 @@ x   # OK
 y   # error: y is out of scope
 ```
 
-### 2.2 Updates are local to the current scope
+### 2.2 Updates within a function
 
-A mutable variable may be updated only if the mutable binding exists in the **current** scope.
+A mutable variable may be updated from the current scope or from a nested block in the same function body.
 
-Outer-scope variables may be read, but not updated from an inner scope in v1.
+Across a function boundary, outer-scope variables may be read, but not updated from an inner scope in v1.
 
 Example:
 
@@ -98,7 +98,56 @@ fn add_total(x) {
 
 ---
 
-## 3. Shadowing Policy
+## 3. Lexical Conventions
+
+### 3.1 Whitespace and comments
+
+v1 uses only line comments:
+
+```txt
+# comment until end of line
+```
+
+Semicolons are not used.
+
+Newlines act as statement separators, with these exceptions:
+
+- inside `(` ... `)`, newlines are non-significant
+- a newline immediately after `=`, `,`, or a binary operator does not end the statement
+
+Within a block, statements are separated by newlines. Multiple statements on one line are not part of v1.
+
+### 3.2 Identifiers and keywords
+
+Identifiers are ASCII-only and match:
+
+```txt
+[A-Za-z_][A-Za-z0-9_]*
+```
+
+Reserved keywords are:
+
+- `fn`
+- `mut`
+- `if`
+- `else`
+- `while`
+- `true`
+- `false`
+
+### 3.3 Literals
+
+The minimal v1 literal set is:
+
+- decimal integer literals
+- boolean literals `true` and `false`
+- string literals `"..."` with escapes `\\`, `\"`, `\n`, and `\t`
+
+Raw strings and multiline strings are not part of v1.
+
+---
+
+## 4. Shadowing Policy
 
 Shadowing is prohibited in v1.
 
@@ -122,9 +171,34 @@ This keeps `=` easier to read because it reduces ambiguity between:
 
 ---
 
-## 4. Functions
+## 5. Operators
 
-## 4.1 Function declarations
+The v1 operator set is:
+
+- unary: `-`, `!`
+- multiplicative: `*`, `/`
+- additive: `+`, `-`
+- comparison: `<`, `<=`, `>`, `>=`
+- equality: `==`, `!=`
+
+All binary operators are left-associative.
+
+Precedence, from strongest to weakest:
+
+1. postfix call
+2. unary
+3. multiplicative
+4. additive
+5. comparison
+6. equality
+
+`=` is not an expression operator. It appears only in assign-like statements.
+
+---
+
+## 6. Functions
+
+## 6.1 Function declarations
 
 ```txt
 fn add(a, b) {
@@ -142,7 +216,7 @@ add = fn(a, b) {
 }
 ```
 
-### 4.2 Anonymous functions
+### 6.2 Anonymous functions
 
 Anonymous functions are expressions.
 
@@ -152,7 +226,7 @@ double = fn(x) {
 }
 ```
 
-### 4.3 Function parameter rules
+### 6.3 Function parameter rules
 
 Function parameters are introduced as immutable bindings in the function scope.
 
@@ -168,9 +242,11 @@ fn bad(x) {
 }
 ```
 
-### 4.4 Return value
+### 6.4 Return value
 
 The return value of a function is the value of the final expression in its body.
+
+Function bodies are value blocks, so every function body ends with a final expression.
 
 Example:
 
@@ -186,17 +262,66 @@ fn abs(x) {
 
 `return` is not required in v1.
 
+### 6.5 Closure capture
+
+Functions use lexical scope and may capture readable bindings from enclosing scopes.
+
+Example:
+
+```txt
+base = 10
+
+fn add_base(x: Int) {
+  x + base
+}
+```
+
+Captured outer bindings remain subject to the ordinary v1 rules:
+
+- outer bindings may be read
+- outer mutable bindings may not be updated from the inner function
+
 ---
 
-## 5. Type Inference and Type Annotations
+## 7. Type Inference and Type Annotations
 
-## 5.1 General policy
+## 7.1 General policy
 
 Type annotations should be omitted whenever possible.
 
 The language should infer types automatically unless inference is ambiguous or impractical.
 
-### 5.2 Local bindings
+### 7.2 Built-in types and source type expressions
+
+The minimal v1 built-in types are:
+
+- `Int`
+- `Bool`
+- `String`
+
+Function types exist in the implementation model, but they are not part of source-level type syntax in v1.
+
+Therefore, source `type_expr` is restricted to:
+
+```ebnf
+type_expr := "Int" | "Bool" | "String"
+```
+
+There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
+
+### 7.3 Operator typing rules
+
+The built-in operator typing rules are:
+
+- unary `-` : `Int -> Int`
+- unary `!` : `Bool -> Bool`
+- `+`, `-`, `*`, `/` : `Int -> Int -> Int`
+- `<`, `<=`, `>`, `>=` : `Int -> Int -> Bool`
+- `==`, `!=` : allowed only for identical primitive types among `Int`, `Bool`, and `String`
+
+String concatenation is not part of v1. Therefore, `+` is `Int`-only.
+
+### 7.4 Local bindings
 
 Local variable types are inferred from the right-hand side.
 
@@ -207,13 +332,15 @@ x = 1        # x : Int
 name = "a"  # name : String
 ```
 
-### 5.3 Function return types
+Mutable updates must preserve the original type exactly. v1 does not define implicit conversions or subtyping.
+
+### 7.5 Function return types
 
 A function's return type is inferred from the final expression, or from all branches if control flow branches.
 
-All branches must agree on a compatible type.
+All branches must agree on the same type.
 
-### 5.4 Parameter type inference
+### 7.6 Parameter type inference
 
 Parameter types may be omitted if they can be inferred uniquely from usage.
 
@@ -227,7 +354,24 @@ fn inc(x) {
 
 If the language has only `Int` arithmetic here, `x` may be inferred as `Int`.
 
-### 5.5 When type annotations are required
+### 7.7 Inference boundary
+
+v1 intentionally uses local-only inference.
+
+Allowed:
+
+- infer local binding types from the right-hand side
+- infer function parameter types from operators and other constraints inside the same function body
+- infer function return types from the function body
+- infer `if` expression result types from branch agreement
+
+Disallowed:
+
+- inferring a callee parameter type from call sites alone
+- propagating constraints across unrelated top-level declarations
+- polymorphic generalization
+
+### 7.8 When type annotations are required
 
 Type annotations are required only when inference cannot determine a unique type.
 
@@ -242,12 +386,12 @@ fn id(x) {
 This is ambiguous and requires annotation, for example:
 
 ```txt
-fn id(x: T) -> T {
+fn id_int(x: Int) -> Int {
   x
 }
 ```
 
-### 5.6 Recursion rule
+### 7.9 Recursion rule
 
 To keep the implementation simpler in v1:
 
@@ -271,7 +415,7 @@ fn fact(n: Int) {
 
 ---
 
-## 6. Grammar (EBNF)
+## 8. Grammar (EBNF)
 
 ```ebnf
 program      := stmt*
@@ -298,15 +442,21 @@ stmt_block   := "{" stmt* "}"
 
 expr_stmt    := expr
 
-expr         := literal
-              | IDENT
-              | call_expr
-              | anon_fn
-              | binary_expr
-              | if_expr
-              | "(" expr ")"
+expr         := if_expr
+              | equality_expr
 
-call_expr    := expr "(" args? ")"
+equality_expr := comparison_expr (("==" | "!=") comparison_expr)*
+comparison_expr := additive_expr (("<" | "<=" | ">" | ">=") additive_expr)*
+additive_expr := multiplicative_expr (("+" | "-") multiplicative_expr)*
+multiplicative_expr := unary_expr (("*" | "/") unary_expr)*
+unary_expr   := ("-" | "!") unary_expr
+              | call_expr
+
+call_expr    := primary_expr ("(" args? ")")*
+primary_expr := literal
+              | IDENT
+              | anon_fn
+              | "(" expr ")"
 args         := expr ("," expr)*
 
 anon_fn      := "fn" "(" params? ")" return_annot? value_block
@@ -316,6 +466,10 @@ non_expr_stmt := assign_like_stmt
                | func_decl
                | if_stmt
                | while_stmt
+literal      := INT_LIT
+              | STRING_LIT
+              | "true"
+              | "false"
 ```
 
 ### Important note
@@ -331,7 +485,7 @@ To keep final-expression return syntax unambiguous in v1, value-producing blocks
 
 ---
 
-## 7. Static Semantic Rules Summary
+## 9. Static Semantic Rules Summary
 
 ```txt
 Rule A: mut x = e
@@ -348,12 +502,20 @@ Rule C: shadowing
 
 Rule D: outer-scope mutation
 - reading from outer scopes is allowed
-- mutating outer-scope bindings from inner scopes is disallowed in v1
+- mutating outer-scope bindings across a function boundary is disallowed in v1
 ```
 
 ---
 
-## 8. Examples
+## 10. Execution-Oriented Summary
+
+- `if` without `else` is statement-only
+- `while` is statement-only
+- the top-level program does not produce a value
+
+---
+
+## 11. Examples
 
 ### 8.1 Valid program
 
@@ -406,7 +568,7 @@ fn add_total(x) {
 
 ---
 
-## 9. Known Trade-off
+## 12. Known Trade-off
 
 Because `set` is intentionally not used, this design accepts one notable trade-off:
 
@@ -424,7 +586,7 @@ Therefore, a practical compiler or linter should ideally warn on:
 
 ---
 
-## 10. Current Design Summary
+## 13. Current Design Summary
 
 This v1 language currently has the following shape:
 
@@ -437,12 +599,16 @@ This v1 language currently has the following shape:
 - function names are immutable bindings
 - function parameters are immutable
 - function return value is the final expression
+- comments use `#`
+- statements are separated by newlines
+- source type annotations are limited to `Int`, `Bool`, and `String`
+- type inference is local-only
 - type annotations are omitted unless inference fails
 - recursive functions require limited annotation
 
 ---
 
-## 11. Next Possible Steps
+## 14. Next Possible Steps
 
 Natural next topics for the spec:
 

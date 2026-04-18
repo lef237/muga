@@ -68,7 +68,7 @@ Referenced examples:
 
 Trigger:
 
-- `x = e` in an inner scope where `x` resolves to a mutable binding in an enclosing scope
+- `x = e` in an inner function scope where `x` resolves to a mutable binding in an outer function scope
 
 Recommended message:
 

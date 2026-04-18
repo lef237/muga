@@ -72,6 +72,8 @@ The value of a function is the value of the final expression in its body.
 
 `return` is not required in v1.
 
+Function bodies are value blocks, so every function body ends with a final expression.
+
 Example:
 
 ```txt
@@ -98,7 +100,26 @@ The following are not allowed:
 - updating an enclosing mutable binding
 - introducing a local binding that shadows an enclosing binding
 
-## 6. Direct Recursion
+## 6. Closure Capture
+
+Functions use lexical scope and may capture readable bindings from enclosing scopes.
+
+Example:
+
+```txt
+base = 10
+
+fn add_base(x: Int) {
+  x + base
+}
+```
+
+Captured outer bindings remain subject to the ordinary v1 rules:
+
+- outer bindings may be read
+- outer mutable bindings may not be updated from the inner function
+
+## 7. Direct Recursion
 
 Direct recursion is allowed.
 
@@ -119,7 +140,7 @@ fn fact(n: Int) {
 }
 ```
 
-## 7. Mutual Recursion
+## 8. Mutual Recursion
 
 Mutual recursion is allowed only when explicit signatures are present for the entire recursive group.
 
@@ -163,11 +184,12 @@ fn is_odd(n) {
 }
 ```
 
-## 8. Summary
+## 9. Summary
 
 Functions in v1 are ordinary immutable bindings of function values, with:
 
 - immutable parameters
 - final-expression returns
+- lexical closure capture for readable outer bindings
 - inference-first signatures
 - limited, explicit requirements for direct recursion and mutual recursion

@@ -10,13 +10,42 @@ The language prefers omission of type annotations.
 - function parameter and return types should be inferred when the result is unique
 - annotations are required only when inference cannot determine a unique type
 
-## 2. Inference Sources
+## 2. Built-in Types and Source Type Expressions
+
+The minimal v1 built-in types are:
+
+- `Int`
+- `Bool`
+- `String`
+
+Function types exist in the implementation model, but they are not part of source-level type syntax in v1.
+
+Therefore, source `type_expr` is restricted to:
+
+```ebnf
+type_expr := "Int" | "Bool" | "String"
+```
+
+There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
+
+## 3. Operator Typing Rules
+
+The built-in operator typing rules are:
+
+- unary `-` : `Int -> Int`
+- unary `!` : `Bool -> Bool`
+- `+`, `-`, `*`, `/` : `Int -> Int -> Int`
+- `<`, `<=`, `>`, `>=` : `Int -> Int -> Bool`
+- `==`, `!=` : allowed only for identical primitive types among `Int`, `Bool`, and `String`
+
+String concatenation is not part of v1. Therefore, `+` is `Int`-only.
+
+## 4. Inference Sources
 
 v1 inference may use:
 
 - literal types
 - operator constraints
-- call-site constraints
 - branch result agreement
 - explicit annotations already present in the same declaration
 
@@ -35,7 +64,7 @@ fn inc(x) {
 
 If `+` here is the integer addition operator in v1, `x` is inferred as `Int`.
 
-## 3. Local Bindings
+## 5. Local Bindings
 
 For a binding:
 
@@ -57,7 +86,9 @@ total = total + 1
 
 `total` has type `Int`.
 
-## 4. Conditions and Branches
+Mutable updates must preserve the original type exactly. v1 does not define implicit conversions or subtyping.
+
+## 6. Conditions and Branches
 
 The condition expression of:
 
@@ -66,7 +97,7 @@ The condition expression of:
 
 must have type `Bool`.
 
-For an `if` expression, both branches must produce a compatible result type.
+For an `if` expression, both branches must produce the same result type.
 
 Example:
 
@@ -82,7 +113,9 @@ fn abs(n: Int) {
 
 Both branches produce `Int`, so the `if` expression has type `Int`.
 
-## 5. Function Parameter Inference
+For an `if` expression, the branch result types must match exactly.
+
+## 7. Function Parameter Inference
 
 A parameter annotation may be omitted when the parameter type is uniquely determined from the function body and surrounding constraints.
 
@@ -108,7 +141,7 @@ fn id(x) {
 
 This requires annotation because the type of `x` is not uniquely determined.
 
-## 6. Function Return Inference
+## 8. Function Return Inference
 
 The return type of a function is inferred from the final expression in the body.
 
@@ -116,7 +149,42 @@ When control flow branches, the return type is inferred from the unified branch 
 
 If the body does not provide enough information to infer a unique return type, a return annotation is required.
 
-## 7. Mandatory Annotations
+## 9. Inference Boundary
+
+v1 intentionally uses local-only inference.
+
+Allowed:
+
+- infer local binding types from the right-hand side
+- infer function parameter types from operators and other constraints inside the same function body
+- infer function return types from the function body
+- infer `if` expression result types from branch agreement
+
+Disallowed:
+
+- inferring a callee parameter type from call sites alone
+- propagating constraints across unrelated top-level declarations
+- polymorphic generalization
+
+This means:
+
+```txt
+fn inc(x) {
+  x + 1
+}
+```
+
+is valid, but:
+
+```txt
+fn id(x) {
+  x
+}
+```
+
+is not.
+
+## 10. Mandatory Annotations
 
 Annotations are required in the following cases:
 
@@ -130,7 +198,7 @@ For v1, an explicit function signature means:
 - at least one parameter or the return type is annotated for direct recursion
 - every function in a mutually recursive group has enough annotations to determine its full callable type before body checking
 
-## 8. Direct Recursion Rule
+## 11. Direct Recursion Rule
 
 For a directly recursive function, at least one of the following must be present:
 
@@ -173,7 +241,7 @@ fn fact(n) {
 }
 ```
 
-## 9. Mutual Recursion Rule
+## 12. Mutual Recursion Rule
 
 Mutually recursive functions require explicit signatures.
 
@@ -199,13 +267,4 @@ fn is_odd(n: Int) -> Bool {
 }
 ```
 
-## 10. Minimal Type Vocabulary
-
-The split v1 documents assume at least the following example-level types:
-
-- `Int`
-- `Bool`
-- `String`
-- function types
-
-This document does not yet standardize a full type-expression grammar beyond what is needed for annotations in examples.
+For implementation purposes, "explicit signature" for a mutually recursive group means that each function's full callable type is known before any body in the group is checked.
