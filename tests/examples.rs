@@ -52,6 +52,31 @@ fn runnable_main_returns_value() {
     let result = muga::run_source(&source).unwrap();
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), "10");
+    assert!(result.output_lines.is_empty());
+}
+
+#[test]
+fn builtin_print_captures_output_and_returns_argument() {
+    let source = fs::read_to_string("samples/print_sum.muga").unwrap();
+    let result = muga::run_source(&source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "10");
+    assert_eq!(result.output_lines, vec!["10".to_string()]);
+}
+
+#[test]
+fn runtime_reports_division_by_zero() {
+    let source = r#"
+fn main() -> Int {
+  1 / 0
+}
+"#;
+    let diagnostics = muga::run_source(source).expect_err("expected runtime error");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R013")
+    );
 }
 
 fn display_path(path: &Path) -> String {

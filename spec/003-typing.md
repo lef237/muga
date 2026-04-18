@@ -28,7 +28,37 @@ type_expr := "Int" | "Bool" | "String"
 
 There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
 
-## 3. Operator Typing Rules
+## 3. Prelude Built-ins
+
+The v1 prelude currently provides:
+
+- `print`
+
+`print` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output, and returns that same value.
+
+Because `print` accepts several concrete types, it does not by itself make an unconstrained parameter uniquely inferable.
+
+Example:
+
+```txt
+fn show_int(x) {
+  print(x + 1)
+}
+```
+
+This is valid because `x + 1` constrains the argument to `Int`.
+
+By contrast:
+
+```txt
+fn show(x) {
+  print(x)
+}
+```
+
+still requires annotation in v1.
+
+## 4. Operator Typing Rules
 
 The built-in operator typing rules are:
 
@@ -40,7 +70,7 @@ The built-in operator typing rules are:
 
 String concatenation is not part of v1. Therefore, `+` is `Int`-only.
 
-## 4. Inference Sources
+## 5. Inference Sources
 
 v1 inference may use:
 
@@ -64,7 +94,7 @@ fn inc(x) {
 
 If `+` here is the integer addition operator in v1, `x` is inferred as `Int`.
 
-## 5. Local Bindings
+## 6. Local Bindings
 
 For a binding:
 
@@ -88,7 +118,7 @@ total = total + 1
 
 Mutable updates must preserve the original type exactly. v1 does not define implicit conversions or subtyping.
 
-## 6. Conditions and Branches
+## 7. Conditions and Branches
 
 The condition expression of:
 
@@ -115,7 +145,7 @@ Both branches produce `Int`, so the `if` expression has type `Int`.
 
 For an `if` expression, the branch result types must match exactly.
 
-## 7. Function Parameter Inference
+## 8. Function Parameter Inference
 
 A parameter annotation may be omitted when the parameter type is uniquely determined from the function body and surrounding constraints.
 
@@ -141,7 +171,7 @@ fn id(x) {
 
 This requires annotation because the type of `x` is not uniquely determined.
 
-## 8. Function Return Inference
+## 9. Function Return Inference
 
 The return type of a function is inferred from the final expression in the body.
 
@@ -149,7 +179,7 @@ When control flow branches, the return type is inferred from the unified branch 
 
 If the body does not provide enough information to infer a unique return type, a return annotation is required.
 
-## 9. Inference Boundary
+## 10. Inference Boundary
 
 v1 intentionally uses local-only inference.
 
@@ -184,7 +214,7 @@ fn id(x) {
 
 is not.
 
-## 10. Mandatory Annotations
+## 11. Mandatory Annotations
 
 Annotations are required in the following cases:
 
@@ -198,7 +228,7 @@ For v1, an explicit function signature means:
 - at least one parameter or the return type is annotated for direct recursion
 - every function in a mutually recursive group has enough annotations to determine its full callable type before body checking
 
-## 11. Direct Recursion Rule
+## 12. Direct Recursion Rule
 
 For a directly recursive function, at least one of the following must be present:
 
@@ -241,7 +271,7 @@ fn fact(n) {
 }
 ```
 
-## 12. Mutual Recursion Rule
+## 13. Mutual Recursion Rule
 
 Mutually recursive functions require explicit signatures.
 

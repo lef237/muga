@@ -1,0 +1,15 @@
+fn sum_to(n: Int) {
+  mut i = 0
+  mut acc = 0
+
+  while i < n {
+    acc = acc + i
+    i = i + 1
+  }
+
+  acc
+}
+
+fn main() -> Int {
+  print(sum_to(5))
+}

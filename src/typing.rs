@@ -9,6 +9,7 @@ enum Type {
     Bool,
     String,
     Function(FunctionSig),
+    Builtin(BuiltinFunction),
     Unknown(u32),
     Error,
 }
@@ -17,6 +18,11 @@ enum Type {
 struct FunctionSig {
     params: Vec<Type>,
     ret: Box<Type>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BuiltinFunction {
+    Print,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,12 +68,24 @@ struct TypeChecker {
 
 impl TypeChecker {
     fn new() -> Self {
-        Self {
+        let mut checker = Self {
             scopes: vec![ScopeFrame::new(true)],
             diagnostics: Vec::new(),
             next_unknown: 0,
             substitutions: HashMap::new(),
-        }
+        };
+        checker.install_prelude();
+        checker
+    }
+
+    fn install_prelude(&mut self) {
+        self.insert_current(
+            "print".to_string(),
+            Binding {
+                kind: BindingKind::Function,
+                ty: Type::Builtin(BuiltinFunction::Print),
+            },
+        );
     }
 
     fn check_scope_statements(&mut self, statements: &[Stmt]) {
@@ -252,6 +270,36 @@ impl TypeChecker {
                 let callee_ty = self.check_expr(&expr.callee);
                 let arg_tys: Vec<Type> = expr.args.iter().map(|arg| self.check_expr(arg)).collect();
                 match self.resolve_type(&callee_ty) {
+                    Type::Builtin(BuiltinFunction::Print) => {
+                        if arg_tys.len() != 1 {
+                            self.diagnostics.push(Diagnostic::new(
+                                "T004",
+                                format!("expected 1 arguments but found {}", arg_tys.len()),
+                                expr.span,
+                            ));
+                            return Type::Error;
+                        }
+                        let arg_ty = self.resolve_type(&arg_tys[0]);
+                        match arg_ty {
+                            Type::Int | Type::Bool | Type::String => arg_ty,
+                            Type::Unknown(_) => {
+                                self.diagnostics.push(Diagnostic::new(
+                                    "E005",
+                                    "type annotation required because inference is not unique",
+                                    expr.span,
+                                ));
+                                Type::Error
+                            }
+                            _ => {
+                                self.diagnostics.push(Diagnostic::new(
+                                    "T006",
+                                    "`print` accepts only Int, Bool, or String",
+                                    expr.span,
+                                ));
+                                Type::Error
+                            }
+                        }
+                    }
                     Type::Function(sig) => {
                         if sig.params.len() != arg_tys.len() {
                             self.diagnostics.push(Diagnostic::new(
@@ -490,6 +538,7 @@ impl TypeChecker {
                 params: sig.params.iter().map(|ty| self.resolve_type(ty)).collect(),
                 ret: Box::new(self.resolve_type(&sig.ret)),
             }),
+            Type::Builtin(builtin) => Type::Builtin(*builtin),
             other => other.clone(),
         }
     }
@@ -557,6 +606,7 @@ impl Type {
             Self::Bool => "Bool",
             Self::String => "String",
             Self::Function(_) => "Function",
+            Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
         }
