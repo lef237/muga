@@ -1,5 +1,7 @@
 use std::{fs, path::Path};
 
+use muga::bytecode::Instruction;
+
 fn extract_code(markdown: &str) -> String {
     let start = markdown.find("```txt").expect("missing opening code fence");
     let after = &markdown[start + "```txt".len()..];
@@ -62,6 +64,119 @@ fn builtin_print_captures_output_and_returns_argument() {
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), "10");
     assert_eq!(result.output_lines, vec!["10".to_string()]);
+}
+
+#[test]
+fn compile_source_lowers_functions_into_hir_table() {
+    let source = r#"
+fn main() -> Int {
+  add = fn(x: Int) -> Int {
+    x + 1
+  }
+  add(41)
+}
+"#;
+    let program = muga::compile_source(source).unwrap();
+    assert_eq!(program.functions.len(), 2);
+    assert_eq!(
+        program
+            .functions[0]
+            .name
+            .map(|symbol| program.symbols.resolve(symbol)),
+        Some("main")
+    );
+    assert_eq!(program.functions[1].name, None);
+}
+
+#[test]
+fn compile_bytecode_source_emits_function_definitions_in_entry_chunk() {
+    let source = r#"
+fn helper() -> Int {
+  1
+}
+
+fn main() -> Int {
+  helper()
+}
+"#;
+    let program = muga::compile_bytecode_source(source).unwrap();
+    assert_eq!(program.functions.len(), 2);
+    assert!(matches!(
+        program.entry.instructions.first(),
+        Some(Instruction::DefineFunction { name, .. })
+            if program.symbols.resolve(*name) == "helper"
+    ));
+    assert!(matches!(
+        program.entry.instructions.get(1),
+        Some(Instruction::DefineFunction { name, .. })
+            if program.symbols.resolve(*name) == "main"
+    ));
+}
+
+#[test]
+fn compile_source_reuses_one_symbol_for_repeated_name() {
+    let source = r#"
+fn main() -> Int {
+  value = 1
+  value
+}
+"#;
+    let program = muga::compile_source(source).unwrap();
+    let function = &program.functions[0];
+    let value_symbol = match &function.body.statements[0] {
+        muga::hir::Stmt::Assign(stmt) => stmt.name,
+        _ => panic!("expected assign statement"),
+    };
+    let final_symbol = match function.body.expr.as_ref() {
+        muga::hir::Expr::Ident(expr) => expr.name,
+        _ => panic!("expected final identifier"),
+    };
+    assert_eq!(value_symbol, final_symbol);
+    assert_eq!(program.symbols.resolve(value_symbol), "value");
+}
+
+#[test]
+fn closures_capture_outer_bindings() {
+    let source = r#"
+fn main() -> Int {
+  base = 41
+  add = fn(x: Int) -> Int {
+    x + base
+  }
+  add(1)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn mutually_recursive_functions_run() {
+    let source = r#"
+fn even(n: Int) -> Bool {
+  if n == 0 {
+    true
+  } else {
+    odd(n - 1)
+  }
+}
+
+fn odd(n: Int) -> Bool {
+  if n == 0 {
+    false
+  } else {
+    even(n - 1)
+  }
+}
+
+fn main() -> Bool {
+  even(10)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "true");
 }
 
 #[test]
