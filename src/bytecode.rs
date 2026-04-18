@@ -1,4 +1,8 @@
-use crate::{hir, span::Span};
+use crate::{
+    hir,
+    span::Span,
+    symbol::{Symbol, SymbolTable},
+};
 
 pub type FunctionId = usize;
 
@@ -6,13 +10,14 @@ pub type FunctionId = usize;
 pub struct Program {
     pub entry: Chunk,
     pub functions: Vec<Function>,
+    pub symbols: SymbolTable,
 }
 
 #[derive(Clone, Debug)]
 pub struct Function {
     pub id: FunctionId,
-    pub name: Option<String>,
-    pub params: Vec<String>,
+    pub name: Option<Symbol>,
+    pub params: Vec<Symbol>,
     pub chunk: Chunk,
     pub span: Span,
 }
@@ -27,14 +32,14 @@ pub enum Instruction {
     LoadInt(i64),
     LoadBool(bool),
     LoadString(String),
-    LoadName { name: String, span: Span },
+    LoadName { name: Symbol, span: Span },
     Assign {
-        name: String,
+        name: Symbol,
         mutable: bool,
         span: Span,
     },
     DefineFunction {
-        name: String,
+        name: Symbol,
         function: FunctionId,
         span: Span,
     },
@@ -82,26 +87,34 @@ pub enum BinaryOp {
     BangEq,
 }
 
-pub fn compile(program: &hir::Program) -> Program {
-    let mut compiler = Compiler::new();
-    let entry = compiler.compile_top_level(&program.statements);
-    for function in &program.functions {
+pub fn compile(program: hir::Program) -> Program {
+    let hir::Program {
+        statements,
+        functions,
+        symbols,
+    } = program;
+    let mut compiler = Compiler::new(symbols);
+    let entry = compiler.compile_top_level(&statements);
+    for function in &functions {
         compiler.compile_function(function);
     }
     Program {
         entry,
         functions: compiler.functions,
+        symbols: compiler.symbols,
     }
 }
 
 struct Compiler {
     functions: Vec<Function>,
+    symbols: SymbolTable,
 }
 
 impl Compiler {
-    fn new() -> Self {
+    fn new(symbols: SymbolTable) -> Self {
         Self {
             functions: Vec::new(),
+            symbols,
         }
     }
 

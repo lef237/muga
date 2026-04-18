@@ -7,6 +7,7 @@ pub mod parser;
 pub mod resolver;
 pub mod runtime;
 pub mod span;
+pub mod symbol;
 pub mod token;
 pub mod typing;
 
@@ -37,7 +38,7 @@ pub fn compile_source(source: &str) -> Result<HirProgram, Vec<Diagnostic>> {
 
 pub fn compile_bytecode_source(source: &str) -> Result<BytecodeProgram, Vec<Diagnostic>> {
     let program = compile_source(source)?;
-    Ok(bytecode::compile(&program))
+    Ok(bytecode::compile(program))
 }
 
 pub fn run_source(source: &str) -> Result<RunOutcome, Vec<Diagnostic>> {

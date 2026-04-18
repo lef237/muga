@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-use crate::{bytecode::*, diagnostic::Diagnostic, span::Span};
+use crate::{bytecode::*, diagnostic::Diagnostic, span::Span, symbol::Symbol};
 
 type EnvRef = Rc<RefCell<Env>>;
 
@@ -34,38 +34,52 @@ pub struct RunOutcome {
 pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
     let output = Rc::new(RefCell::new(Vec::new()));
     let root = Rc::new(RefCell::new(Env::new(None, true, output.clone())));
-    install_prelude(&root);
+    install_prelude(program, &root);
     let _ = execute_chunk(program, &program.entry, root.clone())?;
 
-    match lookup_any(&root, "main") {
+    match main_symbol(program) {
+        Some(main_symbol) => match lookup_any(&root, main_symbol) {
+            None => Ok(RunOutcome {
+                main_result: None,
+                output_lines: output.borrow().clone(),
+            }),
+            Some(Binding {
+                value: Value::Function(function),
+                ..
+            }) => {
+                let definition = function.definition(program);
+                if !definition.params.is_empty() {
+                    return Err(vec![Diagnostic::new(
+                        "R001",
+                        "`main` must be a zero-argument function to be used as the CLI entrypoint",
+                        definition.span,
+                    )]);
+                }
+                let value = call_function(program, &function, Vec::new())?;
+                Ok(RunOutcome {
+                    main_result: Some(value),
+                    output_lines: output.borrow().clone(),
+                })
+            }
+            Some(binding) => Err(vec![Diagnostic::new(
+                "R002",
+                "`main` must be a function",
+                binding.span,
+            )]),
+        },
         None => Ok(RunOutcome {
             main_result: None,
             output_lines: output.borrow().clone(),
         }),
-        Some(Binding {
-            value: Value::Function(function),
-            ..
-        }) => {
-            let definition = function.definition(program);
-            if !definition.params.is_empty() {
-                return Err(vec![Diagnostic::new(
-                    "R001",
-                    "`main` must be a zero-argument function to be used as the CLI entrypoint",
-                    definition.span,
-                )]);
-            }
-            let value = call_function(program, &function, Vec::new())?;
-            Ok(RunOutcome {
-                main_result: Some(value),
-                output_lines: output.borrow().clone(),
-            })
-        }
-        Some(binding) => Err(vec![Diagnostic::new(
-            "R002",
-            "`main` must be a function",
-            binding.span,
-        )]),
     }
+}
+
+fn main_symbol(program: &Program) -> Option<Symbol> {
+    program.symbols.lookup("main")
+}
+
+fn symbol_name<'a>(program: &'a Program, symbol: Symbol) -> &'a str {
+    program.symbols.resolve(symbol)
 }
 
 #[derive(Clone, Debug)]
@@ -102,7 +116,7 @@ struct Binding {
 
 #[derive(Debug)]
 struct Env {
-    bindings: HashMap<String, Binding>,
+    bindings: HashMap<Symbol, Binding>,
     parent: Option<EnvRef>,
     function_boundary: bool,
     output: Rc<RefCell<Vec<String>>>,
@@ -134,10 +148,10 @@ fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option
             Instruction::LoadBool(value) => stack.push(Value::Bool(*value)),
             Instruction::LoadString(value) => stack.push(Value::String(value.clone())),
             Instruction::LoadName { name, span } => {
-                let Some(binding) = lookup_any(&current_env, name) else {
+                let Some(binding) = lookup_any(&current_env, *name) else {
                     return Err(vec![Diagnostic::new(
                         "R008",
-                        format!("unresolved runtime name `{name}`"),
+                        format!("unresolved runtime name `{}`", symbol_name(program, *name)),
                         *span,
                     )]);
                 };
@@ -149,7 +163,7 @@ fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option
                 span,
             } => {
                 let value = pop_value(&mut stack, *span, "R015", "missing value for assignment")?;
-                execute_assign(&current_env, name, *mutable, value, *span)?;
+                execute_assign(program, &current_env, *name, *mutable, value, *span)?;
             }
             Instruction::DefineFunction {
                 name,
@@ -157,7 +171,7 @@ fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option
                 span,
             } => {
                 current_env.borrow_mut().bindings.insert(
-                    name.clone(),
+                    *name,
                     Binding {
                         mutable: false,
                         value: Value::Function(Rc::new(ClosureValue {
@@ -260,29 +274,33 @@ fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option
 }
 
 fn execute_assign(
+    program: &Program,
     env: &EnvRef,
-    name: &str,
+    name: Symbol,
     mutable: bool,
     value: Value,
     span: Span,
 ) -> Result<(), Vec<Diagnostic>> {
     if mutable {
-        if env.borrow().bindings.contains_key(name) {
+        if env.borrow().bindings.contains_key(&name) {
             return Err(vec![Diagnostic::new(
                 "R004",
-                format!("duplicate binding `{name}` in the current scope"),
+                format!(
+                    "duplicate binding `{}` in the current scope",
+                    symbol_name(program, name)
+                ),
                 span,
             )]);
         }
         if lookup_any_enclosing(env, name).is_some() {
             return Err(vec![Diagnostic::new(
                 "R005",
-                format!("shadowing is prohibited for `{name}`"),
+                format!("shadowing is prohibited for `{}`", symbol_name(program, name)),
                 span,
             )]);
         }
         env.borrow_mut().bindings.insert(
-            name.to_string(),
+            name,
             Binding {
                 mutable: true,
                 value,
@@ -294,7 +312,7 @@ fn execute_assign(
 
     if let Some(target_env) = lookup_in_current_function_env(env, name) {
         let mut target = target_env.borrow_mut();
-        let binding = target.bindings.get_mut(name).expect("binding must exist");
+        let binding = target.bindings.get_mut(&name).expect("binding must exist");
         if binding.mutable {
             binding.value = value;
             binding.span = span;
@@ -302,7 +320,10 @@ fn execute_assign(
         }
         return Err(vec![Diagnostic::new(
             "R006",
-            format!("cannot update immutable binding `{name}`"),
+            format!(
+                "cannot update immutable binding `{}`",
+                symbol_name(program, name)
+            ),
             span,
         )]);
     }
@@ -310,15 +331,18 @@ fn execute_assign(
     if let Some(binding) = lookup_beyond_current_function(env, name) {
         let code = if binding.mutable { "R007" } else { "R005" };
         let message = if binding.mutable {
-            format!("cannot update outer-scope mutable binding `{name}` in v1")
+            format!(
+                "cannot update outer-scope mutable binding `{}` in v1",
+                symbol_name(program, name)
+            )
         } else {
-            format!("shadowing is prohibited for `{name}`")
+            format!("shadowing is prohibited for `{}`", symbol_name(program, name))
         };
         return Err(vec![Diagnostic::new(code, message, span)]);
     }
 
     env.borrow_mut().bindings.insert(
-        name.to_string(),
+        name,
         Binding {
             mutable: false,
             value,
@@ -371,7 +395,7 @@ fn call_function(
     )));
     for (param, arg) in definition.params.iter().zip(args) {
         env.borrow_mut().bindings.insert(
-            param.clone(),
+            *param,
             Binding {
                 mutable: false,
                 value: arg,
@@ -476,15 +500,17 @@ fn pop_value(
         .ok_or_else(|| vec![Diagnostic::new(code, message, span)])
 }
 
-fn install_prelude(env: &EnvRef) {
-    env.borrow_mut().bindings.insert(
-        "print".to_string(),
-        Binding {
-            mutable: false,
-            value: Value::Builtin(BuiltinFunction::Print),
-            span: Span::default(),
-        },
-    );
+fn install_prelude(program: &Program, env: &EnvRef) {
+    if let Some(print_symbol) = program.symbols.lookup("print") {
+        env.borrow_mut().bindings.insert(
+            print_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::Print),
+                span: Span::default(),
+            },
+        );
+    }
 }
 
 fn child_env(parent: &EnvRef, function_boundary: bool) -> EnvRef {
@@ -495,11 +521,11 @@ fn child_env(parent: &EnvRef, function_boundary: bool) -> EnvRef {
     )))
 }
 
-fn lookup_any(env: &EnvRef, name: &str) -> Option<Binding> {
+fn lookup_any(env: &EnvRef, name: Symbol) -> Option<Binding> {
     let mut current = Some(env.clone());
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
-        if let Some(binding) = borrowed.bindings.get(name) {
+        if let Some(binding) = borrowed.bindings.get(&name) {
             return Some(binding.clone());
         }
         current = borrowed.parent.clone();
@@ -507,11 +533,11 @@ fn lookup_any(env: &EnvRef, name: &str) -> Option<Binding> {
     None
 }
 
-fn lookup_any_enclosing(env: &EnvRef, name: &str) -> Option<Binding> {
+fn lookup_any_enclosing(env: &EnvRef, name: Symbol) -> Option<Binding> {
     let mut current = env.borrow().parent.clone();
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
-        if let Some(binding) = borrowed.bindings.get(name) {
+        if let Some(binding) = borrowed.bindings.get(&name) {
             return Some(binding.clone());
         }
         current = borrowed.parent.clone();
@@ -519,11 +545,11 @@ fn lookup_any_enclosing(env: &EnvRef, name: &str) -> Option<Binding> {
     None
 }
 
-fn lookup_in_current_function_env(env: &EnvRef, name: &str) -> Option<EnvRef> {
+fn lookup_in_current_function_env(env: &EnvRef, name: Symbol) -> Option<EnvRef> {
     let mut current = Some(env.clone());
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
-        if borrowed.bindings.contains_key(name) {
+        if borrowed.bindings.contains_key(&name) {
             return Some(candidate.clone());
         }
         let stop = borrowed.function_boundary;
@@ -537,13 +563,13 @@ fn lookup_in_current_function_env(env: &EnvRef, name: &str) -> Option<EnvRef> {
     None
 }
 
-fn lookup_beyond_current_function(env: &EnvRef, name: &str) -> Option<Binding> {
+fn lookup_beyond_current_function(env: &EnvRef, name: Symbol) -> Option<Binding> {
     let mut first_boundary_seen = false;
     let mut current = Some(env.clone());
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
         if first_boundary_seen {
-            if let Some(binding) = borrowed.bindings.get(name) {
+            if let Some(binding) = borrowed.bindings.get(&name) {
                 return Some(binding.clone());
             }
         }
