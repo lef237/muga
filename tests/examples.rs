@@ -69,8 +69,8 @@ fn builtin_print_captures_output_and_returns_argument() {
 #[test]
 fn compile_source_lowers_functions_into_hir_table() {
     let source = r#"
-fn main() -> Int {
-  add = fn(x: Int) -> Int {
+fn main(): Int {
+  add = fn(x: Int): Int {
     x + 1
   }
   add(41)
@@ -79,8 +79,7 @@ fn main() -> Int {
     let program = muga::compile_source(source).unwrap();
     assert_eq!(program.functions.len(), 2);
     assert_eq!(
-        program
-            .functions[0]
+        program.functions[0]
             .name
             .map(|symbol| program.symbols.resolve(symbol)),
         Some("main")
@@ -91,11 +90,11 @@ fn main() -> Int {
 #[test]
 fn compile_bytecode_source_emits_function_definitions_in_entry_chunk() {
     let source = r#"
-fn helper() -> Int {
+fn helper(): Int {
   1
 }
 
-fn main() -> Int {
+fn main(): Int {
   helper()
 }
 "#;
@@ -116,7 +115,7 @@ fn main() -> Int {
 #[test]
 fn compile_source_reuses_one_symbol_for_repeated_name() {
     let source = r#"
-fn main() -> Int {
+fn main(): Int {
   value = 1
   value
 }
@@ -138,9 +137,9 @@ fn main() -> Int {
 #[test]
 fn closures_capture_outer_bindings() {
     let source = r#"
-fn main() -> Int {
+fn main(): Int {
   base = 41
-  add = fn(x: Int) -> Int {
+  add = fn(x: Int): Int {
     x + base
   }
   add(1)
@@ -154,7 +153,7 @@ fn main() -> Int {
 #[test]
 fn mutually_recursive_functions_run() {
     let source = r#"
-fn even(n: Int) -> Bool {
+fn even(n: Int): Bool {
   if n == 0 {
     true
   } else {
@@ -162,7 +161,7 @@ fn even(n: Int) -> Bool {
   }
 }
 
-fn odd(n: Int) -> Bool {
+fn odd(n: Int): Bool {
   if n == 0 {
     false
   } else {
@@ -170,7 +169,7 @@ fn odd(n: Int) -> Bool {
   }
 }
 
-fn main() -> Bool {
+fn main(): Bool {
   even(10)
 }
 "#;
@@ -182,7 +181,7 @@ fn main() -> Bool {
 #[test]
 fn runtime_reports_division_by_zero() {
     let source = r#"
-fn main() -> Int {
+fn main(): Int {
   1 / 0
 }
 "#;

@@ -32,7 +32,10 @@ pub enum Instruction {
     LoadInt(i64),
     LoadBool(bool),
     LoadString(String),
-    LoadName { name: Symbol, span: Span },
+    LoadName {
+        name: Symbol,
+        span: Span,
+    },
     Assign {
         name: Symbol,
         mutable: bool,
@@ -126,7 +129,8 @@ impl Compiler {
 
     fn compile_function(&mut self, function: &hir::Function) {
         if self.functions.len() <= function.id {
-            self.functions.resize_with(function.id + 1, placeholder_function);
+            self.functions
+                .resize_with(function.id + 1, placeholder_function);
         }
         let mut chunk = Chunk::default();
         self.compile_scope_statements(&function.body.statements, &mut chunk);
@@ -198,7 +202,9 @@ impl Compiler {
         self.compile_expr(&stmt.condition, chunk);
         let exit_jump = self.emit_jump_if_false(chunk, stmt.condition.span());
         self.compile_block(&stmt.body, chunk);
-        chunk.instructions.push(Instruction::Jump { target: loop_start });
+        chunk
+            .instructions
+            .push(Instruction::Jump { target: loop_start });
         let loop_end = chunk.instructions.len();
         self.patch_jump_if_false(chunk, exit_jump, loop_end);
     }

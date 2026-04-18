@@ -250,7 +250,7 @@ fn fact(n: Int) {
 Also valid:
 
 ```txt
-fn fact(n) -> Int {
+fn fact(n): Int {
   if n == 0 {
     1
   } else {
@@ -280,7 +280,7 @@ In v1, this means each function in the recursive group must carry enough annotat
 Valid:
 
 ```txt
-fn is_even(n: Int) -> Bool {
+fn is_even(n: Int): Bool {
   if n == 0 {
     true
   } else {
@@ -288,7 +288,7 @@ fn is_even(n: Int) -> Bool {
   }
 }
 
-fn is_odd(n: Int) -> Bool {
+fn is_odd(n: Int): Bool {
   if n == 0 {
     false
   } else {

@@ -147,7 +147,7 @@ Mutual recursion is allowed only when explicit signatures are present for the en
 Valid:
 
 ```txt
-fn is_even(n: Int) -> Bool {
+fn is_even(n: Int): Bool {
   if n == 0 {
     true
   } else {
@@ -155,7 +155,7 @@ fn is_even(n: Int) -> Bool {
   }
 }
 
-fn is_odd(n: Int) -> Bool {
+fn is_odd(n: Int): Bool {
   if n == 0 {
     false
   } else {
