@@ -66,16 +66,7 @@ impl Lexer {
                 '+' => self.emit_simple(TokenKind::Plus),
                 '*' => self.emit_simple(TokenKind::Star),
                 '/' => self.emit_simple(TokenKind::Slash),
-                '-' => {
-                    if self.peek_next() == Some('>') {
-                        let start = self.position();
-                        self.advance();
-                        self.advance();
-                        self.push(TokenKind::Arrow, Span::new(start, self.position()));
-                    } else {
-                        self.emit_simple(TokenKind::Minus);
-                    }
-                }
+                '-' => self.emit_simple(TokenKind::Minus),
                 '=' => {
                     if self.peek_next() == Some('=') {
                         let start = self.position();

@@ -1,7 +1,7 @@
 # Valid Example 006: Mutual Recursion With Explicit Signatures
 
 ```txt
-fn is_even(n: Int) -> Bool {
+fn is_even(n: Int): Bool {
   if n == 0 {
     true
   } else {
@@ -9,7 +9,7 @@ fn is_even(n: Int) -> Bool {
   }
 }
 
-fn is_odd(n: Int) -> Bool {
+fn is_odd(n: Int): Bool {
   if n == 0 {
     false
   } else {
