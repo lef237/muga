@@ -53,7 +53,9 @@ The language uses lexical scoping.
 - name lookup prefers the nearest enclosing scope
 - bindings are visible from their declaration point to the end of the enclosing block
 
-Outer-scope bindings may be read from inner scopes, but v1 does not allow updating outer-scope bindings.
+Within a single function body, an inner block may update a mutable binding introduced by an enclosing block in the same function.
+
+Across a function boundary, outer bindings may be read from inner scopes, but v1 does not allow updating outer-scope bindings.
 
 ## 4. Statements and Expressions
 
@@ -86,7 +88,77 @@ abs = fn(n: Int) {
 }
 ```
 
-## 5. Grammar Sketch
+## 5. Lexical Conventions
+
+### 5.1 Whitespace and comments
+
+v1 uses line comments only:
+
+```txt
+# comment until end of line
+```
+
+Semicolons are not used.
+
+Newlines are statement separators, with the following exceptions:
+
+- inside `(` ... `)`, newlines are non-significant
+- a newline immediately following `=`, `,`, or a binary operator does not terminate the statement
+
+Within a block, statements are separated by newlines. Multiple statements on one line are not allowed in v1.
+
+### 5.2 Identifiers and keywords
+
+Identifiers are ASCII-only and match:
+
+```txt
+[A-Za-z_][A-Za-z0-9_]*
+```
+
+Reserved keywords are:
+
+- `fn`
+- `mut`
+- `if`
+- `else`
+- `while`
+- `true`
+- `false`
+
+### 5.3 Literals
+
+The minimal v1 literal set is:
+
+- decimal integer literals
+- boolean literals `true` and `false`
+- string literals `"..."` with escapes `\\`, `\"`, `\n`, and `\t`
+
+Raw strings and multiline strings are not part of v1.
+
+## 6. Operators and Precedence
+
+The v1 operator set is:
+
+- unary: `-`, `!`
+- multiplicative: `*`, `/`
+- additive: `+`, `-`
+- comparison: `<`, `<=`, `>`, `>=`
+- equality: `==`, `!=`
+
+All binary operators are left-associative.
+
+Precedence, from strongest to weakest:
+
+1. postfix call
+2. unary
+3. multiplicative
+4. additive
+5. comparison
+6. equality
+
+`=` is not an expression operator. It appears only in assign-like statements.
+
+## 7. Grammar Sketch
 
 This is a v1-oriented EBNF sketch. `type_expr` is defined abstractly here and constrained further by [003-typing.md](./003-typing.md).
 
@@ -113,17 +185,27 @@ while_stmt        := "while" expr stmt_block
 if_stmt           := "if" expr stmt_block ("else" stmt_block)?
 expr_stmt         := expr
 
-expr              := literal
-                   | IDENT
-                   | call_expr
-                   | anon_fn
-                   | binary_expr
-                   | if_expr
-                   | "(" expr ")"
+expr              := if_expr
+                   | equality_expr
 
 if_expr           := "if" expr value_block "else" value_block
-call_expr         := expr "(" args? ")"
+equality_expr     := comparison_expr (("==" | "!=") comparison_expr)*
+comparison_expr   := additive_expr (("<" | "<=" | ">" | ">=") additive_expr)*
+additive_expr     := multiplicative_expr (("+" | "-") multiplicative_expr)*
+multiplicative_expr := unary_expr (("*" | "/") unary_expr)*
+unary_expr        := ("-" | "!") unary_expr
+                   | call_expr
+call_expr         := primary_expr ("(" args? ")")*
 args              := expr ("," expr)*
+
+primary_expr      := literal
+                   | IDENT
+                   | anon_fn
+                   | "(" expr ")"
+literal           := INT_LIT
+                   | STRING_LIT
+                   | "true"
+                   | "false"
 
 anon_fn           := "fn" "(" params? ")" return_annot? value_block
 stmt_block        := "{" stmt* "}"
@@ -136,7 +218,7 @@ non_expr_stmt     := assign_like_stmt
 
 In a value block, only non-expression statements may appear before the final expression. This reserves a single trailing expression slot and keeps final-expression return syntax deterministic.
 
-## 6. Execution-Oriented Summary
+## 8. Execution-Oriented Summary
 
 The core language model is:
 
@@ -146,8 +228,11 @@ The core language model is:
 - function names are ordinary immutable bindings
 - function parameters are immutable bindings
 - the value of a function body is the final expression in that body
+- `if` without `else` is statement-only
+- `while` is statement-only
+- the top-level program does not produce a value
 
-## 7. Examples
+## 9. Examples
 
 Valid:
 
