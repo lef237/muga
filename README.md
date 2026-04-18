@@ -54,3 +54,24 @@ This programming language incorporates the concept of muga, featuring a simple a
 - [examples/invalid/005-ambiguous-identity.md](./examples/invalid/005-ambiguous-identity.md)
 - [examples/invalid/006-unannotated-recursion.md](./examples/invalid/006-unannotated-recursion.md)
 - [examples/invalid/007-unannotated-mutual-recursion.md](./examples/invalid/007-unannotated-mutual-recursion.md)
+
+## Rust Implementation
+
+- 構文解析、名前解決、型検査、interpreter を実装中
+- `check` は front-end の検証のみ行う
+- `run` は front-end を通した後、zero-argument の `main()` があればその戻り値を表示する
+
+```bash
+cargo run -- check path/to/file.muga
+cargo run -- run path/to/file.muga
+```
+
+`run` は省略できる:
+
+```bash
+cargo run -- path/to/file.muga
+```
+
+サンプル:
+
+- [samples/sum_to.muga](./samples/sum_to.muga)

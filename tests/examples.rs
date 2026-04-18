@@ -46,6 +46,14 @@ fn invalid_examples_fail_frontend() {
     }
 }
 
+#[test]
+fn runnable_main_returns_value() {
+    let source = fs::read_to_string("samples/sum_to.muga").unwrap();
+    let result = muga::run_source(&source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "10");
+}
+
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
