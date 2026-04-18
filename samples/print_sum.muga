@@ -10,6 +10,6 @@ fn sum_to(n: Int) {
   acc
 }
 
-fn main() -> Int {
+fn main(): Int {
   print(sum_to(5))
 }

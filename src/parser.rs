@@ -71,11 +71,7 @@ impl Parser {
         self.expect_simple(TokenKind::LParen, "expected `(` after function name")?;
         let params = self.parse_params()?;
         self.expect_simple(TokenKind::RParen, "expected `)` after parameters")?;
-        let return_type = if self.matches_simple(&TokenKind::Arrow) {
-            Some(self.parse_type_name()?)
-        } else {
-            None
-        };
+        let return_type = self.parse_return_type_annotation()?;
         let body = self.parse_value_block()?;
         let span = start.merge(body.span);
         Ok(FuncDecl {
@@ -401,11 +397,7 @@ impl Parser {
         self.expect_simple(TokenKind::LParen, "expected `(` after `fn`")?;
         let params = self.parse_params()?;
         self.expect_simple(TokenKind::RParen, "expected `)` after parameters")?;
-        let return_type = if self.matches_simple(&TokenKind::Arrow) {
-            Some(self.parse_type_name()?)
-        } else {
-            None
-        };
+        let return_type = self.parse_return_type_annotation()?;
         let body = self.parse_value_block()?;
         let span = start.merge(body.span);
         Ok(Expr::Fn(FnExpr {
@@ -414,6 +406,14 @@ impl Parser {
             body,
             span,
         }))
+    }
+
+    fn parse_return_type_annotation(&mut self) -> Result<Option<TypeName>, Diagnostic> {
+        if self.matches_simple(&TokenKind::Colon) {
+            return Ok(Some(self.parse_type_name()?));
+        }
+
+        Ok(None)
     }
 
     fn consume_statement_boundary(&mut self) -> Result<(), Diagnostic> {

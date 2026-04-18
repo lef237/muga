@@ -1,6 +1,6 @@
-fn main() -> Int {
+fn main(): Int {
   base = 41
-  add = fn(x: Int) -> Int {
+  add = fn(x: Int): Int {
     x + base
   }
   add(1)

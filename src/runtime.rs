@@ -137,7 +137,11 @@ impl Env {
     }
 }
 
-fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option<Value>, Vec<Diagnostic>> {
+fn execute_chunk(
+    program: &Program,
+    chunk: &Chunk,
+    env: EnvRef,
+) -> Result<Option<Value>, Vec<Diagnostic>> {
     let mut stack = Vec::<Value>::new();
     let mut current_env = env;
     let mut pc = 0usize;
@@ -189,7 +193,12 @@ fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option
                 })));
             }
             Instruction::UnaryNeg { span } => {
-                let value = pop_value(&mut stack, *span, "R015", "missing operand for unary operator")?;
+                let value = pop_value(
+                    &mut stack,
+                    *span,
+                    "R015",
+                    "missing operand for unary operator",
+                )?;
                 match value {
                     Value::Int(value) => stack.push(Value::Int(-value)),
                     _ => {
@@ -202,7 +211,12 @@ fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option
                 }
             }
             Instruction::UnaryNot { span } => {
-                let value = pop_value(&mut stack, *span, "R015", "missing operand for unary operator")?;
+                let value = pop_value(
+                    &mut stack,
+                    *span,
+                    "R015",
+                    "missing operand for unary operator",
+                )?;
                 match value {
                     Value::Bool(value) => stack.push(Value::Bool(!value)),
                     _ => {
@@ -251,11 +265,20 @@ fn execute_chunk(program: &Program, chunk: &Chunk, env: EnvRef) -> Result<Option
                 current_env = child_env(&current_env, false);
             }
             Instruction::PopScope => {
-                let parent = current_env.borrow().parent.clone().expect("scope must have parent");
+                let parent = current_env
+                    .borrow()
+                    .parent
+                    .clone()
+                    .expect("scope must have parent");
                 current_env = parent;
             }
             Instruction::Pop => {
-                let _ = pop_value(&mut stack, Span::default(), "R015", "missing value to discard")?;
+                let _ = pop_value(
+                    &mut stack,
+                    Span::default(),
+                    "R015",
+                    "missing value to discard",
+                )?;
             }
             Instruction::Return => {
                 let value = pop_value(
@@ -295,7 +318,10 @@ fn execute_assign(
         if lookup_any_enclosing(env, name).is_some() {
             return Err(vec![Diagnostic::new(
                 "R005",
-                format!("shadowing is prohibited for `{}`", symbol_name(program, name)),
+                format!(
+                    "shadowing is prohibited for `{}`",
+                    symbol_name(program, name)
+                ),
                 span,
             )]);
         }
@@ -336,7 +362,10 @@ fn execute_assign(
                 symbol_name(program, name)
             )
         } else {
-            format!("shadowing is prohibited for `{}`", symbol_name(program, name))
+            format!(
+                "shadowing is prohibited for `{}`",
+                symbol_name(program, name)
+            )
         };
         return Err(vec![Diagnostic::new(code, message, span)]);
     }
@@ -444,7 +473,12 @@ fn call_builtin(
     }
 }
 
-fn eval_binary(op: BinaryOp, left: Value, right: Value, span: Span) -> Result<Value, Vec<Diagnostic>> {
+fn eval_binary(
+    op: BinaryOp,
+    left: Value,
+    right: Value,
+    span: Span,
+) -> Result<Value, Vec<Diagnostic>> {
     match (op, left, right) {
         (BinaryOp::Add, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left + right)),
         (BinaryOp::Sub, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left - right)),
@@ -459,7 +493,9 @@ fn eval_binary(op: BinaryOp, left: Value, right: Value, span: Span) -> Result<Va
         (BinaryOp::GtEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left >= right)),
         (BinaryOp::EqEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left == right)),
         (BinaryOp::EqEq, Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left == right)),
-        (BinaryOp::EqEq, Value::String(left), Value::String(right)) => Ok(Value::Bool(left == right)),
+        (BinaryOp::EqEq, Value::String(left), Value::String(right)) => {
+            Ok(Value::Bool(left == right))
+        }
         (BinaryOp::BangEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left != right)),
         (BinaryOp::BangEq, Value::Bool(left), Value::Bool(right)) => Ok(Value::Bool(left != right)),
         (BinaryOp::BangEq, Value::String(left), Value::String(right)) => {
@@ -473,7 +509,11 @@ fn eval_binary(op: BinaryOp, left: Value, right: Value, span: Span) -> Result<Va
     }
 }
 
-fn pop_args(stack: &mut Vec<Value>, argc: usize, span: Span) -> Result<Vec<Value>, Vec<Diagnostic>> {
+fn pop_args(
+    stack: &mut Vec<Value>,
+    argc: usize,
+    span: Span,
+) -> Result<Vec<Value>, Vec<Diagnostic>> {
     if stack.len() < argc {
         return Err(vec![Diagnostic::new(
             "R015",
