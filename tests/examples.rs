@@ -1,5 +1,7 @@
 use std::{fs, path::Path};
 
+use muga::bytecode::Instruction;
+
 fn extract_code(markdown: &str) -> String {
     let start = markdown.find("```txt").expect("missing opening code fence");
     let after = &markdown[start + "```txt".len()..];
@@ -78,6 +80,29 @@ fn main() -> Int {
     assert_eq!(program.functions.len(), 2);
     assert_eq!(program.functions[0].name.as_deref(), Some("main"));
     assert_eq!(program.functions[1].name, None);
+}
+
+#[test]
+fn compile_bytecode_source_emits_function_definitions_in_entry_chunk() {
+    let source = r#"
+fn helper() -> Int {
+  1
+}
+
+fn main() -> Int {
+  helper()
+}
+"#;
+    let program = muga::compile_bytecode_source(source).unwrap();
+    assert_eq!(program.functions.len(), 2);
+    assert!(matches!(
+        program.entry.instructions.first(),
+        Some(Instruction::DefineFunction { name, .. }) if name == "helper"
+    ));
+    assert!(matches!(
+        program.entry.instructions.get(1),
+        Some(Instruction::DefineFunction { name, .. }) if name == "main"
+    ));
 }
 
 #[test]

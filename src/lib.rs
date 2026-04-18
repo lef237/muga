@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod bytecode;
 pub mod diagnostic;
 pub mod hir;
 pub mod lexer;
@@ -10,6 +11,7 @@ pub mod token;
 pub mod typing;
 
 use ast::Program;
+use bytecode::Program as BytecodeProgram;
 use diagnostic::Diagnostic;
 use hir::Program as HirProgram;
 use runtime::RunOutcome;
@@ -33,7 +35,12 @@ pub fn compile_source(source: &str) -> Result<HirProgram, Vec<Diagnostic>> {
     Ok(hir::lower(&program))
 }
 
-pub fn run_source(source: &str) -> Result<RunOutcome, Vec<Diagnostic>> {
+pub fn compile_bytecode_source(source: &str) -> Result<BytecodeProgram, Vec<Diagnostic>> {
     let program = compile_source(source)?;
+    Ok(bytecode::compile(&program))
+}
+
+pub fn run_source(source: &str) -> Result<RunOutcome, Vec<Diagnostic>> {
+    let program = compile_bytecode_source(source)?;
     runtime::run(&program)
 }

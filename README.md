@@ -57,9 +57,9 @@ This programming language incorporates the concept of muga, featuring a simple a
 
 ## Rust Implementation
 
-- 構文解析、名前解決、型検査、HIR lowering、interpreter を実装中
+- 構文解析、名前解決、型検査、HIR lowering、bytecode compiler、VM runtime を実装中
 - `check` は front-end の検証のみ行う
-- `run` は front-end を通し、HIR に lower した後で実行する
+- `run` は front-end を通し、HIR に lower して bytecode に compile した後で実行する
 - `run` は zero-argument の `main()` があればその戻り値を表示する
 - prelude builtin として `print` を実装済み
 - `print(x)` は `Int` / `Bool` / `String` を 1 行出力し、その値を返す
