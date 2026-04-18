@@ -1,4 +1,8 @@
-use crate::{ast, span::Span};
+use crate::{
+    ast,
+    span::Span,
+    symbol::{Symbol, SymbolTable},
+};
 
 pub type FunctionId = usize;
 
@@ -6,13 +10,14 @@ pub type FunctionId = usize;
 pub struct Program {
     pub statements: Vec<Stmt>,
     pub functions: Vec<Function>,
+    pub symbols: SymbolTable,
 }
 
 #[derive(Clone, Debug)]
 pub struct Function {
     pub id: FunctionId,
-    pub name: Option<String>,
-    pub params: Vec<String>,
+    pub name: Option<Symbol>,
+    pub params: Vec<Symbol>,
     pub body: ValueBlock,
     pub span: Span,
 }
@@ -41,14 +46,14 @@ impl Stmt {
 #[derive(Clone, Debug)]
 pub struct AssignStmt {
     pub mutable: bool,
-    pub name: String,
+    pub name: Symbol,
     pub value: Expr,
     pub span: Span,
 }
 
 #[derive(Clone, Debug)]
 pub struct FunctionStmt {
-    pub name: String,
+    pub name: Symbol,
     pub function: FunctionId,
     pub span: Span,
 }
@@ -136,7 +141,7 @@ pub struct StringExpr {
 
 #[derive(Clone, Debug)]
 pub struct IdentExpr {
-    pub name: String,
+    pub name: Symbol,
     pub span: Span,
 }
 
@@ -199,6 +204,7 @@ pub struct ClosureExpr {
 pub fn lower(program: &ast::Program) -> Program {
     let mut lowerer = Lowerer {
         functions: Vec::new(),
+        symbols: SymbolTable::default(),
     };
     let statements = program
         .statements
@@ -208,11 +214,13 @@ pub fn lower(program: &ast::Program) -> Program {
     Program {
         statements,
         functions: lowerer.functions,
+        symbols: lowerer.symbols,
     }
 }
 
 struct Lowerer {
     functions: Vec<Function>,
+    symbols: SymbolTable,
 }
 
 impl Lowerer {
@@ -220,12 +228,12 @@ impl Lowerer {
         match statement {
             ast::Stmt::Assign(stmt) => Stmt::Assign(AssignStmt {
                 mutable: stmt.mutable,
-                name: stmt.name.clone(),
+                name: self.symbol(&stmt.name),
                 value: self.lower_expr(&stmt.value),
                 span: stmt.span,
             }),
             ast::Stmt::FuncDecl(stmt) => Stmt::Function(FunctionStmt {
-                name: stmt.name.clone(),
+                name: self.symbol(&stmt.name),
                 function: self.lower_function_decl(stmt),
                 span: stmt.span,
             }),
@@ -288,7 +296,7 @@ impl Lowerer {
                 span: expr.span,
             }),
             ast::Expr::Ident(expr) => Expr::Ident(IdentExpr {
-                name: expr.name.clone(),
+                name: self.symbol(&expr.name),
                 span: expr.span,
             }),
             ast::Expr::Unary(expr) => Expr::Unary(UnaryExpr {
@@ -336,10 +344,16 @@ impl Lowerer {
 
     fn lower_function_decl(&mut self, stmt: &ast::FuncDecl) -> FunctionId {
         let id = self.functions.len();
+        let name = self.symbol(&stmt.name);
+        let params = stmt
+            .params
+            .iter()
+            .map(|param| self.symbol(&param.name))
+            .collect();
         self.functions.push(Function {
             id,
-            name: Some(stmt.name.clone()),
-            params: stmt.params.iter().map(|param| param.name.clone()).collect(),
+            name: Some(name),
+            params,
             body: placeholder_value_block(stmt.span),
             span: stmt.span,
         });
@@ -350,16 +364,25 @@ impl Lowerer {
 
     fn lower_fn_expr(&mut self, expr: &ast::FnExpr) -> FunctionId {
         let id = self.functions.len();
+        let params = expr
+            .params
+            .iter()
+            .map(|param| self.symbol(&param.name))
+            .collect();
         self.functions.push(Function {
             id,
             name: None,
-            params: expr.params.iter().map(|param| param.name.clone()).collect(),
+            params,
             body: placeholder_value_block(expr.span),
             span: expr.span,
         });
         let body = self.lower_value_block(&expr.body);
         self.functions[id].body = body;
         id
+    }
+
+    fn symbol(&mut self, name: &str) -> Symbol {
+        self.symbols.intern(name)
     }
 }
 

@@ -78,7 +78,13 @@ fn main() -> Int {
 "#;
     let program = muga::compile_source(source).unwrap();
     assert_eq!(program.functions.len(), 2);
-    assert_eq!(program.functions[0].name.as_deref(), Some("main"));
+    assert_eq!(
+        program
+            .functions[0]
+            .name
+            .map(|symbol| program.symbols.resolve(symbol)),
+        Some("main")
+    );
     assert_eq!(program.functions[1].name, None);
 }
 
@@ -97,12 +103,36 @@ fn main() -> Int {
     assert_eq!(program.functions.len(), 2);
     assert!(matches!(
         program.entry.instructions.first(),
-        Some(Instruction::DefineFunction { name, .. }) if name == "helper"
+        Some(Instruction::DefineFunction { name, .. })
+            if program.symbols.resolve(*name) == "helper"
     ));
     assert!(matches!(
         program.entry.instructions.get(1),
-        Some(Instruction::DefineFunction { name, .. }) if name == "main"
+        Some(Instruction::DefineFunction { name, .. })
+            if program.symbols.resolve(*name) == "main"
     ));
+}
+
+#[test]
+fn compile_source_reuses_one_symbol_for_repeated_name() {
+    let source = r#"
+fn main() -> Int {
+  value = 1
+  value
+}
+"#;
+    let program = muga::compile_source(source).unwrap();
+    let function = &program.functions[0];
+    let value_symbol = match &function.body.statements[0] {
+        muga::hir::Stmt::Assign(stmt) => stmt.name,
+        _ => panic!("expected assign statement"),
+    };
+    let final_symbol = match function.body.expr.as_ref() {
+        muga::hir::Expr::Ident(expr) => expr.name,
+        _ => panic!("expected final identifier"),
+    };
+    assert_eq!(value_symbol, final_symbol);
+    assert_eq!(program.symbols.resolve(value_symbol), "value");
 }
 
 #[test]
