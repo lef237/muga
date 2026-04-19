@@ -1,0 +1,13 @@
+fn show(x: Int, f: Int -> String): String {
+  print(f(x))
+}
+
+fn main(): String {
+  show(10, fn(n: Int): String {
+    if n > 9 {
+      "big"
+    } else {
+      "small"
+    }
+  })
+}

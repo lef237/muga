@@ -103,6 +103,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - [examples/valid/006-mutual-recursion.md](./examples/valid/006-mutual-recursion.md)
 - [examples/valid/007-record-with-update.md](./examples/valid/007-record-with-update.md)
 - [examples/valid/008-local-higher-order-inference.md](./examples/valid/008-local-higher-order-inference.md)
+- [examples/valid/009-explicit-arrow-callback.md](./examples/valid/009-explicit-arrow-callback.md)
 
 ### Invalid
 
@@ -115,6 +116,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - [examples/invalid/007-unannotated-mutual-recursion.md](./examples/invalid/007-unannotated-mutual-recursion.md)
 - [examples/invalid/008-invalid-record-update.md](./examples/invalid/008-invalid-record-update.md)
 - [examples/invalid/009-ambiguous-higher-order-parameter.md](./examples/invalid/009-ambiguous-higher-order-parameter.md)
+- [examples/invalid/010-ambiguous-print-callback.md](./examples/invalid/010-ambiguous-print-callback.md)
 
 ## Rust Implementation
 
@@ -166,10 +168,17 @@ cargo run -- path/to/file.muga
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
+- [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
 
 Sample note:
 
 - In [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga), `10.start().inc().inc().value.double()` has the same meaning as `double(inc(inc(start(10))).value)`. Both chain style and ordinary call style are valid.
+
+Higher-order annotation guide:
+
+- Omit an arrow annotation when the callback type is uniquely determined inside the same function body, as in [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) and [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga).
+- Keep an arrow annotation when local inference is still ambiguous, or when you want the callback contract to be obvious at the declaration site, as in [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga).
+- `public API` is future-facing guidance for functions that will eventually be exposed across files or packages. Muga does not have `pub` or a module system yet, so this is not enforced today, but explicit annotations will likely be preferred at those boundaries for readability and fast interface checking.
 
 ## License
 

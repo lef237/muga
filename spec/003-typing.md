@@ -125,6 +125,24 @@ fn apply(x, f) {
 }
 ```
 
+This also remains ambiguous in v1:
+
+```txt
+fn show(x: Int, f) {
+  print(f(x))
+}
+```
+
+because `print` accepts `Int`, `Bool`, or `String`, so the callback result type is not uniquely determined.
+
+An explicit arrow annotation remains valid and useful:
+
+```txt
+fn show(x: Int, f: Int -> String): String {
+  print(f(x))
+}
+```
+
 ## 5. Record Typing
 
 For:
@@ -222,6 +240,10 @@ v1 inference may use:
 - expected types from the surrounding expression inside the same function body
 - explicit annotations already present in the same declaration
 - explicit function-type annotations on parameters
+
+v1 does not use call sites in other functions or modules as an inference source.
+
+In future module or package boundaries, explicit function-type annotations are expected to remain the preferred interface style even when a local implementation might be inferable.
 
 Examples:
 

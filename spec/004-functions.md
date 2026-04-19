@@ -82,6 +82,24 @@ fn apply(x, f) {
 }
 ```
 
+Another invalid case:
+
+```txt
+fn show(x: Int, f) {
+  print(f(x))
+}
+```
+
+because `print` accepts several concrete result types and therefore does not uniquely determine the callback result.
+
+An explicit arrow annotation is still the preferred way to document a callback contract:
+
+```txt
+fn show(x: Int, f: Int -> String): String {
+  print(f(x))
+}
+```
+
 ## 3. Receiver-Style Functions
 
 Muga prefers receiver-style syntax with an explicit first parameter of record type:
