@@ -25,6 +25,7 @@ This programming language incorporates the concept of muga, featuring a simple a
 - 型推論は local-only
 - receiver-style 関数は `self: Type` を使う
 - `expr.name` は field access、`expr.name(...)` は chained call
+- `record.with(field: expr, ...)` は record 専用の非破壊 update
 - record は nominal data container と record literal を使う
 - record field に関数型は置かない
 - higher-order function は許可する
@@ -62,6 +63,11 @@ This programming language incorporates the concept of muga, featuring a simple a
 - [examples/invalid/006-unannotated-recursion.md](./examples/invalid/006-unannotated-recursion.md)
 - [examples/invalid/007-unannotated-mutual-recursion.md](./examples/invalid/007-unannotated-mutual-recursion.md)
 
+### Planned Syntax
+
+- [examples/planned/001-record-with-update.md](./examples/planned/001-record-with-update.md)
+- [examples/planned/002-invalid-record-update.md](./examples/planned/002-invalid-record-update.md)
+
 ## Rust Implementation
 
 - 構文解析、名前解決、型検査、HIR lowering、bytecode compiler、VM runtime を実装中
@@ -71,7 +77,7 @@ This programming language incorporates the concept of muga, featuring a simple a
 - `run` は zero-argument の `main()` があればその戻り値を表示する
 - prelude builtin として `print` を実装済み
 - `print(x)` は `Int` / `Bool` / `String` を 1 行出力し、その値を返す
-- `record` / dot expression / receiver-style call / arrow function type annotation は仕様整理中で、まだ未実装
+- `record` / dot expression / receiver-style call / arrow function type annotation / `record.with` update は仕様整理中で、まだ未実装
 
 ## Planned Priority
 
@@ -84,8 +90,9 @@ record / dot / receiver-style まわりの実装優先順は次です。
 5. chained call
 6. UFCS-style fallback
 7. function types in parameter annotations / higher-order functions
-8. 必要なら将来 pipe
-9. chain sugar の拡張は後回し
+8. `record.with` による非破壊 update
+9. 必要なら将来 pipe
+10. chain sugar の拡張は後回し
 
 ```bash
 cargo run -- check path/to/file.muga
@@ -105,3 +112,4 @@ cargo run -- path/to/file.muga
 - [samples/closure_capture.muga](./samples/closure_capture.muga)
 - [samples/planned_record_user.muga](./samples/planned_record_user.muga) (`record` / receiver-style / dot の planned syntax sample)
 - [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (`->` function type / higher-order function の planned syntax sample)
+- [samples/planned_record_with_update.muga](./samples/planned_record_with_update.muga) (`record.with(...)` の planned syntax sample)
