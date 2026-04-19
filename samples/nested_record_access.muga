@@ -1,0 +1,19 @@
+record Address {
+  zip: Int
+}
+
+record User {
+  age: Int
+  address: Address
+}
+
+fn main(): Int {
+  user = User {
+    age: 20
+    address: Address {
+      zip: 101
+    }
+  }
+
+  user.address.zip
+}
