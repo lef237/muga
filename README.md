@@ -21,12 +21,14 @@ This programming language incorporates the concept of muga, featuring a simple a
 - 関数境界をまたぐ outer scope の更新は禁止
 - 型注釈は原則省略し、推論不能な場合のみ必須
 - 文区切りは改行、コメントは `#`
-- source で書ける型注釈は `Int`, `Bool`, `String`, nominal record type, `Fn(...): ...`
+- source で書ける型注釈は `Int`, `Bool`, `String`, nominal record type, function type `A -> B`
 - 型推論は local-only
 - receiver-style 関数は `self: Type` を使う
 - `expr.name` は field access、`expr.name(...)` は chained call
 - record は nominal data container と record literal を使う
 - record field に関数型は置かない
+- higher-order function は許可する
+- 関数型は型式の中で `->` を使う
 
 ## 仕様ドキュメント
 
@@ -69,7 +71,7 @@ This programming language incorporates the concept of muga, featuring a simple a
 - `run` は zero-argument の `main()` があればその戻り値を表示する
 - prelude builtin として `print` を実装済み
 - `print(x)` は `Int` / `Bool` / `String` を 1 行出力し、その値を返す
-- `record` / dot expression / receiver-style call は仕様整理中で、まだ未実装
+- `record` / dot expression / receiver-style call / arrow function type annotation は仕様整理中で、まだ未実装
 
 ## Planned Priority
 
@@ -81,8 +83,9 @@ record / dot / receiver-style まわりの実装優先順は次です。
 4. field access
 5. chained call
 6. UFCS-style fallback
-7. 必要なら将来 pipe
-8. chain sugar の拡張は後回し
+7. function types in parameter annotations / higher-order functions
+8. 必要なら将来 pipe
+9. chain sugar の拡張は後回し
 
 ```bash
 cargo run -- check path/to/file.muga
@@ -101,3 +104,4 @@ cargo run -- path/to/file.muga
 - [samples/print_sum.muga](./samples/print_sum.muga)
 - [samples/closure_capture.muga](./samples/closure_capture.muga)
 - [samples/planned_record_user.muga](./samples/planned_record_user.muga) (`record` / receiver-style / dot の planned syntax sample)
+- [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (`->` function type / higher-order function の planned syntax sample)
