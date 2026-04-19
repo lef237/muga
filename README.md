@@ -89,6 +89,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/003-typing.md](./spec/003-typing.md)
   - [spec/004-functions.md](./spec/004-functions.md)
   - [spec/005-records.md](./spec/005-records.md)
+  - [spec/006-packages.md](./spec/006-packages.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 
 ## Examples
@@ -131,14 +132,17 @@ For more entry points, browse the [Samples](#samples) section below.
 - `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
 - explicit receiver-style distinction is not implemented yet
+- the package/module system draft exists in spec only and is not implemented yet
 
 ## Planned Priority
 
-The remaining work around records, dot syntax, and receiver-style calls is currently prioritized as follows:
+The current recommended implementation order is:
 
-1. explicit resolution rules for receiver-parameter style
-2. pipe syntax if it becomes necessary later
-3. broader chain sugar extensions after the core model is stable
+1. package/module/import/export support based on [spec/006-packages.md](./spec/006-packages.md)
+2. explicit resolution rules for receiver-parameter style
+3. package interfaces, caching, and incremental compilation
+4. pipe syntax only if it becomes necessary later
+5. broader chain sugar extensions after the core model is stable
 
 ```bash
 cargo run -- check path/to/file.muga
