@@ -164,3 +164,7 @@ cargo run -- path/to/file.muga
 Sample note:
 
 - In [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga), `10.start().inc().inc().value.double()` has the same meaning as `double(inc(inc(start(10))).value)`. Both chain style and ordinary call style are valid.
+
+## License
+
+Licensed under the [MIT License](./LICENSE.txt).
