@@ -790,4 +790,4 @@ Natural next topics for the spec:
 
 See also:
 
-- [spec/006-packages.md](./spec/006-packages.md) for a draft package design that keeps the current script mode while adding explicit package boundaries for larger programs and faster compilation.
+- [spec/006-packages.md](./spec/006-packages.md) for the package design and the currently implemented `package` / `import` / `pub` / `alias::Name` front-end subset.

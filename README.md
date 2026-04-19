@@ -29,7 +29,7 @@ Try another sample that chains function calls:
 
 ```bash
 cargo run -- samples/number_chain.muga
-# => 10
+# => 4
 ```
 
 Only validate the front end (parse, name resolution, typing) without executing:
@@ -37,6 +37,13 @@ Only validate the front end (parse, name resolution, typing) without executing:
 ```bash
 cargo run -- check samples/println_sum.muga
 # => ok
+```
+
+Package mode is also available through a file entrypoint:
+
+```bash
+cargo run -- check samples/packages/app/main/main.muga
+cargo run -- samples/packages/app/main/main.muga
 ```
 
 Run your own file by pointing `cargo run` at any `.muga` source. `run` is the default subcommand, so it can be omitted:
@@ -131,16 +138,17 @@ For more entry points, browse the [Samples](#samples) section below.
 - `println(x)` writes `Int`, `Bool`, or `String` with a trailing newline and returns the same value
 - `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
+- file-based package mode with `package`, `import`, `pub`, and `alias::Name` is implemented
 - explicit receiver-style distinction is not implemented yet
-- the package/module system draft exists in spec only and is not implemented yet
+- package manifests, configurable source roots, and package caching are not implemented yet
 
 ## Planned Priority
 
 The current recommended implementation order is:
 
-1. package/module/import/export support based on [spec/006-packages.md](./spec/006-packages.md)
-2. explicit resolution rules for receiver-parameter style
-3. package interfaces, caching, and incremental compilation
+1. explicit resolution rules for receiver-parameter style
+2. package interfaces, caching, and incremental compilation
+3. import graph diagnostics and package tooling around [spec/006-packages.md](./spec/006-packages.md)
 4. pipe syntax only if it becomes necessary later
 5. broader chain sugar extensions after the core model is stable
 
@@ -175,6 +183,7 @@ cargo run -- path/to/file.muga
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
+- [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`)
 
 Sample note:
 
@@ -184,7 +193,7 @@ Higher-order annotation guide:
 
 - Omit an arrow annotation when the callback type is uniquely determined inside the same function body, as in [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) and [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga).
 - Keep an arrow annotation when local inference is still ambiguous, or when you want the callback contract to be obvious at the declaration site, as in [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga).
-- `public API` is future-facing guidance for functions that will eventually be exposed across files or packages. Muga does not have `pub` or a module system yet, so this is not enforced today, but explicit annotations will likely be preferred at those boundaries for readability and fast interface checking.
+- In package mode, `pub fn` already requires a fully annotated signature. Private helpers inside a package can keep using local inference.
 
 ## License
 
