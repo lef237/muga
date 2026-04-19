@@ -110,3 +110,7 @@ cargo run -- path/to/file.muga
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
 - [samples/planned_record_user.muga](./samples/planned_record_user.muga) (planned syntax sample for `record`, receiver-style functions, and dot syntax)
 - [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (planned syntax sample for `->` function types and higher-order functions)
+
+Sample note:
+
+- In [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga), `10.start().inc().inc().value.double()` has the same meaning as `double(inc(inc(start(10))).value)`. Both chain style and ordinary call style are valid.

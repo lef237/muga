@@ -17,5 +17,7 @@ fn double(x: Int): Int {
 }
 
 fn main(): Int {
+  # This chain is equivalent to:
+  # double(inc(inc(start(10))).value)
   10.start().inc().inc().value.double()
 }
