@@ -23,6 +23,7 @@ struct FunctionSig {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BuiltinFunction {
+    Print,
     Println,
 }
 
@@ -88,6 +89,13 @@ impl TypeChecker {
     }
 
     fn install_prelude(&mut self) {
+        self.insert_current(
+            "print".to_string(),
+            Binding {
+                kind: BindingKind::Function,
+                ty: Type::Builtin(BuiltinFunction::Print),
+            },
+        );
         self.insert_current(
             "println".to_string(),
             Binding {
@@ -311,7 +319,7 @@ impl TypeChecker {
             Expr::Call(expr) => {
                 let callee_ty = self.check_expr(&expr.callee);
                 match self.resolve_type(&callee_ty) {
-                    Type::Builtin(BuiltinFunction::Println) => {
+                    Type::Builtin(BuiltinFunction::Print | BuiltinFunction::Println) => {
                         if expr.args.len() != 1 {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
@@ -337,9 +345,16 @@ impl TypeChecker {
                                 Type::Error
                             }
                             _ => {
+                                let builtin_name = match self.resolve_type(&callee_ty) {
+                                    Type::Builtin(BuiltinFunction::Print) => "print",
+                                    Type::Builtin(BuiltinFunction::Println) => "println",
+                                    _ => unreachable!("matched builtin branch"),
+                                };
                                 self.diagnostics.push(Diagnostic::new(
                                     "T006",
-                                    "`println` accepts only Int, Bool, or String",
+                                    format!(
+                                        "`{builtin_name}` accepts only Int, Bool, or String"
+                                    ),
                                     expr.span,
                                 ));
                                 Type::Error
@@ -940,6 +955,7 @@ impl Type {
             Self::String => "String",
             Self::Record(_) => "Record",
             Self::Function(_) => "Function",
+            Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
             Self::Builtin(BuiltinFunction::Println) => "Builtin(println)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
