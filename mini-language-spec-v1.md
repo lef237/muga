@@ -424,6 +424,24 @@ fn apply(x, f) {
 }
 ```
 
+This also remains ambiguous in v1:
+
+```txt
+fn show(x: Int, f) {
+  print(f(x))
+}
+```
+
+because `print` accepts `Int`, `Bool`, or `String`, so the callback result type is not uniquely determined.
+
+An explicit arrow annotation remains valid and useful:
+
+```txt
+fn show(x: Int, f: Int -> String): String {
+  print(f(x))
+}
+```
+
 ### 7.4 Operator typing rules
 
 The built-in operator typing rules are:
@@ -480,6 +498,11 @@ Allowed:
 - infer function return types from the function body
 - infer `if` expression result types from branch agreement
 - infer some higher-order parameter types from local call shape plus surrounding expected result type inside the same function body
+
+Design guidance:
+
+- v1 does not use call sites in other functions as an inference source
+- future module or package boundaries are expected to prefer explicit callback annotations even when a local implementation might be inferable
 
 Disallowed:
 
