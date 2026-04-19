@@ -156,7 +156,29 @@ Then:
 
 Because record fields may not have function type in v1, `expr.name(...)` never means a call through a function-valued field.
 
-## 7. Operator Typing Rules
+## 7. Record Update Typing
+
+For:
+
+```txt
+expr.with(field1: value1, field2: value2)
+```
+
+the base expression `expr` must have a record type.
+
+The expression type is the same record type as the base expression if and only if:
+
+- every updated field name exists on that record type
+- each replacement expression has exactly the declared type of that field
+- no field name appears more than once in the same update
+
+Unspecified fields are preserved from the base value.
+
+The update is non-destructive. The result is a new record value rather than a mutation of the original record.
+
+`expr.with(...)` is not typed as an ordinary chained call in v1.
+
+## 8. Operator Typing Rules
 
 The built-in operator typing rules are:
 
@@ -168,7 +190,7 @@ The built-in operator typing rules are:
 
 String concatenation is not part of v1. Therefore, `+` is `Int`-only.
 
-## 8. Inference Sources
+## 9. Inference Sources
 
 v1 inference may use:
 
@@ -193,7 +215,7 @@ fn inc(x) {
 
 If `+` here is the integer addition operator in v1, `x` is inferred as `Int`.
 
-## 9. Local Bindings
+## 10. Local Bindings
 
 For a binding:
 
@@ -227,7 +249,7 @@ inc = fn(x: Int): Int {
 }
 ```
 
-## 10. Conditions and Branches
+## 11. Conditions and Branches
 
 The condition expression of:
 
@@ -254,7 +276,7 @@ Both branches produce `Int`, so the `if` expression has type `Int`.
 
 For an `if` expression, the branch result types must match exactly.
 
-## 11. Function Parameter Inference
+## 12. Function Parameter Inference
 
 A parameter annotation may be omitted when the parameter type is uniquely determined from the function body and surrounding constraints.
 
