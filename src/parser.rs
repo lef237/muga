@@ -87,7 +87,7 @@ impl Parser {
             let field_start = self.current_span();
             let (field_name, _) = self.expect_ident()?;
             self.expect_simple(TokenKind::Colon, "expected `:` after field name")?;
-            let (type_name, type_span) = self.parse_type_name()?;
+            let (type_name, type_span) = self.parse_type_expr()?;
             fields.push(RecordFieldDecl {
                 name: field_name,
                 type_name,
@@ -135,7 +135,7 @@ impl Parser {
             let start = self.current_span();
             let (name, name_span) = self.expect_ident()?;
             let (type_name, type_span) = if self.matches_simple(&TokenKind::Colon) {
-                let (type_name, type_span) = self.parse_type_name()?;
+                let (type_name, type_span) = self.parse_type_expr()?;
                 (Some(type_name), Some(type_span))
             } else {
                 (None, None)
@@ -153,18 +153,67 @@ impl Parser {
         Ok(params)
     }
 
-    fn parse_type_name(&mut self) -> Result<(TypeName, Span), Diagnostic> {
+    fn parse_type_expr(&mut self) -> Result<(TypeExpr, Span), Diagnostic> {
+        let (domain, span) = self.parse_type_domain()?;
+        if self.matches_simple(&TokenKind::Arrow) {
+            let (ret, ret_span) = self.parse_type_expr()?;
+            return Ok((
+                TypeExpr::Function(FunctionTypeExpr {
+                    params: domain,
+                    ret: Box::new(ret),
+                }),
+                span.merge(ret_span),
+            ));
+        }
+
+        if domain.len() == 1 {
+            return Ok((domain.into_iter().next().expect("checked length"), span));
+        }
+
+        if domain.is_empty() {
+            return Err(Diagnostic::new(
+                "P001",
+                "`()` may only appear as the parameter list of a function type",
+                span,
+            ));
+        }
+
+        Err(Diagnostic::new(
+            "P001",
+            "multiple types in parentheses require `->` to form a function type",
+            span,
+        ))
+    }
+
+    fn parse_type_domain(&mut self) -> Result<(Vec<TypeExpr>, Span), Diagnostic> {
+        if self.matches_simple(&TokenKind::LParen) {
+            let start = self.previous_span();
+            let mut types = Vec::new();
+            if !matches!(self.peek_kind(), TokenKind::RParen) {
+                loop {
+                    let (ty, _) = self.parse_type_expr()?;
+                    types.push(ty);
+                    if !self.matches_simple(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            let end = self.expect_simple(TokenKind::RParen, "expected `)` after type expression")?;
+            return Ok((types, start.merge(end)));
+        }
+
+        let (ty, span) = self.parse_type_atom()?;
+        Ok((vec![ty], span))
+    }
+
+    fn parse_type_atom(&mut self) -> Result<(TypeExpr, Span), Diagnostic> {
         let token = self.advance();
         match &token.kind {
-            TokenKind::Ident(name) if name == "Int" => Ok((TypeName::Int, token.span)),
-            TokenKind::Ident(name) if name == "Bool" => Ok((TypeName::Bool, token.span)),
-            TokenKind::Ident(name) if name == "String" => Ok((TypeName::String, token.span)),
-            TokenKind::Ident(name) => Ok((TypeName::Named(name.clone()), token.span)),
-            _ => Err(Diagnostic::new(
-                "P001",
-                "expected a type name",
-                token.span,
-            )),
+            TokenKind::Ident(name) if name == "Int" => Ok((TypeExpr::Int, token.span)),
+            TokenKind::Ident(name) if name == "Bool" => Ok((TypeExpr::Bool, token.span)),
+            TokenKind::Ident(name) if name == "String" => Ok((TypeExpr::String, token.span)),
+            TokenKind::Ident(name) => Ok((TypeExpr::Named(name.clone()), token.span)),
+            _ => Err(Diagnostic::new("P001", "expected a type expression", token.span)),
         }
     }
 
@@ -516,9 +565,9 @@ impl Parser {
         }))
     }
 
-    fn parse_return_type_annotation(&mut self) -> Result<Option<TypeName>, Diagnostic> {
+    fn parse_return_type_annotation(&mut self) -> Result<Option<TypeExpr>, Diagnostic> {
         if self.matches_simple(&TokenKind::Colon) {
-            return Ok(Some(self.parse_type_name()?.0));
+            return Ok(Some(self.parse_type_expr()?.0));
         }
 
         Ok(None)
