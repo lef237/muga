@@ -128,3 +128,54 @@ mutually recursive functions require explicit signatures in v1
 Referenced examples:
 
 - [examples/invalid/007-unannotated-mutual-recursion.md](./examples/invalid/007-unannotated-mutual-recursion.md)
+
+## E008: Unknown Field
+
+Trigger:
+
+- `expr.name` where the static type of `expr` has no field `name`
+
+Recommended message:
+
+```txt
+unknown field `name`
+```
+
+## E009: Invalid Record Literal
+
+Trigger:
+
+- a record literal omits a required field
+- a record literal repeats a field
+- a record literal contains an extra field
+- a record literal field value has the wrong type
+
+Recommended message:
+
+```txt
+invalid record literal for `TypeName`
+```
+
+## E010: Invalid Chained Dot Call
+
+Trigger:
+
+- `expr.name(args...)` where no applicable receiver-style or UFCS-style function resolution succeeds
+
+Recommended message:
+
+```txt
+cannot resolve chained call `name`
+```
+
+## E011: Function-Valued Record Field Prohibited
+
+Trigger:
+
+- a record field is declared with a function type
+
+Recommended message:
+
+```txt
+record fields may not have function type in v1
+```

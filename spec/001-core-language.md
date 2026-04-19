@@ -5,6 +5,7 @@ Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This docum
 - [002-name-resolution.md](./002-name-resolution.md)
 - [003-typing.md](./003-typing.md)
 - [004-functions.md](./004-functions.md)
+- [005-records.md](./005-records.md)
 
 ## 1. Design Constraints
 
@@ -62,10 +63,13 @@ Across a function boundary, outer bindings may be read from inner scopes, but v1
 The language has the following core constructs:
 
 - binding/update statements
+- record declarations
 - function declarations
 - `if` statements and `if` expressions
 - `while` statements
 - expression statements
+- record literals
+- field access and chained dot calls
 
 To keep the grammar unambiguous, v1 distinguishes:
 
@@ -118,6 +122,7 @@ Identifiers are ASCII-only and match:
 Reserved keywords are:
 
 - `fn`
+- `record`
 - `mut`
 - `if`
 - `else`
@@ -149,7 +154,7 @@ All binary operators are left-associative.
 
 Precedence, from strongest to weakest:
 
-1. postfix call
+1. postfix field access / chained call / ordinary call
 2. unary
 3. multiplicative
 4. additive
@@ -158,12 +163,21 @@ Precedence, from strongest to weakest:
 
 `=` is not an expression operator. It appears only in assign-like statements.
 
+The dot operator has two surface forms:
+
+- `expr.name` for field access
+- `expr.name(args...)` for method-style or UFCS-style chained call
+
+Because record fields cannot have function type in v1, dot syntax has only those two intended meanings.
+
 ## 7. Grammar Sketch
 
-This is a v1-oriented EBNF sketch. `type_expr` is defined abstractly here and constrained further by [003-typing.md](./003-typing.md).
+This is a v1-oriented EBNF sketch. `type_expr` is defined abstractly here and constrained further by [003-typing.md](./003-typing.md). Records and dot expressions are introduced here, with detailed semantics in [005-records.md](./005-records.md).
 
 ```ebnf
-program           := stmt*
+program           := top_item*
+top_item          := record_decl
+                   | stmt
 
 stmt              := assign_like_stmt
                    | func_decl
@@ -174,8 +188,12 @@ stmt              := assign_like_stmt
 assign_like_stmt  := "mut" IDENT "=" expr
                    | IDENT "=" expr
 
+record_decl       := "record" IDENT "{" record_field_decl* "}"
+record_field_decl := IDENT ":" type_expr
+
 func_decl         := "fn" IDENT "(" params? ")" return_annot? value_block
 return_annot      := ":" type_expr
+type_expr_list    := type_expr ("," type_expr)*
 
 params            := param ("," param)*
 param             := IDENT
@@ -194,14 +212,19 @@ comparison_expr   := additive_expr (("<" | "<=" | ">" | ">=") additive_expr)*
 additive_expr     := multiplicative_expr (("+" | "-") multiplicative_expr)*
 multiplicative_expr := unary_expr (("*" | "/") unary_expr)*
 unary_expr        := ("-" | "!") unary_expr
-                   | call_expr
-call_expr         := primary_expr ("(" args? ")")*
+                   | postfix_expr
+postfix_expr      := primary_expr postfix_tail*
+postfix_tail      := "(" args? ")"
+                   | "." IDENT ("(" args? ")")?
 args              := expr ("," expr)*
 
 primary_expr      := literal
                    | IDENT
+                   | record_lit
                    | anon_fn
                    | "(" expr ")"
+record_lit        := IDENT "{" record_field_init* "}"
+record_field_init := IDENT ":" expr
 literal           := INT_LIT
                    | STRING_LIT
                    | "true"
@@ -227,6 +250,9 @@ The core language model is:
 - immutable bindings cannot be updated
 - function names are ordinary immutable bindings
 - function parameters are immutable bindings
+- record declarations introduce nominal type names
+- `expr.name` is field access only
+- `expr.name(...)` is chained call syntax
 - the value of a function body is the final expression in that body
 - `if` without `else` is statement-only
 - `while` is statement-only
