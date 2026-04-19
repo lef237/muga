@@ -1,0 +1,5 @@
+package util::numbers
+
+pub fn inc(x: Int): Int {
+  x + 1
+}

@@ -124,6 +124,29 @@ fn print_and_println_can_be_mixed() {
 }
 
 #[test]
+fn package_entry_passes_frontend() {
+    let result = muga::check_path(Path::new("samples/packages/app/main/main.muga"));
+    assert!(result.is_ok(), "{:#?}", result.err());
+}
+
+#[test]
+fn package_entry_runs() {
+    assert_package_runs("samples/packages/app/main/main.muga", "23", "");
+}
+
+#[test]
+fn package_public_function_requires_explicit_signature() {
+    let diagnostics =
+        muga::check_path(Path::new("samples/packages_invalid/app/bad/main.muga")).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "PK011"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn compile_source_lowers_functions_into_hir_table() {
     let source = r#"
 fn main(): Int {
@@ -260,4 +283,14 @@ fn assert_sample_runs(path: &str, expected_main: &str, expected_output: &str) {
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), expected_main, "sample: {path}");
     assert_eq!(result.output_text, expected_output, "sample: {path}");
+}
+
+fn assert_package_runs(path: &str, expected_main: &str, expected_output: &str) {
+    let result = muga::run_path(Path::new(path)).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), expected_main, "package sample: {path}");
+    assert_eq!(
+        result.output_text, expected_output,
+        "package sample: {path}"
+    );
 }

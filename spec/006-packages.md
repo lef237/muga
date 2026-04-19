@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft for a future post-v1 package system. This document is not yet implemented in the Rust compiler. It is meant to preserve the current script-oriented Muga core while defining a package model that stays simple, readable, and friendly to very fast compilation.
+Status: draft with an implemented front-end subset. The current Rust compiler supports `package`, `import`, `pub`, and `alias::Name` lookup for directory-based packages. Manifest syntax, configurable source roots, selective imports, and package-level caching are still deferred.
 
 ## 1. Design Goals
 
@@ -99,18 +99,31 @@ company::auth::session
 - package qualification does not look like field access
 - type names and value names can use the same qualified form
 
-### 5.2 Grammar sketch
+### 5.2 Concrete grammar
+
+At the parser level, the file grammar is intentionally split in two:
 
 ```ebnf
-package_file   := package_decl import_decl* package_item*
-package_decl   := "package" package_path
-package_path   := IDENT ("::" IDENT)*
-import_decl    := "import" package_path import_alias?
-import_alias   := "as" IDENT
-package_item   := visibility? record_decl
-                | visibility? func_decl
-visibility     := "pub"
+file          := script_file | package_file
+script_file   := stmt*
+package_file  := package_decl import_decl* package_item*
+package_decl  := "package" package_path
+package_path  := IDENT ("::" IDENT)*
+import_decl   := "import" package_path import_alias?
+import_alias  := "as" IDENT
+package_item  := visibility? record_decl
+               | visibility? func_decl
+visibility    := "pub"
+qualified_ref := IDENT "::" IDENT
 ```
+
+Additional parser rules for package mode:
+
+- `package` must be the first significant token in the file
+- `import` declarations must come after `package` and before the first item
+- `pub` is only valid on top-level `record` and `fn`
+- top-level items are separated by newlines
+- type and value qualification uses exactly `alias::Name`
 
 In package mode:
 
@@ -205,6 +218,15 @@ Imported packages expose only `pub` items.
 ## 9. Qualified Name Use
 
 The same `package_alias::Name` form is used for both types and values.
+
+This is intentionally limited to one alias segment followed by one item name:
+
+```txt
+users::User
+users::display_name
+```
+
+The alias may itself refer to a longer package path through `import ... as ...` or through the default "last path segment" rule.
 
 Example:
 
@@ -360,6 +382,13 @@ In this model:
 - the build tool chooses an entry package rather than a single file
 
 The exact CLI shape is deferred.
+
+Current implementation note:
+
+- `cargo run -- check path/to/entry.muga` already supports package files
+- `cargo run -- path/to/entry.muga` already runs a package graph by flattening imported packages into one internal program
+- the current file-based CLI accepts any package path, as long as the chosen entry package contains `fn main()`
+- the source root is currently inferred from the entry file path and the declared package path
 
 ## 14. Why This Is Meant To Feel Modern
 

@@ -281,41 +281,39 @@ impl TypeChecker {
                     }
                 }
             }
-            Expr::Binary(expr) => {
-                match expr.op {
-                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
-                        let left = self.check_expr_with_expected(&expr.left, Some(Type::Int));
-                        let right = self.check_expr_with_expected(&expr.right, Some(Type::Int));
-                        self.require_exact(&left, &Type::Int, expr.left.span(), "T001");
-                        self.require_exact(&right, &Type::Int, expr.right.span(), "T001");
-                        self.apply_expected(Type::Int, expected, expr.span)
-                    }
-                    BinaryOp::Lt | BinaryOp::LtEq | BinaryOp::Gt | BinaryOp::GtEq => {
-                        let left = self.check_expr_with_expected(&expr.left, Some(Type::Int));
-                        let right = self.check_expr_with_expected(&expr.right, Some(Type::Int));
-                        self.require_exact(&left, &Type::Int, expr.left.span(), "T001");
-                        self.require_exact(&right, &Type::Int, expr.right.span(), "T001");
-                        self.apply_expected(Type::Bool, expected, expr.span)
-                    }
-                    BinaryOp::EqEq | BinaryOp::BangEq => {
-                        let left = self.check_expr(&expr.left);
-                        let right = self.check_expr_with_expected(&expr.right, Some(left.clone()));
-                        self.require_exact(&left, &right, expr.span, "T002");
-                        let resolved = self.resolve_type(&left);
-                        if !matches!(
-                            resolved,
-                            Type::Int | Type::Bool | Type::String | Type::Unknown(_)
-                        ) {
-                            self.diagnostics.push(Diagnostic::new(
-                                "T003",
-                                "equality is allowed only for Int, Bool, and String",
-                                expr.span,
-                            ));
-                        }
-                        self.apply_expected(Type::Bool, expected, expr.span)
-                    }
+            Expr::Binary(expr) => match expr.op {
+                BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
+                    let left = self.check_expr_with_expected(&expr.left, Some(Type::Int));
+                    let right = self.check_expr_with_expected(&expr.right, Some(Type::Int));
+                    self.require_exact(&left, &Type::Int, expr.left.span(), "T001");
+                    self.require_exact(&right, &Type::Int, expr.right.span(), "T001");
+                    self.apply_expected(Type::Int, expected, expr.span)
                 }
-            }
+                BinaryOp::Lt | BinaryOp::LtEq | BinaryOp::Gt | BinaryOp::GtEq => {
+                    let left = self.check_expr_with_expected(&expr.left, Some(Type::Int));
+                    let right = self.check_expr_with_expected(&expr.right, Some(Type::Int));
+                    self.require_exact(&left, &Type::Int, expr.left.span(), "T001");
+                    self.require_exact(&right, &Type::Int, expr.right.span(), "T001");
+                    self.apply_expected(Type::Bool, expected, expr.span)
+                }
+                BinaryOp::EqEq | BinaryOp::BangEq => {
+                    let left = self.check_expr(&expr.left);
+                    let right = self.check_expr_with_expected(&expr.right, Some(left.clone()));
+                    self.require_exact(&left, &right, expr.span, "T002");
+                    let resolved = self.resolve_type(&left);
+                    if !matches!(
+                        resolved,
+                        Type::Int | Type::Bool | Type::String | Type::Unknown(_)
+                    ) {
+                        self.diagnostics.push(Diagnostic::new(
+                            "T003",
+                            "equality is allowed only for Int, Bool, and String",
+                            expr.span,
+                        ));
+                    }
+                    self.apply_expected(Type::Bool, expected, expr.span)
+                }
+            },
             Expr::Call(expr) => {
                 let callee_ty = self.check_expr(&expr.callee);
                 match self.resolve_type(&callee_ty) {
@@ -329,8 +327,7 @@ impl TypeChecker {
                             return Type::Error;
                         }
 
-                        let arg_ty =
-                            self.check_expr_with_expected(&expr.args[0], expected.clone());
+                        let arg_ty = self.check_expr_with_expected(&expr.args[0], expected.clone());
                         let arg_ty = self.resolve_type(&arg_ty);
                         match arg_ty {
                             Type::Int | Type::Bool | Type::String => {
@@ -352,9 +349,7 @@ impl TypeChecker {
                                 };
                                 self.diagnostics.push(Diagnostic::new(
                                     "T006",
-                                    format!(
-                                        "`{builtin_name}` accepts only Int, Bool, or String"
-                                    ),
+                                    format!("`{builtin_name}` accepts only Int, Bool, or String"),
                                     expr.span,
                                 ));
                                 Type::Error
@@ -382,7 +377,8 @@ impl TypeChecker {
                     Type::Unknown(_) => {
                         let arg_tys: Vec<Type> =
                             expr.args.iter().map(|arg| self.check_expr(arg)).collect();
-                        let ret_ty = expected.unwrap_or_else(|| Type::Unknown(self.fresh_unknown()));
+                        let ret_ty =
+                            expected.unwrap_or_else(|| Type::Unknown(self.fresh_unknown()));
                         let inferred_sig = Type::Function(FunctionSig {
                             params: arg_tys,
                             ret: Box::new(ret_ty.clone()),
@@ -483,7 +479,10 @@ impl TypeChecker {
             if !field_names.insert(field.name.clone()) {
                 self.diagnostics.push(Diagnostic::new(
                     "E002",
-                    format!("duplicate field `{}` in record `{}`", field.name, record.name),
+                    format!(
+                        "duplicate field `{}` in record `{}`",
+                        field.name, record.name
+                    ),
                     field.span,
                 ));
             }
@@ -607,11 +606,8 @@ impl TypeChecker {
         let base_ty = self.check_expr(&expr.base);
         let resolved_base = self.resolve_type(&base_ty);
         let Type::Record(record_name) = resolved_base else {
-            self.diagnostics.push(Diagnostic::new(
-                "E012",
-                "invalid record update",
-                expr.span,
-            ));
+            self.diagnostics
+                .push(Diagnostic::new("E012", "invalid record update", expr.span));
             for field in &expr.fields {
                 self.check_expr(&field.value);
             }
@@ -632,21 +628,15 @@ impl TypeChecker {
         for field in &expr.fields {
             let value_ty = self.check_expr(&field.value);
             if !seen.insert(field.name.clone()) {
-                self.diagnostics.push(Diagnostic::new(
-                    "E012",
-                    "invalid record update",
-                    field.span,
-                ));
+                self.diagnostics
+                    .push(Diagnostic::new("E012", "invalid record update", field.span));
                 has_error = true;
                 continue;
             }
 
             let Some(declared) = find_record_field(&record, &field.name) else {
-                self.diagnostics.push(Diagnostic::new(
-                    "E012",
-                    "invalid record update",
-                    field.span,
-                ));
+                self.diagnostics
+                    .push(Diagnostic::new("E012", "invalid record update", field.span));
                 has_error = true;
                 continue;
             };
@@ -869,7 +859,12 @@ impl TypeChecker {
         }
     }
 
-    fn apply_expected(&mut self, inferred: Type, expected: Option<Type>, span: crate::span::Span) -> Type {
+    fn apply_expected(
+        &mut self,
+        inferred: Type,
+        expected: Option<Type>,
+        span: crate::span::Span,
+    ) -> Type {
         let inferred = self.resolve_type(&inferred);
         let Some(expected) = expected else {
             return inferred;
@@ -877,7 +872,8 @@ impl TypeChecker {
         match self.unify(inferred, expected) {
             Ok(ty) => self.resolve_type(&ty),
             Err(message) => {
-                self.diagnostics.push(Diagnostic::new("T002", message, span));
+                self.diagnostics
+                    .push(Diagnostic::new("T002", message, span));
                 Type::Error
             }
         }

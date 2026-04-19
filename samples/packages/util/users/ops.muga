@@ -1,0 +1,5 @@
+package util::users
+
+pub fn birthday(user: User): User {
+  user.with(age: user.age + 1)
+}

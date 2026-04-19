@@ -63,7 +63,16 @@ impl Lexer {
                 '}' => self.emit_simple(TokenKind::RBrace),
                 '.' => self.emit_simple(TokenKind::Dot),
                 ',' => self.emit_simple(TokenKind::Comma),
-                ':' => self.emit_simple(TokenKind::Colon),
+                ':' => {
+                    if self.peek_next() == Some(':') {
+                        let start = self.position();
+                        self.advance();
+                        self.advance();
+                        self.push(TokenKind::DoubleColon, Span::new(start, self.position()));
+                    } else {
+                        self.emit_simple(TokenKind::Colon)
+                    }
+                }
                 '+' => self.emit_simple(TokenKind::Plus),
                 '*' => self.emit_simple(TokenKind::Star),
                 '/' => self.emit_simple(TokenKind::Slash),
@@ -172,6 +181,10 @@ impl Lexer {
             }
         }
         let kind = match text.as_str() {
+            "package" => TokenKind::Package,
+            "import" => TokenKind::Import,
+            "pub" => TokenKind::Pub,
+            "as" => TokenKind::As,
             "fn" => TokenKind::Fn,
             "record" => TokenKind::Record,
             "mut" => TokenKind::Mut,

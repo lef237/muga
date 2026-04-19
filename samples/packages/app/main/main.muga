@@ -1,0 +1,12 @@
+package app::main
+
+import util::numbers
+import util::users
+
+fn main(): Int {
+  user = users::User {
+    name: "Ada"
+    age: 20
+  }
+  numbers::inc_twice(users::birthday(user).age)
+}

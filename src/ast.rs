@@ -2,7 +2,28 @@ use crate::span::Span;
 
 #[derive(Clone, Debug)]
 pub struct Program {
+    pub package: Option<PackageDecl>,
+    pub imports: Vec<ImportDecl>,
     pub statements: Vec<Stmt>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PackageDecl {
+    pub path: String,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct ImportDecl {
+    pub path: String,
+    pub alias: String,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Visibility {
+    Private,
+    Public,
 }
 
 #[derive(Clone, Debug)]
@@ -39,6 +60,7 @@ pub struct AssignStmt {
 #[derive(Clone, Debug)]
 pub struct RecordDecl {
     pub name: String,
+    pub visibility: Visibility,
     pub fields: Vec<RecordFieldDecl>,
     pub span: Span,
 }
@@ -53,6 +75,7 @@ pub struct RecordFieldDecl {
 #[derive(Clone, Debug)]
 pub struct FuncDecl {
     pub name: String,
+    pub visibility: Visibility,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
     pub body: ValueBlock,
