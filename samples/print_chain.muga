@@ -1,0 +1,11 @@
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn double(x: Int): Int {
+  x * 2
+}
+
+fn main(): Int {
+  4.inc().print().double()
+}
