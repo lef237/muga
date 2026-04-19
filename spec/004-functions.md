@@ -48,7 +48,53 @@ double = fn(x) {
 
 They follow the same parameter and return rules as named functions.
 
-## 3. Parameter Semantics
+Anonymous functions are not considered by chained dot-call resolution, because they do not introduce a named function binding.
+
+## 3. Receiver-Style Functions
+
+Muga prefers receiver-style syntax with an explicit first parameter:
+
+```txt
+fn display_name(self: User): String {
+  self.name
+}
+```
+
+This is the preferred surface syntax instead of a member-owned form such as `fn User.display_name(...)`.
+
+A receiver-style function is still an ordinary named function binding. It remains callable in ordinary form:
+
+```txt
+display_name(user)
+```
+
+and may also be used through chained call syntax:
+
+```txt
+user.display_name()
+```
+
+In v1, the receiver parameter rules are:
+
+- the receiver parameter must be the first parameter
+- the receiver parameter must be written as `self: Type`
+- the receiver type annotation is mandatory
+- `self` is still just an immutable parameter binding inside the body
+
+## 4. v1 Namespace Limitation
+
+v1 still has a single ordinary function namespace and does not add overloading by receiver type.
+
+Therefore, the following is not allowed in the same scope:
+
+```txt
+fn len(self: List): Int { ... }
+fn len(self: String): Int { ... }   # duplicate binding in v1
+```
+
+This keeps resolution simple and compile-time cost low, but it also means common method names across unrelated types are deferred to a future protocol/trait-like design.
+
+## 5. Parameter Semantics
 
 Parameters are introduced as immutable bindings in the function-body scope.
 
@@ -66,7 +112,7 @@ fn bump(x: Int) {
 }
 ```
 
-## 4. Return Semantics
+## 6. Return Semantics
 
 The value of a function is the value of the final expression in its body.
 
@@ -86,7 +132,7 @@ fn abs(x: Int) {
 }
 ```
 
-## 5. Name Availability Inside Functions
+## 7. Name Availability Inside Functions
 
 When a function body is resolved and typed, the following names may be available:
 
@@ -94,13 +140,14 @@ When a function body is resolved and typed, the following names may be available
 - bindings declared earlier in the same scope
 - function names predeclared in the same scope
 - readable bindings from enclosing scopes
+- readable fields through `self.field` when `self` has a record type
 
 The following are not allowed:
 
 - updating an enclosing mutable binding
 - introducing a local binding that shadows an enclosing binding
 
-## 6. Closure Capture
+## 8. Closure Capture
 
 Functions use lexical scope and may capture readable bindings from enclosing scopes.
 
@@ -119,7 +166,7 @@ Captured outer bindings remain subject to the ordinary v1 rules:
 - outer bindings may be read
 - outer mutable bindings may not be updated from the inner function
 
-## 7. Direct Recursion
+## 9. Direct Recursion
 
 Direct recursion is allowed.
 
@@ -140,7 +187,7 @@ fn fact(n: Int) {
 }
 ```
 
-## 8. Mutual Recursion
+## 10. Mutual Recursion
 
 Mutual recursion is allowed only when explicit signatures are present for the entire recursive group.
 
@@ -184,11 +231,12 @@ fn is_odd(n) {
 }
 ```
 
-## 9. Summary
+## 11. Summary
 
 Functions in v1 are ordinary immutable bindings of function values, with:
 
 - immutable parameters
+- optional receiver-style `self: Type` first parameters
 - final-expression returns
 - lexical closure capture for readable outer bindings
 - access to the prelude builtin `print`

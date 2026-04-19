@@ -1,6 +1,6 @@
 # Name Resolution Specification v1
 
-Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document is normative for scope construction, binding introduction, update resolution, shadowing, and non-local update rejection.
+Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document is normative for scope construction, binding introduction, update resolution, shadowing, non-local update rejection, and the name-oriented part of dot-expression resolution.
 
 ## 1. Scope Model
 
@@ -22,6 +22,17 @@ Lookup for expression names searches:
 2. the nearest enclosing scope
 3. repeated outward until the root scope
 
+Type names are resolved in a separate type namespace.
+
+## 1.1 Type Namespace
+
+v1 distinguishes:
+
+- the value namespace, which contains locals, functions, and parameters
+- the type namespace, which contains nominal record names
+
+`record User { ... }` introduces `User` in the type namespace only.
+
 ## 2. Binding Kinds
 
 The resolver distinguishes the following binding kinds:
@@ -32,6 +43,8 @@ The resolver distinguishes the following binding kinds:
 - parameter binding
 
 Function bindings and parameter bindings are immutable.
+
+Record names are not value bindings.
 
 ## 3. Shadowing Policy
 
@@ -94,6 +107,10 @@ This enables:
 
 Function bodies are then resolved against that completed function-binding set.
 
+## 6.1 Record Name Predeclaration
+
+Top-level record declarations are entered into the type namespace before type expressions and record literals that refer to them are validated.
+
 ## 7. Parameter Rules
 
 When resolving a function declaration:
@@ -114,16 +131,42 @@ fn bad(x: Int) {
 
 This is invalid because the parameter `x` would shadow the outer binding.
 
-## 8. Name Resolution Examples
+## 8. Dot-Expression Resolution
 
-### 8.1 Valid local update
+The parser distinguishes:
+
+- `expr.name`
+- `expr.name(args...)`
+
+For `expr.name`:
+
+- `name` is interpreted as a field name candidate
+- validation of that field name depends on the static type of `expr`
+- lexical value bindings named `name` are irrelevant
+
+For `expr.name(args...)`:
+
+- the lexical function name `name` is looked up in the ordinary function namespace
+- if that function is receiver-style and applicable to the type of `expr`, the chained call resolves to that function
+- otherwise, if ordinary call resolution for `name(expr, args...)` succeeds, the chained call resolves by UFCS-style desugaring
+- otherwise, the expression is rejected
+
+Because v1 has no overloading, there is at most one visible ordinary function binding named `name`.
+
+Anonymous functions do not participate in `expr.name(args...)`.
+
+Record fields are never considered callable by chained call syntax in v1.
+
+## 9. Name Resolution Examples
+
+### 9.1 Valid local update
 
 ```txt
 mut total = 0
 total = total + 1
 ```
 
-### 8.2 Valid enclosing-block update in the same function
+### 9.2 Valid enclosing-block update in the same function
 
 ```txt
 fn sum_to(n: Int) {
@@ -137,14 +180,14 @@ fn sum_to(n: Int) {
 }
 ```
 
-### 8.3 Invalid immutable update
+### 9.3 Invalid immutable update
 
 ```txt
 x = 1
 x = 2
 ```
 
-### 8.4 Invalid shadowing
+### 9.4 Invalid shadowing
 
 ```txt
 flag = true
@@ -155,7 +198,7 @@ if flag {
 }
 ```
 
-### 8.5 Invalid outer-scope mutation
+### 9.5 Invalid outer-scope mutation
 
 ```txt
 mut total = 0
@@ -165,7 +208,7 @@ fn add(x: Int) {
 }
 ```
 
-## 9. Practical Note
+## 10. Practical Note
 
 Because `x = e` may introduce a fresh immutable binding, a misspelled name can accidentally create a new binding:
 
