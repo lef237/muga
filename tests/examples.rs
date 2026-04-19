@@ -109,6 +109,16 @@ fn higher_order_functions_sample_runs() {
 }
 
 #[test]
+fn higher_order_local_inference_sample_runs() {
+    assert_sample_runs("samples/higher_order_local_inference.muga", "35", &[]);
+}
+
+#[test]
+fn higher_order_explicit_arrow_sample_runs() {
+    assert_sample_runs("samples/higher_order_explicit_arrow.muga", "big", &["big"]);
+}
+
+#[test]
 fn compile_source_lowers_functions_into_hir_table() {
     let source = r#"
 fn main(): Int {
