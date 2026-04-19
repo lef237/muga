@@ -784,5 +784,10 @@ Natural next topics for the spec:
 2. type inference algorithm sketch
 3. control flow semantics
 4. error message rules
-5. module system
-6. parser and name resolver architecture
+5. package and module system draft
+6. package interface and caching rules
+7. parser and name resolver architecture
+
+See also:
+
+- [spec/006-packages.md](./spec/006-packages.md) for a draft package design that keeps the current script mode while adding explicit package boundaries for larger programs and faster compilation.

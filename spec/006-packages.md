@@ -1,0 +1,439 @@
+# Packages and Modules Draft
+
+Status: draft for a future post-v1 package system. This document is not yet implemented in the Rust compiler. It is meant to preserve the current script-oriented Muga core while defining a package model that stays simple, readable, and friendly to very fast compilation.
+
+## 1. Design Goals
+
+The package system should support the following goals:
+
+- keep Muga visually simple and easy to read
+- make dependencies explicit
+- preserve the function-centered design
+- keep `.` reserved for field access, chained calls, and record update
+- make package boundaries cheap to resolve and cache
+- avoid hidden initialization and file-order semantics
+- provide a modern visibility model without introducing class-like ownership
+
+## 2. Core Direction
+
+The draft introduces a distinction between:
+
+- script files, which are the current v1 file form
+- package files, which are used for multi-file programs and libraries
+
+This separation is intentional.
+
+The current script form is good for:
+
+- small examples
+- experiments
+- single-file execution
+
+The package form is meant for:
+
+- larger applications
+- reusable libraries
+- web backends and services
+- fast incremental compilation
+
+## 3. Two File Modes
+
+### 3.1 Script file
+
+A script file does not begin with `package`.
+
+It keeps the current v1 behavior:
+
+- top-level statements are allowed
+- top-level bindings may execute
+- the file may be run directly
+
+### 3.2 Package file
+
+A package file begins with a `package` declaration.
+
+Once a file is in package mode:
+
+- top-level executable statements are not allowed
+- top-level items are restricted to declarations
+- imports are explicit
+- visibility may be marked with `pub`
+
+This keeps package compilation deterministic and avoids runtime initialization order problems.
+
+## 4. Package Model
+
+The draft adopts the following model:
+
+- one directory corresponds to one package
+- every `.muga` file in that directory must declare the same package path
+- the package path is written explicitly in each file
+- file order is not semantically meaningful
+- the compilation unit for caching is the package, not the file
+
+Example:
+
+```txt
+package app::web
+```
+
+This package path is expected to match the directory structure under a source root.
+
+The exact source-root and dependency manifest format is deferred. The purpose of this draft is to define the language-facing part first.
+
+## 5. Package Syntax
+
+### 5.1 Package path
+
+Package paths use `::`-separated identifiers:
+
+```txt
+app::web
+std::http
+company::auth::session
+```
+
+`::` is chosen intentionally so that:
+
+- `.` remains visually stable for fields and chains
+- package qualification does not look like field access
+- type names and value names can use the same qualified form
+
+### 5.2 Grammar sketch
+
+```ebnf
+package_file   := package_decl import_decl* package_item*
+package_decl   := "package" package_path
+package_path   := IDENT ("::" IDENT)*
+import_decl    := "import" package_path import_alias?
+import_alias   := "as" IDENT
+package_item   := visibility? record_decl
+                | visibility? func_decl
+visibility     := "pub"
+```
+
+In package mode:
+
+- `record_decl` and `func_decl` keep their existing meanings
+- `assign_like_stmt`, `if_stmt`, `while_stmt`, and `expr_stmt` are not allowed at the top level
+
+## 6. Imports
+
+An import introduces a package alias into the current file.
+
+Without `as`, the local alias is the last segment of the package path.
+
+Example:
+
+```txt
+import std::http
+import company::auth::session as auth_session
+```
+
+This makes the following local aliases available:
+
+- `http`
+- `auth_session`
+
+Imported names are then referenced through qualified package access:
+
+```txt
+http::Request
+http::Response
+http::serve
+auth_session::Token
+```
+
+v1-like package rules:
+
+- wildcard imports are not part of the draft
+- selective imports are not part of the draft
+- re-export syntax is not part of the draft
+- if two imports would introduce the same alias, that is an error unless one uses `as`
+
+## 7. Top-Level Items in Package Mode
+
+Package files may contain only:
+
+- `record` declarations
+- `fn` declarations
+
+This means package mode explicitly excludes:
+
+- top-level `x = e`
+- top-level `mut x = e`
+- top-level `if`
+- top-level `while`
+- top-level expression statements
+
+This is a deliberate performance and clarity choice.
+
+It gives the compiler:
+
+- no hidden initialization semantics
+- no cross-file execution ordering
+- no package import side effects during interface loading
+
+## 8. Visibility
+
+The draft uses package-private-by-default visibility.
+
+- a top-level item without `pub` is visible only within the same package
+- a top-level item with `pub` is visible from other packages
+
+Example:
+
+```txt
+package app::users
+
+pub record User {
+  name: String
+}
+
+pub fn display_name(user: User): String {
+  user.name
+}
+```
+
+Here:
+
+- `User` is public
+- `display_name` is public
+
+Imported packages expose only `pub` items.
+
+## 9. Qualified Name Use
+
+The same `package_alias::Name` form is used for both types and values.
+
+Example:
+
+```txt
+package app::web
+
+import std::http
+import app::users
+
+pub fn handle(req: http::Request): http::Response {
+  user = users::find_current(req)
+  users::respond_with_name(user)
+}
+```
+
+This keeps value and type lookup visually consistent.
+
+Within the current package:
+
+- top-level names may be referenced unqualified
+- top-level names are collected across files before body checking
+
+Across packages:
+
+- references must be qualified through an imported package alias
+
+## 10. Public API Annotation Policy
+
+To support fast compilation and stable interfaces, the draft requires stricter annotation rules at package boundaries.
+
+### 10.1 Public functions
+
+Every `pub fn` must have:
+
+- an explicit type annotation on every parameter
+- an explicit return type annotation
+
+Example:
+
+```txt
+pub fn map_name(user: User, f: String -> String): String {
+  f(user.name)
+}
+```
+
+Even if the body would allow local inference, public signatures remain explicit.
+
+### 10.2 Public records
+
+`record` fields already require explicit types, so `pub record` introduces no additional annotation burden there.
+
+### 10.3 Why this rule exists
+
+This rule is recommended for three reasons:
+
+- the API is readable without reading the body
+- exported signatures can be loaded and hashed without typechecking bodies
+- package interfaces remain stable and cheap to cache
+
+Private functions remain free to use local inference.
+
+### 10.4 Public signatures may not leak private names
+
+A public item may not mention a package-private top-level name in its visible type.
+
+Examples of invalid public API:
+
+```txt
+package app::users
+
+record InternalUser {
+  name: String
+}
+
+pub fn display_name(user: InternalUser): String {
+  user.name
+}
+```
+
+```txt
+package app::web
+
+import app::users
+
+pub record Session {
+  user: users::InternalUser
+}
+```
+
+These are invalid because importers of the package could see the public API but would have no legal way to name the leaked private type.
+
+## 11. Build and Compilation Model
+
+The package system is designed around package-level compilation units.
+
+The intended pipeline is:
+
+1. read package headers
+2. collect imports and public declarations
+3. build an interface summary for each package
+4. reject import cycles
+5. typecheck and lower package bodies only after imported interfaces are known
+
+This enables:
+
+- per-package caching
+- parallel compilation of independent packages
+- cheap recompilation when only private bodies change
+
+In particular, the draft intentionally does not rely on:
+
+- cross-package type inference
+- package load order effects
+- top-level execution during import
+
+## 12. Cycles
+
+Import cycles are prohibited.
+
+Example:
+
+- `app::web` imports `app::users`
+- `app::users` imports `app::web`
+
+This is an error.
+
+The draft keeps the dependency graph acyclic so that:
+
+- interface loading is simple
+- package compilation order is deterministic
+- build caching stays cheap
+
+## 13. Executable Packages
+
+The draft reserves `package main` for executable packages.
+
+Example:
+
+```txt
+package main
+
+import app::web
+
+fn main(): Int {
+  web::serve()
+}
+```
+
+In this model:
+
+- `main` does not need `pub`
+- other packages should not import `package main`
+- the build tool chooses an entry package rather than a single file
+
+The exact CLI shape is deferred.
+
+## 14. Why This Is Meant To Feel Modern
+
+The draft aims to borrow the good parts of modern languages without carrying in their full complexity.
+
+It keeps:
+
+- explicit imports
+- explicit visibility
+- package-level compilation units
+- aliasing when import names would collide
+- strongly typed public boundaries
+
+It avoids, for now:
+
+- wildcard imports
+- implicit re-exports
+- top-level import side effects
+- nested module trees inside a file
+- trait/protocol solving at package boundaries
+- package-scoped execution order rules
+
+## 15. Example
+
+```txt
+package app::users
+
+pub record User {
+  name: String
+}
+
+pub fn display_name(user: User): String {
+  user.name
+}
+```
+
+```txt
+package app::web
+
+import app::users
+
+pub fn show(user: users::User): String {
+  users::display_name(user)
+}
+```
+
+## 16. Deferred Topics
+
+This draft intentionally leaves the following topics for later:
+
+- dependency manifest syntax such as `muga.toml`
+- source-root discovery rules
+- standard library package layout
+- selective imports
+- wildcard imports
+- re-exports
+- package-scoped constants or immutable top-level values
+- generic packages
+- protocol/trait-like abstractions
+- testing and benchmark file conventions
+
+## 17. Recommendation
+
+If Muga continues to optimize for:
+
+- simple reading
+- low annotation burden inside implementations
+- explicit boundaries
+- fast compilation
+
+then this package design is a good fit:
+
+- script mode stays lightweight
+- package mode stays explicit
+- public APIs stay easy to cache
+- `.` remains visually stable
+- the compiler never needs whole-program global inference
