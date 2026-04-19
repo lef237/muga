@@ -1,0 +1,15 @@
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn apply(x: Int, f: Int -> Int): Int {
+  f(x)
+}
+
+fn main(): Int {
+  first = apply(10, inc)
+  second = apply(10, fn(n: Int): Int {
+    n + 1
+  })
+  first + second
+}
