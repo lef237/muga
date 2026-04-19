@@ -388,18 +388,40 @@ Allowed in principle:
 Example:
 
 ```txt
-fn inc(x: Int): Int {
+fn inc(x) {
   x + 1
 }
 
-fn apply(x: Int, f: Int -> Int): Int {
+fn apply(x: Int, f): Int {
   f(x)
 }
 
 apply(10, inc)
-apply(10, fn(n: Int): Int {
+apply(10, fn(n) {
   n + 1
 })
+```
+
+When a higher-order parameter is constrained uniquely inside the same function body, its function-type annotation may be omitted.
+
+Examples:
+
+```txt
+fn apply(x: Int, f): Int {
+  f(x)
+}
+
+fn offset(x: Int, f) {
+  f(x) + 1
+}
+```
+
+This remains ambiguous in v1:
+
+```txt
+fn apply(x, f) {
+  f(x)
+}
 ```
 
 ### 7.4 Operator typing rules
@@ -457,6 +479,7 @@ Allowed:
 - infer function parameter types from operators and other constraints inside the same function body
 - infer function return types from the function body
 - infer `if` expression result types from branch agreement
+- infer some higher-order parameter types from local call shape plus surrounding expected result type inside the same function body
 
 Disallowed:
 
