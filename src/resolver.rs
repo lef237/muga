@@ -45,6 +45,7 @@ struct Resolver {
 
 impl Resolver {
     fn install_prelude(&mut self) {
+        self.insert_current("print".to_string(), BindingKind::Function);
         self.insert_current("println".to_string(), BindingKind::Function);
     }
 

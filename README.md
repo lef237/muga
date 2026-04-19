@@ -125,8 +125,9 @@ For more entry points, browse the [Samples](#samples) section below.
 - `check` only validates the front end
 - `run` passes through the front end, lowers to HIR, compiles to bytecode, and executes the result
 - `run` prints the return value when a zero-argument `main()` exists
-- `println` is available as a prelude builtin
-- `println(x)` prints `Int`, `Bool`, or `String` on one line and returns the same value
+- `print` and `println` are available as prelude builtins
+- `print(x)` writes `Int`, `Bool`, or `String` without a trailing newline and returns the same value
+- `println(x)` writes `Int`, `Bool`, or `String` with a trailing newline and returns the same value
 - `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
 - explicit receiver-style distinction is not implemented yet
@@ -165,6 +166,7 @@ cargo run -- path/to/file.muga
 - [samples/method_chain_user.muga](./samples/method_chain_user.muga) (runnable sample for chained UFCS-style calls)
 - [samples/number_chain.muga](./samples/number_chain.muga) (runnable sample for chaining plain functions on `Int`)
 - [samples/println_chain.muga](./samples/println_chain.muga) (runnable sample for chaining through builtin `println`)
+- [samples/print_then_println.muga](./samples/print_then_println.muga) (runnable sample for mixing `print` and `println`)
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)

@@ -50,72 +50,77 @@ fn invalid_examples_fail_frontend() {
 
 #[test]
 fn runnable_main_returns_value() {
-    assert_sample_runs("samples/sum_to.muga", "10", &[]);
+    assert_sample_runs("samples/sum_to.muga", "10", "");
 }
 
 #[test]
 fn builtin_println_captures_output_and_returns_argument() {
-    assert_sample_runs("samples/println_sum.muga", "10", &["10"]);
+    assert_sample_runs("samples/println_sum.muga", "10", "10\n");
 }
 
 #[test]
 fn record_update_sample_runs() {
-    assert_sample_runs("samples/record_with_update.muga", "21", &[]);
+    assert_sample_runs("samples/record_with_update.muga", "21", "");
 }
 
 #[test]
 fn record_field_access_sample_runs() {
-    assert_sample_runs("samples/record_field_access.muga", "8080", &[]);
+    assert_sample_runs("samples/record_field_access.muga", "8080", "");
 }
 
 #[test]
 fn record_counter_loop_sample_runs() {
-    assert_sample_runs("samples/record_counter_loop.muga", "5", &[]);
+    assert_sample_runs("samples/record_counter_loop.muga", "5", "");
 }
 
 #[test]
 fn nested_record_access_sample_runs() {
-    assert_sample_runs("samples/nested_record_access.muga", "101", &[]);
+    assert_sample_runs("samples/nested_record_access.muga", "101", "");
 }
 
 #[test]
 fn method_chain_user_sample_runs() {
-    assert_sample_runs("samples/method_chain_user.muga", "24", &[]);
+    assert_sample_runs("samples/method_chain_user.muga", "24", "");
 }
 
 #[test]
 fn record_user_sample_runs() {
-    assert_sample_runs("samples/record_user.muga", "Ada", &[]);
+    assert_sample_runs("samples/record_user.muga", "Ada", "");
 }
 
 #[test]
 fn number_chain_sample_runs() {
-    assert_sample_runs("samples/number_chain.muga", "4", &[]);
+    assert_sample_runs("samples/number_chain.muga", "4", "");
 }
 
 #[test]
 fn println_chain_sample_runs() {
-    assert_sample_runs("samples/println_chain.muga", "10", &["5"]);
+    assert_sample_runs("samples/println_chain.muga", "10", "5\n");
 }
 
 #[test]
 fn mixed_chain_pipeline_sample_runs() {
-    assert_sample_runs("samples/mixed_chain_pipeline.muga", "24", &[]);
+    assert_sample_runs("samples/mixed_chain_pipeline.muga", "24", "");
 }
 
 #[test]
 fn higher_order_functions_sample_runs() {
-    assert_sample_runs("samples/higher_order_functions.muga", "22", &[]);
+    assert_sample_runs("samples/higher_order_functions.muga", "22", "");
 }
 
 #[test]
 fn higher_order_local_inference_sample_runs() {
-    assert_sample_runs("samples/higher_order_local_inference.muga", "35", &[]);
+    assert_sample_runs("samples/higher_order_local_inference.muga", "35", "");
 }
 
 #[test]
 fn higher_order_explicit_arrow_sample_runs() {
-    assert_sample_runs("samples/higher_order_explicit_arrow.muga", "big", &["big"]);
+    assert_sample_runs("samples/higher_order_explicit_arrow.muga", "big", "big\n");
+}
+
+#[test]
+fn print_and_println_can_be_mixed() {
+    assert_sample_runs("samples/print_then_println.muga", "10", "value = 10 done\n");
 }
 
 #[test]
@@ -249,11 +254,10 @@ fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn assert_sample_runs(path: &str, expected_main: &str, expected_output: &[&str]) {
+fn assert_sample_runs(path: &str, expected_main: &str, expected_output: &str) {
     let source = fs::read_to_string(path).unwrap();
     let result = muga::run_source(&source).unwrap();
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), expected_main, "sample: {path}");
-    let expected_output: Vec<String> = expected_output.iter().map(|line| line.to_string()).collect();
-    assert_eq!(result.output_lines, expected_output, "sample: {path}");
+    assert_eq!(result.output_text, expected_output, "sample: {path}");
 }

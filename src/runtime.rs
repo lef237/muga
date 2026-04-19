@@ -51,11 +51,11 @@ impl fmt::Display for Value {
 #[derive(Clone, Debug)]
 pub struct RunOutcome {
     pub main_result: Option<Value>,
-    pub output_lines: Vec<String>,
+    pub output_text: String,
 }
 
 pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
-    let output = Rc::new(RefCell::new(Vec::new()));
+    let output = Rc::new(RefCell::new(String::new()));
     let root = Rc::new(RefCell::new(Env::new(None, true, output.clone())));
     install_prelude(program, &root);
     let _ = execute_chunk(program, &program.entry, root.clone())?;
@@ -64,7 +64,7 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
         Some(main_symbol) => match lookup_any(&root, main_symbol) {
             None => Ok(RunOutcome {
                 main_result: None,
-                output_lines: output.borrow().clone(),
+                output_text: output.borrow().clone(),
             }),
             Some(Binding {
                 value: Value::Function(function),
@@ -81,7 +81,7 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
                 let value = call_function(program, &function, Vec::new())?;
                 Ok(RunOutcome {
                     main_result: Some(value),
-                    output_lines: output.borrow().clone(),
+                    output_text: output.borrow().clone(),
                 })
             }
             Some(binding) => Err(vec![Diagnostic::new(
@@ -92,7 +92,7 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
         },
         None => Ok(RunOutcome {
             main_result: None,
-            output_lines: output.borrow().clone(),
+            output_text: output.borrow().clone(),
         }),
     }
 }
@@ -119,12 +119,14 @@ impl ClosureValue {
 
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinFunction {
+    Print,
     Println,
 }
 
 impl BuiltinFunction {
     fn name(self) -> &'static str {
         match self {
+            Self::Print => "print",
             Self::Println => "println",
         }
     }
@@ -142,14 +144,14 @@ struct Env {
     bindings: HashMap<Symbol, Binding>,
     parent: Option<EnvRef>,
     function_boundary: bool,
-    output: Rc<RefCell<Vec<String>>>,
+    output: Rc<RefCell<String>>,
 }
 
 impl Env {
     fn new(
         parent: Option<EnvRef>,
         function_boundary: bool,
-        output: Rc<RefCell<Vec<String>>>,
+        output: Rc<RefCell<String>>,
     ) -> Self {
         Self {
             bindings: HashMap::new(),
@@ -491,6 +493,25 @@ fn call_builtin(
     span: Span,
 ) -> Result<Value, Vec<Diagnostic>> {
     match builtin {
+        BuiltinFunction::Print => {
+            if args.len() != 1 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 1 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let value = args.into_iter().next().expect("checked length");
+            match &value {
+                Value::Int(_) | Value::Bool(_) | Value::String(_) => {
+                    env.borrow().output.borrow_mut().push_str(&value.to_string());
+                    Ok(value)
+                }
+                Value::Record(_) | Value::Function(_) | Value::Builtin(_) => Err(vec![
+                    Diagnostic::new("R014", "`print` accepts only Int, Bool, or String", span),
+                ]),
+            }
+        }
         BuiltinFunction::Println => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
@@ -502,7 +523,10 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             match &value {
                 Value::Int(_) | Value::Bool(_) | Value::String(_) => {
-                    env.borrow().output.borrow_mut().push(value.to_string());
+                    let borrowed_env = env.borrow();
+                    let mut output = borrowed_env.output.borrow_mut();
+                    output.push_str(&value.to_string());
+                    output.push('\n');
                     Ok(value)
                 }
                 Value::Record(_) | Value::Function(_) | Value::Builtin(_) => Err(vec![Diagnostic::new(
@@ -664,6 +688,16 @@ fn update_record_value(
 }
 
 fn install_prelude(program: &Program, env: &EnvRef) {
+    if let Some(print_symbol) = program.symbols.lookup("print") {
+        env.borrow_mut().bindings.insert(
+            print_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::Print),
+                span: Span::default(),
+            },
+        );
+    }
     if let Some(print_symbol) = program.symbols.lookup("println") {
         env.borrow_mut().bindings.insert(
             print_symbol,
