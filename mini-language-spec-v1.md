@@ -339,19 +339,30 @@ The minimal v1 built-in types are:
 In addition, v1 introduces:
 
 - nominal record types introduced by `record`
-- source-level function types written with `Fn`
+- source-level function types written with `->`
 
 Therefore, source `type_expr` is:
 
 ```ebnf
-type_expr := "Int"
-           | "Bool"
-           | "String"
-           | IDENT
-           | "Fn" "(" type_expr_list? ")" ":" type_expr
+type_expr         := function_type
+function_type     := function_domain "->" type_expr
+                   | non_function_type
+function_domain   := non_function_type
+                   | "(" type_expr_list? ")"
+non_function_type := "Int"
+                   | "Bool"
+                   | "String"
+                   | IDENT
+type_expr_list    := type_expr ("," type_expr)*
 ```
 
-Bare `Fn` is not a complete type expression in v1. There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
+Examples:
+
+- `Int -> Int`
+- `(Int, String) -> Bool`
+- `() -> Int`
+
+There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
 
 ### 7.3 Prelude built-ins
 
@@ -362,6 +373,33 @@ The v1 prelude currently provides:
 `print` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output, and returns that same value.
 
 Because `print` accepts several concrete types, it does not by itself make an unconstrained parameter uniquely inferable.
+
+### 7.3.1 Higher-order functions
+
+v1 supports higher-order functions.
+
+Allowed in principle:
+
+- passing named functions as arguments
+- passing anonymous functions as arguments
+- storing function values in ordinary bindings
+
+Example:
+
+```txt
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn apply(x: Int, f: Int -> Int): Int {
+  f(x)
+}
+
+apply(10, inc)
+apply(10, fn(n: Int): Int {
+  n + 1
+})
+```
 
 ### 7.4 Operator typing rules
 

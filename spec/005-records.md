@@ -102,7 +102,7 @@ Therefore the following is invalid:
 
 ```txt
 record User {
-  formatter: Fn(String): String
+  formatter: String -> String
 }
 ```
 
@@ -111,6 +111,10 @@ This keeps the meaning of dot expressions stable:
 - `expr.name` always means field access
 - `expr.name(...)` always means chained call
 - function-valued field call is not part of the v1 language model
+
+This restriction is separate from higher-order functions.
+
+Muga v1 still allows function values in ordinary bindings and parameter positions. The prohibition applies only to record fields.
 
 ## 7. Receiver Parameters
 
@@ -178,7 +182,26 @@ user.name
 user.display_name()
 ```
 
-## 10. Notes for Future Extensions
+## 10. Higher-Order Functions Remain Allowed
+
+The following is valid in principle even though function-valued record fields are not:
+
+```txt
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn apply(x: Int, f: Int -> Int): Int {
+  f(x)
+}
+
+apply(10, inc)
+apply(10, fn(n: Int): Int {
+  n + 1
+})
+```
+
+## 11. Notes for Future Extensions
 
 The current design leaves room for future work on:
 

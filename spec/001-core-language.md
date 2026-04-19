@@ -18,6 +18,7 @@ The v1 language is intentionally small and follows these constraints:
 - shadowing is prohibited
 - outer-scope updates are prohibited
 - type annotations are omitted unless inference cannot determine a unique type
+- higher-order functions are supported
 
 ## 2. Core Binding Forms
 
@@ -250,6 +251,7 @@ The core language model is:
 - immutable bindings cannot be updated
 - function names are ordinary immutable bindings
 - function parameters are immutable bindings
+- functions are ordinary values and may be passed as arguments
 - record declarations introduce nominal type names
 - `expr.name` is field access only
 - `expr.name(...)` is chained call syntax
