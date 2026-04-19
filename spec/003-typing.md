@@ -50,17 +50,20 @@ There are no generics, no user-written type variables, and no polymorphic type s
 
 The v1 prelude currently provides:
 
+- `print`
 - `println`
+
+`print` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output without a trailing newline, and returns that same value.
 
 `println` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output as one line, and returns that same value.
 
-Because `println` accepts several concrete types, it does not by itself make an unconstrained parameter uniquely inferable.
+Because `print` and `println` accept several concrete types, neither one by itself makes an unconstrained parameter uniquely inferable.
 
 Example:
 
 ```txt
 fn show_int(x) {
-  println(x + 1)
+  print(x + 1)
 }
 ```
 
@@ -70,7 +73,7 @@ By contrast:
 
 ```txt
 fn show(x) {
-  println(x)
+  print(x)
 }
 ```
 

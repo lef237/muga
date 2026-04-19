@@ -299,6 +299,6 @@ Functions in v1 are ordinary immutable bindings of function values, with:
 - higher-order use through function values and function-type annotations
 - final-expression returns
 - lexical closure capture for readable outer bindings
-- access to the prelude builtin `println`
+- access to the prelude builtins `print` and `println`
 - inference-first signatures
 - limited, explicit requirements for direct recursion and mutual recursion

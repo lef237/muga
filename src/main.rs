@@ -36,12 +36,19 @@ fn main() -> ExitCode {
         },
         "run" => match muga::run_source(&source) {
             Ok(outcome) => {
-                for line in outcome.output_lines {
-                    println!("{line}");
+                let has_output = !outcome.output_text.is_empty();
+                if has_output {
+                    print!("{}", outcome.output_text);
                 }
                 if let Some(value) = outcome.main_result {
+                    if has_output && !outcome.output_text.ends_with('\n') {
+                        println!();
+                    }
                     println!("{value}");
                 } else {
+                    if has_output && !outcome.output_text.ends_with('\n') {
+                        println!();
+                    }
                     println!("ok");
                 }
                 ExitCode::SUCCESS
