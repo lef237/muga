@@ -104,6 +104,11 @@ fn mixed_chain_pipeline_sample_runs() {
 }
 
 #[test]
+fn higher_order_functions_sample_runs() {
+    assert_sample_runs("samples/higher_order_functions.muga", "22", &[]);
+}
+
+#[test]
 fn compile_source_lowers_functions_into_hir_table() {
     let source = r#"
 fn main(): Int {

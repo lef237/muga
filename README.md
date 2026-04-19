@@ -122,17 +122,16 @@ For more entry points, browse the [Samples](#samples) section below.
 - `run` prints the return value when a zero-argument `main()` exists
 - `print` is available as a prelude builtin
 - `print(x)` prints `Int`, `Bool`, or `String` on one line and returns the same value
-- `record`, field access, `record.with` update, and chained UFCS-style calls are implemented
-- explicit receiver-style distinction and arrow function type annotations are not implemented yet
+- `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
+- explicit receiver-style distinction is not implemented yet
 
 ## Planned Priority
 
 The remaining work around records, dot syntax, and receiver-style calls is currently prioritized as follows:
 
 1. explicit resolution rules for receiver-parameter style
-2. function types in parameter annotations and higher-order function annotation syntax
-3. pipe syntax if it becomes necessary later
-4. broader chain sugar extensions after the core model is stable
+2. pipe syntax if it becomes necessary later
+3. broader chain sugar extensions after the core model is stable
 
 ```bash
 cargo run -- check path/to/file.muga
@@ -161,7 +160,7 @@ cargo run -- path/to/file.muga
 - [samples/number_chain.muga](./samples/number_chain.muga) (runnable sample for chaining plain functions on `Int`)
 - [samples/print_chain.muga](./samples/print_chain.muga) (runnable sample for chaining through builtin `print`)
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
-- [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (planned syntax sample for `->` function types and higher-order functions)
+- [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for `->` function types and higher-order functions)
 
 Sample note:
 
