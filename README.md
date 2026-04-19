@@ -156,11 +156,11 @@ cargo run -- path/to/file.muga
 - [samples/record_counter_loop.muga](./samples/record_counter_loop.muga) (runnable sample for mutable bindings and `record.with(...)`)
 - [samples/nested_record_access.muga](./samples/nested_record_access.muga) (runnable sample for nested record access)
 - [samples/record_with_update.muga](./samples/record_with_update.muga) (runnable sample for `record`, field access, and `record.with(...)`)
+- [samples/record_user.muga](./samples/record_user.muga) (runnable sample for record declarations, receiver-shaped parameters, and chained calls)
 - [samples/method_chain_user.muga](./samples/method_chain_user.muga) (runnable sample for chained UFCS-style calls)
 - [samples/number_chain.muga](./samples/number_chain.muga) (runnable sample for chaining plain functions on `Int`)
 - [samples/print_chain.muga](./samples/print_chain.muga) (runnable sample for chaining through builtin `print`)
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
-- [samples/planned_record_user.muga](./samples/planned_record_user.muga) (planned syntax sample for `record`, receiver-style functions, and dot syntax)
 - [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (planned syntax sample for `->` function types and higher-order functions)
 
 Sample note:

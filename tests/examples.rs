@@ -84,6 +84,11 @@ fn method_chain_user_sample_runs() {
 }
 
 #[test]
+fn record_user_sample_runs() {
+    assert_sample_runs("samples/record_user.muga", "Ada", &[]);
+}
+
+#[test]
 fn number_chain_sample_runs() {
     assert_sample_runs("samples/number_chain.muga", "4", &[]);
 }
