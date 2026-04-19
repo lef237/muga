@@ -8,5 +8,5 @@ fn add(a, b) {
 
 fn main() {
   result = add(double(3), 4)
-  print(result)
+  println(result)
 }

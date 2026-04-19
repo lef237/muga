@@ -54,8 +54,8 @@ fn runnable_main_returns_value() {
 }
 
 #[test]
-fn builtin_print_captures_output_and_returns_argument() {
-    assert_sample_runs("samples/print_sum.muga", "10", &["10"]);
+fn builtin_println_captures_output_and_returns_argument() {
+    assert_sample_runs("samples/println_sum.muga", "10", &["10"]);
 }
 
 #[test]
@@ -94,8 +94,8 @@ fn number_chain_sample_runs() {
 }
 
 #[test]
-fn print_chain_sample_runs() {
-    assert_sample_runs("samples/print_chain.muga", "10", &["5"]);
+fn println_chain_sample_runs() {
+    assert_sample_runs("samples/println_chain.muga", "10", &["5"]);
 }
 
 #[test]

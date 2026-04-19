@@ -369,11 +369,11 @@ There are no generics, no user-written type variables, and no polymorphic type s
 
 The v1 prelude currently provides:
 
-- `print`
+- `println`
 
-`print` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output, and returns that same value.
+`println` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output as one line, and returns that same value.
 
-Because `print` accepts several concrete types, it does not by itself make an unconstrained parameter uniquely inferable.
+Because `println` accepts several concrete types, it does not by itself make an unconstrained parameter uniquely inferable.
 
 ### 7.3.1 Higher-order functions
 
@@ -428,17 +428,17 @@ This also remains ambiguous in v1:
 
 ```txt
 fn show(x: Int, f) {
-  print(f(x))
+  println(f(x))
 }
 ```
 
-because `print` accepts `Int`, `Bool`, or `String`, so the callback result type is not uniquely determined.
+because `println` accepts `Int`, `Bool`, or `String`, so the callback result type is not uniquely determined.
 
 An explicit arrow annotation remains valid and useful:
 
 ```txt
 fn show(x: Int, f: Int -> String): String {
-  print(f(x))
+  println(f(x))
 }
 ```
 

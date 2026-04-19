@@ -86,17 +86,17 @@ Another invalid case:
 
 ```txt
 fn show(x: Int, f) {
-  print(f(x))
+  println(f(x))
 }
 ```
 
-because `print` accepts several concrete result types and therefore does not uniquely determine the callback result.
+because `println` accepts several concrete result types and therefore does not uniquely determine the callback result.
 
 An explicit arrow annotation is still the preferred way to document a callback contract:
 
 ```txt
 fn show(x: Int, f: Int -> String): String {
-  print(f(x))
+  println(f(x))
 }
 ```
 
@@ -299,6 +299,6 @@ Functions in v1 are ordinary immutable bindings of function values, with:
 - higher-order use through function values and function-type annotations
 - final-expression returns
 - lexical closure capture for readable outer bindings
-- access to the prelude builtin `print`
+- access to the prelude builtin `println`
 - inference-first signatures
 - limited, explicit requirements for direct recursion and mutual recursion
