@@ -70,7 +70,7 @@ The language has the following core constructs:
 - `while` statements
 - expression statements
 - record literals
-- field access and chained dot calls
+- field access, chained dot calls, and record updates
 
 To keep the grammar unambiguous, v1 distinguishes:
 
@@ -164,12 +164,13 @@ Precedence, from strongest to weakest:
 
 `=` is not an expression operator. It appears only in assign-like statements.
 
-The dot operator has two surface forms:
+The dot operator has three surface forms:
 
 - `expr.name` for field access
 - `expr.name(args...)` for method-style or UFCS-style chained call
+- `expr.with(field: value, ...)` for non-destructive record update
 
-Because record fields cannot have function type in v1, dot syntax has only those two intended meanings.
+Because record fields cannot have function type in v1, the dot operator keeps those three stable meanings without field-function-call ambiguity.
 
 ## 7. Grammar Sketch
 
@@ -216,7 +217,9 @@ unary_expr        := ("-" | "!") unary_expr
                    | postfix_expr
 postfix_expr      := primary_expr postfix_tail*
 postfix_tail      := "(" args? ")"
+                   | ".with" "(" record_update_item ("," record_update_item)* ")"
                    | "." IDENT ("(" args? ")")?
+record_update_item := IDENT ":" expr
 args              := expr ("," expr)*
 
 primary_expr      := literal
@@ -255,6 +258,7 @@ The core language model is:
 - record declarations introduce nominal type names
 - `expr.name` is field access only
 - `expr.name(...)` is chained call syntax
+- `expr.with(field: value, ...)` is a record-only non-destructive update expression
 - the value of a function body is the final expression in that body
 - `if` without `else` is statement-only
 - `while` is statement-only

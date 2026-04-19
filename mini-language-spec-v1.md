@@ -12,7 +12,7 @@ This document captures the current design of a small programming language with t
 - type annotations are omitted by default and only required when inference fails
 - function declarations are treated as ordinary immutable bindings of function values
 - receiver-style functions prefer `self: Type`
-- dot syntax is used for field access and chained calls
+- dot syntax is used for field access, chained calls, and record update
 - nominal records are the initial user-defined data type mechanism
 
 This is an intentionally small, implementation-oriented first draft.
@@ -202,8 +202,9 @@ The dot operator has stable meanings:
 
 - `expr.name` means field access
 - `expr.name(args...)` means method-style or UFCS-style chained call
+- `expr.with(field: value, ...)` means non-destructive record update
 
-In v1, record fields may not have function type, so dot syntax has only those two intended meanings.
+In v1, record fields may not have function type, so the dot operator keeps only those three intended meanings.
 
 ---
 
@@ -552,7 +553,9 @@ unary_expr   := ("-" | "!") unary_expr
 
 postfix_expr := primary_expr postfix_tail*
 postfix_tail := "(" args? ")"
+              | ".with" "(" record_update_item ("," record_update_item)* ")"
               | "." IDENT ("(" args? ")")?
+record_update_item := IDENT ":" expr
 primary_expr := literal
               | IDENT
               | record_lit
@@ -583,6 +586,7 @@ v1 adds nominal records and dot expressions with these rules:
 - `User { ... }` constructs a record value
 - `expr.name` reads a field
 - `expr.name(args...)` is resolved as a receiver-style or UFCS-style call
+- `expr.with(field: value, ...)` constructs a new record value with selected fields replaced
 - record fields may not have function type in v1
 
 ### Important note
@@ -624,6 +628,7 @@ Rule D: outer-scope mutation
 
 - `if` without `else` is statement-only
 - `while` is statement-only
+- `expr.with(field: value, ...)` is a record-only non-destructive update expression
 - the top-level program does not produce a value
 
 ---
@@ -714,10 +719,11 @@ This v1 language currently has the following shape:
 - function return value is the final expression
 - comments use `#`
 - statements are separated by newlines
-- source type annotations are limited to `Int`, `Bool`, and `String`
+- source type annotations are limited to `Int`, `Bool`, `String`, nominal record types, and function types written with `->`
 - type inference is local-only
 - type annotations are omitted unless inference fails
 - recursive functions require limited annotation
+- records support dedicated non-destructive update through `.with(...)`
 
 ---
 

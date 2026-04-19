@@ -1,6 +1,6 @@
 # Records and Dot Expressions Specification v1
 
-Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document defines nominal records, record literals, field access, chained dot calls, and their interaction with receiver-style functions.
+Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document defines nominal records, record literals, field access, record update, chained dot calls, and their interaction with receiver-style functions.
 
 ## 1. Core Direction
 
@@ -16,7 +16,7 @@ Instead, v1 uses:
 
 - records as concrete named data containers
 - ordinary functions as the place where operations are defined
-- dot syntax only for field access and chained call surface syntax
+- dot syntax for field access, chained call surface syntax, and record update
 
 ## 2. Record Declarations
 
@@ -75,7 +75,34 @@ config.port
 
 In v1, field access is read-only syntax. Assignment through field access such as `user.name = "Ada"` is not part of v1.
 
-## 5. Chained Dot Calls
+## 5. Record Update
+
+A record update has the form:
+
+```txt
+expr.with(field1: value1, field2: value2)
+```
+
+v1 rules:
+
+- the base expression must have a record type
+- the result has the same record type as the base expression
+- each mentioned field must exist on that record type
+- each mentioned field may appear at most once
+- at least one field must be updated
+- each replacement expression must match the declared field type
+- unspecified fields are preserved from the original value
+- the update is non-destructive
+
+Example:
+
+```txt
+older = user.with(age: user.age + 1)
+```
+
+This creates a new `User` value with only `age` replaced.
+
+## 6. Chained Dot Calls
 
 A chained call has the form:
 
@@ -94,7 +121,7 @@ Resolution order:
 
 Because v1 has no overloading, there is at most one visible ordinary function named `name`.
 
-## 6. No Function-Valued Fields in v1
+## 7. No Function-Valued Fields in v1
 
 Record fields may not have function type in v1.
 
@@ -116,7 +143,7 @@ This restriction is separate from higher-order functions.
 
 Muga v1 still allows function values in ordinary bindings and parameter positions. The prohibition applies only to record fields.
 
-## 7. Receiver Parameters
+## 8. Receiver Parameters
 
 Receiver-style functions use `self: Type` as the first parameter.
 
@@ -148,7 +175,7 @@ and chained-call syntax may desugar to the same call:
 user.display_name()
 ```
 
-## 8. v1 Limitation: No Receiver Overloading
+## 9. v1 Limitation: No Receiver Overloading
 
 The current v1 model keeps one ordinary function namespace and does not add overloading by receiver type.
 
@@ -161,7 +188,7 @@ fn len(self: String): Int { ... }   # duplicate binding in v1
 
 This is the main short-term limitation of the receiver-style design under the current no-overloading policy.
 
-## 9. Short Example
+## 10. Short Example
 
 ```txt
 record User {
@@ -179,10 +206,11 @@ user = User {
 }
 
 user.name
+user.with(age: user.age + 1)
 user.display_name()
 ```
 
-## 10. Higher-Order Functions Remain Allowed
+## 11. Higher-Order Functions Remain Allowed
 
 The following is valid in principle even though function-valued record fields are not:
 
@@ -201,7 +229,7 @@ apply(10, fn(n: Int): Int {
 })
 ```
 
-## 11. Notes for Future Extensions
+## 12. Notes for Future Extensions
 
 The current design leaves room for future work on:
 
