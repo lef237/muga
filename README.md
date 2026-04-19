@@ -2,45 +2,43 @@
 
 "Muga" is a Japanese term meaning "selflessness" or "transcendence of self," referring to a state of being beyond personal limitations or free from self-centered thinking.
 
-This programming language incorporates the concept of muga, featuring a simple and intuitive syntax designed to immerse developers in coding while letting go of self-consciousness. Muga emphasizes both code aesthetics and efficiency, providing an environment where developers can freely express their creative ideas.
+This programming language borrows that idea for a small language focused on simple rules, readable code, and low syntactic overhead.
 
----
+This repository currently contains a v1 specification draft and an early Rust implementation.
 
-現状このリポジトリには、v1 仕様草案と Rust 実装の最初の実行系が入っている。
+## Current Direction
 
-## 現在の方針
+- no `let`
+- immutable by default
+- `mut` introduces mutable bindings
+- `x = e` creates a new immutable binding when `x` is undefined in the current scope
+- `x = e` updates an existing mutable binding when `x` already resolves to a mutable name in the current scope
+- `x = e` is an error when `x` already resolves to an immutable name in the current scope
+- shadowing is prohibited
+- an inner block in the same function may update an enclosing mutable binding
+- updating an outer-scope binding across a function boundary is prohibited
+- type annotations are omitted by default and only required when inference is not possible
+- statements are separated by newlines and comments use `#`
+- source-level type annotations may use `Int`, `Bool`, `String`, nominal record types, and function types such as `A -> B`
+- type inference is local-only
+- receiver-style functions use a record type as the first parameter, and `self` is only a conventional parameter name
+- `expr.name` is field access and `expr.name(...)` is a chained call
+- `record.with(field: expr, ...)` is a record-only non-destructive update
+- records use nominal data declarations together with record literals
+- record fields may not have function type
+- higher-order functions are allowed
+- function types use `->`
 
-- let を使わない
-- immutable がデフォルト
-- mut で mutable
-- `x = e` は現在スコープで未定義なら新規 immutable 束縛
-- `x = e` は現在スコープの mutable 既存名なら更新
-- `x = e` は現在スコープの immutable 既存名ならエラー
-- shadowing 禁止
-- 同一関数内の内側 block からは enclosing mutable を更新可能
-- 関数境界をまたぐ outer scope の更新は禁止
-- 型注釈は原則省略し、推論不能な場合のみ必須
-- 文区切りは改行、コメントは `#`
-- source で書ける型注釈は `Int`, `Bool`, `String`, nominal record type, function type `A -> B`
-- 型推論は local-only
-- receiver-style 関数は第一引数に record 型を置き、`self` は慣例名として使える
-- `expr.name` は field access、`expr.name(...)` は chained call
-- `record.with(field: expr, ...)` は record 専用の非破壊 update
-- record は nominal data container と record literal を使う
-- record field に関数型は置かない
-- higher-order function は許可する
-- 関数型は型式の中で `->` を使う
+## Documentation
 
-## 仕様ドキュメント
-
-- 正本: [mini-language-spec-v1.md](./mini-language-spec-v1.md)
-- 分割仕様:
+- Canonical draft: [mini-language-spec-v1.md](./mini-language-spec-v1.md)
+- Split specification:
   - [spec/001-core-language.md](./spec/001-core-language.md)
   - [spec/002-name-resolution.md](./spec/002-name-resolution.md)
   - [spec/003-typing.md](./spec/003-typing.md)
   - [spec/004-functions.md](./spec/004-functions.md)
   - [spec/005-records.md](./spec/005-records.md)
-- エラー一覧: [errors.md](./errors.md)
+- Error catalog: [errors.md](./errors.md)
 
 ## Examples
 
@@ -67,46 +65,46 @@ This programming language incorporates the concept of muga, featuring a simple a
 
 ## Rust Implementation
 
-- 構文解析、名前解決、型検査、HIR lowering、bytecode compiler、VM runtime を実装中
-- HIR と bytecode の名前は symbol interning で管理している
-- `check` は front-end の検証のみ行う
-- `run` は front-end を通し、HIR に lower して bytecode に compile した後で実行する
-- `run` は zero-argument の `main()` があればその戻り値を表示する
-- prelude builtin として `print` を実装済み
-- `print(x)` は `Int` / `Bool` / `String` を 1 行出力し、その値を返す
-- `record` / field access / `record.with` update は実装済み
-- receiver-style chained call / UFCS fallback / arrow function type annotation はまだ未実装
+- parsing, name resolution, type checking, HIR lowering, bytecode compilation, and the VM runtime are being implemented
+- HIR and bytecode names are managed through symbol interning
+- `check` only validates the front end
+- `run` passes through the front end, lowers to HIR, compiles to bytecode, and executes the result
+- `run` prints the return value when a zero-argument `main()` exists
+- `print` is available as a prelude builtin
+- `print(x)` prints `Int`, `Bool`, or `String` on one line and returns the same value
+- `record`, field access, and `record.with` update are implemented
+- receiver-style chained calls, UFCS fallback, and arrow function type annotations are not implemented yet
 
 ## Planned Priority
 
-record / dot / receiver-style まわりの残タスク優先順は次です。
+The remaining work around records, dot syntax, and receiver-style calls is currently prioritized as follows:
 
-1. receiver parameter style の明示的な解決規則
-2. chained call
+1. explicit resolution rules for receiver-parameter style
+2. chained calls
 3. UFCS-style fallback
-4. function types in parameter annotations / higher-order function annotation syntax
-5. 必要なら将来 pipe
-6. chain sugar の拡張は後回し
+4. function types in parameter annotations and higher-order function annotation syntax
+5. pipe syntax if it becomes necessary later
+6. broader chain sugar extensions after the core model is stable
 
 ```bash
 cargo run -- check path/to/file.muga
 cargo run -- run path/to/file.muga
 ```
 
-`run` は省略できる:
+`run` can be omitted:
 
 ```bash
 cargo run -- path/to/file.muga
 ```
 
-サンプル:
+## Samples
 
 - [samples/sum_to.muga](./samples/sum_to.muga)
 - [samples/print_sum.muga](./samples/print_sum.muga)
 - [samples/closure_capture.muga](./samples/closure_capture.muga)
-- [samples/record_field_access.muga](./samples/record_field_access.muga) (`record` と field access の runnable sample)
-- [samples/record_counter_loop.muga](./samples/record_counter_loop.muga) (mutable binding と `record.with(...)` の runnable sample)
-- [samples/nested_record_access.muga](./samples/nested_record_access.muga) (nested record access の runnable sample)
-- [samples/record_with_update.muga](./samples/record_with_update.muga) (`record` / field access / `record.with(...)` の runnable sample)
-- [samples/planned_record_user.muga](./samples/planned_record_user.muga) (`record` / receiver-style / dot の planned syntax sample)
-- [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (`->` function type / higher-order function の planned syntax sample)
+- [samples/record_field_access.muga](./samples/record_field_access.muga) (runnable sample for `record` and field access)
+- [samples/record_counter_loop.muga](./samples/record_counter_loop.muga) (runnable sample for mutable bindings and `record.with(...)`)
+- [samples/nested_record_access.muga](./samples/nested_record_access.muga) (runnable sample for nested record access)
+- [samples/record_with_update.muga](./samples/record_with_update.muga) (runnable sample for `record`, field access, and `record.with(...)`)
+- [samples/planned_record_user.muga](./samples/planned_record_user.muga) (planned syntax sample for `record`, receiver-style functions, and dot syntax)
+- [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (planned syntax sample for `->` function types and higher-order functions)
