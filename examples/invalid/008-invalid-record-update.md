@@ -1,4 +1,4 @@
-# Planned Example 002: Invalid Record Update
+# Invalid Example 008: Invalid Record Update
 
 ```txt
 record User {

@@ -67,6 +67,15 @@ fn builtin_print_captures_output_and_returns_argument() {
 }
 
 #[test]
+fn record_update_sample_runs() {
+    let source = fs::read_to_string("samples/record_with_update.muga").unwrap();
+    let result = muga::run_source(&source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "21");
+    assert!(result.output_lines.is_empty());
+}
+
+#[test]
 fn compile_source_lowers_functions_into_hir_table() {
     let source = r#"
 fn main(): Int {

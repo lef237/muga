@@ -1,4 +1,4 @@
-# Planned Example 001: Non-Destructive Record Update
+# Valid Example 007: Non-Destructive Record Update
 
 ```txt
 record User {
@@ -14,7 +14,7 @@ user = User {
 older = user.with(age: user.age + 1)
 ```
 
-Why this is planned:
+Why this is valid:
 
 - `user` has record type `User`
 - `age` is a declared field of `User`

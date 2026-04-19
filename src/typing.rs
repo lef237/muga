@@ -8,6 +8,7 @@ enum Type {
     Int,
     Bool,
     String,
+    Record(String),
     Function(FunctionSig),
     Builtin(BuiltinFunction),
     Unknown(u32),
@@ -39,6 +40,11 @@ struct Binding {
     ty: Type,
 }
 
+#[derive(Clone, Debug)]
+struct RecordDef {
+    fields: Vec<RecordFieldDecl>,
+}
+
 struct ScopeFrame {
     bindings: HashMap<String, Binding>,
     function_boundary: bool,
@@ -55,12 +61,14 @@ impl ScopeFrame {
 
 pub fn typecheck(program: &Program) -> Vec<Diagnostic> {
     let mut checker = TypeChecker::new();
+    checker.predeclare_records(&program.statements);
     checker.check_scope_statements(&program.statements);
     checker.diagnostics
 }
 
 struct TypeChecker {
     scopes: Vec<ScopeFrame>,
+    records: HashMap<String, RecordDef>,
     diagnostics: Vec<Diagnostic>,
     next_unknown: u32,
     substitutions: HashMap<u32, Type>,
@@ -70,6 +78,7 @@ impl TypeChecker {
     fn new() -> Self {
         let mut checker = Self {
             scopes: vec![ScopeFrame::new(true)],
+            records: HashMap::new(),
             diagnostics: Vec::new(),
             next_unknown: 0,
             substitutions: HashMap::new(),
@@ -93,6 +102,7 @@ impl TypeChecker {
         self.check_recursive_requirements(statements, &functions);
         for statement in statements {
             match statement {
+                Stmt::RecordDecl(record) => self.check_record_decl(record),
                 Stmt::FuncDecl(func) => self.check_func_decl(func, &functions),
                 _ => self.check_stmt(statement),
             }
@@ -123,6 +133,7 @@ impl TypeChecker {
     fn check_stmt(&mut self, statement: &Stmt) {
         match statement {
             Stmt::Assign(stmt) => self.check_assign(stmt),
+            Stmt::RecordDecl(_) => {}
             Stmt::FuncDecl(_) => {}
             Stmt::If(stmt) => {
                 let condition = self.check_expr(&stmt.condition);
@@ -222,6 +233,9 @@ impl TypeChecker {
                 .lookup(&expr.name)
                 .map(|binding| binding.ty.clone())
                 .unwrap_or(Type::Error),
+            Expr::RecordLit(expr) => self.check_record_lit(expr),
+            Expr::Field(expr) => self.check_field_expr(expr),
+            Expr::RecordUpdate(expr) => self.check_record_update(expr),
             Expr::Unary(expr) => {
                 let ty = self.check_expr(&expr.expr);
                 match expr.op {
@@ -368,17 +382,221 @@ impl TypeChecker {
         }
     }
 
+    fn predeclare_records(&mut self, statements: &[Stmt]) {
+        for statement in statements {
+            let Stmt::RecordDecl(record) = statement else {
+                continue;
+            };
+            if self.records.contains_key(&record.name) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E002",
+                    format!("duplicate record `{}` in the current scope", record.name),
+                    record.span,
+                ));
+                continue;
+            }
+            self.records.insert(
+                record.name.clone(),
+                RecordDef {
+                    fields: record.fields.clone(),
+                },
+            );
+        }
+    }
+
+    fn check_record_decl(&mut self, record: &RecordDecl) {
+        let mut field_names = HashSet::new();
+        for field in &record.fields {
+            if !field_names.insert(field.name.clone()) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E002",
+                    format!("duplicate field `{}` in record `{}`", field.name, record.name),
+                    field.span,
+                ));
+            }
+            let _ = self.type_from_name(&field.type_name, field.span);
+        }
+    }
+
+    fn check_record_lit(&mut self, expr: &RecordLitExpr) -> Type {
+        let Some(record) = self.records.get(&expr.type_name).cloned() else {
+            self.diagnostics.push(Diagnostic::new(
+                "T007",
+                format!("unknown type `{}`", expr.type_name),
+                expr.span,
+            ));
+            for field in &expr.fields {
+                self.check_expr(&field.value);
+            }
+            return Type::Error;
+        };
+
+        let mut seen = HashSet::new();
+        let mut has_error = false;
+        for field in &expr.fields {
+            let value_ty = self.check_expr(&field.value);
+            if !seen.insert(field.name.clone()) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E009",
+                    format!(
+                        "invalid record literal for `{}`: duplicate field `{}`",
+                        expr.type_name, field.name
+                    ),
+                    field.span,
+                ));
+                has_error = true;
+                continue;
+            }
+
+            let Some(declared) = find_record_field(&record, &field.name) else {
+                self.diagnostics.push(Diagnostic::new(
+                    "E009",
+                    format!(
+                        "invalid record literal for `{}`: unknown field `{}`",
+                        expr.type_name, field.name
+                    ),
+                    field.span,
+                ));
+                has_error = true;
+                continue;
+            };
+
+            let field_ty = self.type_from_name(&declared.type_name, declared.span);
+            if let Err(message) = self.unify(field_ty, value_ty) {
+                self.diagnostics
+                    .push(Diagnostic::new("E009", message, field.span));
+                has_error = true;
+            }
+        }
+
+        for declared in &record.fields {
+            if !seen.contains(&declared.name) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E009",
+                    format!(
+                        "invalid record literal for `{}`: missing field `{}`",
+                        expr.type_name, declared.name
+                    ),
+                    expr.span,
+                ));
+                has_error = true;
+            }
+        }
+
+        if has_error {
+            Type::Error
+        } else {
+            Type::Record(expr.type_name.clone())
+        }
+    }
+
+    fn check_field_expr(&mut self, expr: &FieldExpr) -> Type {
+        let base_ty = self.check_expr(&expr.base);
+        let resolved_base = self.resolve_type(&base_ty);
+        let Type::Record(record_name) = resolved_base else {
+            self.diagnostics.push(Diagnostic::new(
+                "T008",
+                "field access requires a record value",
+                expr.span,
+            ));
+            return Type::Error;
+        };
+
+        let Some(record) = self.records.get(&record_name).cloned() else {
+            self.diagnostics.push(Diagnostic::new(
+                "T007",
+                format!("unknown type `{record_name}`"),
+                expr.span,
+            ));
+            return Type::Error;
+        };
+
+        let Some(field) = find_record_field(&record, &expr.field) else {
+            self.diagnostics.push(Diagnostic::new(
+                "E008",
+                format!("unknown field `{}`", expr.field),
+                expr.span,
+            ));
+            return Type::Error;
+        };
+
+        self.type_from_name(&field.type_name, field.span)
+    }
+
+    fn check_record_update(&mut self, expr: &RecordUpdateExpr) -> Type {
+        let base_ty = self.check_expr(&expr.base);
+        let resolved_base = self.resolve_type(&base_ty);
+        let Type::Record(record_name) = resolved_base else {
+            self.diagnostics.push(Diagnostic::new(
+                "E012",
+                "invalid record update",
+                expr.span,
+            ));
+            for field in &expr.fields {
+                self.check_expr(&field.value);
+            }
+            return Type::Error;
+        };
+
+        let Some(record) = self.records.get(&record_name).cloned() else {
+            self.diagnostics.push(Diagnostic::new(
+                "T007",
+                format!("unknown type `{record_name}`"),
+                expr.span,
+            ));
+            return Type::Error;
+        };
+
+        let mut seen = HashSet::new();
+        let mut has_error = false;
+        for field in &expr.fields {
+            let value_ty = self.check_expr(&field.value);
+            if !seen.insert(field.name.clone()) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E012",
+                    "invalid record update",
+                    field.span,
+                ));
+                has_error = true;
+                continue;
+            }
+
+            let Some(declared) = find_record_field(&record, &field.name) else {
+                self.diagnostics.push(Diagnostic::new(
+                    "E012",
+                    "invalid record update",
+                    field.span,
+                ));
+                has_error = true;
+                continue;
+            };
+
+            let field_ty = self.type_from_name(&declared.type_name, declared.span);
+            if let Err(message) = self.unify(field_ty, value_ty) {
+                self.diagnostics
+                    .push(Diagnostic::new("E012", message, field.span));
+                has_error = true;
+            }
+        }
+
+        if has_error {
+            Type::Error
+        } else {
+            Type::Record(record_name)
+        }
+    }
+
     fn signature_from_fn_expr(&mut self, expr: &FnExpr) -> FunctionSig {
         let params = expr
             .params
             .iter()
-            .map(|param| match param.type_name {
-                Some(type_name) => self.type_from_name(type_name),
+            .map(|param| match param.type_name.as_ref() {
+                Some(type_name) => self.type_from_name(type_name, param.span),
                 None => Type::Unknown(self.fresh_unknown()),
             })
             .collect();
-        let ret = match expr.return_type {
-            Some(type_name) => self.type_from_name(type_name),
+        let ret = match expr.return_type.as_ref() {
+            Some(type_name) => self.type_from_name(type_name, expr.span),
             None => Type::Unknown(self.fresh_unknown()),
         };
         FunctionSig {
@@ -394,13 +612,13 @@ impl TypeChecker {
                 let params = func
                     .params
                     .iter()
-                    .map(|param| match param.type_name {
-                        Some(type_name) => self.type_from_name(type_name),
+                    .map(|param| match param.type_name.as_ref() {
+                        Some(type_name) => self.type_from_name(type_name, param.span),
                         None => Type::Unknown(self.fresh_unknown()),
                     })
                     .collect::<Vec<_>>();
-                let ret = match func.return_type {
-                    Some(type_name) => self.type_from_name(type_name),
+                let ret = match func.return_type.as_ref() {
+                    Some(type_name) => self.type_from_name(type_name, func.span),
                     None => Type::Unknown(self.fresh_unknown()),
                 };
                 let sig = FunctionSig {
@@ -476,11 +694,23 @@ impl TypeChecker {
         }
     }
 
-    fn type_from_name(&self, type_name: TypeName) -> Type {
+    fn type_from_name(&mut self, type_name: &TypeName, span: crate::span::Span) -> Type {
         match type_name {
             TypeName::Int => Type::Int,
             TypeName::Bool => Type::Bool,
             TypeName::String => Type::String,
+            TypeName::Named(name) => {
+                if self.records.contains_key(name) {
+                    Type::Record(name.clone())
+                } else {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T007",
+                        format!("unknown type `{name}`"),
+                        span,
+                    ));
+                    Type::Error
+                }
+            }
         }
     }
 
@@ -508,6 +738,7 @@ impl TypeChecker {
             (Type::Int, Type::Int) => Ok(Type::Int),
             (Type::Bool, Type::Bool) => Ok(Type::Bool),
             (Type::String, Type::String) => Ok(Type::String),
+            (Type::Record(left), Type::Record(right)) if left == right => Ok(Type::Record(left)),
             (Type::Function(left), Type::Function(right)) => {
                 if left.params.len() != right.params.len() {
                     return Err("function arity mismatch".to_string());
@@ -605,12 +836,17 @@ impl Type {
             Self::Int => "Int",
             Self::Bool => "Bool",
             Self::String => "String",
+            Self::Record(_) => "Record",
             Self::Function(_) => "Function",
             Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
         }
     }
+}
+
+fn find_record_field<'a>(record: &'a RecordDef, name: &str) -> Option<&'a RecordFieldDecl> {
+    record.fields.iter().find(|field| field.name == name)
 }
 
 fn build_call_graph(
@@ -707,6 +943,7 @@ fn collect_calls_in_statements(
     for statement in statements {
         match statement {
             Stmt::Assign(stmt) => collect_calls_in_expr(&stmt.value, local_names, calls),
+            Stmt::RecordDecl(_) => {}
             Stmt::FuncDecl(_) => {}
             Stmt::If(stmt) => {
                 collect_calls_in_expr(&stmt.condition, local_names, calls);
@@ -727,6 +964,18 @@ fn collect_calls_in_statements(
 fn collect_calls_in_expr(expr: &Expr, local_names: &HashSet<String>, calls: &mut HashSet<String>) {
     match expr {
         Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Ident(_) => {}
+        Expr::RecordLit(expr) => {
+            for field in &expr.fields {
+                collect_calls_in_expr(&field.value, local_names, calls);
+            }
+        }
+        Expr::Field(expr) => collect_calls_in_expr(&expr.base, local_names, calls),
+        Expr::RecordUpdate(expr) => {
+            collect_calls_in_expr(&expr.base, local_names, calls);
+            for field in &expr.fields {
+                collect_calls_in_expr(&field.value, local_names, calls);
+            }
+        }
         Expr::Unary(expr) => collect_calls_in_expr(&expr.expr, local_names, calls),
         Expr::Binary(expr) => {
             collect_calls_in_expr(&expr.left, local_names, calls);

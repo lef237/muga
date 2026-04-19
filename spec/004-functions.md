@@ -66,7 +66,7 @@ apply(10, fn(n: Int): Int {
 
 ## 3. Receiver-Style Functions
 
-Muga prefers receiver-style syntax with an explicit first parameter:
+Muga prefers receiver-style syntax with an explicit first parameter of record type:
 
 ```txt
 fn display_name(self: User): String {
@@ -91,9 +91,9 @@ user.display_name()
 In v1, the receiver parameter rules are:
 
 - the receiver parameter must be the first parameter
-- the receiver parameter must be written as `self: Type`
-- the receiver type annotation is mandatory
-- `self` is still just an immutable parameter binding inside the body
+- the receiver parameter must have an explicit record-type annotation
+- any identifier may be used for that parameter; `self` is conventional but not required
+- that parameter is still just an immutable binding inside the body
 
 ## 4. v1 Namespace Limitation
 
@@ -259,7 +259,7 @@ fn is_odd(n) {
 Functions in v1 are ordinary immutable bindings of function values, with:
 
 - immutable parameters
-- optional receiver-style `self: Type` first parameters
+- optional receiver-style first parameters whose names are unconstrained
 - higher-order use through function values and function-type annotations
 - final-expression returns
 - lexical closure capture for readable outer bindings
