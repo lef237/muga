@@ -79,6 +79,26 @@ fn nested_record_access_sample_runs() {
 }
 
 #[test]
+fn method_chain_user_sample_runs() {
+    assert_sample_runs("samples/method_chain_user.muga", "24", &[]);
+}
+
+#[test]
+fn number_chain_sample_runs() {
+    assert_sample_runs("samples/number_chain.muga", "4", &[]);
+}
+
+#[test]
+fn print_chain_sample_runs() {
+    assert_sample_runs("samples/print_chain.muga", "10", &["5"]);
+}
+
+#[test]
+fn mixed_chain_pipeline_sample_runs() {
+    assert_sample_runs("samples/mixed_chain_pipeline.muga", "24", &[]);
+}
+
+#[test]
 fn compile_source_lowers_functions_into_hir_table() {
     let source = r#"
 fn main(): Int {

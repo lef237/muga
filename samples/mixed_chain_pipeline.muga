@@ -1,0 +1,23 @@
+record Counter {
+  value: Int
+}
+
+fn start(n: Int): Counter {
+  Counter {
+    value: n
+  }
+}
+
+fn inc(counter: Counter): Counter {
+  counter.with(value: counter.value + 1)
+}
+
+fn double(x: Int): Int {
+  x * 2
+}
+
+fn main(): Int {
+  # This chain is equivalent to:
+  # double(inc(inc(start(10))).value)
+  10.start().inc().inc().value.double()
+}
