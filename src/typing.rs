@@ -23,7 +23,7 @@ struct FunctionSig {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BuiltinFunction {
-    Print,
+    Println,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,10 +89,10 @@ impl TypeChecker {
 
     fn install_prelude(&mut self) {
         self.insert_current(
-            "print".to_string(),
+            "println".to_string(),
             Binding {
                 kind: BindingKind::Function,
-                ty: Type::Builtin(BuiltinFunction::Print),
+                ty: Type::Builtin(BuiltinFunction::Println),
             },
         );
     }
@@ -311,7 +311,7 @@ impl TypeChecker {
             Expr::Call(expr) => {
                 let callee_ty = self.check_expr(&expr.callee);
                 match self.resolve_type(&callee_ty) {
-                    Type::Builtin(BuiltinFunction::Print) => {
+                    Type::Builtin(BuiltinFunction::Println) => {
                         if expr.args.len() != 1 {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
@@ -339,7 +339,7 @@ impl TypeChecker {
                             _ => {
                                 self.diagnostics.push(Diagnostic::new(
                                     "T006",
-                                    "`print` accepts only Int, Bool, or String",
+                                    "`println` accepts only Int, Bool, or String",
                                     expr.span,
                                 ));
                                 Type::Error
@@ -940,7 +940,7 @@ impl Type {
             Self::String => "String",
             Self::Record(_) => "Record",
             Self::Function(_) => "Function",
-            Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
+            Self::Builtin(BuiltinFunction::Println) => "Builtin(println)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
         }

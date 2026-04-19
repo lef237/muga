@@ -15,10 +15,10 @@ Clone the repository and run one of the bundled samples:
 ```bash
 git clone https://github.com/lef237/muga.git
 cd muga
-cargo run -- samples/print_sum.muga
+cargo run -- samples/println_sum.muga
 ```
 
-Expected output (the first line is `print`, the second line is the return value of `main`):
+Expected output (the first line is `println`, the second line is the return value of `main`):
 
 ```text
 10
@@ -35,7 +35,7 @@ cargo run -- samples/number_chain.muga
 Only validate the front end (parse, name resolution, typing) without executing:
 
 ```bash
-cargo run -- check samples/print_sum.muga
+cargo run -- check samples/println_sum.muga
 # => ok
 ```
 
@@ -50,7 +50,7 @@ A minimal program needs a zero-argument `main()` — its return value is printed
 
 ```muga
 fn main(): Int {
-  print(1 + 2)
+  println(1 + 2)
 }
 ```
 
@@ -116,7 +116,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - [examples/invalid/007-unannotated-mutual-recursion.md](./examples/invalid/007-unannotated-mutual-recursion.md)
 - [examples/invalid/008-invalid-record-update.md](./examples/invalid/008-invalid-record-update.md)
 - [examples/invalid/009-ambiguous-higher-order-parameter.md](./examples/invalid/009-ambiguous-higher-order-parameter.md)
-- [examples/invalid/010-ambiguous-print-callback.md](./examples/invalid/010-ambiguous-print-callback.md)
+- [examples/invalid/010-ambiguous-println-callback.md](./examples/invalid/010-ambiguous-println-callback.md)
 
 ## Rust Implementation
 
@@ -125,8 +125,8 @@ For more entry points, browse the [Samples](#samples) section below.
 - `check` only validates the front end
 - `run` passes through the front end, lowers to HIR, compiles to bytecode, and executes the result
 - `run` prints the return value when a zero-argument `main()` exists
-- `print` is available as a prelude builtin
-- `print(x)` prints `Int`, `Bool`, or `String` on one line and returns the same value
+- `println` is available as a prelude builtin
+- `println(x)` prints `Int`, `Bool`, or `String` on one line and returns the same value
 - `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
 - explicit receiver-style distinction is not implemented yet
@@ -153,7 +153,7 @@ cargo run -- path/to/file.muga
 ## Samples
 
 - [samples/sum_to.muga](./samples/sum_to.muga)
-- [samples/print_sum.muga](./samples/print_sum.muga)
+- [samples/println_sum.muga](./samples/println_sum.muga)
 - [samples/inferred_types.muga](./samples/inferred_types.muga) (runnable sample showing that parameter and return type annotations can be omitted when inference succeeds)
 - [samples/no_main.muga](./samples/no_main.muga) (runnable sample showing that `main()` is optional — top-level statements run directly)
 - [samples/closure_capture.muga](./samples/closure_capture.muga)
@@ -164,7 +164,7 @@ cargo run -- path/to/file.muga
 - [samples/record_user.muga](./samples/record_user.muga) (runnable sample for record declarations, receiver-shaped parameters, and chained calls)
 - [samples/method_chain_user.muga](./samples/method_chain_user.muga) (runnable sample for chained UFCS-style calls)
 - [samples/number_chain.muga](./samples/number_chain.muga) (runnable sample for chaining plain functions on `Int`)
-- [samples/print_chain.muga](./samples/print_chain.muga) (runnable sample for chaining through builtin `print`)
+- [samples/println_chain.muga](./samples/println_chain.muga) (runnable sample for chaining through builtin `println`)
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)

@@ -119,13 +119,13 @@ impl ClosureValue {
 
 #[derive(Clone, Copy, Debug)]
 pub enum BuiltinFunction {
-    Print,
+    Println,
 }
 
 impl BuiltinFunction {
     fn name(self) -> &'static str {
         match self {
-            Self::Print => "print",
+            Self::Println => "println",
         }
     }
 }
@@ -491,7 +491,7 @@ fn call_builtin(
     span: Span,
 ) -> Result<Value, Vec<Diagnostic>> {
     match builtin {
-        BuiltinFunction::Print => {
+        BuiltinFunction::Println => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -507,7 +507,7 @@ fn call_builtin(
                 }
                 Value::Record(_) | Value::Function(_) | Value::Builtin(_) => Err(vec![Diagnostic::new(
                     "R014",
-                    "`print` accepts only Int, Bool, or String",
+                    "`println` accepts only Int, Bool, or String",
                     span,
                 )]),
             }
@@ -664,12 +664,12 @@ fn update_record_value(
 }
 
 fn install_prelude(program: &Program, env: &EnvRef) {
-    if let Some(print_symbol) = program.symbols.lookup("print") {
+    if let Some(print_symbol) = program.symbols.lookup("println") {
         env.borrow_mut().bindings.insert(
             print_symbol,
             Binding {
                 mutable: false,
-                value: Value::Builtin(BuiltinFunction::Print),
+                value: Value::Builtin(BuiltinFunction::Println),
                 span: Span::default(),
             },
         );

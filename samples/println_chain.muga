@@ -7,5 +7,5 @@ fn double(x: Int): Int {
 }
 
 fn main(): Int {
-  4.inc().print().double()
+  4.inc().println().double()
 }

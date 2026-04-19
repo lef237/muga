@@ -2,7 +2,7 @@
 
 ```txt
 fn show(x: Int, f: Int -> String): String {
-  print(f(x))
+  println(f(x))
 }
 ```
 
