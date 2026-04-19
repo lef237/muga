@@ -413,11 +413,33 @@ impl Parser {
                 }
 
                 if matches!(self.peek_kind(), TokenKind::LParen) {
-                    return Err(Diagnostic::new(
-                        "P011",
-                        "chained dot calls are not implemented yet",
-                        name_span,
-                    ));
+                    let start = self.expect_simple(TokenKind::LParen, "expected `(` after method name")?;
+                    let mut args = Vec::new();
+                    if !matches!(self.peek_kind(), TokenKind::RParen) {
+                        loop {
+                            args.push(self.parse_expr()?);
+                            if !self.matches_simple(&TokenKind::Comma) {
+                                break;
+                            }
+                        }
+                    }
+                    let end =
+                        self.expect_simple(TokenKind::RParen, "expected `)` after call arguments")?;
+                    let callee = Expr::Ident(IdentExpr {
+                        name,
+                        span: name_span,
+                    });
+                    let base = expr;
+                    let base_span = base.span();
+                    let mut call_args = Vec::with_capacity(args.len() + 1);
+                    call_args.push(base);
+                    call_args.extend(args);
+                    expr = Expr::Call(CallExpr {
+                        callee: Box::new(callee),
+                        args: call_args,
+                        span: base_span.merge(start).merge(end),
+                    });
+                    continue;
                 }
 
                 let span = expr.span().merge(name_span);
