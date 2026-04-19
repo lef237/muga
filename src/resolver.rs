@@ -14,9 +14,11 @@ enum BindingKind {
 pub fn resolve(program: &Program) -> Vec<Diagnostic> {
     let mut resolver = Resolver {
         scopes: vec![ScopeFrame::new(true)],
+        records: HashMap::new(),
         diagnostics: Vec::new(),
     };
     resolver.install_prelude();
+    resolver.predeclare_records(&program.statements);
     resolver.resolve_scope_statements(&program.statements);
     resolver.diagnostics
 }
@@ -37,6 +39,7 @@ impl ScopeFrame {
 
 struct Resolver {
     scopes: Vec<ScopeFrame>,
+    records: HashMap<String, crate::span::Span>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -71,6 +74,7 @@ impl Resolver {
     fn resolve_stmt(&mut self, statement: &Stmt) {
         match statement {
             Stmt::Assign(stmt) => self.resolve_assign(stmt),
+            Stmt::RecordDecl(_) => {}
             Stmt::FuncDecl(stmt) => self.resolve_func_decl(stmt),
             Stmt::If(stmt) => {
                 self.resolve_expr(&stmt.condition);
@@ -186,6 +190,18 @@ impl Resolver {
                     ));
                 }
             }
+            Expr::RecordLit(expr) => {
+                for field in &expr.fields {
+                    self.resolve_expr(&field.value);
+                }
+            }
+            Expr::Field(expr) => self.resolve_expr(&expr.base),
+            Expr::RecordUpdate(expr) => {
+                self.resolve_expr(&expr.base);
+                for field in &expr.fields {
+                    self.resolve_expr(&field.value);
+                }
+            }
             Expr::Unary(expr) => self.resolve_expr(&expr.expr),
             Expr::Binary(expr) => {
                 self.resolve_expr(&expr.left);
@@ -247,6 +263,22 @@ impl Resolver {
                     ));
                 } else {
                     self.insert_current(func.name.clone(), BindingKind::Function);
+                }
+            }
+        }
+    }
+
+    fn predeclare_records(&mut self, statements: &[Stmt]) {
+        for statement in statements {
+            if let Stmt::RecordDecl(record) = statement {
+                if self.records.contains_key(&record.name) {
+                    self.diagnostics.push(Diagnostic::new(
+                        "E002",
+                        format!("duplicate record `{}` in the current scope", record.name),
+                        record.span,
+                    ));
+                } else {
+                    self.records.insert(record.name.clone(), record.span);
                 }
             }
         }

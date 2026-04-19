@@ -98,6 +98,9 @@ pub enum Expr {
     Bool(BoolExpr),
     String(StringExpr),
     Ident(IdentExpr),
+    RecordLit(RecordLitExpr),
+    Field(FieldExpr),
+    RecordUpdate(RecordUpdateExpr),
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     Call(CallExpr),
@@ -112,6 +115,9 @@ impl Expr {
             Self::Bool(expr) => expr.span,
             Self::String(expr) => expr.span,
             Self::Ident(expr) => expr.span,
+            Self::RecordLit(expr) => expr.span,
+            Self::Field(expr) => expr.span,
+            Self::RecordUpdate(expr) => expr.span,
             Self::Unary(expr) => expr.span,
             Self::Binary(expr) => expr.span,
             Self::Call(expr) => expr.span,
@@ -142,6 +148,34 @@ pub struct StringExpr {
 #[derive(Clone, Debug)]
 pub struct IdentExpr {
     pub name: Symbol,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordLitExpr {
+    pub type_name: Symbol,
+    pub fields: Vec<RecordFieldInit>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordFieldInit {
+    pub name: Symbol,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct FieldExpr {
+    pub base: Box<Expr>,
+    pub field: Symbol,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordUpdateExpr {
+    pub base: Box<Expr>,
+    pub fields: Vec<RecordFieldInit>,
     pub span: Span,
 }
 
@@ -209,7 +243,7 @@ pub fn lower(program: &ast::Program) -> Program {
     let statements = program
         .statements
         .iter()
-        .map(|statement| lowerer.lower_stmt(statement))
+        .filter_map(|statement| lowerer.lower_stmt(statement))
         .collect();
     Program {
         statements,
@@ -224,14 +258,15 @@ struct Lowerer {
 }
 
 impl Lowerer {
-    fn lower_stmt(&mut self, statement: &ast::Stmt) -> Stmt {
-        match statement {
+    fn lower_stmt(&mut self, statement: &ast::Stmt) -> Option<Stmt> {
+        Some(match statement {
             ast::Stmt::Assign(stmt) => Stmt::Assign(AssignStmt {
                 mutable: stmt.mutable,
                 name: self.symbol(&stmt.name),
                 value: self.lower_expr(&stmt.value),
                 span: stmt.span,
             }),
+            ast::Stmt::RecordDecl(_) => return None,
             ast::Stmt::FuncDecl(stmt) => Stmt::Function(FunctionStmt {
                 name: self.symbol(&stmt.name),
                 function: self.lower_function_decl(stmt),
@@ -255,7 +290,7 @@ impl Lowerer {
                 expr: self.lower_expr(&stmt.expr),
                 span: stmt.span,
             }),
-        }
+        })
     }
 
     fn lower_block(&mut self, block: &ast::Block) -> Block {
@@ -263,7 +298,7 @@ impl Lowerer {
             statements: block
                 .statements
                 .iter()
-                .map(|statement| self.lower_stmt(statement))
+                .filter_map(|statement| self.lower_stmt(statement))
                 .collect(),
             span: block.span,
         }
@@ -274,7 +309,7 @@ impl Lowerer {
             statements: block
                 .statements
                 .iter()
-                .map(|statement| self.lower_stmt(statement))
+                .filter_map(|statement| self.lower_stmt(statement))
                 .collect(),
             expr: Box::new(self.lower_expr(&block.expr)),
             span: block.span,
@@ -297,6 +332,37 @@ impl Lowerer {
             }),
             ast::Expr::Ident(expr) => Expr::Ident(IdentExpr {
                 name: self.symbol(&expr.name),
+                span: expr.span,
+            }),
+            ast::Expr::RecordLit(expr) => Expr::RecordLit(RecordLitExpr {
+                type_name: self.symbol(&expr.type_name),
+                fields: expr
+                    .fields
+                    .iter()
+                    .map(|field| RecordFieldInit {
+                        name: self.symbol(&field.name),
+                        value: self.lower_expr(&field.value),
+                        span: field.span,
+                    })
+                    .collect(),
+                span: expr.span,
+            }),
+            ast::Expr::Field(expr) => Expr::Field(FieldExpr {
+                base: Box::new(self.lower_expr(&expr.base)),
+                field: self.symbol(&expr.field),
+                span: expr.span,
+            }),
+            ast::Expr::RecordUpdate(expr) => Expr::RecordUpdate(RecordUpdateExpr {
+                base: Box::new(self.lower_expr(&expr.base)),
+                fields: expr
+                    .fields
+                    .iter()
+                    .map(|field| RecordFieldInit {
+                        name: self.symbol(&field.name),
+                        value: self.lower_expr(&field.value),
+                        span: field.span,
+                    })
+                    .collect(),
                 span: expr.span,
             }),
             ast::Expr::Unary(expr) => Expr::Unary(UnaryExpr {

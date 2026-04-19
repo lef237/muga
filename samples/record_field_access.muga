@@ -1,0 +1,13 @@
+record Config {
+  host: String
+  port: Int
+}
+
+fn main(): Int {
+  config = Config {
+    host: "localhost"
+    port: 8080
+  }
+
+  config.port
+}

@@ -50,20 +50,32 @@ fn invalid_examples_fail_frontend() {
 
 #[test]
 fn runnable_main_returns_value() {
-    let source = fs::read_to_string("samples/sum_to.muga").unwrap();
-    let result = muga::run_source(&source).unwrap();
-    let value = result.main_result.expect("main result should exist");
-    assert_eq!(value.to_string(), "10");
-    assert!(result.output_lines.is_empty());
+    assert_sample_runs("samples/sum_to.muga", "10", &[]);
 }
 
 #[test]
 fn builtin_print_captures_output_and_returns_argument() {
-    let source = fs::read_to_string("samples/print_sum.muga").unwrap();
-    let result = muga::run_source(&source).unwrap();
-    let value = result.main_result.expect("main result should exist");
-    assert_eq!(value.to_string(), "10");
-    assert_eq!(result.output_lines, vec!["10".to_string()]);
+    assert_sample_runs("samples/print_sum.muga", "10", &["10"]);
+}
+
+#[test]
+fn record_update_sample_runs() {
+    assert_sample_runs("samples/record_with_update.muga", "21", &[]);
+}
+
+#[test]
+fn record_field_access_sample_runs() {
+    assert_sample_runs("samples/record_field_access.muga", "8080", &[]);
+}
+
+#[test]
+fn record_counter_loop_sample_runs() {
+    assert_sample_runs("samples/record_counter_loop.muga", "5", &[]);
+}
+
+#[test]
+fn nested_record_access_sample_runs() {
+    assert_sample_runs("samples/nested_record_access.muga", "101", &[]);
 }
 
 #[test]
@@ -195,4 +207,13 @@ fn main(): Int {
 
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+fn assert_sample_runs(path: &str, expected_main: &str, expected_output: &[&str]) {
+    let source = fs::read_to_string(path).unwrap();
+    let result = muga::run_source(&source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), expected_main, "sample: {path}");
+    let expected_output: Vec<String> = expected_output.iter().map(|line| line.to_string()).collect();
+    assert_eq!(result.output_lines, expected_output, "sample: {path}");
 }

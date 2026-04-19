@@ -61,6 +61,7 @@ impl Lexer {
                 ')' => self.emit_simple(TokenKind::RParen),
                 '{' => self.emit_simple(TokenKind::LBrace),
                 '}' => self.emit_simple(TokenKind::RBrace),
+                '.' => self.emit_simple(TokenKind::Dot),
                 ',' => self.emit_simple(TokenKind::Comma),
                 ':' => self.emit_simple(TokenKind::Colon),
                 '+' => self.emit_simple(TokenKind::Plus),
@@ -163,6 +164,7 @@ impl Lexer {
         }
         let kind = match text.as_str() {
             "fn" => TokenKind::Fn,
+            "record" => TokenKind::Record,
             "mut" => TokenKind::Mut,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,

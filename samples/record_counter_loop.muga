@@ -1,0 +1,15 @@
+record Counter {
+  value: Int
+}
+
+fn main(): Int {
+  mut counter = Counter {
+    value: 0
+  }
+
+  while counter.value < 5 {
+    counter = counter.with(value: counter.value + 1)
+  }
+
+  counter.value
+}

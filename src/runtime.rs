@@ -9,8 +9,21 @@ pub enum Value {
     Int(i64),
     Bool(bool),
     String(String),
+    Record(RecordValue),
     Function(Rc<ClosureValue>),
     Builtin(BuiltinFunction),
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordValue {
+    type_name: String,
+    fields: Vec<RecordFieldValue>,
+}
+
+#[derive(Clone, Debug)]
+struct RecordFieldValue {
+    name: String,
+    value: Value,
 }
 
 impl fmt::Display for Value {
@@ -19,6 +32,16 @@ impl fmt::Display for Value {
             Self::Int(value) => write!(f, "{value}"),
             Self::Bool(value) => write!(f, "{value}"),
             Self::String(value) => write!(f, "{value}"),
+            Self::Record(record) => {
+                write!(f, "{} {{ ", record.type_name)?;
+                for (index, field) in record.fields.iter().enumerate() {
+                    if index > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", field.name, field.value)?;
+                }
+                write!(f, " }}")
+            }
             Self::Function(_) => write!(f, "<function>"),
             Self::Builtin(builtin) => write!(f, "<builtin:{}>", builtin.name()),
         }
@@ -151,6 +174,14 @@ fn execute_chunk(
             Instruction::LoadInt(value) => stack.push(Value::Int(*value)),
             Instruction::LoadBool(value) => stack.push(Value::Bool(*value)),
             Instruction::LoadString(value) => stack.push(Value::String(value.clone())),
+            Instruction::MakeRecord {
+                type_name,
+                fields,
+                span,
+            } => {
+                let values = pop_args(&mut stack, fields.len(), *span)?;
+                stack.push(make_record_value(program, *type_name, fields, values));
+            }
             Instruction::LoadName { name, span } => {
                 let Some(binding) = lookup_any(&current_env, *name) else {
                     return Err(vec![Diagnostic::new(
@@ -160,6 +191,17 @@ fn execute_chunk(
                     )]);
                 };
                 stack.push(binding.value);
+            }
+            Instruction::LoadField { field, span } => {
+                let base = pop_value(&mut stack, *span, "R015", "missing record value for field access")?;
+                let value = load_record_field(program, base, *field, *span)?;
+                stack.push(value);
+            }
+            Instruction::UpdateRecord { fields, span } => {
+                let values = pop_args(&mut stack, fields.len(), *span)?;
+                let base = pop_value(&mut stack, *span, "R015", "missing record value for update")?;
+                let value = update_record_value(program, base, fields, values, *span)?;
+                stack.push(value);
             }
             Instruction::Assign {
                 name,
@@ -463,7 +505,7 @@ fn call_builtin(
                     env.borrow().output.borrow_mut().push(value.to_string());
                     Ok(value)
                 }
-                Value::Function(_) | Value::Builtin(_) => Err(vec![Diagnostic::new(
+                Value::Record(_) | Value::Function(_) | Value::Builtin(_) => Err(vec![Diagnostic::new(
                     "R014",
                     "`print` accepts only Int, Bool, or String",
                     span,
@@ -538,6 +580,87 @@ fn pop_value(
     stack
         .pop()
         .ok_or_else(|| vec![Diagnostic::new(code, message, span)])
+}
+
+fn make_record_value(
+    program: &Program,
+    type_name: Symbol,
+    fields: &[Symbol],
+    values: Vec<Value>,
+) -> Value {
+    Value::Record(RecordValue {
+        type_name: symbol_name(program, type_name).to_string(),
+        fields: fields
+            .iter()
+            .zip(values)
+            .map(|(field, value)| RecordFieldValue {
+                name: symbol_name(program, *field).to_string(),
+                value,
+            })
+            .collect(),
+    })
+}
+
+fn load_record_field(
+    program: &Program,
+    base: Value,
+    field: Symbol,
+    span: Span,
+) -> Result<Value, Vec<Diagnostic>> {
+    let field_name = symbol_name(program, field);
+    let Value::Record(record) = base else {
+        return Err(vec![Diagnostic::new(
+            "R016",
+            "field access requires a record value",
+            span,
+        )]);
+    };
+    let Some(field_value) = record
+        .fields
+        .iter()
+        .find(|candidate| candidate.name == field_name)
+    else {
+        return Err(vec![Diagnostic::new(
+            "R017",
+            format!("unknown field `{field_name}`"),
+            span,
+        )]);
+    };
+    Ok(field_value.value.clone())
+}
+
+fn update_record_value(
+    program: &Program,
+    base: Value,
+    fields: &[Symbol],
+    values: Vec<Value>,
+    span: Span,
+) -> Result<Value, Vec<Diagnostic>> {
+    let Value::Record(mut record) = base else {
+        return Err(vec![Diagnostic::new(
+            "R018",
+            "invalid record update",
+            span,
+        )]);
+    };
+
+    for (field, value) in fields.iter().zip(values) {
+        let field_name = symbol_name(program, *field);
+        let Some(existing) = record
+            .fields
+            .iter_mut()
+            .find(|candidate| candidate.name == field_name)
+        else {
+            return Err(vec![Diagnostic::new(
+                "R018",
+                "invalid record update",
+                span,
+            )]);
+        };
+        existing.value = value;
+    }
+
+    Ok(Value::Record(record))
 }
 
 fn install_prelude(program: &Program, env: &EnvRef) {

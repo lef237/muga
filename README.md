@@ -23,7 +23,7 @@ This programming language incorporates the concept of muga, featuring a simple a
 - 文区切りは改行、コメントは `#`
 - source で書ける型注釈は `Int`, `Bool`, `String`, nominal record type, function type `A -> B`
 - 型推論は local-only
-- receiver-style 関数は `self: Type` を使う
+- receiver-style 関数は第一引数に record 型を置き、`self` は慣例名として使える
 - `expr.name` は field access、`expr.name(...)` は chained call
 - `record.with(field: expr, ...)` は record 専用の非破壊 update
 - record は nominal data container と record literal を使う
@@ -52,6 +52,7 @@ This programming language incorporates the concept of muga, featuring a simple a
 - [examples/valid/004-inferred-parameter-type.md](./examples/valid/004-inferred-parameter-type.md)
 - [examples/valid/005-recursive-function.md](./examples/valid/005-recursive-function.md)
 - [examples/valid/006-mutual-recursion.md](./examples/valid/006-mutual-recursion.md)
+- [examples/valid/007-record-with-update.md](./examples/valid/007-record-with-update.md)
 
 ### Invalid
 
@@ -62,11 +63,7 @@ This programming language incorporates the concept of muga, featuring a simple a
 - [examples/invalid/005-ambiguous-identity.md](./examples/invalid/005-ambiguous-identity.md)
 - [examples/invalid/006-unannotated-recursion.md](./examples/invalid/006-unannotated-recursion.md)
 - [examples/invalid/007-unannotated-mutual-recursion.md](./examples/invalid/007-unannotated-mutual-recursion.md)
-
-### Planned Syntax
-
-- [examples/planned/001-record-with-update.md](./examples/planned/001-record-with-update.md)
-- [examples/planned/002-invalid-record-update.md](./examples/planned/002-invalid-record-update.md)
+- [examples/invalid/008-invalid-record-update.md](./examples/invalid/008-invalid-record-update.md)
 
 ## Rust Implementation
 
@@ -77,22 +74,19 @@ This programming language incorporates the concept of muga, featuring a simple a
 - `run` は zero-argument の `main()` があればその戻り値を表示する
 - prelude builtin として `print` を実装済み
 - `print(x)` は `Int` / `Bool` / `String` を 1 行出力し、その値を返す
-- `record` / dot expression / receiver-style call / arrow function type annotation / `record.with` update は仕様整理中で、まだ未実装
+- `record` / field access / `record.with` update は実装済み
+- receiver-style chained call / UFCS fallback / arrow function type annotation はまだ未実装
 
 ## Planned Priority
 
-record / dot / receiver-style まわりの実装優先順は次です。
+record / dot / receiver-style まわりの残タスク優先順は次です。
 
-1. 普通の関数呼び出し
-2. receiver parameter style
-3. record
-4. field access
-5. chained call
-6. UFCS-style fallback
-7. function types in parameter annotations / higher-order functions
-8. `record.with` による非破壊 update
-9. 必要なら将来 pipe
-10. chain sugar の拡張は後回し
+1. receiver parameter style の明示的な解決規則
+2. chained call
+3. UFCS-style fallback
+4. function types in parameter annotations / higher-order function annotation syntax
+5. 必要なら将来 pipe
+6. chain sugar の拡張は後回し
 
 ```bash
 cargo run -- check path/to/file.muga
@@ -110,6 +104,9 @@ cargo run -- path/to/file.muga
 - [samples/sum_to.muga](./samples/sum_to.muga)
 - [samples/print_sum.muga](./samples/print_sum.muga)
 - [samples/closure_capture.muga](./samples/closure_capture.muga)
+- [samples/record_field_access.muga](./samples/record_field_access.muga) (`record` と field access の runnable sample)
+- [samples/record_counter_loop.muga](./samples/record_counter_loop.muga) (mutable binding と `record.with(...)` の runnable sample)
+- [samples/nested_record_access.muga](./samples/nested_record_access.muga) (nested record access の runnable sample)
+- [samples/record_with_update.muga](./samples/record_with_update.muga) (`record` / field access / `record.with(...)` の runnable sample)
 - [samples/planned_record_user.muga](./samples/planned_record_user.muga) (`record` / receiver-style / dot の planned syntax sample)
 - [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (`->` function type / higher-order function の planned syntax sample)
-- [samples/planned_record_with_update.muga](./samples/planned_record_with_update.muga) (`record.with(...)` の planned syntax sample)
