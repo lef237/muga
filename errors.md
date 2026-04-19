@@ -179,3 +179,18 @@ Recommended message:
 ```txt
 record fields may not have function type in v1
 ```
+
+## E012: Invalid Record Update
+
+Trigger:
+
+- `expr.with(...)` where `expr` does not have a record type
+- a record update mentions an unknown field
+- a record update repeats the same field name
+- a record update supplies a value of the wrong type for a field
+
+Recommended message:
+
+```txt
+invalid record update
+```

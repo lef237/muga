@@ -137,6 +137,7 @@ The parser distinguishes:
 
 - `expr.name`
 - `expr.name(args...)`
+- `expr.with(field: value, ...)`
 
 For `expr.name`:
 
@@ -156,6 +157,13 @@ Because v1 has no overloading, there is at most one visible ordinary function bi
 Anonymous functions do not participate in `expr.name(args...)`.
 
 Record fields are never considered callable by chained call syntax in v1.
+
+For `expr.with(field: value, ...)`:
+
+- `with` in this syntactic form is not resolved as an ordinary function name
+- the base expression is treated as a record-update candidate
+- each mentioned field name is validated against the statically resolved record type of the base expression
+- duplicate field names within one update are rejected
 
 ## 9. Name Resolution Examples
 
