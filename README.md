@@ -6,6 +6,56 @@ This programming language borrows that idea for a small language focused on simp
 
 This repository currently contains a v1 specification draft and an early Rust implementation.
 
+## Quickstart
+
+Prerequisites: a recent Rust toolchain (edition 2024, so Rust 1.85 or later).
+
+Clone the repository and run one of the bundled samples:
+
+```bash
+git clone https://github.com/lef237/muga.git
+cd muga
+cargo run -- samples/print_sum.muga
+```
+
+Expected output (the first line is `print`, the second line is the return value of `main`):
+
+```
+10
+10
+```
+
+Try another sample that chains function calls:
+
+```bash
+cargo run -- samples/number_chain.muga
+# => 10
+```
+
+Only validate the front end (parse, name resolution, typing) without executing:
+
+```bash
+cargo run -- check samples/print_sum.muga
+# => ok
+```
+
+Run your own file by pointing `cargo run` at any `.muga` source. `run` is the default subcommand, so it can be omitted:
+
+```bash
+cargo run -- run path/to/file.muga
+cargo run -- path/to/file.muga
+```
+
+A minimal program needs a zero-argument `main()` — its return value is printed after execution:
+
+```muga
+fn main(): Int {
+  print(1 + 2)
+}
+```
+
+For more entry points, browse the [Samples](#samples) section below.
+
 ## Current Direction
 
 - no `let`
