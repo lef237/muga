@@ -21,21 +21,28 @@ The minimal v1 built-in types are:
 In addition, v1 introduces:
 
 - user-defined nominal record types introduced by `record`
-- source-level function types written with `Fn`
+- source-level function types written with `->`
 
 Therefore, source `type_expr` is:
 
 ```ebnf
-type_expr := "Int"
-           | "Bool"
-           | "String"
-           | IDENT
-           | "Fn" "(" type_expr_list? ")" ":" type_expr
-
-type_expr_list := type_expr ("," type_expr)*
+type_expr          := function_type
+function_type      := function_domain "->" type_expr
+                    | non_function_type
+function_domain    := non_function_type
+                    | "(" type_expr_list? ")"
+non_function_type  := "Int"
+                    | "Bool"
+                    | "String"
+                    | IDENT
+type_expr_list     := type_expr ("," type_expr)*
 ```
 
-Bare `Fn` without an explicit parameter-and-result list is not a complete v1 type expression.
+Examples:
+
+- `Int -> Int`
+- `(Int, String) -> Bool`
+- `() -> Int`
 
 There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
 
@@ -69,7 +76,34 @@ fn show(x) {
 
 still requires annotation in v1.
 
-## 4. Record Typing
+## 4. Higher-Order Functions
+
+v1 supports higher-order functions.
+
+Allowed in principle:
+
+- passing a named function as an argument
+- passing an anonymous function as an argument
+- storing a function in a local binding
+
+Example:
+
+```txt
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn apply(x: Int, f: Int -> Int): Int {
+  f(x)
+}
+
+apply(10, inc)
+apply(10, fn(n: Int): Int {
+  n + 1
+})
+```
+
+## 5. Record Typing
 
 For:
 
@@ -94,9 +128,9 @@ has type `User` if and only if:
 - every declared field is provided exactly once
 - no extra fields are present
 - each field initializer has the declared field type
-- every record field type is non-functional in v1
+- every record field type must be a non-function type in v1
 
-## 5. Field Access and Chained Call Typing
+## 6. Field Access and Chained Call Typing
 
 For field access:
 
@@ -122,7 +156,7 @@ Then:
 
 Because record fields may not have function type in v1, `expr.name(...)` never means a call through a function-valued field.
 
-## 6. Operator Typing Rules
+## 7. Operator Typing Rules
 
 The built-in operator typing rules are:
 
@@ -134,7 +168,7 @@ The built-in operator typing rules are:
 
 String concatenation is not part of v1. Therefore, `+` is `Int`-only.
 
-## 7. Inference Sources
+## 8. Inference Sources
 
 v1 inference may use:
 
@@ -142,6 +176,7 @@ v1 inference may use:
 - operator constraints
 - branch result agreement
 - explicit annotations already present in the same declaration
+- explicit function-type annotations on parameters
 
 Examples:
 
@@ -158,7 +193,7 @@ fn inc(x) {
 
 If `+` here is the integer addition operator in v1, `x` is inferred as `Int`.
 
-## 8. Local Bindings
+## 9. Local Bindings
 
 For a binding:
 
@@ -182,7 +217,17 @@ total = total + 1
 
 Mutable updates must preserve the original type exactly. v1 does not define implicit conversions or subtyping.
 
-## 9. Conditions and Branches
+Local bindings may also hold function values.
+
+Example:
+
+```txt
+inc = fn(x: Int): Int {
+  x + 1
+}
+```
+
+## 10. Conditions and Branches
 
 The condition expression of:
 
@@ -209,7 +254,7 @@ Both branches produce `Int`, so the `if` expression has type `Int`.
 
 For an `if` expression, the branch result types must match exactly.
 
-## 10. Function Parameter Inference
+## 11. Function Parameter Inference
 
 A parameter annotation may be omitted when the parameter type is uniquely determined from the function body and surrounding constraints.
 
@@ -235,7 +280,17 @@ fn id(x) {
 
 This requires annotation because the type of `x` is not uniquely determined.
 
-## 11. Function Return Inference
+For higher-order functions, parameter annotation is often the intended source of the function shape.
+
+Example:
+
+```txt
+fn apply(x: Int, f: Int -> Int): Int {
+  f(x)
+}
+```
+
+## 12. Function Return Inference
 
 The return type of a function is inferred from the final expression in the body.
 
@@ -243,7 +298,7 @@ When control flow branches, the return type is inferred from the unified branch 
 
 If the body does not provide enough information to infer a unique return type, a return annotation is required.
 
-## 12. Inference Boundary
+## 13. Inference Boundary
 
 v1 intentionally uses local-only inference.
 
@@ -253,12 +308,14 @@ Allowed:
 - infer function parameter types from operators and other constraints inside the same function body
 - infer function return types from the function body
 - infer `if` expression result types from branch agreement
+- typecheck higher-order calls once explicit function-type annotations are present
 
 Disallowed:
 
 - inferring a callee parameter type from call sites alone
 - propagating constraints across unrelated top-level declarations
 - polymorphic generalization
+- inferring a complete higher-order parameter shape from distant call sites alone
 
 This means:
 
@@ -278,7 +335,7 @@ fn id(x) {
 
 is not.
 
-## 13. Mandatory Annotations
+## 14. Mandatory Annotations
 
 Annotations are required in the following cases:
 
@@ -287,13 +344,14 @@ Annotations are required in the following cases:
 3. a recursive function has neither an annotated parameter nor an annotated return type
 4. a mutually recursive function participates in a recursive group without an explicit signature
 5. a receiver parameter must have an explicit type annotation
+6. a higher-order parameter shape is not uniquely inferable
 
 For v1, an explicit function signature means:
 
 - at least one parameter or the return type is annotated for direct recursion
 - every function in a mutually recursive group has enough annotations to determine its full callable type before body checking
 
-## 14. Direct Recursion Rule
+## 15. Direct Recursion Rule
 
 For a directly recursive function, at least one of the following must be present:
 

@@ -1,6 +1,6 @@
 # Function Specification v1
 
-Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document defines function declarations, anonymous functions, parameter semantics, return semantics, and recursion-related requirements.
+Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document defines function declarations, anonymous functions, higher-order use, parameter semantics, return semantics, and recursion-related requirements.
 
 ## 1. Function Declarations
 
@@ -49,6 +49,20 @@ double = fn(x) {
 They follow the same parameter and return rules as named functions.
 
 Anonymous functions are not considered by chained dot-call resolution, because they do not introduce a named function binding.
+
+Anonymous functions remain ordinary function values and may be passed to higher-order functions.
+
+Example:
+
+```txt
+fn apply(x: Int, f: Int -> Int): Int {
+  f(x)
+}
+
+apply(10, fn(n: Int): Int {
+  n + 1
+})
+```
 
 ## 3. Receiver-Style Functions
 
@@ -103,12 +117,21 @@ Therefore:
 - parameters cannot be reassigned
 - parameters participate in the no-shadowing rule
 - parameter names must be unique within the same function
+- parameters may themselves have function type
 
 Invalid:
 
 ```txt
 fn bump(x: Int) {
   x = x + 1
+}
+```
+
+Higher-order example:
+
+```txt
+fn combine(a: Int, b: Int, f: (Int, Int) -> Int): Int {
+  f(a, b)
 }
 ```
 
@@ -237,6 +260,7 @@ Functions in v1 are ordinary immutable bindings of function values, with:
 
 - immutable parameters
 - optional receiver-style `self: Type` first parameters
+- higher-order use through function values and function-type annotations
 - final-expression returns
 - lexical closure capture for readable outer bindings
 - access to the prelude builtin `print`
