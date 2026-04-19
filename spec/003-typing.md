@@ -18,13 +18,24 @@ The minimal v1 built-in types are:
 - `Bool`
 - `String`
 
-Function types exist in the implementation model, but they are not part of source-level type syntax in v1.
+In addition, v1 introduces:
 
-Therefore, source `type_expr` is restricted to:
+- user-defined nominal record types introduced by `record`
+- source-level function types written with `Fn`
+
+Therefore, source `type_expr` is:
 
 ```ebnf
-type_expr := "Int" | "Bool" | "String"
+type_expr := "Int"
+           | "Bool"
+           | "String"
+           | IDENT
+           | "Fn" "(" type_expr_list? ")" ":" type_expr
+
+type_expr_list := type_expr ("," type_expr)*
 ```
+
+Bare `Fn` without an explicit parameter-and-result list is not a complete v1 type expression.
 
 There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
 
@@ -58,7 +69,60 @@ fn show(x) {
 
 still requires annotation in v1.
 
-## 4. Operator Typing Rules
+## 4. Record Typing
+
+For:
+
+```txt
+record User {
+  name: String
+}
+```
+
+`User` is a nominal type.
+
+A record literal:
+
+```txt
+User {
+  name: "Ada"
+}
+```
+
+has type `User` if and only if:
+
+- every declared field is provided exactly once
+- no extra fields are present
+- each field initializer has the declared field type
+- every record field type is non-functional in v1
+
+## 5. Field Access and Chained Call Typing
+
+For field access:
+
+```txt
+expr.name
+```
+
+`expr` must have a record type that declares a field `name`. The expression type is the declared type of that field.
+
+For chained call:
+
+```txt
+expr.name(arg1, arg2)
+```
+
+the receiver expression `expr` is typed first.
+
+Then:
+
+1. if `name` resolves to a receiver-style function, the call is typed as a call of that function with `expr` as the first argument
+2. otherwise, if `name(expr, arg1, arg2)` is a valid ordinary function call, the chained call is typed as that UFCS-style desugaring
+3. otherwise, the expression is a type error
+
+Because record fields may not have function type in v1, `expr.name(...)` never means a call through a function-valued field.
+
+## 6. Operator Typing Rules
 
 The built-in operator typing rules are:
 
@@ -70,7 +134,7 @@ The built-in operator typing rules are:
 
 String concatenation is not part of v1. Therefore, `+` is `Int`-only.
 
-## 5. Inference Sources
+## 7. Inference Sources
 
 v1 inference may use:
 
@@ -94,7 +158,7 @@ fn inc(x) {
 
 If `+` here is the integer addition operator in v1, `x` is inferred as `Int`.
 
-## 6. Local Bindings
+## 8. Local Bindings
 
 For a binding:
 
@@ -118,7 +182,7 @@ total = total + 1
 
 Mutable updates must preserve the original type exactly. v1 does not define implicit conversions or subtyping.
 
-## 7. Conditions and Branches
+## 9. Conditions and Branches
 
 The condition expression of:
 
@@ -145,7 +209,7 @@ Both branches produce `Int`, so the `if` expression has type `Int`.
 
 For an `if` expression, the branch result types must match exactly.
 
-## 8. Function Parameter Inference
+## 10. Function Parameter Inference
 
 A parameter annotation may be omitted when the parameter type is uniquely determined from the function body and surrounding constraints.
 
@@ -171,7 +235,7 @@ fn id(x) {
 
 This requires annotation because the type of `x` is not uniquely determined.
 
-## 9. Function Return Inference
+## 11. Function Return Inference
 
 The return type of a function is inferred from the final expression in the body.
 
@@ -179,7 +243,7 @@ When control flow branches, the return type is inferred from the unified branch 
 
 If the body does not provide enough information to infer a unique return type, a return annotation is required.
 
-## 10. Inference Boundary
+## 12. Inference Boundary
 
 v1 intentionally uses local-only inference.
 
@@ -214,7 +278,7 @@ fn id(x) {
 
 is not.
 
-## 11. Mandatory Annotations
+## 13. Mandatory Annotations
 
 Annotations are required in the following cases:
 
@@ -222,13 +286,14 @@ Annotations are required in the following cases:
 2. a function return type is not uniquely inferable
 3. a recursive function has neither an annotated parameter nor an annotated return type
 4. a mutually recursive function participates in a recursive group without an explicit signature
+5. a receiver parameter must have an explicit type annotation
 
 For v1, an explicit function signature means:
 
 - at least one parameter or the return type is annotated for direct recursion
 - every function in a mutually recursive group has enough annotations to determine its full callable type before body checking
 
-## 12. Direct Recursion Rule
+## 14. Direct Recursion Rule
 
 For a directly recursive function, at least one of the following must be present:
 

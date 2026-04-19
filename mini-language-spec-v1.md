@@ -11,6 +11,9 @@ This document captures the current design of a small programming language with t
 - shadowing is prohibited
 - type annotations are omitted by default and only required when inference fails
 - function declarations are treated as ordinary immutable bindings of function values
+- receiver-style functions prefer `self: Type`
+- dot syntax is used for field access and chained calls
+- nominal records are the initial user-defined data type mechanism
 
 This is an intentionally small, implementation-oriented first draft.
 
@@ -128,6 +131,7 @@ Identifiers are ASCII-only and match:
 Reserved keywords are:
 
 - `fn`
+- `record`
 - `mut`
 - `if`
 - `else`
@@ -185,7 +189,7 @@ All binary operators are left-associative.
 
 Precedence, from strongest to weakest:
 
-1. postfix call
+1. postfix field access / chained call / ordinary call
 2. unary
 3. multiplicative
 4. additive
@@ -193,6 +197,13 @@ Precedence, from strongest to weakest:
 6. equality
 
 `=` is not an expression operator. It appears only in assign-like statements.
+
+The dot operator has stable meanings:
+
+- `expr.name` means field access
+- `expr.name(args...)` means method-style or UFCS-style chained call
+
+In v1, record fields may not have function type, so dot syntax has only those two intended meanings.
 
 ---
 
@@ -225,6 +236,32 @@ double = fn(x) {
   x * 2
 }
 ```
+
+### 6.2.1 Receiver-style functions
+
+Muga prefers receiver-style named functions with an explicit first parameter:
+
+```txt
+fn display_name(self: User): String {
+  self.name
+}
+```
+
+This remains an ordinary named function binding. It may be called either as:
+
+```txt
+display_name(user)
+user.display_name()
+```
+
+In v1:
+
+- the receiver parameter must be first
+- the receiver parameter must be written as `self: Type`
+- the receiver type annotation is mandatory
+- `self` remains an ordinary immutable parameter binding
+
+v1 does not add overloading by receiver type. Receiver-style functions still share the ordinary function namespace.
 
 ### 6.3 Function parameter rules
 
@@ -299,15 +336,22 @@ The minimal v1 built-in types are:
 - `Bool`
 - `String`
 
-Function types exist in the implementation model, but they are not part of source-level type syntax in v1.
+In addition, v1 introduces:
 
-Therefore, source `type_expr` is restricted to:
+- nominal record types introduced by `record`
+- source-level function types written with `Fn`
+
+Therefore, source `type_expr` is:
 
 ```ebnf
-type_expr := "Int" | "Bool" | "String"
+type_expr := "Int"
+           | "Bool"
+           | "String"
+           | IDENT
+           | "Fn" "(" type_expr_list? ")" ":" type_expr
 ```
 
-There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
+Bare `Fn` is not a complete type expression in v1. There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
 
 ### 7.3 Prelude built-ins
 
@@ -428,7 +472,9 @@ fn fact(n: Int) {
 ## 8. Grammar (EBNF)
 
 ```ebnf
-program      := stmt*
+program      := top_item*
+top_item     := record_decl
+              | stmt
 
 stmt         := assign_like_stmt
               | func_decl
@@ -439,8 +485,12 @@ stmt         := assign_like_stmt
 assign_like_stmt := "mut" IDENT "=" expr
                   | IDENT "=" expr
 
+record_decl  := "record" IDENT "{" record_field_decl* "}"
+record_field_decl := IDENT ":" type_expr
+
 func_decl    := "fn" IDENT "(" params? ")" return_annot? value_block
 return_annot := ":" type_expr
+type_expr_list := type_expr ("," type_expr)*
 
 params       := param ("," param)*
 param        := IDENT
@@ -460,13 +510,18 @@ comparison_expr := additive_expr (("<" | "<=" | ">" | ">=") additive_expr)*
 additive_expr := multiplicative_expr (("+" | "-") multiplicative_expr)*
 multiplicative_expr := unary_expr (("*" | "/") unary_expr)*
 unary_expr   := ("-" | "!") unary_expr
-              | call_expr
+              | postfix_expr
 
-call_expr    := primary_expr ("(" args? ")")*
+postfix_expr := primary_expr postfix_tail*
+postfix_tail := "(" args? ")"
+              | "." IDENT ("(" args? ")")?
 primary_expr := literal
               | IDENT
+              | record_lit
               | anon_fn
               | "(" expr ")"
+record_lit   := IDENT "{" record_field_init* "}"
+record_field_init := IDENT ":" expr
 args         := expr ("," expr)*
 
 anon_fn      := "fn" "(" params? ")" return_annot? value_block
@@ -481,6 +536,16 @@ literal      := INT_LIT
               | "true"
               | "false"
 ```
+
+## 8.1 Record and Dot Summary
+
+v1 adds nominal records and dot expressions with these rules:
+
+- `record User { ... }` introduces a nominal type name
+- `User { ... }` constructs a record value
+- `expr.name` reads a field
+- `expr.name(args...)` is resolved as a receiver-style or UFCS-style call
+- record fields may not have function type in v1
 
 ### Important note
 
