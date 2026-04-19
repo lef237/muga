@@ -1,14 +1,14 @@
-fn inc(x: Int): Int {
+fn inc(x) {
   x + 1
 }
 
-fn apply(x: Int, f: Int -> Int): Int {
+fn apply(x: Int, f): Int {
   f(x)
 }
 
-fn main(): Int {
+fn main() {
   first = apply(10, inc)
-  second = apply(10, fn(n: Int): Int {
+  second = apply(10, fn(n) {
     n + 1
   })
   first + second

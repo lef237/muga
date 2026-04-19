@@ -1,0 +1,14 @@
+fn offset(x: Int, f) {
+  f(x) + 1
+}
+
+fn main() {
+  double = fn(n) {
+    n * 2
+  }
+  first = offset(10, double)
+  second = offset(10, fn(n) {
+    n + 3
+  })
+  first + second
+}

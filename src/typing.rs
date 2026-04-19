@@ -116,6 +116,14 @@ impl TypeChecker {
     }
 
     fn check_value_block(&mut self, block: &ValueBlock) -> Type {
+        self.check_value_block_with_expected(block, None)
+    }
+
+    fn check_value_block_with_expected(
+        &mut self,
+        block: &ValueBlock,
+        expected: Option<Type>,
+    ) -> Type {
         self.push_scope(false);
         let functions = self.predeclare_functions(&block.statements);
         self.check_recursive_requirements(&block.statements, &functions);
@@ -125,7 +133,7 @@ impl TypeChecker {
                 _ => self.check_stmt(statement),
             }
         }
-        let ty = self.check_expr(&block.expr);
+        let ty = self.check_expr_with_expected(&block.expr, expected);
         self.pop_scope();
         ty
     }
@@ -208,8 +216,7 @@ impl TypeChecker {
                 _ => self.check_stmt(statement),
             }
         }
-        let body_ty = self.check_expr(&func.body.expr);
-        self.require_exact(&body_ty, &sig.ret, func.body.expr.span(), "T002");
+        self.check_expr_with_expected(&func.body.expr, Some((*sig.ret).clone()));
         self.pop_scope();
 
         let resolved_params: Vec<Type> =
@@ -225,45 +232,66 @@ impl TypeChecker {
     }
 
     fn check_expr(&mut self, expr: &Expr) -> Type {
+        self.check_expr_with_expected(expr, None)
+    }
+
+    fn check_expr_with_expected(&mut self, expr: &Expr, expected: Option<Type>) -> Type {
         match expr {
-            Expr::Int(_) => Type::Int,
-            Expr::Bool(_) => Type::Bool,
-            Expr::String(_) => Type::String,
+            Expr::Int(_) => self.apply_expected(Type::Int, expected, expr.span()),
+            Expr::Bool(_) => self.apply_expected(Type::Bool, expected, expr.span()),
+            Expr::String(_) => self.apply_expected(Type::String, expected, expr.span()),
             Expr::Ident(expr) => self
                 .lookup(&expr.name)
                 .map(|binding| binding.ty.clone())
+                .map(|ty| self.apply_expected(ty, expected, expr.span))
                 .unwrap_or(Type::Error),
-            Expr::RecordLit(expr) => self.check_record_lit(expr),
-            Expr::Field(expr) => self.check_field_expr(expr),
-            Expr::RecordUpdate(expr) => self.check_record_update(expr),
+            Expr::RecordLit(expr) => {
+                let ty = self.check_record_lit(expr);
+                self.apply_expected(ty, expected, expr.span)
+            }
+            Expr::Field(expr) => {
+                let ty = self.check_field_expr(expr);
+                self.apply_expected(ty, expected, expr.span)
+            }
+            Expr::RecordUpdate(expr) => {
+                let ty = self.check_record_update(expr);
+                self.apply_expected(ty, expected, expr.span)
+            }
             Expr::Unary(expr) => {
-                let ty = self.check_expr(&expr.expr);
+                let ty = match expr.op {
+                    UnaryOp::Neg => self.check_expr_with_expected(&expr.expr, Some(Type::Int)),
+                    UnaryOp::Not => self.check_expr_with_expected(&expr.expr, Some(Type::Bool)),
+                };
                 match expr.op {
                     UnaryOp::Neg => {
                         self.require_exact(&ty, &Type::Int, expr.span, "T001");
-                        Type::Int
+                        self.apply_expected(Type::Int, expected, expr.span)
                     }
                     UnaryOp::Not => {
                         self.require_exact(&ty, &Type::Bool, expr.span, "T001");
-                        Type::Bool
+                        self.apply_expected(Type::Bool, expected, expr.span)
                     }
                 }
             }
             Expr::Binary(expr) => {
-                let left = self.check_expr(&expr.left);
-                let right = self.check_expr(&expr.right);
                 match expr.op {
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
+                        let left = self.check_expr_with_expected(&expr.left, Some(Type::Int));
+                        let right = self.check_expr_with_expected(&expr.right, Some(Type::Int));
                         self.require_exact(&left, &Type::Int, expr.left.span(), "T001");
                         self.require_exact(&right, &Type::Int, expr.right.span(), "T001");
-                        Type::Int
+                        self.apply_expected(Type::Int, expected, expr.span)
                     }
                     BinaryOp::Lt | BinaryOp::LtEq | BinaryOp::Gt | BinaryOp::GtEq => {
+                        let left = self.check_expr_with_expected(&expr.left, Some(Type::Int));
+                        let right = self.check_expr_with_expected(&expr.right, Some(Type::Int));
                         self.require_exact(&left, &Type::Int, expr.left.span(), "T001");
                         self.require_exact(&right, &Type::Int, expr.right.span(), "T001");
-                        Type::Bool
+                        self.apply_expected(Type::Bool, expected, expr.span)
                     }
                     BinaryOp::EqEq | BinaryOp::BangEq => {
+                        let left = self.check_expr(&expr.left);
+                        let right = self.check_expr_with_expected(&expr.right, Some(left.clone()));
                         self.require_exact(&left, &right, expr.span, "T002");
                         let resolved = self.resolve_type(&left);
                         if !matches!(
@@ -276,26 +304,30 @@ impl TypeChecker {
                                 expr.span,
                             ));
                         }
-                        Type::Bool
+                        self.apply_expected(Type::Bool, expected, expr.span)
                     }
                 }
             }
             Expr::Call(expr) => {
                 let callee_ty = self.check_expr(&expr.callee);
-                let arg_tys: Vec<Type> = expr.args.iter().map(|arg| self.check_expr(arg)).collect();
                 match self.resolve_type(&callee_ty) {
                     Type::Builtin(BuiltinFunction::Print) => {
-                        if arg_tys.len() != 1 {
+                        if expr.args.len() != 1 {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
-                                format!("expected 1 arguments but found {}", arg_tys.len()),
+                                format!("expected 1 arguments but found {}", expr.args.len()),
                                 expr.span,
                             ));
                             return Type::Error;
                         }
-                        let arg_ty = self.resolve_type(&arg_tys[0]);
+
+                        let arg_ty =
+                            self.check_expr_with_expected(&expr.args[0], expected.clone());
+                        let arg_ty = self.resolve_type(&arg_ty);
                         match arg_ty {
-                            Type::Int | Type::Bool | Type::String => arg_ty,
+                            Type::Int | Type::Bool | Type::String => {
+                                self.apply_expected(arg_ty, expected, expr.span)
+                            }
                             Type::Unknown(_) => {
                                 self.diagnostics.push(Diagnostic::new(
                                     "E005",
@@ -315,25 +347,37 @@ impl TypeChecker {
                         }
                     }
                     Type::Function(sig) => {
-                        if sig.params.len() != arg_tys.len() {
+                        if sig.params.len() != expr.args.len() {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
                                 format!(
                                     "expected {} arguments but found {}",
                                     sig.params.len(),
-                                    arg_tys.len()
+                                    expr.args.len()
                                 ),
                                 expr.span,
                             ));
                             return Type::Error;
                         }
-                        for (param_ty, arg_ty) in sig.params.iter().zip(arg_tys.iter()) {
-                            let resolved_param = self.resolve_type(param_ty);
-                            if !resolved_param.is_unknown() {
-                                self.require_exact(&resolved_param, arg_ty, expr.span, "T002");
-                            }
+                        for (arg, param_ty) in expr.args.iter().zip(sig.params.iter()) {
+                            self.check_expr_with_expected(arg, Some(param_ty.clone()));
                         }
-                        self.resolve_type(&sig.ret)
+                        self.apply_expected(*sig.ret.clone(), expected, expr.span)
+                    }
+                    Type::Unknown(_) => {
+                        let arg_tys: Vec<Type> =
+                            expr.args.iter().map(|arg| self.check_expr(arg)).collect();
+                        let ret_ty = expected.unwrap_or_else(|| Type::Unknown(self.fresh_unknown()));
+                        let inferred_sig = Type::Function(FunctionSig {
+                            params: arg_tys,
+                            ret: Box::new(ret_ty.clone()),
+                        });
+                        if let Err(message) = self.unify(callee_ty, inferred_sig) {
+                            self.diagnostics
+                                .push(Diagnostic::new("T005", message, expr.span));
+                            return Type::Error;
+                        }
+                        self.resolve_type(&ret_ty)
                     }
                     Type::Error => Type::Error,
                     _ => {
@@ -349,13 +393,28 @@ impl TypeChecker {
             Expr::If(expr) => {
                 let condition = self.check_expr(&expr.condition);
                 self.require_exact(&condition, &Type::Bool, expr.condition.span(), "T001");
-                let then_ty = self.check_value_block(&expr.then_branch);
-                let else_ty = self.check_value_block(&expr.else_branch);
-                self.require_exact(&then_ty, &else_ty, expr.span, "T002");
-                self.resolve_type(&then_ty)
+                match expected {
+                    Some(expected_ty) => {
+                        self.check_value_block_with_expected(
+                            &expr.then_branch,
+                            Some(expected_ty.clone()),
+                        );
+                        self.check_value_block_with_expected(
+                            &expr.else_branch,
+                            Some(expected_ty.clone()),
+                        );
+                        self.resolve_type(&expected_ty)
+                    }
+                    None => {
+                        let then_ty = self.check_value_block(&expr.then_branch);
+                        let else_ty = self.check_value_block(&expr.else_branch);
+                        self.require_exact(&then_ty, &else_ty, expr.span, "T002");
+                        self.resolve_type(&then_ty)
+                    }
+                }
             }
             Expr::Fn(expr) => {
-                let sig = self.signature_from_fn_expr(expr);
+                let sig = self.signature_from_fn_expr(expr, expected.as_ref());
                 self.push_scope(true);
                 for (param, param_ty) in expr.params.iter().zip(sig.params.iter().cloned()) {
                     self.insert_current(
@@ -374,10 +433,9 @@ impl TypeChecker {
                         _ => self.check_stmt(statement),
                     }
                 }
-                let body_ty = self.check_expr(&expr.body.expr);
-                self.require_exact(&body_ty, &sig.ret, expr.span, "T002");
+                self.check_expr_with_expected(&expr.body.expr, Some((*sig.ret).clone()));
                 self.pop_scope();
-                Type::Function(sig)
+                self.apply_expected(Type::Function(sig), expected, expr.span)
             }
         }
     }
@@ -593,18 +651,25 @@ impl TypeChecker {
         }
     }
 
-    fn signature_from_fn_expr(&mut self, expr: &FnExpr) -> FunctionSig {
+    fn signature_from_fn_expr(&mut self, expr: &FnExpr, expected: Option<&Type>) -> FunctionSig {
+        let expected_sig = self.expected_function_sig(expected, expr.params.len());
         let params = expr
             .params
             .iter()
-            .map(|param| match param.type_name.as_ref() {
+            .enumerate()
+            .map(|(index, param)| match param.type_name.as_ref() {
                 Some(type_name) => self.type_from_expr(type_name, param.span),
-                None => Type::Unknown(self.fresh_unknown()),
+                None => expected_sig
+                    .as_ref()
+                    .and_then(|sig| sig.params.get(index).cloned())
+                    .unwrap_or_else(|| Type::Unknown(self.fresh_unknown())),
             })
             .collect();
         let ret = match expr.return_type.as_ref() {
             Some(type_name) => self.type_from_expr(type_name, expr.span),
-            None => Type::Unknown(self.fresh_unknown()),
+            None => expected_sig
+                .map(|sig| *sig.ret)
+                .unwrap_or_else(|| Type::Unknown(self.fresh_unknown())),
         };
         FunctionSig {
             params,
@@ -786,6 +851,28 @@ impl TypeChecker {
             }),
             Type::Builtin(builtin) => Type::Builtin(*builtin),
             other => other.clone(),
+        }
+    }
+
+    fn apply_expected(&mut self, inferred: Type, expected: Option<Type>, span: crate::span::Span) -> Type {
+        let inferred = self.resolve_type(&inferred);
+        let Some(expected) = expected else {
+            return inferred;
+        };
+        match self.unify(inferred, expected) {
+            Ok(ty) => self.resolve_type(&ty),
+            Err(message) => {
+                self.diagnostics.push(Diagnostic::new("T002", message, span));
+                Type::Error
+            }
+        }
+    }
+
+    fn expected_function_sig(&self, expected: Option<&Type>, arity: usize) -> Option<FunctionSig> {
+        let expected = expected?;
+        match self.resolve_type(expected) {
+            Type::Function(sig) if sig.params.len() == arity => Some(sig),
+            _ => None,
         }
     }
 
