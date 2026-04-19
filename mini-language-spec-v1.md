@@ -11,7 +11,7 @@ This document captures the current design of a small programming language with t
 - shadowing is prohibited
 - type annotations are omitted by default and only required when inference fails
 - function declarations are treated as ordinary immutable bindings of function values
-- receiver-style functions prefer `self: Type`
+- receiver-style functions prefer an explicit first parameter with record type, and `self` is only a conventional name
 - dot syntax is used for field access, chained calls, and record update
 - nominal records are the initial user-defined data type mechanism
 
@@ -240,7 +240,7 @@ double = fn(x) {
 
 ### 6.2.1 Receiver-style functions
 
-Muga prefers receiver-style named functions with an explicit first parameter:
+Muga prefers receiver-style named functions with an explicit first parameter of record type:
 
 ```txt
 fn display_name(self: User): String {
@@ -258,9 +258,9 @@ user.display_name()
 In v1:
 
 - the receiver parameter must be first
-- the receiver parameter must be written as `self: Type`
-- the receiver type annotation is mandatory
-- `self` remains an ordinary immutable parameter binding
+- the receiver parameter must have an explicit record-type annotation
+- any identifier may be used for that parameter; `self` is conventional but not required
+- the receiver parameter remains an ordinary immutable parameter binding
 
 v1 does not add overloading by receiver type. Receiver-style functions still share the ordinary function namespace.
 
