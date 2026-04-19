@@ -414,7 +414,14 @@ impl TypeChecker {
                     field.span,
                 ));
             }
-            let _ = self.type_from_name(&field.type_name, field.span);
+            let field_ty = self.type_from_expr(&field.type_name, field.span);
+            if matches!(self.resolve_type(&field_ty), Type::Function(_)) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E011",
+                    "record fields may not have function type in v1",
+                    field.span,
+                ));
+            }
         }
     }
 
@@ -461,7 +468,7 @@ impl TypeChecker {
                 continue;
             };
 
-            let field_ty = self.type_from_name(&declared.type_name, declared.span);
+            let field_ty = self.type_from_expr(&declared.type_name, declared.span);
             if let Err(message) = self.unify(field_ty, value_ty) {
                 self.diagnostics
                     .push(Diagnostic::new("E009", message, field.span));
@@ -520,7 +527,7 @@ impl TypeChecker {
             return Type::Error;
         };
 
-        self.type_from_name(&field.type_name, field.span)
+        self.type_from_expr(&field.type_name, field.span)
     }
 
     fn check_record_update(&mut self, expr: &RecordUpdateExpr) -> Type {
@@ -571,7 +578,7 @@ impl TypeChecker {
                 continue;
             };
 
-            let field_ty = self.type_from_name(&declared.type_name, declared.span);
+            let field_ty = self.type_from_expr(&declared.type_name, declared.span);
             if let Err(message) = self.unify(field_ty, value_ty) {
                 self.diagnostics
                     .push(Diagnostic::new("E012", message, field.span));
@@ -591,12 +598,12 @@ impl TypeChecker {
             .params
             .iter()
             .map(|param| match param.type_name.as_ref() {
-                Some(type_name) => self.type_from_name(type_name, param.span),
+                Some(type_name) => self.type_from_expr(type_name, param.span),
                 None => Type::Unknown(self.fresh_unknown()),
             })
             .collect();
         let ret = match expr.return_type.as_ref() {
-            Some(type_name) => self.type_from_name(type_name, expr.span),
+            Some(type_name) => self.type_from_expr(type_name, expr.span),
             None => Type::Unknown(self.fresh_unknown()),
         };
         FunctionSig {
@@ -613,12 +620,12 @@ impl TypeChecker {
                     .params
                     .iter()
                     .map(|param| match param.type_name.as_ref() {
-                        Some(type_name) => self.type_from_name(type_name, param.span),
+                        Some(type_name) => self.type_from_expr(type_name, param.span),
                         None => Type::Unknown(self.fresh_unknown()),
                     })
                     .collect::<Vec<_>>();
                 let ret = match func.return_type.as_ref() {
-                    Some(type_name) => self.type_from_name(type_name, func.span),
+                    Some(type_name) => self.type_from_expr(type_name, func.span),
                     None => Type::Unknown(self.fresh_unknown()),
                 };
                 let sig = FunctionSig {
@@ -694,12 +701,12 @@ impl TypeChecker {
         }
     }
 
-    fn type_from_name(&mut self, type_name: &TypeName, span: crate::span::Span) -> Type {
-        match type_name {
-            TypeName::Int => Type::Int,
-            TypeName::Bool => Type::Bool,
-            TypeName::String => Type::String,
-            TypeName::Named(name) => {
+    fn type_from_expr(&mut self, type_expr: &TypeExpr, span: crate::span::Span) -> Type {
+        match type_expr {
+            TypeExpr::Int => Type::Int,
+            TypeExpr::Bool => Type::Bool,
+            TypeExpr::String => Type::String,
+            TypeExpr::Named(name) => {
                 if self.records.contains_key(name) {
                     Type::Record(name.clone())
                 } else {
@@ -711,6 +718,14 @@ impl TypeChecker {
                     Type::Error
                 }
             }
+            TypeExpr::Function(function) => Type::Function(FunctionSig {
+                params: function
+                    .params
+                    .iter()
+                    .map(|param| self.type_from_expr(param, span))
+                    .collect(),
+                ret: Box::new(self.type_from_expr(&function.ret, span)),
+            }),
         }
     }
 

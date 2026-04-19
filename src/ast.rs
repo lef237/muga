@@ -46,7 +46,7 @@ pub struct RecordDecl {
 #[derive(Clone, Debug)]
 pub struct RecordFieldDecl {
     pub name: String,
-    pub type_name: TypeName,
+    pub type_name: TypeExpr,
     pub span: Span,
 }
 
@@ -54,7 +54,7 @@ pub struct RecordFieldDecl {
 pub struct FuncDecl {
     pub name: String,
     pub params: Vec<Param>,
-    pub return_type: Option<TypeName>,
+    pub return_type: Option<TypeExpr>,
     pub body: ValueBlock,
     pub span: Span,
 }
@@ -62,7 +62,7 @@ pub struct FuncDecl {
 #[derive(Clone, Debug)]
 pub struct Param {
     pub name: String,
-    pub type_name: Option<TypeName>,
+    pub type_name: Option<TypeExpr>,
     pub span: Span,
 }
 
@@ -240,15 +240,22 @@ pub struct IfExpr {
 #[derive(Clone, Debug)]
 pub struct FnExpr {
     pub params: Vec<Param>,
-    pub return_type: Option<TypeName>,
+    pub return_type: Option<TypeExpr>,
     pub body: ValueBlock,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TypeName {
+pub enum TypeExpr {
     Int,
     Bool,
     String,
     Named(String),
+    Function(FunctionTypeExpr),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionTypeExpr {
+    pub params: Vec<TypeExpr>,
+    pub ret: Box<TypeExpr>,
 }

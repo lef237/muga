@@ -22,6 +22,7 @@ pub enum TokenKind {
     Dot,
     Comma,
     Colon,
+    Arrow,
     Eq,
     EqEq,
     Bang,
@@ -54,6 +55,7 @@ impl TokenKind {
             self,
             TokenKind::Eq
                 | TokenKind::Comma
+                | TokenKind::Arrow
                 | TokenKind::Plus
                 | TokenKind::Minus
                 | TokenKind::Star
