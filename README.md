@@ -20,7 +20,7 @@ cargo run -- samples/print_sum.muga
 
 Expected output (the first line is `print`, the second line is the return value of `main`):
 
-```
+```text
 10
 10
 ```
@@ -149,6 +149,8 @@ cargo run -- path/to/file.muga
 
 - [samples/sum_to.muga](./samples/sum_to.muga)
 - [samples/print_sum.muga](./samples/print_sum.muga)
+- [samples/inferred_types.muga](./samples/inferred_types.muga) (runnable sample showing that parameter and return type annotations can be omitted when inference succeeds)
+- [samples/no_main.muga](./samples/no_main.muga) (runnable sample showing that `main()` is optional — top-level statements run directly)
 - [samples/closure_capture.muga](./samples/closure_capture.muga)
 - [samples/record_field_access.muga](./samples/record_field_access.muga) (runnable sample for `record` and field access)
 - [samples/record_counter_loop.muga](./samples/record_counter_loop.muga) (runnable sample for mutable bindings and `record.with(...)`)

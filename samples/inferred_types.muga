@@ -1,0 +1,12 @@
+fn double(x) {
+  x * 2
+}
+
+fn add(a, b) {
+  a + b
+}
+
+fn main() {
+  result = add(double(3), 4)
+  print(result)
+}
