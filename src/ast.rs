@@ -8,6 +8,7 @@ pub struct Program {
 #[derive(Clone, Debug)]
 pub enum Stmt {
     Assign(AssignStmt),
+    RecordDecl(RecordDecl),
     FuncDecl(FuncDecl),
     If(IfStmt),
     While(WhileStmt),
@@ -18,6 +19,7 @@ impl Stmt {
     pub fn span(&self) -> Span {
         match self {
             Self::Assign(stmt) => stmt.span,
+            Self::RecordDecl(stmt) => stmt.span,
             Self::FuncDecl(stmt) => stmt.span,
             Self::If(stmt) => stmt.span,
             Self::While(stmt) => stmt.span,
@@ -31,6 +33,20 @@ pub struct AssignStmt {
     pub mutable: bool,
     pub name: String,
     pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordDecl {
+    pub name: String,
+    pub fields: Vec<RecordFieldDecl>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordFieldDecl {
+    pub name: String,
+    pub type_name: TypeName,
     pub span: Span,
 }
 
@@ -90,6 +106,9 @@ pub enum Expr {
     Bool(BoolExpr),
     String(StringExpr),
     Ident(IdentExpr),
+    RecordLit(RecordLitExpr),
+    Field(FieldExpr),
+    RecordUpdate(RecordUpdateExpr),
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     Call(CallExpr),
@@ -104,6 +123,9 @@ impl Expr {
             Self::Bool(expr) => expr.span,
             Self::String(expr) => expr.span,
             Self::Ident(expr) => expr.span,
+            Self::RecordLit(expr) => expr.span,
+            Self::Field(expr) => expr.span,
+            Self::RecordUpdate(expr) => expr.span,
             Self::Unary(expr) => expr.span,
             Self::Binary(expr) => expr.span,
             Self::Call(expr) => expr.span,
@@ -134,6 +156,34 @@ pub struct StringExpr {
 #[derive(Clone, Debug)]
 pub struct IdentExpr {
     pub name: String,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordLitExpr {
+    pub type_name: String,
+    pub fields: Vec<RecordFieldInit>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordFieldInit {
+    pub name: String,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct FieldExpr {
+    pub base: Box<Expr>,
+    pub field: String,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordUpdateExpr {
+    pub base: Box<Expr>,
+    pub fields: Vec<RecordFieldInit>,
     pub span: Span,
 }
 
@@ -195,19 +245,10 @@ pub struct FnExpr {
     pub span: Span,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeName {
     Int,
     Bool,
     String,
-}
-
-impl TypeName {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Int => "Int",
-            Self::Bool => "Bool",
-            Self::String => "String",
-        }
-    }
+    Named(String),
 }

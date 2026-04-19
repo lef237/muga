@@ -32,8 +32,21 @@ pub enum Instruction {
     LoadInt(i64),
     LoadBool(bool),
     LoadString(String),
+    MakeRecord {
+        type_name: Symbol,
+        fields: Vec<Symbol>,
+        span: Span,
+    },
     LoadName {
         name: Symbol,
+        span: Span,
+    },
+    LoadField {
+        field: Symbol,
+        span: Span,
+    },
+    UpdateRecord {
+        fields: Vec<Symbol>,
         span: Span,
     },
     Assign {
@@ -231,10 +244,37 @@ impl Compiler {
                     .instructions
                     .push(Instruction::LoadString(expr.value.clone()));
             }
+            hir::Expr::RecordLit(expr) => {
+                for field in &expr.fields {
+                    self.compile_expr(&field.value, chunk);
+                }
+                chunk.instructions.push(Instruction::MakeRecord {
+                    type_name: expr.type_name,
+                    fields: expr.fields.iter().map(|field| field.name).collect(),
+                    span: expr.span,
+                });
+            }
             hir::Expr::Ident(expr) => chunk.instructions.push(Instruction::LoadName {
                 name: expr.name.clone(),
                 span: expr.span,
             }),
+            hir::Expr::Field(expr) => {
+                self.compile_expr(&expr.base, chunk);
+                chunk.instructions.push(Instruction::LoadField {
+                    field: expr.field,
+                    span: expr.span,
+                });
+            }
+            hir::Expr::RecordUpdate(expr) => {
+                self.compile_expr(&expr.base, chunk);
+                for field in &expr.fields {
+                    self.compile_expr(&field.value, chunk);
+                }
+                chunk.instructions.push(Instruction::UpdateRecord {
+                    fields: expr.fields.iter().map(|field| field.name).collect(),
+                    span: expr.span,
+                });
+            }
             hir::Expr::Unary(expr) => {
                 self.compile_expr(&expr.expr, chunk);
                 chunk.instructions.push(match expr.op {

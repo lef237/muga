@@ -1,0 +1,18 @@
+record User {
+  name: String
+  age: Int
+}
+
+fn birthday(user: User): User {
+  user.with(age: user.age + 1)
+}
+
+fn main(): Int {
+  user = User {
+    name: "Ada"
+    age: 20
+  }
+
+  older = birthday(user)
+  older.age
+}

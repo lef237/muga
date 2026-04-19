@@ -145,7 +145,7 @@ Muga v1 still allows function values in ordinary bindings and parameter position
 
 ## 8. Receiver Parameters
 
-Receiver-style functions use `self: Type` as the first parameter.
+Receiver-style functions use an explicitly annotated first parameter of record type.
 
 Example:
 
@@ -158,9 +158,9 @@ fn display_name(self: User): String {
 v1 rules:
 
 - the receiver parameter must be first
-- the receiver parameter must be written literally as `self: Type`
-- the receiver type annotation is mandatory
-- `self` is still just an immutable parameter binding in the function body
+- the receiver parameter must have an explicit record-type annotation
+- any identifier may be used for that parameter; `self` is conventional but not required
+- that parameter is still just an immutable parameter binding in the function body
 - receiver-style functions are still ordinary named functions
 
 The ordinary call form remains valid:
