@@ -89,18 +89,58 @@ Allowed in principle:
 Example:
 
 ```txt
-fn inc(x: Int): Int {
+fn inc(x) {
   x + 1
 }
 
-fn apply(x: Int, f: Int -> Int): Int {
+fn apply(x: Int, f): Int {
   f(x)
 }
 
 apply(10, inc)
-apply(10, fn(n: Int): Int {
+apply(10, fn(n) {
   n + 1
 })
+```
+
+If a higher-order parameter is used in a way that determines a unique function type inside the same function body, its function-type annotation may be omitted.
+
+Examples:
+
+```txt
+fn apply(x: Int, f): Int {
+  f(x)
+}
+
+fn offset(x: Int, f) {
+  f(x) + 1
+}
+```
+
+By contrast, this remains ambiguous in v1:
+
+```txt
+fn apply(x, f) {
+  f(x)
+}
+```
+
+This also remains ambiguous in v1:
+
+```txt
+fn show(x: Int, f) {
+  print(f(x))
+}
+```
+
+because `print` accepts `Int`, `Bool`, or `String`, so the callback result type is not uniquely determined.
+
+An explicit arrow annotation remains valid and useful:
+
+```txt
+fn show(x: Int, f: Int -> String): String {
+  print(f(x))
+}
 ```
 
 ## 5. Record Typing
@@ -197,8 +237,13 @@ v1 inference may use:
 - literal types
 - operator constraints
 - branch result agreement
+- expected types from the surrounding expression inside the same function body
 - explicit annotations already present in the same declaration
 - explicit function-type annotations on parameters
+
+v1 does not use call sites in other functions or modules as an inference source.
+
+In future module or package boundaries, explicit function-type annotations are expected to remain the preferred interface style even when a local implementation might be inferable.
 
 Examples:
 

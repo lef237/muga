@@ -55,13 +55,49 @@ Anonymous functions remain ordinary function values and may be passed to higher-
 Example:
 
 ```txt
-fn apply(x: Int, f: Int -> Int): Int {
+fn apply(x: Int, f): Int {
   f(x)
 }
 
-apply(10, fn(n: Int): Int {
+apply(10, fn(n) {
   n + 1
 })
+```
+
+If the function body determines a unique function type locally, a higher-order parameter may omit its arrow annotation.
+
+Example:
+
+```txt
+fn offset(x: Int, f) {
+  f(x) + 1
+}
+```
+
+This remains invalid in v1:
+
+```txt
+fn apply(x, f) {
+  f(x)
+}
+```
+
+Another invalid case:
+
+```txt
+fn show(x: Int, f) {
+  print(f(x))
+}
+```
+
+because `print` accepts several concrete result types and therefore does not uniquely determine the callback result.
+
+An explicit arrow annotation is still the preferred way to document a callback contract:
+
+```txt
+fn show(x: Int, f: Int -> String): String {
+  print(f(x))
+}
 ```
 
 ## 3. Receiver-Style Functions
