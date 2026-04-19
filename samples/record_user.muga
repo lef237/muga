@@ -1,0 +1,17 @@
+record User {
+  name: String
+  age: Int
+}
+
+fn display_name(self: User): String {
+  self.name
+}
+
+fn main(): String {
+  user = User {
+    name: "Ada"
+    age: 20
+  }
+
+  user.display_name()
+}
