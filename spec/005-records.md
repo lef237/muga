@@ -119,6 +119,18 @@ Resolution order:
 3. otherwise, if `name(expr, arg1, arg2, ...)` is a valid ordinary function call, resolve by UFCS-style desugaring
 4. otherwise, reject the expression
 
+Example:
+
+```txt
+10.start().inc().inc().value.double()
+```
+
+may be understood as repeated UFCS-style desugaring, equivalent to:
+
+```txt
+double(inc(inc(start(10))).value)
+```
+
 Because v1 has no overloading, there is at most one visible ordinary function named `name`.
 
 ## 7. No Function-Valued Fields in v1

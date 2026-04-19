@@ -1,0 +1,15 @@
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn double(x: Int): Int {
+  x * 2
+}
+
+fn minus(x: Int, y: Int): Int {
+  x - y
+}
+
+fn main(): Int {
+  3.inc().double().minus(4)
+}

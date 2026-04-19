@@ -72,19 +72,17 @@ This repository currently contains a v1 specification draft and an early Rust im
 - `run` prints the return value when a zero-argument `main()` exists
 - `print` is available as a prelude builtin
 - `print(x)` prints `Int`, `Bool`, or `String` on one line and returns the same value
-- `record`, field access, and `record.with` update are implemented
-- receiver-style chained calls, UFCS fallback, and arrow function type annotations are not implemented yet
+- `record`, field access, `record.with` update, and chained UFCS-style calls are implemented
+- explicit receiver-style distinction and arrow function type annotations are not implemented yet
 
 ## Planned Priority
 
 The remaining work around records, dot syntax, and receiver-style calls is currently prioritized as follows:
 
 1. explicit resolution rules for receiver-parameter style
-2. chained calls
-3. UFCS-style fallback
-4. function types in parameter annotations and higher-order function annotation syntax
-5. pipe syntax if it becomes necessary later
-6. broader chain sugar extensions after the core model is stable
+2. function types in parameter annotations and higher-order function annotation syntax
+3. pipe syntax if it becomes necessary later
+4. broader chain sugar extensions after the core model is stable
 
 ```bash
 cargo run -- check path/to/file.muga
@@ -106,5 +104,13 @@ cargo run -- path/to/file.muga
 - [samples/record_counter_loop.muga](./samples/record_counter_loop.muga) (runnable sample for mutable bindings and `record.with(...)`)
 - [samples/nested_record_access.muga](./samples/nested_record_access.muga) (runnable sample for nested record access)
 - [samples/record_with_update.muga](./samples/record_with_update.muga) (runnable sample for `record`, field access, and `record.with(...)`)
+- [samples/method_chain_user.muga](./samples/method_chain_user.muga) (runnable sample for chained UFCS-style calls)
+- [samples/number_chain.muga](./samples/number_chain.muga) (runnable sample for chaining plain functions on `Int`)
+- [samples/print_chain.muga](./samples/print_chain.muga) (runnable sample for chaining through builtin `print`)
+- [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
 - [samples/planned_record_user.muga](./samples/planned_record_user.muga) (planned syntax sample for `record`, receiver-style functions, and dot syntax)
 - [samples/planned_higher_order_functions.muga](./samples/planned_higher_order_functions.muga) (planned syntax sample for `->` function types and higher-order functions)
+
+Sample note:
+
+- In [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga), `10.start().inc().inc().value.double()` has the same meaning as `double(inc(inc(start(10))).value)`. Both chain style and ordinary call style are valid.

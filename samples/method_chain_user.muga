@@ -1,0 +1,25 @@
+record User {
+  name: String
+  age: Int
+}
+
+fn birthday(user: User): User {
+  user.with(age: user.age + 1)
+}
+
+fn age_plus(user: User, years: Int): User {
+  user.with(age: user.age + years)
+}
+
+fn rename(user: User, name: String): User {
+  user.with(name: name)
+}
+
+fn main(): Int {
+  user = User {
+    name: "Ada"
+    age: 20
+  }
+
+  user.birthday().age_plus(3).rename("Ada Lovelace").age
+}
