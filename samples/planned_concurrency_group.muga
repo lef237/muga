@@ -1,3 +1,5 @@
+# Recommended Phase 1 direction: structured task scope with explicit spawn and join
+
 group {
   user_task = spawn fetch_user(id)
   orders_task = spawn fetch_orders(id)

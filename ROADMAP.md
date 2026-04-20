@@ -363,11 +363,10 @@ Important constraint:
 
 Initial language-level direction:
 
-- `spawn expr` or equivalent lightweight task creation
-- lexical task scopes or groups
-- explicit `join` / `await`-like result collection without turning all functions into colored async functions
-- channels with readable send/receive operations
-- `select`-style waiting only after the simpler core model is stable
+- Phase 1 should stabilize `group`, `spawn`, and `join`
+- Phase 2 can add channels with readable send/receive operations
+- Phase 3 can add `select`-style waiting, timeouts, and related coordination features
+- the primary model should stay task-group based rather than centered on colored async functions
 
 Safety direction:
 

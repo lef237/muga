@@ -1,6 +1,8 @@
 # Concurrency Draft
 
-Status: design draft only. This document is not implemented in the Rust compiler yet. It defines a recommended direction for lightweight, structured, high-performance concurrency in Muga.
+Status: design draft only. This document is not implemented in the Rust compiler yet.
+
+This draft narrows the recommended direction for Muga concurrency into phases, so the first implemented core stays small, readable, and compiler-friendly.
 
 ## 1. Design Goals
 
@@ -15,7 +17,7 @@ Muga's concurrency model should aim for all of the following:
 
 This draft is intentionally positive and forward-looking.
 
-It is not meant to criticize any existing language. The goal is to combine the easiest and clearest parts of modern concurrency design into something that fits Muga.
+It is not meant to criticize any existing language. The goal is to combine the clearest parts of modern concurrency design into something that fits Muga.
 
 ## 2. Core Direction
 
@@ -23,35 +25,88 @@ The recommended direction is:
 
 - lightweight tasks
 - structured concurrency
-- typed message passing
 - immutable-by-default sharing
 - explicit joins and cancellation
-- no "function coloring" as the primary user model
+- no async function coloring as the primary user model
+
+The most important recommendation is that **Muga should stabilize task groups first**. Channels, `select`, timeouts, and service-style runtime features should come later.
 
 In practical terms, the preferred base model is:
 
 - `group { ... }` creates a task scope
 - `spawn expr` starts lightweight concurrent work inside that scope
 - `task.join()` waits for a task and returns its result
-- `channel(Type, capacity: N)` creates a typed channel
-- `send` / `recv` style operations coordinate tasks
 
-## 3. Why This Fits Muga
+This draft still recommends typed channels, but **not as part of the smallest first implementation**.
 
-This direction fits Muga's existing language shape:
+## 3. Phased Rollout
+
+### 3.1 Phase 1: Structured task core
+
+Phase 1 should define and implement:
+
+- `group`
+- `spawn`
+- `join()`
+- structured failure propagation
+- structured cancellation
+- task-boundary capture rules
+
+Phase 1 is the recommended first stable concurrency surface for Muga.
+
+### 3.2 Phase 2: Typed channels
+
+Only after the task core is clear should Muga add:
+
+- typed channels
+- buffered and unbuffered channel behavior
+- `send` / `recv`
+- channel close semantics
+- worker-pool style coordination
+
+This phase depends on a clearer story for task and channel types.
+
+### 3.3 Phase 3: Selection and time
+
+After channels are stable, Muga can add:
+
+- `select` or equivalent multi-wait syntax
+- timeout support
+- deadline support
+- cancellation-token style APIs if they are still needed
+
+This should come after real usage and benchmarks exist for the smaller core.
+
+### 3.4 Later phases
+
+The following are intentionally later topics:
+
+- detached background tasks
+- supervision trees
+- long-lived service runtimes
+- async IO integration details
+- distributed runtime or actor-style features
+
+These may matter for web systems, but they should not shape the smallest useful core.
+
+## 4. Why This Fits Muga
+
+This phased direction fits Muga's existing language shape:
 
 - bindings are immutable by default
 - explicit structure is preferred over hidden behavior
 - local reasoning is preferred over global magic
 - the language already favors simple surface forms over heavy abstraction systems
 
-Structured task scopes also fit the package / compiler roadmap well:
+Structured task scopes also fit the package and compiler roadmap well:
 
 - they are easier to typecheck than detached background execution
 - they are easier to lower into typed HIR and MIR
 - they make runtime leaks and forgotten tasks easier to prevent
 
-## 4. Task Scopes
+## 5. Phase 1: Structured Task Core
+
+### 5.1 Task scopes
 
 The recommended primary concurrency construct is a lexical task scope:
 
@@ -63,7 +118,7 @@ group {
 
 This scope defines the lifetime boundary for child tasks created inside it.
 
-Initial draft rules:
+Recommended Phase 1 rules:
 
 - child tasks may not outlive their enclosing `group`
 - leaving the group waits for child task completion
@@ -72,9 +127,7 @@ Initial draft rules:
 
 This gives Muga structured concurrency by default.
 
-Detached background tasks may still be added later, but they should not be the default style.
-
-## 5. Spawning Tasks
+### 5.2 Spawning tasks
 
 The recommended spawn form is:
 
@@ -98,7 +151,7 @@ Recommended properties:
 
 This keeps task creation close to an ordinary expression-based style.
 
-## 6. Joining Tasks
+### 5.3 Joining tasks
 
 The recommended result-collection form is:
 
@@ -120,34 +173,57 @@ group {
 }
 ```
 
-This should behave as:
+Recommended Phase 1 behavior:
 
 - wait until the task finishes
 - if it succeeds, return its value
-- if it fails, propagate failure to the group
+- if it fails, propagate failure through the enclosing group
 
 This style keeps result flow explicit without forcing a separate async-only function hierarchy.
 
-## 7. No Async Function Coloring As The Primary Model
+### 5.4 Sharing and safety
 
-The recommended direction is to avoid making the entire language revolve around `async fn` and `await` coloring.
+The recommended safety direction is:
 
-That means the primary user experience should stay close to:
+- immutable values are easy to share across tasks
+- mutable capture across task boundaries is restricted or made explicit
+- channels and ownership transfer are the preferred coordination style once they exist
+- locks and shared mutable synchronization may exist later, but they should not define the primary style
 
-- ordinary functions
-- explicit task scopes
-- explicit spawn
-- explicit join
+Initial Phase 1 recommendation:
 
-This is recommended because it keeps Muga readable and makes concurrency feel like a clear extension of the core language rather than a second language living beside it.
+- reading outer immutable bindings from a spawned task is allowed
+- capturing or mutating outer mutable bindings across a task boundary is rejected in the default model
 
-This does not forbid future async-specific APIs.
+That keeps task interactions easier to reason about and avoids many accidental races in the common case.
 
-It only means they should not become the main model unless there is strong evidence they are necessary.
+### 5.5 Failure and cancellation
 
-## 8. Channels
+Cancellation should be part of the model from the start.
 
-The recommended first coordination primitive is a typed channel.
+Recommended Phase 1 direction:
+
+- group failure cancels sibling tasks
+- cancellation is structured and propagates downward
+- `join()` observes normal completion or propagated failure
+
+This is preferable to a model where cancellation is bolted on later.
+
+### 5.6 Task handle typing
+
+Muga will eventually need an internal notion equivalent to `Task[T]`.
+
+However, this draft does **not** yet fix:
+
+- how task-handle types are written in source
+- whether task handles are user-nameable types in v1
+- whether task handles are modeled as nominal or builtin runtime types
+
+Phase 1 only requires that the compiler and runtime carry task-result typing internally.
+
+## 6. Phase 2: Typed Channels
+
+After the task core is stable, the recommended first coordination primitive is a typed channel.
 
 Suggested construction form:
 
@@ -176,55 +252,73 @@ This keeps the syntax consistent with the rest of Muga:
 - explicit values
 - no special symbolic arrows required
 
-## 9. Sharing And Safety
+### 6.1 Why channels are not Phase 1
 
-The recommended safety direction is:
+Channels depend on unresolved questions that do not need to block the task core:
 
-- immutable values are easy to share across tasks
-- mutable capture across task boundaries is restricted or made explicit
-- channels and ownership transfer are the preferred coordination style
-- locks and shared mutable synchronization may exist, but they should not define the primary style
+- generic type story for `Channel[T]`
+- close semantics
+- `recv()` behavior at end-of-stream
+- buffering guarantees
+- fairness and wake-up policy
 
-This matches Muga's immutable-by-default design.
+Those are real design questions, but they are easier to answer after the simpler task core exists.
 
-Initial draft recommendation:
+## 7. No Async Function Coloring As The Primary Model
 
-- reading outer immutable bindings from a spawned task is allowed
-- capturing or mutating outer mutable bindings across a task boundary is rejected in the default model
+The recommended direction is to avoid making the entire language revolve around `async fn` and `await` coloring.
 
-That keeps task interactions easier to reason about and avoids many accidental races in the common case.
+That means the primary user experience should stay close to:
 
-## 10. Cancellation
+- ordinary functions
+- explicit task scopes
+- explicit `spawn`
+- explicit `join`
 
-Cancellation should be part of the model from the start.
+This keeps Muga readable and makes concurrency feel like a clear extension of the core language rather than a second language living beside it.
 
-Recommended direction:
+This does not forbid future async-specific APIs.
 
-- group failure cancels sibling tasks
-- cancellation is structured and propagates downward
-- task APIs may later grow explicit timeout and cancellation-token forms
+It only means they should not become the main model unless there is strong evidence they are necessary.
 
-This is preferable to a model where cancellation is bolted on after the fact.
+## 8. Example Usage
 
-## 11. Sample Style
-
-### 11.1 Parallel request fan-out
+### 8.1 Phase 1 fan-out in a request handler
 
 ```muga
-group {
-  user_task = spawn fetch_user(id)
-  orders_task = spawn fetch_orders(id)
-  profile_task = spawn fetch_profile(id)
+fn handle(req: http::Request): http::Response {
+  group {
+    user_task = spawn users::fetch(req.user_id)
+    orders_task = spawn orders::recent(req.user_id)
+    profile_task = spawn profiles::load(req.user_id)
 
-  Page {
-    user: user_task.join()
-    orders: orders_task.join()
-    profile: profile_task.join()
+    http::json(Page {
+      user: user_task.join()
+      orders: orders_task.join()
+      profile: profile_task.join()
+    })
   }
 }
 ```
 
-### 11.2 Worker pipeline
+This is the clearest first target for Muga concurrency:
+
+- a small lexical scope
+- a few lightweight spawned tasks
+- explicit joins at the point where results are needed
+
+### 8.2 Phase 1 package-qualified chained call inside a task
+
+```muga
+group {
+  next_age = spawn user.users::birthday().age
+  next_age.join()
+}
+```
+
+This sample shows that Muga's normal expression style should remain usable inside concurrent code.
+
+### 8.3 Phase 2 worker pipeline
 
 ```muga
 group {
@@ -246,18 +340,19 @@ group {
 }
 ```
 
-### 11.3 Package-qualified chained call inside a task
+This style is still recommended, but it should come after the smaller task core is working well.
 
-```muga
-group {
-  next_age = spawn user.users::birthday().age
-  next_age.join()
-}
-```
+## 9. Open Design Constraints
 
-This sample shows that Muga's normal expression style should remain usable inside concurrent code.
+The following constraints should stay visible while this draft evolves:
 
-## 12. Deferred Topics
+- concurrency syntax alone does not determine performance
+- scheduler quality, allocation behavior, synchronization costs, and backend quality will dominate real results
+- the task core should be implementable without requiring expensive global effect analysis
+- diagnostics for task failure, cancellation, and cross-task source spans will matter early
+- task and channel designs should fit future typed HIR and MIR lowering cleanly
+
+## 10. Deferred Topics
 
 This draft does not yet fix the full design of:
 
@@ -268,11 +363,12 @@ This draft does not yet fix the full design of:
 - async IO integration
 - scheduler details
 - task type syntax in source
+- channel type syntax in source
 - interaction with generic types
 
 Those topics should be decided after the compiler core is stronger and after benchmarking data exists.
 
-## 13. Performance Target
+## 11. Performance Target
 
 The performance goal is ambitious:
 
@@ -297,16 +393,16 @@ So the right policy is:
 - make the semantics structured and safe
 - validate performance through benchmarks rather than assumptions
 
-## 14. Recommendation
+## 12. Recommendation
 
 The recommended Muga concurrency direction is:
 
-1. `group`
-2. `spawn`
-3. `join`
-4. typed channels
-5. structured cancellation
-6. shared mutability kept explicit and secondary
+1. stabilize `group`
+2. stabilize `spawn`
+3. stabilize `join`
+4. define structured failure and cancellation
+5. add typed channels only after the task core is solid
+6. add `select` and time-based waiting only after channels are proven out
 
 This is the clearest path toward concurrency that is:
 

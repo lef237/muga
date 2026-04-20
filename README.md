@@ -192,8 +192,8 @@ cargo run -- path/to/file.muga
 
 Planned concurrency draft samples:
 
-- [samples/planned_concurrency_group.muga](./samples/planned_concurrency_group.muga)
-- [samples/planned_concurrency_channels.muga](./samples/planned_concurrency_channels.muga)
+- [samples/planned_concurrency_group.muga](./samples/planned_concurrency_group.muga) (recommended Phase 1 direction: `group` / `spawn` / `join`)
+- [samples/planned_concurrency_channels.muga](./samples/planned_concurrency_channels.muga) (later-phase extension after the structured task core is stable)
 
 Sample note:
 
