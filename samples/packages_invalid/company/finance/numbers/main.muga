@@ -1,0 +1,5 @@
+package company::finance::numbers
+
+pub fn score(x: Int): Int {
+  x + 100
+}

@@ -1,0 +1,8 @@
+package app::import_alias_conflict
+
+import company::analytics::numbers
+import company::finance::numbers
+
+fn main(): Int {
+  0
+}
