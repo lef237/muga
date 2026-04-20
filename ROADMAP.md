@@ -321,7 +321,60 @@ Why this is not earlier:
 - backend speed matters
 - but bad front-end and package architecture will dominate build time first
 
-## 8. Standard Library And Web-Oriented Capabilities
+## 8. Concurrency Model And Runtime
+
+Goal:
+
+- give Muga a lightweight and high-performance concurrency model that is simple to read, easy to use, and safe by default
+
+Design target:
+
+- lightweight tasks in the spirit of goroutine-style ease of use
+- structured lifetimes rather than fire-and-forget by default
+- typed message-passing primitives
+- explicit cancellation and timeout support
+- strong defaults against accidental shared-state bugs
+
+Recommended direction:
+
+- keep concurrency compiler-friendly and runtime-friendly
+- prefer structured concurrency over unbounded detached task creation
+- use task handles and task groups instead of function coloring as the primary model
+- use typed channels or equivalent message-passing primitives for coordination
+- treat shared mutable state as opt-in, not as the default style
+
+Why this is here and not earlier:
+
+- concurrency design affects runtime, MIR shape, diagnostics, and standard library boundaries
+- it should not be fully implemented before the compiler core and package model are stable
+- but it should be designed before web-oriented libraries harden around a weaker model
+
+What Muga should try to combine:
+
+- Go-like ease of spawning lightweight concurrent work
+- structured lifetime management similar to modern structured-concurrency systems
+- static restrictions that fit Muga's immutable-by-default model
+- runtime designs that can be benchmarked directly against real concurrent workloads
+
+Important constraint:
+
+- the roadmap should treat "Go-level or better" as a benchmark target, not as something syntax alone can guarantee
+- the actual result will depend on scheduler design, allocation behavior, synchronization costs, and backend quality
+
+Initial language-level direction:
+
+- Phase 1 should stabilize `group`, `spawn`, and `join`
+- Phase 2 can add channels with readable send/receive operations
+- Phase 3 can add `select`-style waiting, timeouts, and related coordination features
+- the primary model should stay task-group based rather than centered on colored async functions
+
+Safety direction:
+
+- immutable-by-default values should remain easy to share
+- mutable capture across task boundaries should be restricted or made explicit
+- synchronization primitives should exist, but they should not define the primary style
+
+## 9. Standard Library And Web-Oriented Capabilities
 
 Goal:
 
@@ -367,5 +420,6 @@ The roadmap is now:
 6. add cache and incremental compilation
 7. split VM IR from compiler IR
 8. add a fast native backend
+9. design and implement structured high-performance concurrency
 
 That is the most coherent path toward a simple, modern, and very fast Muga compiler.
