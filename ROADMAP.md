@@ -84,6 +84,61 @@ This gives Muga three benefits at once:
 - the VM remains useful for debugging, testing, and semantic validation
 - the language does not pay for duplicated front-end logic
 
+## Cross-Cutting Infrastructure
+
+These are not late polish tasks.
+
+They should start early and continue through the rest of the roadmap.
+
+### Benchmarking And Profiling
+
+Muga wants very fast compilation, so compile-time measurement has to be treated as core infrastructure.
+
+That means:
+
+- measure early
+- keep measuring after each architectural step
+- use stage-by-stage numbers to validate whether a change actually helps
+
+Expected measurements:
+
+- lex time
+- parse time
+- resolve time
+- typecheck time
+- HIR lowering time
+- package-interface loading time
+- MIR lowering time
+- codegen time
+
+This was previously described as a later standalone phase.
+
+The better interpretation is:
+
+- benchmarking begins before or during symbolization work
+- benchmarking continues through typed HIR, package interfaces, caching, and backend work
+
+### Diagnostics Architecture
+
+Diagnostics should also be treated as core architecture, not as UI polish.
+
+This matters more once Muga has:
+
+- package-qualified names
+- import graphs
+- interface checking
+- cached package artifacts
+- multiple lowering stages
+
+The diagnostic data model should eventually support:
+
+- stable source spans
+- cross-package error reporting
+- references to resolved bindings and package symbols
+- room for candidate suggestions and related notes
+
+This does not have to be a giant subsystem immediately, but the data model should be made deliberate before package interfaces and caching harden.
+
 ## Priority Order
 
 ## 1. Resolver And Typechecker Symbolization
@@ -106,7 +161,31 @@ Expected outcomes:
 - `BindingId` / `LocalId` style internal identities
 - less repeated `HashMap<String, ...>` traffic in inner loops
 
-## 2. Typed HIR
+## 2. Package Symbol Graph And Identity Model
+
+Goal:
+
+- define how symbols are identified across package boundaries before typed HIR and package interfaces are locked in
+
+Why this is third:
+
+- the current package implementation still flattens packages into one internal program
+- that is exactly the phase where symbol identity tends to drift if it is not fixed early
+- package interfaces, import resolution, and typed HIR all need a stable answer to "what symbol is this, across packages?"
+
+Expected outcomes:
+
+- a package-aware symbol identity model
+- stable IDs or handles for package-level items
+- a clear distinction between local binding identity and package-exported symbol identity
+- a package symbol graph that survives the end of flattening
+
+This is the architectural bridge between:
+
+- symbol-based local analysis
+- real package compilation units
+
+## 3. Typed HIR
 
 Goal:
 
@@ -122,15 +201,28 @@ Expected outcomes:
 
 - each HIR expression has a resolved type
 - each identifier use points to a resolved binding ID
+- each package-level reference points to a resolved package symbol identity
 - each function call has an already chosen callee shape
+- visibility, import resolution, and qualified-path resolution are already settled
 - receiver-style and chained-call resolution become explicit compiler data, not repeated logic
 
 Note:
 
 - the earlier roadmap item "receiver-style resolution" is now folded into this step
 - this is the right place to make that rule final
+- by the time a program reaches typed HIR, at least these things should be fixed:
+  - binding identity
+  - resolved callee shape
+  - resolved type
+  - package-qualified symbol identity
 
-## 3. Package Interfaces And Real Package Compilation Units
+HIR boundary:
+
+- typed HIR should still be relatively high-level
+- it should preserve language-level structure where that helps semantics and diagnostics
+- it should not yet be forced into backend-oriented control-flow form
+
+## 4. Package Interfaces And Real Package Compilation Units
 
 Goal:
 
@@ -155,7 +247,7 @@ Likely related work:
 - entry-package conventions
 - cleaner import graph diagnostics
 
-## 4. Build Cache And Incremental Compilation
+## 5. Build Cache And Incremental Compilation
 
 Goal:
 
@@ -175,7 +267,7 @@ Expected outcomes:
 
 This is the step where Muga starts to become a genuinely fast multi-package compiler instead of a fast small-language prototype.
 
-## 5. Split VM Bytecode From Compiler MIR
+## 6. Split VM Bytecode From Compiler MIR
 
 Goal:
 
@@ -190,6 +282,8 @@ Why this is fifth:
 
 Expected outcomes:
 
+- typed HIR remains semantics-fixed but still relatively high-level
+- MIR makes control flow, evaluation order, temporaries, and locals explicit
 - one path for interpreter / VM
 - one path for compiler backend
 - cleaner separation of concerns
@@ -200,7 +294,17 @@ Design policy:
 - do not let it become a second independent compiler architecture
 - new semantics should enter through typed HIR / MIR first, then flow to both backends
 
-## 6. Native Backend
+This boundary matters:
+
+- if typed HIR becomes too low-level, it collapses into MIR and the separation loses value
+- if typed HIR stays too high-level, both the VM and native backend pay for repeated lowering work
+
+The intended split is:
+
+- typed HIR: semantics fixed, still language-shaped
+- MIR: execution-shaped IR for backend work
+
+## 7. Native Backend
 
 Goal:
 
@@ -216,26 +320,6 @@ Why this is not earlier:
 
 - backend speed matters
 - but bad front-end and package architecture will dominate build time first
-
-## 7. Benchmarking And Profiling Infrastructure
-
-Goal:
-
-- measure compile time by stage and track regressions
-
-This should start early and continue through every phase, but it becomes especially valuable once the first fast compiler path exists.
-
-Expected measurements:
-
-- lex time
-- parse time
-- resolve time
-- typecheck time
-- lower time
-- package-interface loading time
-- codegen time
-
-This should be treated as ongoing infrastructure, not as a one-time final polish step.
 
 ## 8. Standard Library And Web-Oriented Capabilities
 
@@ -262,10 +346,12 @@ If work resumes right now, the best order is:
 
 1. symbol-based resolver
 2. symbol-based typechecker
-3. typed HIR
-4. receiver-style resolution finalization inside typed HIR lowering/checking
-5. package interfaces instead of flattening
-6. cache and incremental compilation
+3. package-aware symbol identity design
+4. typed HIR
+5. receiver-style resolution finalization inside typed HIR lowering/checking
+6. diagnostic data model tightening
+7. package interfaces instead of flattening
+8. cache and incremental compilation
 
 This order best matches the current state of the codebase.
 
@@ -273,11 +359,13 @@ This order best matches the current state of the codebase.
 
 The roadmap is now:
 
-1. make the front end fast internally
-2. make checked programs explicit through typed HIR
-3. make packages real compilation units
-4. add cache and incremental compilation
-5. split VM IR from compiler IR
-6. add a fast native backend
+1. measure performance from the beginning
+2. make the front end fast internally
+3. fix symbol identity across locals and packages
+4. make checked programs explicit through typed HIR
+5. make packages real compilation units
+6. add cache and incremental compilation
+7. split VM IR from compiler IR
+8. add a fast native backend
 
 That is the most coherent path toward a simple, modern, and very fast Muga compiler.

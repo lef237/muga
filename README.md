@@ -147,11 +147,11 @@ For more entry points, browse the [Samples](#samples) section below.
 
 The current recommended implementation order is:
 
-1. symbol-based resolver and typechecker
-2. typed HIR, including final receiver-style resolution rules
-3. package interfaces, caching, and incremental compilation
-4. compiler-oriented MIR and a fast native backend
-5. broader language/tooling work after the compiler core is stable
+1. start measuring compile-time costs and keep benchmarking throughout the compiler work
+2. move resolver and typechecker to symbol-based identities
+3. fix package-aware symbol identity, then introduce typed HIR
+4. replace package flattening with real package interfaces and caching
+5. split compiler MIR from the VM path, then add a fast native backend
 
 The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
