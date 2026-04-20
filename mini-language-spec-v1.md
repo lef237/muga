@@ -201,7 +201,7 @@ Precedence, from strongest to weakest:
 The dot operator has stable meanings:
 
 - `expr.name` means field access
-- `expr.name(args...)` means method-style or UFCS-style chained call
+- `expr.name(args...)` and `expr.alias::name(args...)` mean method-style or UFCS-style chained call
 - `expr.with(field: value, ...)` means non-destructive record update
 
 In v1, record fields may not have function type, so the dot operator keeps only those three intended meanings.
@@ -635,6 +635,7 @@ v1 adds nominal records and dot expressions with these rules:
 - `User { ... }` constructs a record value
 - `expr.name` reads a field
 - `expr.name(args...)` is resolved as a receiver-style or UFCS-style call
+- `expr.alias::name(args...)` is resolved as the UFCS-style call `alias::name(expr, args...)`
 - `expr.with(field: value, ...)` constructs a new record value with selected fields replaced
 - record fields may not have function type in v1
 

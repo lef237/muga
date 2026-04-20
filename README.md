@@ -80,7 +80,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - type inference is local-only
 - type inference is locally bidirectional inside one function body, including some higher-order parameters
 - receiver-style functions use a record type as the first parameter, and `self` is only a conventional parameter name
-- `expr.name` is field access and `expr.name(...)` is a chained call
+- `expr.name` is field access, while `expr.name(...)` and `expr.alias::name(...)` are chained calls
 - `record.with(field: expr, ...)` is a record-only non-destructive update
 - records use nominal data declarations together with record literals
 - record fields may not have function type
@@ -183,7 +183,7 @@ cargo run -- path/to/file.muga
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
-- [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`)
+- [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
 
 Sample note:
 

@@ -571,12 +571,12 @@ impl Parser {
             }
 
             if self.matches_simple(&TokenKind::Dot) {
-                let (name, name_span) = self.expect_ident()?;
-                if name == "with" && matches!(self.peek_kind(), TokenKind::LParen) {
+                let (first_name, first_span) = self.expect_ident()?;
+                if first_name == "with" && matches!(self.peek_kind(), TokenKind::LParen) {
                     let fields = self.parse_record_update_fields()?;
                     let span = expr
                         .span()
-                        .merge(fields.last().map(|field| field.span).unwrap_or(name_span));
+                        .merge(fields.last().map(|field| field.span).unwrap_or(first_span));
                     expr = Expr::RecordUpdate(RecordUpdateExpr {
                         base: Box::new(expr),
                         fields,
@@ -584,6 +584,18 @@ impl Parser {
                     });
                     continue;
                 }
+
+                let (callee_name, callee_span, qualified) =
+                    if self.matches_simple(&TokenKind::DoubleColon) {
+                        let (second_name, second_span) = self.expect_ident()?;
+                        (
+                            format!("{first_name}::{second_name}"),
+                            first_span.merge(second_span),
+                            true,
+                        )
+                    } else {
+                        (first_name, first_span, false)
+                    };
 
                 if matches!(self.peek_kind(), TokenKind::LParen) {
                     let start =
@@ -600,8 +612,8 @@ impl Parser {
                     let end =
                         self.expect_simple(TokenKind::RParen, "expected `)` after call arguments")?;
                     let callee = Expr::Ident(IdentExpr {
-                        name,
-                        span: name_span,
+                        name: callee_name,
+                        span: callee_span,
                     });
                     let base = expr;
                     let base_span = base.span();
@@ -616,10 +628,18 @@ impl Parser {
                     continue;
                 }
 
-                let span = expr.span().merge(name_span);
+                if qualified {
+                    return Err(Diagnostic::new(
+                        "P015",
+                        "qualified chained calls must use `expr.alias::name(...)`",
+                        callee_span,
+                    ));
+                }
+
+                let span = expr.span().merge(callee_span);
                 expr = Expr::Field(FieldExpr {
                     base: Box::new(expr),
-                    field: name,
+                    field: callee_name,
                     span,
                 });
                 continue;
