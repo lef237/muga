@@ -184,6 +184,7 @@ cargo run -- path/to/file.muga
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
 - [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
+- [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)
 
 Sample note:
 
@@ -194,6 +195,12 @@ Higher-order annotation guide:
 - Omit an arrow annotation when the callback type is uniquely determined inside the same function body, as in [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) and [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga).
 - Keep an arrow annotation when local inference is still ambiguous, or when you want the callback contract to be obvious at the declaration site, as in [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga).
 - In package mode, `pub fn` already requires a fully annotated signature. Private helpers inside a package can keep using local inference.
+
+Package alias note:
+
+- `import company::analytics::numbers` gives the default local alias `numbers`.
+- If two imports would produce the same alias, the file is rejected with `PK007`.
+- Use `as` to disambiguate, as shown in [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga).
 
 ## License
 

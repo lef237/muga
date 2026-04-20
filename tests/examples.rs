@@ -135,6 +135,11 @@ fn package_entry_runs() {
 }
 
 #[test]
+fn package_alias_demo_runs() {
+    assert_package_runs("samples/packages/app/alias_demo/main.muga", "112", "");
+}
+
+#[test]
 fn package_public_function_requires_explicit_signature() {
     let diagnostics =
         muga::check_path(Path::new("samples/packages_invalid/app/bad/main.muga")).unwrap_err();
@@ -142,6 +147,18 @@ fn package_public_function_requires_explicit_signature() {
         diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "PK011"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn package_import_alias_conflict_is_rejected() {
+    let diagnostics = muga::check_path(Path::new(
+        "samples/packages_invalid/app/import_alias_conflict/main.muga",
+    ))
+    .unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic.code == "PK007"),
         "{diagnostics:#?}"
     );
 }
