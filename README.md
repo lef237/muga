@@ -98,6 +98,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/005-records.md](./spec/005-records.md)
   - [spec/006-packages.md](./spec/006-packages.md) (draft)
 - Error catalog: [errors.md](./errors.md)
+- Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
 
 ## Examples
 
@@ -146,11 +147,13 @@ For more entry points, browse the [Samples](#samples) section below.
 
 The current recommended implementation order is:
 
-1. explicit resolution rules for receiver-parameter style
-2. package interfaces, caching, and incremental compilation
-3. import graph diagnostics and package tooling around [spec/006-packages.md](./spec/006-packages.md)
-4. pipe syntax only if it becomes necessary later
-5. broader chain sugar extensions after the core model is stable
+1. symbol-based resolver and typechecker
+2. typed HIR, including final receiver-style resolution rules
+3. package interfaces, caching, and incremental compilation
+4. compiler-oriented MIR and a fast native backend
+5. broader language/tooling work after the compiler core is stable
+
+The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
 ```bash
 cargo run -- check path/to/file.muga
