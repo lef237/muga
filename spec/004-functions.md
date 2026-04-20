@@ -122,6 +122,7 @@ and may also be used through chained call syntax:
 
 ```txt
 user.display_name()
+user.users::birthday()
 ```
 
 In v1, the receiver parameter rules are:

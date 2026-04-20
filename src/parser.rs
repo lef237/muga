@@ -21,8 +21,34 @@ impl Parser {
     }
 
     fn parse_program(&mut self) -> Result<Program, Diagnostic> {
+        let mut package = None;
+        let mut imports = Vec::new();
         let mut statements = Vec::new();
         self.skip_newlines();
+
+        if matches!(self.peek_kind(), TokenKind::Package) {
+            package = Some(self.parse_package_decl()?);
+            self.consume_package_boundary()?;
+            self.skip_newlines();
+
+            while matches!(self.peek_kind(), TokenKind::Import) {
+                imports.push(self.parse_import_decl()?);
+                self.consume_package_boundary()?;
+                self.skip_newlines();
+            }
+
+            while !self.is_eof() {
+                statements.push(self.parse_package_item()?);
+                self.consume_package_boundary()?;
+                self.skip_newlines();
+            }
+
+            return Ok(Program {
+                package,
+                imports,
+                statements,
+            });
+        }
 
         while !self.is_eof() {
             statements.push(self.parse_top_stmt()?);
@@ -30,13 +56,88 @@ impl Parser {
             self.skip_newlines();
         }
 
-        Ok(Program { statements })
+        Ok(Program {
+            package,
+            imports,
+            statements,
+        })
     }
 
     fn parse_top_stmt(&mut self) -> Result<Stmt, Diagnostic> {
         match self.peek_kind() {
-            TokenKind::Record => self.parse_record_decl().map(Stmt::RecordDecl),
+            TokenKind::Pub => Err(Diagnostic::new(
+                "P014",
+                "`pub` is only allowed in package mode",
+                self.current_span(),
+            )),
+            TokenKind::Import => Err(Diagnostic::new(
+                "P014",
+                "`import` is only allowed in package mode",
+                self.current_span(),
+            )),
+            TokenKind::Package => Err(Diagnostic::new(
+                "P014",
+                "`package` must appear at the start of the file",
+                self.current_span(),
+            )),
+            TokenKind::Record => self
+                .parse_record_decl_with_visibility(Visibility::Private)
+                .map(Stmt::RecordDecl),
             _ => self.parse_stmt(),
+        }
+    }
+
+    fn parse_package_decl(&mut self) -> Result<PackageDecl, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::Package, "expected `package`")?;
+        let (path, end) = self.parse_package_path()?;
+        Ok(PackageDecl {
+            path,
+            span: start.merge(end),
+        })
+    }
+
+    fn parse_import_decl(&mut self) -> Result<ImportDecl, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::Import, "expected `import`")?;
+        let (path, end) = self.parse_package_path()?;
+        let (alias, end) = if self.matches_simple(&TokenKind::As) {
+            let (alias, alias_span) = self.expect_ident()?;
+            (alias, end.merge(alias_span))
+        } else {
+            (
+                path.rsplit("::")
+                    .next()
+                    .expect("package path has segment")
+                    .to_string(),
+                end,
+            )
+        };
+        Ok(ImportDecl {
+            path,
+            alias,
+            span: start.merge(end),
+        })
+    }
+
+    fn parse_package_item(&mut self) -> Result<Stmt, Diagnostic> {
+        let visibility = if self.matches_simple(&TokenKind::Pub) {
+            Visibility::Public
+        } else {
+            Visibility::Private
+        };
+        match self.peek_kind() {
+            TokenKind::Record => self
+                .parse_record_decl_with_visibility(visibility)
+                .map(Stmt::RecordDecl),
+            TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self
+                .parse_func_decl_with_visibility(visibility)
+                .map(Stmt::FuncDecl),
+            _ => Err(Diagnostic::new(
+                "P014",
+                "package mode allows only top-level `record` and `fn` declarations",
+                self.current_span(),
+            )),
         }
     }
 
@@ -48,9 +149,14 @@ impl Parser {
                 "record declarations are top-level only",
                 self.current_span(),
             )),
-            TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => {
-                self.parse_func_decl().map(Stmt::FuncDecl)
-            }
+            TokenKind::Pub => Err(Diagnostic::new(
+                "P014",
+                "`pub` is only allowed for top-level declarations in package mode",
+                self.current_span(),
+            )),
+            TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self
+                .parse_func_decl_with_visibility(Visibility::Private)
+                .map(Stmt::FuncDecl),
             TokenKind::If => self.parse_if_stmt_or_expr_stmt(),
             TokenKind::While => self.parse_while_stmt().map(Stmt::While),
             TokenKind::Ident(_) if matches!(self.peek_kind_n(1), TokenKind::Eq) => {
@@ -76,7 +182,10 @@ impl Parser {
         })
     }
 
-    fn parse_record_decl(&mut self) -> Result<RecordDecl, Diagnostic> {
+    fn parse_record_decl_with_visibility(
+        &mut self,
+        visibility: Visibility,
+    ) -> Result<RecordDecl, Diagnostic> {
         let start = self.current_span();
         self.expect_simple(TokenKind::Record, "expected `record`")?;
         let (name, _) = self.expect_ident()?;
@@ -102,12 +211,16 @@ impl Parser {
         let end = self.expect_simple(TokenKind::RBrace, "expected `}` after record declaration")?;
         Ok(RecordDecl {
             name,
+            visibility,
             fields,
             span: start.merge(end),
         })
     }
 
-    fn parse_func_decl(&mut self) -> Result<FuncDecl, Diagnostic> {
+    fn parse_func_decl_with_visibility(
+        &mut self,
+        visibility: Visibility,
+    ) -> Result<FuncDecl, Diagnostic> {
         let start = self.current_span();
         self.expect_simple(TokenKind::Fn, "expected `fn`")?;
         let (name, _) = self.expect_ident()?;
@@ -119,6 +232,7 @@ impl Parser {
         let span = start.merge(body.span);
         Ok(FuncDecl {
             name,
+            visibility,
             params,
             return_type,
             body,
@@ -198,7 +312,8 @@ impl Parser {
                     }
                 }
             }
-            let end = self.expect_simple(TokenKind::RParen, "expected `)` after type expression")?;
+            let end =
+                self.expect_simple(TokenKind::RParen, "expected `)` after type expression")?;
             return Ok((types, start.merge(end)));
         }
 
@@ -208,12 +323,21 @@ impl Parser {
 
     fn parse_type_atom(&mut self) -> Result<(TypeExpr, Span), Diagnostic> {
         let token = self.advance();
-        match &token.kind {
-            TokenKind::Ident(name) if name == "Int" => Ok((TypeExpr::Int, token.span)),
-            TokenKind::Ident(name) if name == "Bool" => Ok((TypeExpr::Bool, token.span)),
-            TokenKind::Ident(name) if name == "String" => Ok((TypeExpr::String, token.span)),
-            TokenKind::Ident(name) => Ok((TypeExpr::Named(name.clone()), token.span)),
-            _ => Err(Diagnostic::new("P001", "expected a type expression", token.span)),
+        match token.kind {
+            TokenKind::Ident(name) => {
+                let (name, span) = self.parse_type_name_after_first(name, token.span)?;
+                match name.as_str() {
+                    "Int" => Ok((TypeExpr::Int, span)),
+                    "Bool" => Ok((TypeExpr::Bool, span)),
+                    "String" => Ok((TypeExpr::String, span)),
+                    _ => Ok((TypeExpr::Named(name), span)),
+                }
+            }
+            _ => Err(Diagnostic::new(
+                "P001",
+                "expected a type expression",
+                token.span,
+            )),
         }
     }
 
@@ -447,12 +571,12 @@ impl Parser {
             }
 
             if self.matches_simple(&TokenKind::Dot) {
-                let (name, name_span) = self.expect_ident()?;
-                if name == "with" && matches!(self.peek_kind(), TokenKind::LParen) {
+                let (first_name, first_span) = self.expect_ident()?;
+                if first_name == "with" && matches!(self.peek_kind(), TokenKind::LParen) {
                     let fields = self.parse_record_update_fields()?;
                     let span = expr
                         .span()
-                        .merge(fields.last().map(|field| field.span).unwrap_or(name_span));
+                        .merge(fields.last().map(|field| field.span).unwrap_or(first_span));
                     expr = Expr::RecordUpdate(RecordUpdateExpr {
                         base: Box::new(expr),
                         fields,
@@ -461,8 +585,21 @@ impl Parser {
                     continue;
                 }
 
+                let (callee_name, callee_span, qualified) =
+                    if self.matches_simple(&TokenKind::DoubleColon) {
+                        let (second_name, second_span) = self.expect_ident()?;
+                        (
+                            format!("{first_name}::{second_name}"),
+                            first_span.merge(second_span),
+                            true,
+                        )
+                    } else {
+                        (first_name, first_span, false)
+                    };
+
                 if matches!(self.peek_kind(), TokenKind::LParen) {
-                    let start = self.expect_simple(TokenKind::LParen, "expected `(` after method name")?;
+                    let start =
+                        self.expect_simple(TokenKind::LParen, "expected `(` after method name")?;
                     let mut args = Vec::new();
                     if !matches!(self.peek_kind(), TokenKind::RParen) {
                         loop {
@@ -475,8 +612,8 @@ impl Parser {
                     let end =
                         self.expect_simple(TokenKind::RParen, "expected `)` after call arguments")?;
                     let callee = Expr::Ident(IdentExpr {
-                        name,
-                        span: name_span,
+                        name: callee_name,
+                        span: callee_span,
                     });
                     let base = expr;
                     let base_span = base.span();
@@ -491,10 +628,18 @@ impl Parser {
                     continue;
                 }
 
-                let span = expr.span().merge(name_span);
+                if qualified {
+                    return Err(Diagnostic::new(
+                        "P015",
+                        "qualified chained calls must use `expr.alias::name(...)`",
+                        callee_span,
+                    ));
+                }
+
+                let span = expr.span().merge(callee_span);
                 expr = Expr::Field(FieldExpr {
                     base: Box::new(expr),
-                    field: name,
+                    field: callee_name,
                     span,
                 });
                 continue;
@@ -529,13 +674,14 @@ impl Parser {
                 value: false,
                 span: token.span,
             })),
-            TokenKind::Ident(name) if self.looks_like_record_lit() => {
-                self.parse_record_lit(name, token.span)
+            TokenKind::Ident(name) => {
+                let (name, span) = self.parse_value_name_after_first(name, token.span)?;
+                if self.looks_like_record_lit() {
+                    self.parse_record_lit(name, span)
+                } else {
+                    Ok(Expr::Ident(IdentExpr { name, span }))
+                }
             }
-            TokenKind::Ident(name) => Ok(Expr::Ident(IdentExpr {
-                name,
-                span: token.span,
-            })),
             TokenKind::LParen => {
                 let expr = self.parse_expr()?;
                 self.expect_simple(TokenKind::RParen, "expected `)` after expression")?;
@@ -625,6 +771,38 @@ impl Parser {
         Ok(fields)
     }
 
+    fn parse_package_path(&mut self) -> Result<(String, Span), Diagnostic> {
+        let (first, first_span) = self.expect_ident()?;
+        let mut parts = vec![first];
+        let mut span = first_span;
+        while self.matches_simple(&TokenKind::DoubleColon) {
+            let (segment, segment_span) = self.expect_ident()?;
+            parts.push(segment);
+            span = span.merge(segment_span);
+        }
+        Ok((parts.join("::"), span))
+    }
+
+    fn parse_type_name_after_first(
+        &mut self,
+        first: String,
+        first_span: Span,
+    ) -> Result<(String, Span), Diagnostic> {
+        if !self.matches_simple(&TokenKind::DoubleColon) {
+            return Ok((first, first_span));
+        }
+        let (second, second_span) = self.expect_ident()?;
+        Ok((format!("{first}::{second}"), first_span.merge(second_span)))
+    }
+
+    fn parse_value_name_after_first(
+        &mut self,
+        first: String,
+        first_span: Span,
+    ) -> Result<(String, Span), Diagnostic> {
+        self.parse_type_name_after_first(first, first_span)
+    }
+
     fn looks_like_record_lit(&self) -> bool {
         if !matches!(self.peek_kind(), TokenKind::LBrace) {
             return false;
@@ -681,6 +859,21 @@ impl Parser {
         Err(Diagnostic::new(
             "P013",
             "expected newline or `,` between record fields",
+            self.current_span(),
+        ))
+    }
+
+    fn consume_package_boundary(&mut self) -> Result<(), Diagnostic> {
+        if matches!(self.peek_kind(), TokenKind::Newline) {
+            self.skip_newlines();
+            return Ok(());
+        }
+        if matches!(self.peek_kind(), TokenKind::Eof) {
+            return Ok(());
+        }
+        Err(Diagnostic::new(
+            "P004",
+            "expected newline between package declarations",
             self.current_span(),
         ))
     }

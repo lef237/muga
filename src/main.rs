@@ -1,4 +1,4 @@
-use std::{env, fs, process::ExitCode};
+use std::{env, path::Path, process::ExitCode};
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1).collect::<Vec<_>>();
@@ -13,16 +13,8 @@ fn main() -> ExitCode {
         ("run".to_string(), args.remove(0))
     };
 
-    let source = match fs::read_to_string(&path) {
-        Ok(source) => source,
-        Err(error) => {
-            eprintln!("failed to read {path}: {error}");
-            return ExitCode::from(2);
-        }
-    };
-
     match mode.as_str() {
-        "check" => match muga::check_source(&source) {
+        "check" => match muga::check_path(Path::new(&path)) {
             Ok(_) => {
                 println!("ok");
                 ExitCode::SUCCESS
@@ -34,7 +26,7 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        "run" => match muga::run_source(&source) {
+        "run" => match muga::run_path(Path::new(&path)) {
             Ok(outcome) => {
                 let has_output = !outcome.output_text.is_empty();
                 if has_output {

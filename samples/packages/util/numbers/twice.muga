@@ -1,0 +1,5 @@
+package util::numbers
+
+pub fn inc_twice(x: Int): Int {
+  inc(inc(x))
+}

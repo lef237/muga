@@ -148,11 +148,7 @@ struct Env {
 }
 
 impl Env {
-    fn new(
-        parent: Option<EnvRef>,
-        function_boundary: bool,
-        output: Rc<RefCell<String>>,
-    ) -> Self {
+    fn new(parent: Option<EnvRef>, function_boundary: bool, output: Rc<RefCell<String>>) -> Self {
         Self {
             bindings: HashMap::new(),
             parent,
@@ -195,7 +191,12 @@ fn execute_chunk(
                 stack.push(binding.value);
             }
             Instruction::LoadField { field, span } => {
-                let base = pop_value(&mut stack, *span, "R015", "missing record value for field access")?;
+                let base = pop_value(
+                    &mut stack,
+                    *span,
+                    "R015",
+                    "missing record value for field access",
+                )?;
                 let value = load_record_field(program, base, *field, *span)?;
                 stack.push(value);
             }
@@ -504,12 +505,19 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             match &value {
                 Value::Int(_) | Value::Bool(_) | Value::String(_) => {
-                    env.borrow().output.borrow_mut().push_str(&value.to_string());
+                    env.borrow()
+                        .output
+                        .borrow_mut()
+                        .push_str(&value.to_string());
                     Ok(value)
                 }
-                Value::Record(_) | Value::Function(_) | Value::Builtin(_) => Err(vec![
-                    Diagnostic::new("R014", "`print` accepts only Int, Bool, or String", span),
-                ]),
+                Value::Record(_) | Value::Function(_) | Value::Builtin(_) => {
+                    Err(vec![Diagnostic::new(
+                        "R014",
+                        "`print` accepts only Int, Bool, or String",
+                        span,
+                    )])
+                }
             }
         }
         BuiltinFunction::Println => {
@@ -529,11 +537,13 @@ fn call_builtin(
                     output.push('\n');
                     Ok(value)
                 }
-                Value::Record(_) | Value::Function(_) | Value::Builtin(_) => Err(vec![Diagnostic::new(
-                    "R014",
-                    "`println` accepts only Int, Bool, or String",
-                    span,
-                )]),
+                Value::Record(_) | Value::Function(_) | Value::Builtin(_) => {
+                    Err(vec![Diagnostic::new(
+                        "R014",
+                        "`println` accepts only Int, Bool, or String",
+                        span,
+                    )])
+                }
             }
         }
     }
@@ -661,11 +671,7 @@ fn update_record_value(
     span: Span,
 ) -> Result<Value, Vec<Diagnostic>> {
     let Value::Record(mut record) = base else {
-        return Err(vec![Diagnostic::new(
-            "R018",
-            "invalid record update",
-            span,
-        )]);
+        return Err(vec![Diagnostic::new("R018", "invalid record update", span)]);
     };
 
     for (field, value) in fields.iter().zip(values) {
@@ -675,11 +681,7 @@ fn update_record_value(
             .iter_mut()
             .find(|candidate| candidate.name == field_name)
         else {
-            return Err(vec![Diagnostic::new(
-                "R018",
-                "invalid record update",
-                span,
-            )]);
+            return Err(vec![Diagnostic::new("R018", "invalid record update", span)]);
         };
         existing.value = value;
     }

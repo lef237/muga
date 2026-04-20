@@ -187,17 +187,18 @@ For chained call:
 
 ```txt
 expr.name(arg1, arg2)
+expr.alias::name(arg1, arg2)
 ```
 
 the receiver expression `expr` is typed first.
 
 Then:
 
-1. if `name` resolves to a receiver-style function, the call is typed as a call of that function with `expr` as the first argument
-2. otherwise, if `name(expr, arg1, arg2)` is a valid ordinary function call, the chained call is typed as that UFCS-style desugaring
+1. if the callee is plain `name` and `name` resolves to a receiver-style function, the call is typed as a call of that function with `expr` as the first argument
+2. otherwise, if the corresponding ordinary call is valid, the chained call is typed as that UFCS-style desugaring
 3. otherwise, the expression is a type error
 
-Because record fields may not have function type in v1, `expr.name(...)` never means a call through a function-valued field.
+Because record fields may not have function type in v1, `expr.name(...)` and `expr.alias::name(...)` never mean a call through a function-valued field.
 
 ## 7. Record Update Typing
 

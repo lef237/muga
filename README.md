@@ -29,7 +29,7 @@ Try another sample that chains function calls:
 
 ```bash
 cargo run -- samples/number_chain.muga
-# => 10
+# => 4
 ```
 
 Only validate the front end (parse, name resolution, typing) without executing:
@@ -37,6 +37,13 @@ Only validate the front end (parse, name resolution, typing) without executing:
 ```bash
 cargo run -- check samples/println_sum.muga
 # => ok
+```
+
+Package mode is also available through a file entrypoint:
+
+```bash
+cargo run -- check samples/packages/app/main/main.muga
+cargo run -- samples/packages/app/main/main.muga
 ```
 
 Run your own file by pointing `cargo run` at any `.muga` source. `run` is the default subcommand, so it can be omitted:
@@ -73,7 +80,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - type inference is local-only
 - type inference is locally bidirectional inside one function body, including some higher-order parameters
 - receiver-style functions use a record type as the first parameter, and `self` is only a conventional parameter name
-- `expr.name` is field access and `expr.name(...)` is a chained call
+- `expr.name` is field access, while `expr.name(...)` and `expr.alias::name(...)` are chained calls
 - `record.with(field: expr, ...)` is a record-only non-destructive update
 - records use nominal data declarations together with record literals
 - record fields may not have function type
@@ -89,6 +96,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/003-typing.md](./spec/003-typing.md)
   - [spec/004-functions.md](./spec/004-functions.md)
   - [spec/005-records.md](./spec/005-records.md)
+  - [spec/006-packages.md](./spec/006-packages.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 
 ## Examples
@@ -130,15 +138,19 @@ For more entry points, browse the [Samples](#samples) section below.
 - `println(x)` writes `Int`, `Bool`, or `String` with a trailing newline and returns the same value
 - `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
+- file-based package mode with `package`, `import`, `pub`, and `alias::Name` is implemented
 - explicit receiver-style distinction is not implemented yet
+- package manifests, configurable source roots, and package caching are not implemented yet
 
 ## Planned Priority
 
-The remaining work around records, dot syntax, and receiver-style calls is currently prioritized as follows:
+The current recommended implementation order is:
 
 1. explicit resolution rules for receiver-parameter style
-2. pipe syntax if it becomes necessary later
-3. broader chain sugar extensions after the core model is stable
+2. package interfaces, caching, and incremental compilation
+3. import graph diagnostics and package tooling around [spec/006-packages.md](./spec/006-packages.md)
+4. pipe syntax only if it becomes necessary later
+5. broader chain sugar extensions after the core model is stable
 
 ```bash
 cargo run -- check path/to/file.muga
@@ -171,6 +183,8 @@ cargo run -- path/to/file.muga
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
+- [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
+- [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)
 
 Sample note:
 
@@ -180,7 +194,13 @@ Higher-order annotation guide:
 
 - Omit an arrow annotation when the callback type is uniquely determined inside the same function body, as in [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) and [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga).
 - Keep an arrow annotation when local inference is still ambiguous, or when you want the callback contract to be obvious at the declaration site, as in [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga).
-- `public API` is future-facing guidance for functions that will eventually be exposed across files or packages. Muga does not have `pub` or a module system yet, so this is not enforced today, but explicit annotations will likely be preferred at those boundaries for readability and fast interface checking.
+- In package mode, `pub fn` already requires a fully annotated signature. Private helpers inside a package can keep using local inference.
+
+Package alias note:
+
+- `import company::analytics::numbers` gives the default local alias `numbers`.
+- If two imports would produce the same alias, the file is rejected with `PK007`.
+- Use `as` to disambiguate, as shown in [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga).
 
 ## License
 
