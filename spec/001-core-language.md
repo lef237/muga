@@ -167,7 +167,7 @@ Precedence, from strongest to weakest:
 The dot operator has three surface forms:
 
 - `expr.name` for field access
-- `expr.name(args...)` for method-style or UFCS-style chained call
+- `expr.name(args...)` or `expr.alias::name(args...)` for method-style or UFCS-style chained call
 - `expr.with(field: value, ...)` for non-destructive record update
 
 Because record fields cannot have function type in v1, the dot operator keeps those three stable meanings without field-function-call ambiguity.
@@ -257,7 +257,7 @@ The core language model is:
 - functions are ordinary values and may be passed as arguments
 - record declarations introduce nominal type names
 - `expr.name` is field access only
-- `expr.name(...)` is chained call syntax
+- `expr.name(...)` and `expr.alias::name(...)` are chained call syntax
 - `expr.with(field: value, ...)` is a record-only non-destructive update expression
 - the value of a function body is the final expression in that body
 - `if` without `else` is statement-only

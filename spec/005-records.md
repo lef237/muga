@@ -104,20 +104,22 @@ This creates a new `User` value with only `age` replaced.
 
 ## 6. Chained Dot Calls
 
-A chained call has the form:
+A chained call has one of these forms:
 
 ```txt
 expr.name(arg1, arg2, ...)
+expr.alias::name(arg1, arg2, ...)
 ```
 
 This always means method-style or UFCS-style chained call syntax.
 
 Resolution order:
 
-1. try the visible ordinary function binding named `name`
-2. if that binding is receiver-style and applicable to the type of `expr`, resolve as that receiver function
-3. otherwise, if `name(expr, arg1, arg2, ...)` is a valid ordinary function call, resolve by UFCS-style desugaring
-4. otherwise, reject the expression
+1. for `expr.name(...)`, try the visible ordinary function binding named `name`
+2. for `expr.alias::name(...)`, resolve `alias::name` as a qualified ordinary function reference
+3. if that function is receiver-style and applicable to the type of `expr`, resolve as that receiver function
+4. otherwise, if the corresponding ordinary call is valid, resolve by UFCS-style desugaring
+5. otherwise, reject the expression
 
 Example:
 
@@ -129,6 +131,18 @@ may be understood as repeated UFCS-style desugaring, equivalent to:
 
 ```txt
 double(inc(inc(start(10))).value)
+```
+
+Likewise, package-qualified chained calls follow the same rule:
+
+```txt
+user.users::birthday().age
+```
+
+is equivalent to:
+
+```txt
+users::birthday(user).age
 ```
 
 Because v1 has no overloading, there is at most one visible ordinary function named `name`.
@@ -148,7 +162,7 @@ record User {
 This keeps the meaning of dot expressions stable:
 
 - `expr.name` always means field access
-- `expr.name(...)` always means chained call
+- `expr.name(...)` and `expr.alias::name(...)` always mean chained call
 - function-valued field call is not part of the v1 language model
 
 This restriction is separate from higher-order functions.

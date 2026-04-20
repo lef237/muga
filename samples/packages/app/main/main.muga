@@ -8,5 +8,5 @@ fn main(): Int {
     name: "Ada"
     age: 20
   }
-  numbers::inc_twice(users::birthday(user).age)
+  user.users::birthday().age.numbers::inc_twice()
 }
