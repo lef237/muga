@@ -97,6 +97,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/004-functions.md](./spec/004-functions.md)
   - [spec/005-records.md](./spec/005-records.md)
   - [spec/006-packages.md](./spec/006-packages.md) (draft)
+  - [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
 
@@ -188,6 +189,11 @@ cargo run -- path/to/file.muga
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
 - [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
 - [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)
+
+Planned concurrency draft samples:
+
+- [samples/planned_concurrency_group.muga](./samples/planned_concurrency_group.muga)
+- [samples/planned_concurrency_channels.muga](./samples/planned_concurrency_channels.muga)
 
 Sample note:
 

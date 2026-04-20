@@ -1,0 +1,17 @@
+group {
+  jobs = channel(Int, capacity: 64)
+  results = channel(Int, capacity: 64)
+
+  producer = spawn produce_jobs(jobs)
+  worker1 = spawn worker(jobs, results)
+  worker2 = spawn worker(jobs, results)
+
+  first = results.recv()
+  second = results.recv()
+
+  producer.join()
+  worker1.join()
+  worker2.join()
+
+  first + second
+}
