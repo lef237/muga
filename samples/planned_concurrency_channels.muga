@@ -1,3 +1,5 @@
+# Later-phase extension: typed channels after the task core is stable
+
 group {
   jobs = channel(Int, capacity: 64)
   results = channel(Int, capacity: 64)
