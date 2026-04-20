@@ -1,0 +1,5 @@
+package app::bad
+
+pub fn apply(x: Int, f) {
+  f(x)
+}

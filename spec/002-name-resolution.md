@@ -137,6 +137,7 @@ The parser distinguishes:
 
 - `expr.name`
 - `expr.name(args...)`
+- `expr.alias::name(args...)`
 - `expr.with(field: value, ...)`
 
 For `expr.name`:
@@ -152,9 +153,16 @@ For `expr.name(args...)`:
 - otherwise, if ordinary call resolution for `name(expr, args...)` succeeds, the chained call resolves by UFCS-style desugaring
 - otherwise, the expression is rejected
 
+For `expr.alias::name(args...)`:
+
+- the imported package alias `alias` is resolved first
+- the exported function `name` is then resolved from that package
+- if `alias::name(expr, args...)` is a valid ordinary call, the chained call resolves by UFCS-style desugaring
+- otherwise, the expression is rejected
+
 Because v1 has no overloading, there is at most one visible ordinary function binding named `name`.
 
-Anonymous functions do not participate in `expr.name(args...)`.
+Anonymous functions do not participate in `expr.name(args...)` or `expr.alias::name(args...)`.
 
 Record fields are never considered callable by chained call syntax in v1.
 

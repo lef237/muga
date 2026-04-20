@@ -1,0 +1,10 @@
+package app::alias_demo
+
+import company::analytics::numbers as analytics_numbers
+import company::finance::numbers as finance_numbers
+
+fn main(): Int {
+  analytics = analytics_numbers::score(1)
+  finance = finance_numbers::score(1)
+  analytics + finance
+}
