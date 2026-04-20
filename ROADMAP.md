@@ -53,6 +53,37 @@ These are no longer top-level roadmap questions:
 
 Those topics may still need refinement, but they are no longer the main blockers.
 
+## Execution Strategy
+
+Muga should continue as a compiler-first project.
+
+That means:
+
+- the long-term primary product is a native compiler
+- the current VM / bytecode runtime should remain as a secondary execution backend
+- the VM should be treated as a reference execution path for semantics, testing, and fast iteration
+
+What should be avoided:
+
+- keeping a separate AST interpreter forever
+- duplicating language semantics across multiple unrelated execution engines
+- letting the VM define semantics independently from the checked IR pipeline
+
+The intended long-term shape is:
+
+1. source
+2. parser / resolver / typechecker
+3. typed HIR
+4. MIR
+5. backend A: VM / bytecode
+6. backend B: native compiler
+
+This gives Muga three benefits at once:
+
+- the compiler remains the main direction
+- the VM remains useful for debugging, testing, and semantic validation
+- the language does not pay for duplicated front-end logic
+
 ## Priority Order
 
 ## 1. Resolver And Typechecker Symbolization
@@ -162,6 +193,12 @@ Expected outcomes:
 - one path for interpreter / VM
 - one path for compiler backend
 - cleaner separation of concerns
+
+Design policy:
+
+- keep the VM as a supported reference backend
+- do not let it become a second independent compiler architecture
+- new semantics should enter through typed HIR / MIR first, then flow to both backends
 
 ## 6. Native Backend
 
