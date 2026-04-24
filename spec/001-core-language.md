@@ -100,7 +100,7 @@ abs = fn(n: Int) {
 v1 uses line comments only:
 
 ```txt
-# comment until end of line
+// comment until end of line
 ```
 
 Semicolons are not used.
@@ -278,5 +278,5 @@ Invalid:
 
 ```txt
 x = 1
-x = 2   # error: immutable binding cannot be updated
+x = 2   // error: immutable binding cannot be updated
 ```

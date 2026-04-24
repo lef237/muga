@@ -11,7 +11,7 @@ user = User {
   age: 20
 }
 
-bad = user.with(height: 170)   # error: `height` is not a field of `User`
+bad = user.with(height: 170)   // error: `height` is not a field of `User`
 ```
 
 Expected failure:

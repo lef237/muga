@@ -2,7 +2,7 @@
 
 ```txt
 x = 1
-x = 2   # error: x is immutable in the current scope
+x = 2   // error: x is immutable in the current scope
 ```
 
 Expected failure:

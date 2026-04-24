@@ -24,11 +24,11 @@ This is an intentionally small, implementation-oriented first draft.
 ### 1.1 Core syntax
 
 ```txt
-x = 1        # new immutable binding if x is undefined in current scope
-mut y = 1    # new mutable binding
+x = 1        // new immutable binding if x is undefined in current scope
+mut y = 1    // new mutable binding
 
-y = 2        # update if y is mutable in current scope
-x = 2        # error if x is immutable in current scope
+y = 2        // update if y is mutable in current scope
+x = 2        // error if x is immutable in current scope
 ```
 
 ### 1.2 Static meaning rules
@@ -79,8 +79,8 @@ if cond {
   y = x + 1
 }
 
-x   # OK
-y   # error: y is out of scope
+x   // OK
+y   // error: y is out of scope
 ```
 
 ### 2.2 Updates within a function
@@ -95,7 +95,7 @@ Example:
 mut total = 0
 
 fn add_total(x) {
-  total = total + x   # error in v1
+  total = total + x   // error in v1
 }
 ```
 
@@ -108,7 +108,7 @@ fn add_total(x) {
 v1 uses only line comments:
 
 ```txt
-# comment until end of line
+// comment until end of line
 ```
 
 Semicolons are not used.
@@ -163,7 +163,7 @@ Example:
 x = 1
 
 if cond {
-  x = 2   # error: shadowing prohibited
+  x = 2   // error: shadowing prohibited
 }
 ```
 
@@ -276,7 +276,7 @@ fn add_one(x) {
 }
 
 fn bad(x) {
-  x = x + 1   # error: parameters are immutable
+  x = x + 1   // error: parameters are immutable
 }
 ```
 
@@ -464,8 +464,8 @@ Local variable types are inferred from the right-hand side.
 Example:
 
 ```txt
-x = 1        # x : Int
-name = "a"  # name : String
+x = 1        // x : Int
+name = "a"  // name : String
 ```
 
 Mutable updates must preserve the original type exactly. v1 does not define implicit conversions or subtyping.
@@ -712,25 +712,25 @@ fn sum_to(n: Int) {
 
 ```txt
 x = 1
-x = 2          # error: immutable update
+x = 2          // error: immutable update
 ```
 
 ```txt
 mut y = 1
-mut y = 2      # error: redefinition in current scope
+mut y = 2      // error: redefinition in current scope
 ```
 
 ```txt
 z = 1
 if cond {
-  z = 2        # error: shadowing prohibited
+  z = 2        // error: shadowing prohibited
 }
 ```
 
 ```txt
 mut total = 0
 fn add_total(x) {
-  total = total + x   # error: outer-scope mutation prohibited in v1
+  total = total + x   // error: outer-scope mutation prohibited in v1
 }
 ```
 
@@ -767,7 +767,7 @@ This v1 language currently has the following shape:
 - function names are immutable bindings
 - function parameters are immutable
 - function return value is the final expression
-- comments use `#`
+- comments use `//`
 - statements are separated by newlines
 - source type annotations are limited to `Int`, `Bool`, `String`, nominal record types, and function types written with `->`
 - type inference is local-only

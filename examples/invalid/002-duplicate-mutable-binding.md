@@ -2,7 +2,7 @@
 
 ```txt
 mut y = 1
-mut y = 2   # error: duplicate binding in the current scope
+mut y = 2   // error: duplicate binding in the current scope
 ```
 
 Expected failure:

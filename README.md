@@ -75,7 +75,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - an inner block in the same function may update an enclosing mutable binding
 - updating an outer-scope binding across a function boundary is prohibited
 - type annotations are omitted by default and only required when inference is not possible
-- statements are separated by newlines and comments use `#`
+- statements are separated by newlines and comments use `//`
 - source-level type annotations may use `Int`, `Bool`, `String`, nominal record types, and function types such as `A -> B`
 - type inference is local-only
 - type inference is locally bidirectional inside one function body, including some higher-order parameters

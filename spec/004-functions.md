@@ -33,7 +33,7 @@ fn add(a: Int, b: Int) {
 
 add = fn(x: Int, y: Int) {
   x - y
-}   # error: function bindings are immutable
+}   // error: function bindings are immutable
 ```
 
 ## 2. Anonymous Functions
@@ -140,7 +140,7 @@ Therefore, the following is not allowed in the same scope:
 
 ```txt
 fn len(self: List): Int { ... }
-fn len(self: String): Int { ... }   # duplicate binding in v1
+fn len(self: String): Int { ... }   // duplicate binding in v1
 ```
 
 This keeps resolution simple and compile-time cost low, but it also means common method names across unrelated types are deferred to a future protocol/trait-like design.

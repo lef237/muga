@@ -2,7 +2,7 @@
 
 ```txt
 fn apply(x, f) {
-  f(x)   # error: neither the argument type nor the result type is uniquely inferable
+  f(x)   // error: neither the argument type nor the result type is uniquely inferable
 }
 ```
 
