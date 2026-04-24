@@ -2,6 +2,9 @@ use std::collections::HashMap;
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
+use crate::identity::BindingId;
+use crate::span::Span;
+use crate::symbol::{Symbol, SymbolTable};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BindingKind {
@@ -12,19 +15,23 @@ enum BindingKind {
 }
 
 pub fn resolve(program: &Program) -> Vec<Diagnostic> {
-    let mut resolver = Resolver {
-        scopes: vec![ScopeFrame::new(true)],
-        records: HashMap::new(),
-        diagnostics: Vec::new(),
-    };
+    let mut resolver = Resolver::new();
     resolver.install_prelude();
     resolver.predeclare_records(&program.statements);
     resolver.resolve_scope_statements(&program.statements);
     resolver.diagnostics
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Binding {
+    _id: BindingId,
+    _symbol: Symbol,
+    kind: BindingKind,
+    _span: Span,
+}
+
 struct ScopeFrame {
-    bindings: HashMap<String, BindingKind>,
+    bindings: HashMap<Symbol, BindingId>,
     function_boundary: bool,
 }
 
@@ -39,14 +46,28 @@ impl ScopeFrame {
 
 struct Resolver {
     scopes: Vec<ScopeFrame>,
-    records: HashMap<String, crate::span::Span>,
+    records: HashMap<Symbol, Span>,
+    bindings: Vec<Binding>,
+    symbols: SymbolTable,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl Resolver {
+    fn new() -> Self {
+        Self {
+            scopes: vec![ScopeFrame::new(true)],
+            records: HashMap::new(),
+            bindings: Vec::new(),
+            symbols: SymbolTable::default(),
+            diagnostics: Vec::new(),
+        }
+    }
+
     fn install_prelude(&mut self) {
-        self.insert_current("print".to_string(), BindingKind::Function);
-        self.insert_current("println".to_string(), BindingKind::Function);
+        let print = self.symbol("print");
+        self.insert_current(print, BindingKind::Function, Span::default());
+        let println = self.symbol("println");
+        self.insert_current(println, BindingKind::Function, Span::default());
     }
 
     fn resolve_scope_statements(&mut self, statements: &[Stmt]) {
@@ -94,27 +115,28 @@ impl Resolver {
 
     fn resolve_assign(&mut self, stmt: &AssignStmt) {
         self.resolve_expr(&stmt.value);
+        let name = self.symbol(&stmt.name);
         if stmt.mutable {
-            if self.current_scope_contains(&stmt.name) {
+            if self.current_scope_contains(name) {
                 self.diagnostics.push(Diagnostic::new(
                     "E002",
                     format!("duplicate binding `{}` in the current scope", stmt.name),
                     stmt.span,
                 ));
-            } else if self.any_enclosing_scope_lookup(&stmt.name).is_some() {
+            } else if self.any_enclosing_scope_lookup(name).is_some() {
                 self.diagnostics.push(Diagnostic::new(
                     "E003",
                     format!("shadowing is prohibited for `{}`", stmt.name),
                     stmt.span,
                 ));
             } else {
-                self.insert_current(stmt.name.clone(), BindingKind::Mutable);
+                self.insert_current(name, BindingKind::Mutable, stmt.span);
             }
             return;
         }
 
-        if let Some(kind) = self.lookup_in_current_function(&stmt.name) {
-            match kind {
+        if let Some(binding) = self.lookup_in_current_function(name) {
+            match binding.kind {
                 BindingKind::Mutable => {}
                 BindingKind::Immutable | BindingKind::Function | BindingKind::Parameter => {
                     self.diagnostics.push(Diagnostic::new(
@@ -127,8 +149,8 @@ impl Resolver {
             return;
         }
 
-        if let Some(kind) = self.lookup_beyond_current_function(&stmt.name) {
-            match kind {
+        if let Some(binding) = self.lookup_beyond_current_function(name) {
+            match binding.kind {
                 BindingKind::Mutable => {
                     self.diagnostics.push(Diagnostic::new(
                         "E004",
@@ -150,13 +172,14 @@ impl Resolver {
             return;
         }
 
-        self.insert_current(stmt.name.clone(), BindingKind::Immutable);
+        self.insert_current(name, BindingKind::Immutable, stmt.span);
     }
 
     fn resolve_func_decl(&mut self, stmt: &FuncDecl) {
         self.push_scope(true);
         for param in &stmt.params {
-            if self.current_scope_contains(&param.name) {
+            let name = self.symbol(&param.name);
+            if self.current_scope_contains(name) {
                 self.diagnostics.push(Diagnostic::new(
                     "E002",
                     format!("duplicate binding `{}` in the current scope", param.name),
@@ -164,7 +187,7 @@ impl Resolver {
                 ));
                 continue;
             }
-            if self.any_enclosing_scope_lookup(&param.name).is_some() {
+            if self.any_enclosing_scope_lookup(name).is_some() {
                 self.diagnostics.push(Diagnostic::new(
                     "E003",
                     format!("shadowing is prohibited for `{}`", param.name),
@@ -172,7 +195,7 @@ impl Resolver {
                 ));
                 continue;
             }
-            self.insert_current(param.name.clone(), BindingKind::Parameter);
+            self.insert_current(name, BindingKind::Parameter, param.span);
         }
         self.resolve_scope_statements(&stmt.body.statements);
         self.resolve_expr(&stmt.body.expr);
@@ -183,7 +206,8 @@ impl Resolver {
         match expr {
             Expr::Int(_) | Expr::Bool(_) | Expr::String(_) => {}
             Expr::Ident(expr) => {
-                if self.any_scope_lookup(&expr.name).is_none() {
+                let name = self.symbol(&expr.name);
+                if self.any_scope_lookup(name).is_none() {
                     self.diagnostics.push(Diagnostic::new(
                         "N001",
                         format!("unresolved name `{}`", expr.name),
@@ -222,7 +246,8 @@ impl Resolver {
             Expr::Fn(expr) => {
                 self.push_scope(true);
                 for param in &expr.params {
-                    if self.current_scope_contains(&param.name) {
+                    let name = self.symbol(&param.name);
+                    if self.current_scope_contains(name) {
                         self.diagnostics.push(Diagnostic::new(
                             "E002",
                             format!("duplicate binding `{}` in the current scope", param.name),
@@ -230,7 +255,7 @@ impl Resolver {
                         ));
                         continue;
                     }
-                    if self.any_enclosing_scope_lookup(&param.name).is_some() {
+                    if self.any_enclosing_scope_lookup(name).is_some() {
                         self.diagnostics.push(Diagnostic::new(
                             "E003",
                             format!("shadowing is prohibited for `{}`", param.name),
@@ -238,7 +263,7 @@ impl Resolver {
                         ));
                         continue;
                     }
-                    self.insert_current(param.name.clone(), BindingKind::Parameter);
+                    self.insert_current(name, BindingKind::Parameter, param.span);
                 }
                 self.resolve_scope_statements(&expr.body.statements);
                 self.resolve_expr(&expr.body.expr);
@@ -250,20 +275,21 @@ impl Resolver {
     fn predeclare_functions(&mut self, statements: &[Stmt]) {
         for statement in statements {
             if let Stmt::FuncDecl(func) = statement {
-                if self.current_scope_contains(&func.name) {
+                let name = self.symbol(&func.name);
+                if self.current_scope_contains(name) {
                     self.diagnostics.push(Diagnostic::new(
                         "E002",
                         format!("duplicate binding `{}` in the current scope", func.name),
                         func.span,
                     ));
-                } else if self.any_enclosing_scope_lookup(&func.name).is_some() {
+                } else if self.any_enclosing_scope_lookup(name).is_some() {
                     self.diagnostics.push(Diagnostic::new(
                         "E003",
                         format!("shadowing is prohibited for `{}`", func.name),
                         func.span,
                     ));
                 } else {
-                    self.insert_current(func.name.clone(), BindingKind::Function);
+                    self.insert_current(name, BindingKind::Function, func.span);
                 }
             }
         }
@@ -272,14 +298,15 @@ impl Resolver {
     fn predeclare_records(&mut self, statements: &[Stmt]) {
         for statement in statements {
             if let Stmt::RecordDecl(record) = statement {
-                if self.records.contains_key(&record.name) {
+                let name = self.symbol(&record.name);
+                if self.records.contains_key(&name) {
                     self.diagnostics.push(Diagnostic::new(
                         "E002",
                         format!("duplicate record `{}` in the current scope", record.name),
                         record.span,
                     ));
                 } else {
-                    self.records.insert(record.name.clone(), record.span);
+                    self.records.insert(name, record.span);
                 }
             }
         }
@@ -293,17 +320,17 @@ impl Resolver {
         self.scopes.pop();
     }
 
-    fn current_scope_contains(&self, name: &str) -> bool {
+    fn current_scope_contains(&self, name: Symbol) -> bool {
         self.scopes
             .last()
-            .map(|scope| scope.bindings.contains_key(name))
+            .map(|scope| scope.bindings.contains_key(&name))
             .unwrap_or(false)
     }
 
-    fn lookup_in_current_function(&self, name: &str) -> Option<BindingKind> {
+    fn lookup_in_current_function(&self, name: Symbol) -> Option<&Binding> {
         for scope in self.scopes.iter().rev() {
-            if let Some(kind) = scope.bindings.get(name) {
-                return Some(*kind);
+            if let Some(id) = scope.bindings.get(&name) {
+                return Some(self.binding(*id));
             }
             if scope.function_boundary {
                 break;
@@ -312,7 +339,7 @@ impl Resolver {
         None
     }
 
-    fn lookup_beyond_current_function(&self, name: &str) -> Option<BindingKind> {
+    fn lookup_beyond_current_function(&self, name: Symbol) -> Option<&Binding> {
         let boundary_index = self
             .scopes
             .iter()
@@ -321,27 +348,43 @@ impl Resolver {
         self.scopes[..boundary_index]
             .iter()
             .rev()
-            .find_map(|scope| scope.bindings.get(name).copied())
+            .find_map(|scope| scope.bindings.get(&name).map(|id| self.binding(*id)))
     }
 
-    fn any_enclosing_scope_lookup(&self, name: &str) -> Option<BindingKind> {
+    fn any_enclosing_scope_lookup(&self, name: Symbol) -> Option<&Binding> {
         self.scopes
             .iter()
             .rev()
             .skip(1)
-            .find_map(|scope| scope.bindings.get(name).copied())
+            .find_map(|scope| scope.bindings.get(&name).map(|id| self.binding(*id)))
     }
 
-    fn any_scope_lookup(&self, name: &str) -> Option<BindingKind> {
+    fn any_scope_lookup(&self, name: Symbol) -> Option<&Binding> {
         self.scopes
             .iter()
             .rev()
-            .find_map(|scope| scope.bindings.get(name).copied())
+            .find_map(|scope| scope.bindings.get(&name).map(|id| self.binding(*id)))
     }
 
-    fn insert_current(&mut self, name: String, kind: BindingKind) {
+    fn insert_current(&mut self, name: Symbol, kind: BindingKind, span: Span) -> BindingId {
+        let id = BindingId::new(self.bindings.len() as u32);
+        self.bindings.push(Binding {
+            _id: id,
+            _symbol: name,
+            kind,
+            _span: span,
+        });
         if let Some(scope) = self.scopes.last_mut() {
-            scope.bindings.insert(name, kind);
+            scope.bindings.insert(name, id);
         }
+        id
+    }
+
+    fn binding(&self, id: BindingId) -> &Binding {
+        &self.bindings[id.as_u32() as usize]
+    }
+
+    fn symbol(&mut self, name: &str) -> Symbol {
+        self.symbols.intern(name)
     }
 }
