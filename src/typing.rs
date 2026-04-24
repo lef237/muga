@@ -2,13 +2,16 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
+use crate::identity::BindingId;
+use crate::span::Span;
+use crate::symbol::{Symbol, SymbolTable};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
     Int,
     Bool,
     String,
-    Record(String),
+    Record(Symbol),
     Function(FunctionSig),
     Builtin(BuiltinFunction),
     Unknown(u32),
@@ -37,17 +40,26 @@ enum BindingKind {
 
 #[derive(Clone, Debug)]
 struct Binding {
+    _id: BindingId,
+    _symbol: Symbol,
     kind: BindingKind,
     ty: Type,
 }
 
 #[derive(Clone, Debug)]
 struct RecordDef {
-    fields: Vec<RecordFieldDecl>,
+    fields: Vec<RecordField>,
+}
+
+#[derive(Clone, Debug)]
+struct RecordField {
+    name: Symbol,
+    type_name: TypeExpr,
+    span: Span,
 }
 
 struct ScopeFrame {
-    bindings: HashMap<String, Binding>,
+    bindings: HashMap<Symbol, BindingId>,
     function_boundary: bool,
 }
 
@@ -69,7 +81,9 @@ pub fn typecheck(program: &Program) -> Vec<Diagnostic> {
 
 struct TypeChecker {
     scopes: Vec<ScopeFrame>,
-    records: HashMap<String, RecordDef>,
+    records: HashMap<Symbol, RecordDef>,
+    bindings: Vec<Binding>,
+    symbols: SymbolTable,
     diagnostics: Vec<Diagnostic>,
     next_unknown: u32,
     substitutions: HashMap<u32, Type>,
@@ -80,6 +94,8 @@ impl TypeChecker {
         let mut checker = Self {
             scopes: vec![ScopeFrame::new(true)],
             records: HashMap::new(),
+            bindings: Vec::new(),
+            symbols: SymbolTable::default(),
             diagnostics: Vec::new(),
             next_unknown: 0,
             substitutions: HashMap::new(),
@@ -89,19 +105,17 @@ impl TypeChecker {
     }
 
     fn install_prelude(&mut self) {
+        let print = self.symbol("print");
         self.insert_current(
-            "print".to_string(),
-            Binding {
-                kind: BindingKind::Function,
-                ty: Type::Builtin(BuiltinFunction::Print),
-            },
+            print,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::Print),
         );
+        let println = self.symbol("println");
         self.insert_current(
-            "println".to_string(),
-            Binding {
-                kind: BindingKind::Function,
-                ty: Type::Builtin(BuiltinFunction::Println),
-            },
+            println,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::Println),
         );
     }
 
@@ -172,49 +186,34 @@ impl TypeChecker {
 
     fn check_assign(&mut self, stmt: &AssignStmt) {
         let value_ty = self.check_expr(&stmt.value);
+        let name = self.symbol(&stmt.name);
         if stmt.mutable {
-            self.insert_current(
-                stmt.name.clone(),
-                Binding {
-                    kind: BindingKind::Mutable,
-                    ty: value_ty,
-                },
-            );
+            self.insert_current(name, BindingKind::Mutable, value_ty);
             return;
         }
 
-        if let Some(binding) = self.lookup_in_current_function(&stmt.name).cloned() {
+        if let Some(binding) = self.lookup_in_current_function(name).cloned() {
             if binding.kind == BindingKind::Mutable {
                 self.require_exact(&binding.ty, &value_ty, stmt.span, "T002");
             }
             return;
         }
 
-        if self.lookup_beyond_current_function(&stmt.name).is_none() {
-            self.insert_current(
-                stmt.name.clone(),
-                Binding {
-                    kind: BindingKind::Immutable,
-                    ty: value_ty,
-                },
-            );
+        if self.lookup_beyond_current_function(name).is_none() {
+            self.insert_current(name, BindingKind::Immutable, value_ty);
         }
     }
 
-    fn check_func_decl(&mut self, func: &FuncDecl, local_functions: &HashMap<String, FunctionSig>) {
-        let Some(sig) = local_functions.get(&func.name).cloned() else {
+    fn check_func_decl(&mut self, func: &FuncDecl, local_functions: &HashMap<Symbol, FunctionSig>) {
+        let name = self.symbol(&func.name);
+        let Some(sig) = local_functions.get(&name).cloned() else {
             return;
         };
 
         self.push_scope(true);
         for (param, param_ty) in func.params.iter().zip(sig.params.iter().cloned()) {
-            self.insert_current(
-                param.name.clone(),
-                Binding {
-                    kind: BindingKind::Parameter,
-                    ty: param_ty,
-                },
-            );
+            let name = self.symbol(&param.name);
+            self.insert_current(name, BindingKind::Parameter, param_ty);
         }
         let nested_functions = self.predeclare_functions(&func.body.statements);
         self.check_recursive_requirements(&func.body.statements, &nested_functions);
@@ -248,11 +247,13 @@ impl TypeChecker {
             Expr::Int(_) => self.apply_expected(Type::Int, expected, expr.span()),
             Expr::Bool(_) => self.apply_expected(Type::Bool, expected, expr.span()),
             Expr::String(_) => self.apply_expected(Type::String, expected, expr.span()),
-            Expr::Ident(expr) => self
-                .lookup(&expr.name)
-                .map(|binding| binding.ty.clone())
-                .map(|ty| self.apply_expected(ty, expected, expr.span))
-                .unwrap_or(Type::Error),
+            Expr::Ident(expr) => {
+                let name = self.symbol(&expr.name);
+                self.lookup(name)
+                    .map(|binding| binding.ty.clone())
+                    .map(|ty| self.apply_expected(ty, expected, expr.span))
+                    .unwrap_or(Type::Error)
+            }
             Expr::RecordLit(expr) => {
                 let ty = self.check_record_lit(expr);
                 self.apply_expected(ty, expected, expr.span)
@@ -428,13 +429,8 @@ impl TypeChecker {
                 let sig = self.signature_from_fn_expr(expr, expected.as_ref());
                 self.push_scope(true);
                 for (param, param_ty) in expr.params.iter().zip(sig.params.iter().cloned()) {
-                    self.insert_current(
-                        param.name.clone(),
-                        Binding {
-                            kind: BindingKind::Parameter,
-                            ty: param_ty,
-                        },
-                    );
+                    let name = self.symbol(&param.name);
+                    self.insert_current(name, BindingKind::Parameter, param_ty);
                 }
                 let nested_functions = self.predeclare_functions(&expr.body.statements);
                 self.check_recursive_requirements(&expr.body.statements, &nested_functions);
@@ -456,7 +452,8 @@ impl TypeChecker {
             let Stmt::RecordDecl(record) = statement else {
                 continue;
             };
-            if self.records.contains_key(&record.name) {
+            let name = self.symbol(&record.name);
+            if self.records.contains_key(&name) {
                 self.diagnostics.push(Diagnostic::new(
                     "E002",
                     format!("duplicate record `{}` in the current scope", record.name),
@@ -464,19 +461,23 @@ impl TypeChecker {
                 ));
                 continue;
             }
-            self.records.insert(
-                record.name.clone(),
-                RecordDef {
-                    fields: record.fields.clone(),
-                },
-            );
+            let mut fields = Vec::new();
+            for field in &record.fields {
+                fields.push(RecordField {
+                    name: self.symbol(&field.name),
+                    type_name: field.type_name.clone(),
+                    span: field.span,
+                });
+            }
+            self.records.insert(name, RecordDef { fields });
         }
     }
 
     fn check_record_decl(&mut self, record: &RecordDecl) {
         let mut field_names = HashSet::new();
         for field in &record.fields {
-            if !field_names.insert(field.name.clone()) {
+            let field_name = self.symbol(&field.name);
+            if !field_names.insert(field_name) {
                 self.diagnostics.push(Diagnostic::new(
                     "E002",
                     format!(
@@ -498,7 +499,8 @@ impl TypeChecker {
     }
 
     fn check_record_lit(&mut self, expr: &RecordLitExpr) -> Type {
-        let Some(record) = self.records.get(&expr.type_name).cloned() else {
+        let type_name = self.symbol(&expr.type_name);
+        let Some(record) = self.records.get(&type_name).cloned() else {
             self.diagnostics.push(Diagnostic::new(
                 "T007",
                 format!("unknown type `{}`", expr.type_name),
@@ -514,7 +516,8 @@ impl TypeChecker {
         let mut has_error = false;
         for field in &expr.fields {
             let value_ty = self.check_expr(&field.value);
-            if !seen.insert(field.name.clone()) {
+            let field_name = self.symbol(&field.name);
+            if !seen.insert(field_name) {
                 self.diagnostics.push(Diagnostic::new(
                     "E009",
                     format!(
@@ -527,7 +530,7 @@ impl TypeChecker {
                 continue;
             }
 
-            let Some(declared) = find_record_field(&record, &field.name) else {
+            let Some(declared) = find_record_field(&record, field_name) else {
                 self.diagnostics.push(Diagnostic::new(
                     "E009",
                     format!(
@@ -554,7 +557,8 @@ impl TypeChecker {
                     "E009",
                     format!(
                         "invalid record literal for `{}`: missing field `{}`",
-                        expr.type_name, declared.name
+                        expr.type_name,
+                        self.symbols.resolve(declared.name)
                     ),
                     expr.span,
                 ));
@@ -565,7 +569,7 @@ impl TypeChecker {
         if has_error {
             Type::Error
         } else {
-            Type::Record(expr.type_name.clone())
+            Type::Record(type_name)
         }
     }
 
@@ -582,6 +586,7 @@ impl TypeChecker {
         };
 
         let Some(record) = self.records.get(&record_name).cloned() else {
+            let record_name = self.symbols.resolve(record_name);
             self.diagnostics.push(Diagnostic::new(
                 "T007",
                 format!("unknown type `{record_name}`"),
@@ -590,7 +595,8 @@ impl TypeChecker {
             return Type::Error;
         };
 
-        let Some(field) = find_record_field(&record, &expr.field) else {
+        let field_name = self.symbol(&expr.field);
+        let Some(field) = find_record_field(&record, field_name) else {
             self.diagnostics.push(Diagnostic::new(
                 "E008",
                 format!("unknown field `{}`", expr.field),
@@ -615,6 +621,7 @@ impl TypeChecker {
         };
 
         let Some(record) = self.records.get(&record_name).cloned() else {
+            let record_name = self.symbols.resolve(record_name);
             self.diagnostics.push(Diagnostic::new(
                 "T007",
                 format!("unknown type `{record_name}`"),
@@ -627,14 +634,15 @@ impl TypeChecker {
         let mut has_error = false;
         for field in &expr.fields {
             let value_ty = self.check_expr(&field.value);
-            if !seen.insert(field.name.clone()) {
+            let field_name = self.symbol(&field.name);
+            if !seen.insert(field_name) {
                 self.diagnostics
                     .push(Diagnostic::new("E012", "invalid record update", field.span));
                 has_error = true;
                 continue;
             }
 
-            let Some(declared) = find_record_field(&record, &field.name) else {
+            let Some(declared) = find_record_field(&record, field_name) else {
                 self.diagnostics
                     .push(Diagnostic::new("E012", "invalid record update", field.span));
                 has_error = true;
@@ -682,10 +690,11 @@ impl TypeChecker {
         }
     }
 
-    fn predeclare_functions(&mut self, statements: &[Stmt]) -> HashMap<String, FunctionSig> {
+    fn predeclare_functions(&mut self, statements: &[Stmt]) -> HashMap<Symbol, FunctionSig> {
         let mut functions = HashMap::new();
         for statement in statements {
             if let Stmt::FuncDecl(func) = statement {
+                let name = self.symbol(&func.name);
                 let params = func
                     .params
                     .iter()
@@ -702,14 +711,8 @@ impl TypeChecker {
                     params,
                     ret: Box::new(ret),
                 };
-                functions.insert(func.name.clone(), sig.clone());
-                self.insert_current(
-                    func.name.clone(),
-                    Binding {
-                        kind: BindingKind::Function,
-                        ty: Type::Function(sig),
-                    },
-                );
+                functions.insert(name, sig.clone());
+                self.insert_current(name, BindingKind::Function, Type::Function(sig));
             }
         }
         functions
@@ -718,9 +721,9 @@ impl TypeChecker {
     fn check_recursive_requirements(
         &mut self,
         statements: &[Stmt],
-        functions: &HashMap<String, FunctionSig>,
+        functions: &HashMap<Symbol, FunctionSig>,
     ) {
-        let names: HashSet<String> = functions.keys().cloned().collect();
+        let names: HashSet<Symbol> = functions.keys().copied().collect();
         let decls: Vec<&FuncDecl> = statements
             .iter()
             .filter_map(|stmt| match stmt {
@@ -728,13 +731,16 @@ impl TypeChecker {
                 _ => None,
             })
             .collect();
-        let graph = build_call_graph(&decls, &names);
+        let graph = build_call_graph(&decls, &names, &mut self.symbols);
         let components = strongly_connected_components(&graph);
 
         for component in components {
             if component.len() > 1 {
                 for name in component {
-                    if let Some(func) = decls.iter().find(|func| func.name == name) {
+                    if let Some(func) = decls
+                        .iter()
+                        .find(|func| self.symbols.lookup(&func.name) == Some(name))
+                    {
                         let has_full_signature =
                             func.params.iter().all(|param| param.type_name.is_some())
                                 && func.return_type.is_some();
@@ -757,7 +763,10 @@ impl TypeChecker {
             if !has_self_edge {
                 continue;
             }
-            if let Some(func) = decls.iter().find(|func| &func.name == name) {
+            if let Some(func) = decls
+                .iter()
+                .find(|func| self.symbols.lookup(&func.name) == Some(*name))
+            {
                 let has_annotation = func.return_type.is_some()
                     || func.params.iter().any(|param| param.type_name.is_some());
                 if !has_annotation {
@@ -777,8 +786,9 @@ impl TypeChecker {
             TypeExpr::Bool => Type::Bool,
             TypeExpr::String => Type::String,
             TypeExpr::Named(name) => {
-                if self.records.contains_key(name) {
-                    Type::Record(name.clone())
+                let symbol = self.symbol(name);
+                if self.records.contains_key(&symbol) {
+                    Type::Record(symbol)
                 } else {
                     self.diagnostics.push(Diagnostic::new(
                         "T007",
@@ -901,23 +911,31 @@ impl TypeChecker {
         self.scopes.pop();
     }
 
-    fn insert_current(&mut self, name: String, binding: Binding) {
+    fn insert_current(&mut self, name: Symbol, kind: BindingKind, ty: Type) -> BindingId {
+        let id = BindingId::new(self.bindings.len() as u32);
+        self.bindings.push(Binding {
+            _id: id,
+            _symbol: name,
+            kind,
+            ty,
+        });
         if let Some(scope) = self.scopes.last_mut() {
-            scope.bindings.insert(name, binding);
+            scope.bindings.insert(name, id);
         }
+        id
     }
 
-    fn lookup(&self, name: &str) -> Option<&Binding> {
+    fn lookup(&self, name: Symbol) -> Option<&Binding> {
         self.scopes
             .iter()
             .rev()
-            .find_map(|scope| scope.bindings.get(name))
+            .find_map(|scope| scope.bindings.get(&name).map(|id| self.binding(*id)))
     }
 
-    fn lookup_in_current_function(&self, name: &str) -> Option<&Binding> {
+    fn lookup_in_current_function(&self, name: Symbol) -> Option<&Binding> {
         for scope in self.scopes.iter().rev() {
-            if let Some(binding) = scope.bindings.get(name) {
-                return Some(binding);
+            if let Some(id) = scope.bindings.get(&name) {
+                return Some(self.binding(*id));
             }
             if scope.function_boundary {
                 break;
@@ -926,7 +944,7 @@ impl TypeChecker {
         None
     }
 
-    fn lookup_beyond_current_function(&self, name: &str) -> Option<&Binding> {
+    fn lookup_beyond_current_function(&self, name: Symbol) -> Option<&Binding> {
         let boundary_index = self
             .scopes
             .iter()
@@ -935,7 +953,15 @@ impl TypeChecker {
         self.scopes[..boundary_index]
             .iter()
             .rev()
-            .find_map(|scope| scope.bindings.get(name))
+            .find_map(|scope| scope.bindings.get(&name).map(|id| self.binding(*id)))
+    }
+
+    fn binding(&self, id: BindingId) -> &Binding {
+        &self.bindings[id.as_u32() as usize]
+    }
+
+    fn symbol(&mut self, name: &str) -> Symbol {
+        self.symbols.intern(name)
     }
 }
 
@@ -959,36 +985,37 @@ impl Type {
     }
 }
 
-fn find_record_field<'a>(record: &'a RecordDef, name: &str) -> Option<&'a RecordFieldDecl> {
+fn find_record_field(record: &RecordDef, name: Symbol) -> Option<&RecordField> {
     record.fields.iter().find(|field| field.name == name)
 }
 
 fn build_call_graph(
     decls: &[&FuncDecl],
-    local_names: &HashSet<String>,
-) -> HashMap<String, HashSet<String>> {
+    local_names: &HashSet<Symbol>,
+    symbols: &mut SymbolTable,
+) -> HashMap<Symbol, HashSet<Symbol>> {
     let mut graph = HashMap::new();
     for decl in decls {
         let mut calls = HashSet::new();
-        collect_calls_in_statements(&decl.body.statements, local_names, &mut calls);
-        collect_calls_in_expr(&decl.body.expr, local_names, &mut calls);
-        graph.insert(decl.name.clone(), calls);
+        collect_calls_in_statements(&decl.body.statements, local_names, &mut calls, symbols);
+        collect_calls_in_expr(&decl.body.expr, local_names, &mut calls, symbols);
+        graph.insert(symbols.intern(&decl.name), calls);
     }
     graph
 }
 
-fn strongly_connected_components(graph: &HashMap<String, HashSet<String>>) -> Vec<Vec<String>> {
+fn strongly_connected_components(graph: &HashMap<Symbol, HashSet<Symbol>>) -> Vec<Vec<Symbol>> {
     let mut index = 0usize;
-    let mut stack = Vec::<String>::new();
-    let mut indices = HashMap::<String, usize>::new();
-    let mut lowlinks = HashMap::<String, usize>::new();
-    let mut on_stack = HashSet::<String>::new();
+    let mut stack = Vec::<Symbol>::new();
+    let mut indices = HashMap::<Symbol, usize>::new();
+    let mut lowlinks = HashMap::<Symbol, usize>::new();
+    let mut on_stack = HashSet::<Symbol>::new();
     let mut components = Vec::new();
 
     for node in graph.keys() {
         if !indices.contains_key(node) {
             strong_connect(
-                node,
+                *node,
                 graph,
                 &mut index,
                 &mut stack,
@@ -1004,43 +1031,43 @@ fn strongly_connected_components(graph: &HashMap<String, HashSet<String>>) -> Ve
 }
 
 fn strong_connect(
-    node: &str,
-    graph: &HashMap<String, HashSet<String>>,
+    node: Symbol,
+    graph: &HashMap<Symbol, HashSet<Symbol>>,
     index: &mut usize,
-    stack: &mut Vec<String>,
-    indices: &mut HashMap<String, usize>,
-    lowlinks: &mut HashMap<String, usize>,
-    on_stack: &mut HashSet<String>,
-    components: &mut Vec<Vec<String>>,
+    stack: &mut Vec<Symbol>,
+    indices: &mut HashMap<Symbol, usize>,
+    lowlinks: &mut HashMap<Symbol, usize>,
+    on_stack: &mut HashSet<Symbol>,
+    components: &mut Vec<Vec<Symbol>>,
 ) {
-    indices.insert(node.to_string(), *index);
-    lowlinks.insert(node.to_string(), *index);
+    indices.insert(node, *index);
+    lowlinks.insert(node, *index);
     *index += 1;
-    stack.push(node.to_string());
-    on_stack.insert(node.to_string());
+    stack.push(node);
+    on_stack.insert(node);
 
-    if let Some(neighbors) = graph.get(node) {
+    if let Some(neighbors) = graph.get(&node) {
         for neighbor in neighbors {
             if !indices.contains_key(neighbor) {
                 strong_connect(
-                    neighbor, graph, index, stack, indices, lowlinks, on_stack, components,
+                    *neighbor, graph, index, stack, indices, lowlinks, on_stack, components,
                 );
                 let neighbor_low = lowlinks[neighbor];
-                let node_low = lowlinks[node];
-                lowlinks.insert(node.to_string(), node_low.min(neighbor_low));
+                let node_low = lowlinks[&node];
+                lowlinks.insert(node, node_low.min(neighbor_low));
             } else if on_stack.contains(neighbor) {
                 let neighbor_index = indices[neighbor];
-                let node_low = lowlinks[node];
-                lowlinks.insert(node.to_string(), node_low.min(neighbor_index));
+                let node_low = lowlinks[&node];
+                lowlinks.insert(node, node_low.min(neighbor_index));
             }
         }
     }
 
-    if lowlinks[node] == indices[node] {
+    if lowlinks[&node] == indices[&node] {
         let mut component = Vec::new();
         while let Some(candidate) = stack.pop() {
             on_stack.remove(&candidate);
-            component.push(candidate.clone());
+            component.push(candidate);
             if candidate == node {
                 break;
             }
@@ -1051,67 +1078,84 @@ fn strong_connect(
 
 fn collect_calls_in_statements(
     statements: &[Stmt],
-    local_names: &HashSet<String>,
-    calls: &mut HashSet<String>,
+    local_names: &HashSet<Symbol>,
+    calls: &mut HashSet<Symbol>,
+    symbols: &mut SymbolTable,
 ) {
     for statement in statements {
         match statement {
-            Stmt::Assign(stmt) => collect_calls_in_expr(&stmt.value, local_names, calls),
+            Stmt::Assign(stmt) => collect_calls_in_expr(&stmt.value, local_names, calls, symbols),
             Stmt::RecordDecl(_) => {}
             Stmt::FuncDecl(_) => {}
             Stmt::If(stmt) => {
-                collect_calls_in_expr(&stmt.condition, local_names, calls);
-                collect_calls_in_statements(&stmt.then_branch.statements, local_names, calls);
+                collect_calls_in_expr(&stmt.condition, local_names, calls, symbols);
+                collect_calls_in_statements(
+                    &stmt.then_branch.statements,
+                    local_names,
+                    calls,
+                    symbols,
+                );
                 if let Some(else_branch) = &stmt.else_branch {
-                    collect_calls_in_statements(&else_branch.statements, local_names, calls);
+                    collect_calls_in_statements(
+                        &else_branch.statements,
+                        local_names,
+                        calls,
+                        symbols,
+                    );
                 }
             }
             Stmt::While(stmt) => {
-                collect_calls_in_expr(&stmt.condition, local_names, calls);
-                collect_calls_in_statements(&stmt.body.statements, local_names, calls);
+                collect_calls_in_expr(&stmt.condition, local_names, calls, symbols);
+                collect_calls_in_statements(&stmt.body.statements, local_names, calls, symbols);
             }
-            Stmt::Expr(stmt) => collect_calls_in_expr(&stmt.expr, local_names, calls),
+            Stmt::Expr(stmt) => collect_calls_in_expr(&stmt.expr, local_names, calls, symbols),
         }
     }
 }
 
-fn collect_calls_in_expr(expr: &Expr, local_names: &HashSet<String>, calls: &mut HashSet<String>) {
+fn collect_calls_in_expr(
+    expr: &Expr,
+    local_names: &HashSet<Symbol>,
+    calls: &mut HashSet<Symbol>,
+    symbols: &mut SymbolTable,
+) {
     match expr {
         Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Ident(_) => {}
         Expr::RecordLit(expr) => {
             for field in &expr.fields {
-                collect_calls_in_expr(&field.value, local_names, calls);
+                collect_calls_in_expr(&field.value, local_names, calls, symbols);
             }
         }
-        Expr::Field(expr) => collect_calls_in_expr(&expr.base, local_names, calls),
+        Expr::Field(expr) => collect_calls_in_expr(&expr.base, local_names, calls, symbols),
         Expr::RecordUpdate(expr) => {
-            collect_calls_in_expr(&expr.base, local_names, calls);
+            collect_calls_in_expr(&expr.base, local_names, calls, symbols);
             for field in &expr.fields {
-                collect_calls_in_expr(&field.value, local_names, calls);
+                collect_calls_in_expr(&field.value, local_names, calls, symbols);
             }
         }
-        Expr::Unary(expr) => collect_calls_in_expr(&expr.expr, local_names, calls),
+        Expr::Unary(expr) => collect_calls_in_expr(&expr.expr, local_names, calls, symbols),
         Expr::Binary(expr) => {
-            collect_calls_in_expr(&expr.left, local_names, calls);
-            collect_calls_in_expr(&expr.right, local_names, calls);
+            collect_calls_in_expr(&expr.left, local_names, calls, symbols);
+            collect_calls_in_expr(&expr.right, local_names, calls, symbols);
         }
         Expr::Call(expr) => {
             if let Expr::Ident(ident) = expr.callee.as_ref() {
-                if local_names.contains(&ident.name) {
-                    calls.insert(ident.name.clone());
+                let name = symbols.intern(&ident.name);
+                if local_names.contains(&name) {
+                    calls.insert(name);
                 }
             }
-            collect_calls_in_expr(&expr.callee, local_names, calls);
+            collect_calls_in_expr(&expr.callee, local_names, calls, symbols);
             for arg in &expr.args {
-                collect_calls_in_expr(arg, local_names, calls);
+                collect_calls_in_expr(arg, local_names, calls, symbols);
             }
         }
         Expr::If(expr) => {
-            collect_calls_in_expr(&expr.condition, local_names, calls);
-            collect_calls_in_statements(&expr.then_branch.statements, local_names, calls);
-            collect_calls_in_expr(&expr.then_branch.expr, local_names, calls);
-            collect_calls_in_statements(&expr.else_branch.statements, local_names, calls);
-            collect_calls_in_expr(&expr.else_branch.expr, local_names, calls);
+            collect_calls_in_expr(&expr.condition, local_names, calls, symbols);
+            collect_calls_in_statements(&expr.then_branch.statements, local_names, calls, symbols);
+            collect_calls_in_expr(&expr.then_branch.expr, local_names, calls, symbols);
+            collect_calls_in_statements(&expr.else_branch.statements, local_names, calls, symbols);
+            collect_calls_in_expr(&expr.else_branch.expr, local_names, calls, symbols);
         }
         Expr::Fn(_) => {}
     }

@@ -71,7 +71,9 @@ fn main(): Int {
 "#;
     let diagnostics = muga::check_source(source).unwrap_err();
     assert!(
-        diagnostics.iter().any(|diagnostic| diagnostic.code == "L001"),
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "L001"),
         "{diagnostics:#?}"
     );
 }
@@ -186,7 +188,9 @@ fn package_import_alias_conflict_is_rejected() {
     ))
     .unwrap_err();
     assert!(
-        diagnostics.iter().any(|diagnostic| diagnostic.code == "PK007"),
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "PK007"),
         "{diagnostics:#?}"
     );
 }
