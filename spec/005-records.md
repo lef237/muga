@@ -209,7 +209,7 @@ Therefore, the following is invalid in the same scope:
 
 ```txt
 fn len(self: List): Int { ... }
-fn len(self: String): Int { ... }   # duplicate binding in v1
+fn len(self: String): Int { ... }   // duplicate binding in v1
 ```
 
 This is the main short-term limitation of the receiver-style design under the current no-overloading policy.

@@ -2,7 +2,7 @@
 
 ```txt
 fn show(x: Int, f) {
-  println(f(x))   # error: `println` accepts several concrete types, so the callback result is not uniquely inferable
+  println(f(x))   // error: `println` accepts several concrete types, so the callback result is not uniquely inferable
 }
 ```
 

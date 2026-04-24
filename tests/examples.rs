@@ -49,6 +49,34 @@ fn invalid_examples_fail_frontend() {
 }
 
 #[test]
+fn slash_slash_comments_are_accepted() {
+    let source = r#"
+fn main(): Int {
+  value = 1 // trailing comment
+  // full-line comment
+  value
+}
+"#;
+    let result = muga::check_source(source);
+    assert!(result.is_ok(), "{:#?}", result.err());
+}
+
+#[test]
+fn hash_comments_are_rejected() {
+    let source = r#"
+fn main(): Int {
+  value = 1 # old comment syntax
+  value
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic.code == "L001"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn runnable_main_returns_value() {
     assert_sample_runs("samples/sum_to.muga", "10", "");
 }

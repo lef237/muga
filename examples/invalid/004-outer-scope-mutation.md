@@ -4,7 +4,7 @@
 mut total = 0
 
 fn add_total(x: Int) {
-  total = total + x   # error: updating an outer-scope mutable binding is prohibited
+  total = total + x   // error: updating an outer-scope mutable binding is prohibited
 }
 ```
 

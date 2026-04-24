@@ -5,7 +5,7 @@ fn fact(n) {
   if n == 0 {
     1
   } else {
-    n * fact(n - 1)   # error: recursive function has no annotated parameter or return type
+    n * fact(n - 1)   // error: recursive function has no annotated parameter or return type
   }
 }
 ```

@@ -2,7 +2,7 @@
 
 ```txt
 fn id(x) {
-  x   # error: the parameter type and return type are not uniquely inferable
+  x   // error: the parameter type and return type are not uniquely inferable
 }
 ```
 

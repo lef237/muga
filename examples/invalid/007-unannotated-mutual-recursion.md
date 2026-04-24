@@ -5,7 +5,7 @@ fn is_even(n) {
   if n == 0 {
     true
   } else {
-    is_odd(n - 1)   # error: mutually recursive group lacks explicit signatures
+    is_odd(n - 1)   // error: mutually recursive group lacks explicit signatures
   }
 }
 
@@ -13,7 +13,7 @@ fn is_odd(n) {
   if n == 0 {
     false
   } else {
-    is_even(n - 1)  # error: mutually recursive group lacks explicit signatures
+    is_even(n - 1)  // error: mutually recursive group lacks explicit signatures
   }
 }
 ```

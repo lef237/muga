@@ -54,9 +54,6 @@ impl Lexer {
                     self.advance();
                     self.handle_newline();
                 }
-                '#' => {
-                    self.lex_comment();
-                }
                 '(' => self.emit_simple(TokenKind::LParen),
                 ')' => self.emit_simple(TokenKind::RParen),
                 '{' => self.emit_simple(TokenKind::LBrace),
@@ -75,7 +72,13 @@ impl Lexer {
                 }
                 '+' => self.emit_simple(TokenKind::Plus),
                 '*' => self.emit_simple(TokenKind::Star),
-                '/' => self.emit_simple(TokenKind::Slash),
+                '/' => {
+                    if self.peek_next() == Some('/') {
+                        self.lex_comment();
+                    } else {
+                        self.emit_simple(TokenKind::Slash)
+                    }
+                }
                 '-' => {
                     if self.peek_next() == Some('>') {
                         let start = self.position();

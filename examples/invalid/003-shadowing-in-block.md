@@ -5,7 +5,7 @@ flag = true
 value = 1
 
 if flag {
-  value = 2   # error: shadowing of outer immutable binding is prohibited
+  value = 2   // error: shadowing of outer immutable binding is prohibited
 } else {
   value
 }

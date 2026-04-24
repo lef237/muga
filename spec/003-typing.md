@@ -252,8 +252,8 @@ In future module or package boundaries, explicit function-type annotations are e
 Examples:
 
 ```txt
-x = 1          # Int
-name = "m"     # String
+x = 1          // Int
+name = "m"     // String
 ```
 
 ```txt
