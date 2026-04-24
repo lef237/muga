@@ -31,7 +31,8 @@ As of now, Muga already has:
 The biggest remaining architectural gap is this:
 
 - the parser / package layer has moved forward
-- but the resolver and typechecker are still mostly string-based
+- resolver and typechecker now use symbol-based scope lookup internally
+- but resolved identities are not yet exposed as reusable compiler data
 - typed HIR does not exist yet
 - package compilation is still implemented by flattening packages into one internal program
 
@@ -141,25 +142,27 @@ This does not have to be a giant subsystem immediately, but the data model shoul
 
 ## Priority Order
 
-## 1. Resolver And Typechecker Symbolization
+## 1. Resolver And Typechecker Identity Outputs
 
 Goal:
 
-- move `resolver` and `typechecker` from string-heavy lookup to `SymbolId`-based lookup
-- introduce stable IDs for bindings and locals
+- make resolver and typechecker produce reusable identity data for later compiler stages
+- keep local binding identity available beyond diagnostics-only checking
 
 Why this is first:
 
 - it directly affects front-end hot paths
-- it reduces repeated string hashing and cloning
+- the first internal symbolization pass is already in place
 - typed HIR becomes much easier once bindings have stable IDs
 - compile-speed work should start here, not at the backend
 
 Expected outcomes:
 
-- `SymbolId` for names in resolver/typechecker
-- `BindingId` / `LocalId` style internal identities
-- less repeated `HashMap<String, ...>` traffic in inner loops
+- resolved identifier uses can point to `BindingId` or package item identity
+- typechecker can consume or produce the same identity vocabulary as resolver
+- less repeated name lookup when lowering into typed HIR
+
+The current identity design note lives in [docs/internal/identity-model.md](./docs/internal/identity-model.md).
 
 ## 2. Package Symbol Graph And Identity Model
 
@@ -397,14 +400,13 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. symbol-based resolver
-2. symbol-based typechecker
-3. package-aware symbol identity design
-4. typed HIR
-5. receiver-style resolution finalization inside typed HIR lowering/checking
-6. diagnostic data model tightening
-7. package interfaces instead of flattening
-8. cache and incremental compilation
+1. expose resolver/typechecker identity data instead of keeping it internal
+2. package-aware symbol identity design
+3. typed HIR
+4. receiver-style resolution finalization inside typed HIR lowering/checking
+5. diagnostic data model tightening
+6. package interfaces instead of flattening
+7. cache and incremental compilation
 
 This order best matches the current state of the codebase.
 
