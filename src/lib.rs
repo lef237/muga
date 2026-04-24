@@ -2,6 +2,7 @@ pub mod ast;
 pub mod bytecode;
 pub mod diagnostic;
 pub mod hir;
+pub mod identity;
 pub mod lexer;
 pub mod package;
 pub mod parser;

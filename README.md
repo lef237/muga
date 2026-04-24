@@ -100,6 +100,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
+- Compiler identity note: [docs/internal/identity-model.md](./docs/internal/identity-model.md)
 
 ## Examples
 
@@ -149,7 +150,7 @@ For more entry points, browse the [Samples](#samples) section below.
 The current recommended implementation order is:
 
 1. start measuring compile-time costs and keep benchmarking throughout the compiler work
-2. move resolver and typechecker to symbol-based identities
+2. expose resolver/typechecker identity data for typed HIR
 3. fix package-aware symbol identity, then introduce typed HIR
 4. replace package flattening with real package interfaces and caching
 5. split compiler MIR from the VM path, then add a fast native backend
