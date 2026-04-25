@@ -48,7 +48,8 @@ These are no longer top-level roadmap questions:
    - `pub`
    - `alias::Name`
 2. public API annotation policy exists
-   - `pub fn` must be fully annotated
+   - public functions must have inferable resolved signatures
+   - current implementation still enforces fully annotated `pub fn` until package interfaces exist
 3. package qualification uses `::`
 4. package mode and script mode are distinct
 
@@ -84,6 +85,15 @@ This gives Muga three benefits at once:
 - the compiler remains the main direction
 - the VM remains useful for debugging, testing, and semantic validation
 - the language does not pay for duplicated front-end logic
+
+Type checking and inference must stay shared across both backends.
+
+That means:
+
+- `muga check`, `muga run`, and future `muga build` should accept the same programs
+- VM execution is for fast development feedback, not a looser type system
+- native compilation is for final executables and performance-sensitive delivery
+- inferred package interfaces should be generated once and reused by both execution paths
 
 ## Cross-Cutting Infrastructure
 
@@ -230,6 +240,7 @@ HIR boundary:
 Goal:
 
 - replace the current package-flattening strategy with real package interfaces
+- store resolved public signatures in package interfaces, whether the signatures were written or inferred
 
 Why this is third:
 
@@ -243,6 +254,14 @@ Expected outcomes:
 - imported package metadata available without loading full bodies
 - package graph built explicitly
 - package-level checking separated from whole-program flattening
+- inferred public function signatures cached as part of the package interface
+
+Policy:
+
+- source code should remain inference-first even for `pub fn` when inference is unique
+- package interfaces should contain explicit resolved signatures
+- downstream packages should not infer through dependency bodies
+- recursive, mutually recursive, or ambiguous public APIs may still require annotations
 
 Likely related work:
 

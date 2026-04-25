@@ -253,26 +253,64 @@ Across packages:
 
 - references must be qualified through an imported package alias
 
-## 10. Public API Annotation Policy
+## 10. Public API Signature Policy
 
-To support fast compilation and stable interfaces, the draft requires stricter annotation rules at package boundaries.
+To support both minimal annotations and fast package compilation, package interfaces store **resolved public signatures**.
+
+Users do not have to write every public signature by hand when the compiler can infer it uniquely.
+
+The important boundary is:
+
+- package authors may omit annotations when local inference is sufficient
+- importers read cached package interfaces, not the full bodies of unchanged dependencies
+- package interfaces contain concrete resolved signatures whether they were written or inferred
 
 ### 10.1 Public functions
 
-Every `pub fn` must have:
+Every `pub fn` must have an inferable public signature.
 
-- an explicit type annotation on every parameter
-- an explicit return type annotation
+That signature may come from:
 
-Example:
+- explicit annotations
+- local inference inside the defining package
+- a mix of both
 
 ```txt
-pub fn map_name(user: User, f: String -> String): String {
-  f(user.name)
+pub fn display_name(user: User) {
+  user.name
+}
+
+pub fn age_next(user: User) {
+  user.age + 1
 }
 ```
 
-Even if the body would allow local inference, public signatures remain explicit.
+These are valid because the compiler can infer the exported signatures:
+
+```txt
+display_name: User -> String
+age_next: User -> Int
+```
+
+The generated package interface stores those resolved signatures.
+
+Annotations remain required when a public signature cannot be inferred uniquely from local information.
+
+Examples:
+
+```txt
+pub fn id(x) {
+  x
+}
+```
+
+```txt
+pub fn apply(x, f) {
+  f(x)
+}
+```
+
+These are invalid without more annotations because the exported signature is ambiguous.
 
 ### 10.2 Public records
 
@@ -282,11 +320,17 @@ Even if the body would allow local inference, public signatures remain explicit.
 
 This rule is recommended for three reasons:
 
-- the API is readable without reading the body
-- exported signatures can be loaded and hashed without typechecking bodies
-- package interfaces remain stable and cheap to cache
+- source code keeps the same inference-first style in private and public functions
+- exported signatures can still be loaded and hashed without typechecking unchanged dependency bodies
+- package interfaces remain stable and cheap to cache once generated
 
 Private functions remain free to use local inference.
+
+The cost trade-off is explicit:
+
+- the defining package must typecheck public bodies when generating or refreshing its interface
+- downstream packages can use the cached inferred interface without reading those bodies again
+- first builds may do slightly more work, but incremental and dependency builds stay fast
 
 ### 10.4 Public signatures may not leak private names
 
