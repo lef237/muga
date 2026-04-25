@@ -142,6 +142,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
 - file-based package mode with `package`, `import`, `pub`, and `alias::Name` is implemented
+- current package implementation still requires fully annotated `pub fn`; the design direction is to allow inferred public signatures once package interfaces can store them
 - explicit receiver-style distinction is not implemented yet
 - package manifests, configurable source roots, and package caching are not implemented yet
 
@@ -204,7 +205,7 @@ Higher-order annotation guide:
 
 - Omit an arrow annotation when the callback type is uniquely determined inside the same function body, as in [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) and [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga).
 - Keep an arrow annotation when local inference is still ambiguous, or when you want the callback contract to be obvious at the declaration site, as in [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga).
-- In package mode, `pub fn` already requires a fully annotated signature. Private helpers inside a package can keep using local inference.
+- In the package design, `pub fn` should also be inference-first when its public signature is uniquely inferable. The generated package interface stores the resolved signature so downstream packages can stay fast without rechecking dependency bodies.
 
 Package alias note:
 
