@@ -264,6 +264,101 @@ fn main(): Int {
 }
 
 #[test]
+fn resolver_exposes_identifier_binding_identity() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  value
+}
+"#;
+    let program = parse_source(source);
+    let output = muga::resolver::resolve_program(&program);
+    assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+
+    let value_binding = output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == "value")
+        .expect("value binding should be exposed");
+    assert_eq!(value_binding.kind, muga::identity::BindingKind::Immutable);
+
+    let value_ref = output
+        .identifier_refs
+        .iter()
+        .find(|identifier| output.symbols.resolve(identifier.name) == "value")
+        .expect("value identifier use should be exposed");
+    assert_eq!(value_ref.binding, value_binding.id);
+}
+
+#[test]
+fn typechecker_exposes_identifier_and_expression_types() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  value
+}
+"#;
+    let program = parse_source(source);
+    let output = muga::typing::typecheck_program(&program);
+    assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+
+    let value_binding = output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == "value")
+        .expect("value binding should be exposed");
+    assert_eq!(value_binding.ty, muga::typing::TypeInfo::Int);
+
+    let value_ref = output
+        .identifier_refs
+        .iter()
+        .find(|identifier| output.symbols.resolve(identifier.name) == "value")
+        .expect("value identifier use should be exposed");
+    assert_eq!(value_ref.binding, value_binding.id);
+
+    let value_expr_type = output
+        .expr_types
+        .iter()
+        .find(|expr_type| expr_type.span == value_ref.span)
+        .expect("value expression type should be exposed");
+    assert_eq!(value_expr_type.ty, muga::typing::TypeInfo::Int);
+}
+
+#[test]
+fn typechecker_output_resolves_late_inferred_function_types() {
+    let source = r#"
+fn apply(x: Int, f): Int {
+  f(x)
+}
+
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn main(): Int {
+  apply(10, inc)
+}
+"#;
+    let program = parse_source(source);
+    let output = muga::typing::typecheck_program(&program);
+    assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+
+    let f_binding = output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == "f")
+        .expect("f binding should be exposed");
+
+    assert_eq!(
+        f_binding.ty,
+        muga::typing::TypeInfo::Function(muga::typing::FunctionTypeInfo {
+            params: vec![muga::typing::TypeInfo::Int],
+            ret: Box::new(muga::typing::TypeInfo::Int),
+        })
+    );
+}
+
+#[test]
 fn closures_capture_outer_bindings() {
     let source = r#"
 fn main(): Int {
@@ -342,4 +437,9 @@ fn assert_package_runs(path: &str, expected_main: &str, expected_output: &str) {
         result.output_text, expected_output,
         "package sample: {path}"
     );
+}
+
+fn parse_source(source: &str) -> muga::ast::Program {
+    let tokens = muga::lexer::lex(source).unwrap();
+    muga::parser::parse(tokens).unwrap()
 }
