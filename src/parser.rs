@@ -1,5 +1,6 @@
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
+use crate::identity::{ExprId, StmtId};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
@@ -13,11 +14,18 @@ pub fn parse(tokens: Vec<Token>) -> Result<Program, Vec<Diagnostic>> {
 struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    next_expr_id: u32,
+    next_stmt_id: u32,
 }
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+        Self {
+            tokens,
+            current: 0,
+            next_expr_id: 0,
+            next_stmt_id: 0,
+        }
     }
 
     fn parse_program(&mut self) -> Result<Program, Diagnostic> {
@@ -175,6 +183,7 @@ impl Parser {
         self.expect_simple(TokenKind::Eq, "expected `=` after binding name")?;
         let value = self.parse_expr()?;
         Ok(AssignStmt {
+            id: self.stmt_id(),
             mutable,
             name,
             value,
@@ -210,6 +219,7 @@ impl Parser {
         }
         let end = self.expect_simple(TokenKind::RBrace, "expected `}` after record declaration")?;
         Ok(RecordDecl {
+            id: self.stmt_id(),
             name,
             visibility,
             fields,
@@ -231,6 +241,7 @@ impl Parser {
         let body = self.parse_value_block()?;
         let span = start.merge(body.span);
         Ok(FuncDecl {
+            id: self.stmt_id(),
             name,
             visibility,
             params,
@@ -351,16 +362,22 @@ impl Parser {
             let then_branch = block_to_value_block(then_block)?;
             let else_branch = block_to_value_block(else_block)?;
             let expr = Expr::If(IfExpr {
+                id: self.expr_id(),
                 condition: Box::new(condition),
                 span: start.merge(else_branch.span),
                 then_branch,
                 else_branch,
             });
             let span = expr.span();
-            Ok(Stmt::Expr(ExprStmt { expr, span }))
+            Ok(Stmt::Expr(ExprStmt {
+                id: self.stmt_id(),
+                expr,
+                span,
+            }))
         } else {
             let span = start.merge(then_block.span);
             Ok(Stmt::If(IfStmt {
+                id: self.stmt_id(),
                 condition,
                 then_branch: then_block,
                 else_branch: None,
@@ -375,6 +392,7 @@ impl Parser {
         let condition = self.parse_expr()?;
         let body = self.parse_block()?;
         Ok(WhileStmt {
+            id: self.stmt_id(),
             condition,
             span: start.merge(body.span),
             body,
@@ -384,7 +402,11 @@ impl Parser {
     fn parse_expr_stmt(&mut self) -> Result<ExprStmt, Diagnostic> {
         let expr = self.parse_expr()?;
         let span = expr.span();
-        Ok(ExprStmt { expr, span })
+        Ok(ExprStmt {
+            id: self.stmt_id(),
+            expr,
+            span,
+        })
     }
 
     fn parse_block(&mut self) -> Result<Block, Diagnostic> {
@@ -427,6 +449,7 @@ impl Parser {
         self.expect_simple(TokenKind::Else, "expected `else` in `if` expression")?;
         let else_branch = self.parse_value_block()?;
         Ok(Expr::If(IfExpr {
+            id: self.expr_id(),
             condition: Box::new(condition),
             span: start.merge(else_branch.span),
             then_branch,
@@ -446,6 +469,7 @@ impl Parser {
             let right = self.parse_comparison()?;
             let span = expr.span().merge(right.span());
             expr = Expr::Binary(BinaryExpr {
+                id: self.expr_id(),
                 op,
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -469,6 +493,7 @@ impl Parser {
             let right = self.parse_additive()?;
             let span = expr.span().merge(right.span());
             expr = Expr::Binary(BinaryExpr {
+                id: self.expr_id(),
                 op,
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -490,6 +515,7 @@ impl Parser {
             let right = self.parse_multiplicative()?;
             let span = expr.span().merge(right.span());
             expr = Expr::Binary(BinaryExpr {
+                id: self.expr_id(),
                 op,
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -511,6 +537,7 @@ impl Parser {
             let right = self.parse_unary()?;
             let span = expr.span().merge(right.span());
             expr = Expr::Binary(BinaryExpr {
+                id: self.expr_id(),
                 op,
                 left: Box::new(expr),
                 right: Box::new(right),
@@ -527,6 +554,7 @@ impl Parser {
                 self.advance();
                 let expr = self.parse_unary()?;
                 Ok(Expr::Unary(UnaryExpr {
+                    id: self.expr_id(),
                     op: UnaryOp::Neg,
                     span: start.merge(expr.span()),
                     expr: Box::new(expr),
@@ -537,6 +565,7 @@ impl Parser {
                 self.advance();
                 let expr = self.parse_unary()?;
                 Ok(Expr::Unary(UnaryExpr {
+                    id: self.expr_id(),
                     op: UnaryOp::Not,
                     span: start.merge(expr.span()),
                     expr: Box::new(expr),
@@ -563,6 +592,7 @@ impl Parser {
                     self.expect_simple(TokenKind::RParen, "expected `)` after call arguments")?;
                 let span = expr.span().merge(end);
                 expr = Expr::Call(CallExpr {
+                    id: self.expr_id(),
                     callee: Box::new(expr),
                     args,
                     span,
@@ -578,6 +608,7 @@ impl Parser {
                         .span()
                         .merge(fields.last().map(|field| field.span).unwrap_or(first_span));
                     expr = Expr::RecordUpdate(RecordUpdateExpr {
+                        id: self.expr_id(),
                         base: Box::new(expr),
                         fields,
                         span,
@@ -612,6 +643,7 @@ impl Parser {
                     let end =
                         self.expect_simple(TokenKind::RParen, "expected `)` after call arguments")?;
                     let callee = Expr::Ident(IdentExpr {
+                        id: self.expr_id(),
                         name: callee_name,
                         span: callee_span,
                     });
@@ -621,6 +653,7 @@ impl Parser {
                     call_args.push(base);
                     call_args.extend(args);
                     expr = Expr::Call(CallExpr {
+                        id: self.expr_id(),
                         callee: Box::new(callee),
                         args: call_args,
                         span: base_span.merge(start).merge(end),
@@ -638,6 +671,7 @@ impl Parser {
 
                 let span = expr.span().merge(callee_span);
                 expr = Expr::Field(FieldExpr {
+                    id: self.expr_id(),
                     base: Box::new(expr),
                     field: callee_name,
                     span,
@@ -658,19 +692,23 @@ impl Parser {
                     .parse::<i64>()
                     .map_err(|_| Diagnostic::new("P002", "invalid integer literal", token.span))?;
                 Ok(Expr::Int(IntExpr {
+                    id: self.expr_id(),
                     value,
                     span: token.span,
                 }))
             }
             TokenKind::String(value) => Ok(Expr::String(StringExpr {
+                id: self.expr_id(),
                 value,
                 span: token.span,
             })),
             TokenKind::True => Ok(Expr::Bool(BoolExpr {
+                id: self.expr_id(),
                 value: true,
                 span: token.span,
             })),
             TokenKind::False => Ok(Expr::Bool(BoolExpr {
+                id: self.expr_id(),
                 value: false,
                 span: token.span,
             })),
@@ -679,7 +717,11 @@ impl Parser {
                 if self.looks_like_record_lit() {
                     self.parse_record_lit(name, span)
                 } else {
-                    Ok(Expr::Ident(IdentExpr { name, span }))
+                    Ok(Expr::Ident(IdentExpr {
+                        id: self.expr_id(),
+                        name,
+                        span,
+                    }))
                 }
             }
             TokenKind::LParen => {
@@ -704,6 +746,7 @@ impl Parser {
         let body = self.parse_value_block()?;
         let span = start.merge(body.span);
         Ok(Expr::Fn(FnExpr {
+            id: self.expr_id(),
             params,
             return_type,
             body,
@@ -733,6 +776,7 @@ impl Parser {
         }
         let end = self.expect_simple(TokenKind::RBrace, "expected `}` after record literal")?;
         Ok(Expr::RecordLit(RecordLitExpr {
+            id: self.expr_id(),
             type_name,
             fields,
             span: start.merge(end),
@@ -939,6 +983,18 @@ impl Parser {
             self.current += 1;
         }
         token
+    }
+
+    fn expr_id(&mut self) -> ExprId {
+        let id = ExprId::new(self.next_expr_id);
+        self.next_expr_id += 1;
+        id
+    }
+
+    fn stmt_id(&mut self) -> StmtId {
+        let id = StmtId::new(self.next_stmt_id);
+        self.next_stmt_id += 1;
+        id
     }
 }
 
