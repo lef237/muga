@@ -44,6 +44,15 @@ Each `BindingId` records at least:
 
 Typed HIR should later store resolved identifier uses as `BindingId` instead of looking names up again.
 
+The first migration step is intentionally smaller than full typed HIR:
+
+- expose the accepted binding table from resolver/typechecker
+- expose identifier references as analysis records that carry `ExprId`, source spans, and `BindingId`
+- expose expression type results from typechecking
+- keep the current runtime and bytecode behavior unchanged
+
+Source spans are still kept for diagnostics, but analysis consumers should prefer explicit node identity. The current AST carries `ExprId` and `StmtId`, and resolver/typechecker outputs use `ExprId` for identifier references and expression types. Package flattening renumbers node IDs after combining files so IDs remain unique inside the final checked program.
+
 ## Package Identity
 
 Package work should introduce a package symbol graph before package flattening is removed.
@@ -73,6 +82,8 @@ By the time code reaches typed HIR, these should be fixed:
 
 Typed HIR should not perform string-based name lookup.
 
+Typed HIR should consume analysis outputs rather than rerunning resolver or typechecker logic. In particular, identifier expressions should already know their binding identity, and expressions should already have a resolved type.
+
 ## Current Migration Status
 
 Done:
@@ -81,9 +92,11 @@ Done:
 - typechecker scopes use `Symbol -> BindingId`
 - resolver and typechecker both keep internal binding tables
 - shared ID wrapper types exist in `src/identity.rs`
+- AST expressions and statements carry `ExprId` / `StmtId`
+- resolver exposes accepted bindings and identifier references
+- typechecker exposes accepted bindings, identifier references, and expression types
 
 Remaining:
 
-1. expose resolved identity data instead of keeping it only inside resolver/typechecker
-2. add package-aware identities before replacing package flattening
-3. lower into typed HIR using resolved identities
+1. add package-aware identities before replacing package flattening
+2. lower into typed HIR using resolved identities

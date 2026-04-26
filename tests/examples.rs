@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{collections::HashSet, fs, path::Path};
 
 use muga::bytecode::Instruction;
 
@@ -165,6 +165,17 @@ fn package_entry_runs() {
 }
 
 #[test]
+fn package_loader_renumbers_statement_ids_after_flattening() {
+    let program = muga::check_path(Path::new("samples/packages/app/main/main.muga")).unwrap();
+    let mut ids = HashSet::new();
+    collect_stmt_ids(&program.statements, &mut ids);
+    assert!(
+        ids.len() > 1,
+        "package sample should contain multiple statements"
+    );
+}
+
+#[test]
 fn package_alias_demo_runs() {
     assert_package_runs("samples/packages/app/alias_demo/main.muga", "112", "");
 }
@@ -264,6 +275,127 @@ fn main(): Int {
 }
 
 #[test]
+fn resolver_exposes_identifier_binding_identity() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  value
+}
+"#;
+    let program = parse_source(source);
+    let output = muga::resolver::resolve_program(&program);
+    assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+
+    let value_binding = output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == "value")
+        .expect("value binding should be exposed");
+    assert_eq!(value_binding.kind, muga::identity::BindingKind::Immutable);
+
+    let value_ref = output
+        .identifier_refs
+        .iter()
+        .find(|identifier| output.symbols.resolve(identifier.name) == "value")
+        .expect("value identifier use should be exposed");
+    assert_eq!(value_ref.binding, value_binding.id);
+    assert_eq!(value_ref.expr_id.as_u32(), 1);
+}
+
+#[test]
+fn typechecker_exposes_identifier_and_expression_types() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  value
+}
+"#;
+    let program = parse_source(source);
+    let output = muga::typing::typecheck_program(&program);
+    assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+
+    let value_binding = output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == "value")
+        .expect("value binding should be exposed");
+    assert_eq!(value_binding.ty, muga::typing::TypeInfo::Int);
+
+    let value_ref = output
+        .identifier_refs
+        .iter()
+        .find(|identifier| output.symbols.resolve(identifier.name) == "value")
+        .expect("value identifier use should be exposed");
+    assert_eq!(value_ref.binding, value_binding.id);
+
+    let value_expr_type = output
+        .expr_types
+        .iter()
+        .find(|expr_type| expr_type.expr_id == value_ref.expr_id)
+        .expect("value expression type should be exposed");
+    assert_eq!(value_expr_type.ty, muga::typing::TypeInfo::Int);
+}
+
+#[test]
+fn parser_assigns_stable_expression_and_statement_ids() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  value + 2
+}
+"#;
+    let program = parse_source(source);
+    let main = match &program.statements[0] {
+        muga::ast::Stmt::FuncDecl(func) => func,
+        _ => panic!("expected function declaration"),
+    };
+    let assign = match &main.body.statements[0] {
+        muga::ast::Stmt::Assign(assign) => assign,
+        _ => panic!("expected assignment"),
+    };
+    let final_expr = main.body.expr.as_ref();
+
+    assert_eq!(main.id.as_u32(), 2);
+    assert_eq!(assign.id.as_u32(), 0);
+    assert_eq!(assign.value.id().as_u32(), 0);
+    assert_eq!(final_expr.id().as_u32(), 3);
+}
+
+#[test]
+fn typechecker_output_resolves_late_inferred_function_types() {
+    let source = r#"
+fn apply(x: Int, f): Int {
+  f(x)
+}
+
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn main(): Int {
+  apply(10, inc)
+}
+"#;
+    let program = parse_source(source);
+    let output = muga::typing::typecheck_program(&program);
+    assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+
+    let f_binding = output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == "f")
+        .expect("f binding should be exposed");
+
+    assert_eq!(
+        f_binding.ty,
+        muga::typing::TypeInfo::Function(muga::typing::FunctionTypeInfo {
+            params: vec![muga::typing::TypeInfo::Int],
+            ret: Box::new(muga::typing::TypeInfo::Int),
+        })
+    );
+}
+
+#[test]
 fn closures_capture_outer_bindings() {
     let source = r#"
 fn main(): Int {
@@ -342,4 +474,34 @@ fn assert_package_runs(path: &str, expected_main: &str, expected_output: &str) {
         result.output_text, expected_output,
         "package sample: {path}"
     );
+}
+
+fn parse_source(source: &str) -> muga::ast::Program {
+    let tokens = muga::lexer::lex(source).unwrap();
+    muga::parser::parse(tokens).unwrap()
+}
+
+fn collect_stmt_ids(statements: &[muga::ast::Stmt], ids: &mut HashSet<u32>) {
+    for statement in statements {
+        assert!(
+            ids.insert(statement.id().as_u32()),
+            "duplicate statement id: {}",
+            statement.id().as_u32()
+        );
+        match statement {
+            muga::ast::Stmt::FuncDecl(func) => {
+                collect_stmt_ids(&func.body.statements, ids);
+            }
+            muga::ast::Stmt::If(stmt) => {
+                collect_stmt_ids(&stmt.then_branch.statements, ids);
+                if let Some(else_branch) = &stmt.else_branch {
+                    collect_stmt_ids(&else_branch.statements, ids);
+                }
+            }
+            muga::ast::Stmt::While(stmt) => {
+                collect_stmt_ids(&stmt.body.statements, ids);
+            }
+            _ => {}
+        }
+    }
 }

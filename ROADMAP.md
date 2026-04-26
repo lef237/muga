@@ -32,7 +32,7 @@ The biggest remaining architectural gap is this:
 
 - the parser / package layer has moved forward
 - resolver and typechecker now use symbol-based scope lookup internally
-- but resolved identities are not yet exposed as reusable compiler data
+- resolved local binding and expression type data are now exposed as reusable compiler data
 - typed HIR does not exist yet
 - package compilation is still implemented by flattening packages into one internal program
 
@@ -172,6 +172,13 @@ Expected outcomes:
 - typechecker can consume or produce the same identity vocabulary as resolver
 - less repeated name lookup when lowering into typed HIR
 
+Immediate implementation slice:
+
+- expose accepted bindings as compiler data, not only as scope internals
+- expose identifier-use resolution as `ExprId -> BindingId` data
+- expose expression type results as typed analysis data keyed by `ExprId`
+- keep the existing `check`, `run`, and bytecode paths behavior-compatible while this data becomes available
+
 The current identity design note lives in [docs/internal/identity-model.md](./docs/internal/identity-model.md).
 
 ## 2. Package Symbol Graph And Identity Model
@@ -180,7 +187,7 @@ Goal:
 
 - define how symbols are identified across package boundaries before typed HIR and package interfaces are locked in
 
-Why this is third:
+Why this is second:
 
 - the current package implementation still flattens packages into one internal program
 - that is exactly the phase where symbol identity tends to drift if it is not fixed early
@@ -204,7 +211,7 @@ Goal:
 
 - lower checked programs into a typed HIR where names, bindings, and expression types are already fixed
 
-Why this is second:
+Why this is third:
 
 - later stages should not redo name resolution or type inference
 - this is the real boundary between front-end analysis and code generation
@@ -242,7 +249,7 @@ Goal:
 - replace the current package-flattening strategy with real package interfaces
 - store resolved public signatures in package interfaces, whether the signatures were written or inferred
 
-Why this is third:
+Why this is fourth:
 
 - flattening is fine for early execution
 - it is not the right long-term shape for fast compilation
@@ -275,7 +282,7 @@ Goal:
 
 - reuse unchanged packages instead of rebuilding everything
 
-Why this is fourth:
+Why this is fifth:
 
 - package interfaces must exist first
 - compile speed at Go-like scale depends heavily on package caching
@@ -296,7 +303,7 @@ Goal:
 - keep VM bytecode for interpreter execution
 - add a separate compiler-oriented MIR for native code generation
 
-Why this is fifth:
+Why this is sixth:
 
 - the current bytecode is good for execution and testing
 - it is not necessarily the right IR for fast native codegen
@@ -419,13 +426,12 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. expose resolver/typechecker identity data instead of keeping it internal
-2. package-aware symbol identity design
-3. typed HIR
-4. receiver-style resolution finalization inside typed HIR lowering/checking
-5. diagnostic data model tightening
-6. package interfaces instead of flattening
-7. cache and incremental compilation
+1. package-aware symbol identity design
+2. typed HIR
+3. receiver-style resolution finalization inside typed HIR lowering/checking
+4. diagnostic data model tightening
+5. package interfaces instead of flattening
+6. cache and incremental compilation
 
 This order best matches the current state of the codebase.
 
