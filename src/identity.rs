@@ -20,6 +20,32 @@ pub enum BindingKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ExprId(u32);
+
+impl ExprId {
+    pub const fn new(index: u32) -> Self {
+        Self(index)
+    }
+
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct StmtId(u32);
+
+impl StmtId {
+    pub const fn new(index: u32) -> Self {
+        Self(index)
+    }
+
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LocalId(u32);
 
 impl LocalId {

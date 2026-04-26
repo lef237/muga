@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::{BindingId, BindingKind};
+use crate::identity::{BindingId, BindingKind, ExprId};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
@@ -25,6 +25,7 @@ pub struct TypedBindingInfo {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypedIdentifier {
+    pub expr_id: ExprId,
     pub name: Symbol,
     pub span: Span,
     pub binding: BindingId,
@@ -32,6 +33,7 @@ pub struct TypedIdentifier {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExprTypeInfo {
+    pub expr_id: ExprId,
     pub span: Span,
     pub ty: TypeInfo,
 }
@@ -88,6 +90,7 @@ struct Binding {
 
 #[derive(Clone, Debug)]
 struct ExprType {
+    expr_id: ExprId,
     span: Span,
     ty: Type,
 }
@@ -173,6 +176,7 @@ impl TypeChecker {
             .expr_types
             .iter()
             .map(|expr_type| ExprTypeInfo {
+                expr_id: expr_type.expr_id,
                 span: expr_type.span,
                 ty: self.type_info_for(&expr_type.ty),
             })
@@ -334,6 +338,7 @@ impl TypeChecker {
                 let name = self.symbol(&expr.name);
                 if let Some(binding) = self.lookup(name).cloned() {
                     self.identifier_refs.push(TypedIdentifier {
+                        expr_id: expr.id,
                         name,
                         span: expr.span,
                         binding: binding.id,
@@ -541,6 +546,7 @@ impl TypeChecker {
         };
         let resolved = self.resolve_type(&ty);
         self.expr_types.push(ExprType {
+            expr_id: expr.id(),
             span,
             ty: resolved.clone(),
         });

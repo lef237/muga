@@ -119,11 +119,13 @@ impl PackageLoader {
         }
 
         if self.diagnostics.is_empty() {
-            Ok(Program {
+            let mut program = Program {
                 package: None,
                 imports: Vec::new(),
                 statements,
-            })
+            };
+            renumber_node_ids(&mut program);
+            Ok(program)
         } else {
             Err(std::mem::take(&mut self.diagnostics))
         }
@@ -341,6 +343,7 @@ impl<'a> PackageRewriter<'a> {
         }
 
         RecordDecl {
+            id: record.id,
             name: mangle_record_name(&self.current_package, &record.name),
             visibility: Visibility::Private,
             fields: record
@@ -395,6 +398,7 @@ impl<'a> PackageRewriter<'a> {
         self.pop_scope();
 
         FuncDecl {
+            id: func.id,
             name: if top_level {
                 mangle_function_name(&self.current_package, &func.name, &self.entry_package)
             } else {
@@ -417,6 +421,7 @@ impl<'a> PackageRewriter<'a> {
                 let value = self.rewrite_expr(&stmt.value);
                 self.insert_local(stmt.name.clone());
                 Stmt::Assign(AssignStmt {
+                    id: stmt.id,
                     mutable: stmt.mutable,
                     name: stmt.name.clone(),
                     value,
@@ -426,6 +431,7 @@ impl<'a> PackageRewriter<'a> {
             Stmt::RecordDecl(record) => Stmt::RecordDecl(self.rewrite_record_decl(record)),
             Stmt::FuncDecl(func) => Stmt::FuncDecl(self.rewrite_func_decl(func, false)),
             Stmt::If(stmt) => Stmt::If(IfStmt {
+                id: stmt.id,
                 condition: self.rewrite_expr(&stmt.condition),
                 then_branch: self.rewrite_block(&stmt.then_branch),
                 else_branch: stmt
@@ -435,11 +441,13 @@ impl<'a> PackageRewriter<'a> {
                 span: stmt.span,
             }),
             Stmt::While(stmt) => Stmt::While(WhileStmt {
+                id: stmt.id,
                 condition: self.rewrite_expr(&stmt.condition),
                 body: self.rewrite_block(&stmt.body),
                 span: stmt.span,
             }),
             Stmt::Expr(stmt) => Stmt::Expr(ExprStmt {
+                id: stmt.id,
                 expr: self.rewrite_expr(&stmt.expr),
                 span: stmt.span,
             }),
@@ -482,10 +490,12 @@ impl<'a> PackageRewriter<'a> {
         match expr {
             Expr::Int(_) | Expr::Bool(_) | Expr::String(_) => expr.clone(),
             Expr::Ident(expr) => Expr::Ident(IdentExpr {
+                id: expr.id,
                 name: self.rewrite_value_name(&expr.name, expr.span),
                 span: expr.span,
             }),
             Expr::RecordLit(expr) => Expr::RecordLit(RecordLitExpr {
+                id: expr.id,
                 type_name: self.rewrite_type_name(&expr.type_name, expr.span),
                 fields: expr
                     .fields
@@ -499,11 +509,13 @@ impl<'a> PackageRewriter<'a> {
                 span: expr.span,
             }),
             Expr::Field(expr) => Expr::Field(FieldExpr {
+                id: expr.id,
                 base: Box::new(self.rewrite_expr(&expr.base)),
                 field: expr.field.clone(),
                 span: expr.span,
             }),
             Expr::RecordUpdate(expr) => Expr::RecordUpdate(RecordUpdateExpr {
+                id: expr.id,
                 base: Box::new(self.rewrite_expr(&expr.base)),
                 fields: expr
                     .fields
@@ -517,22 +529,26 @@ impl<'a> PackageRewriter<'a> {
                 span: expr.span,
             }),
             Expr::Unary(expr) => Expr::Unary(UnaryExpr {
+                id: expr.id,
                 op: expr.op,
                 expr: Box::new(self.rewrite_expr(&expr.expr)),
                 span: expr.span,
             }),
             Expr::Binary(expr) => Expr::Binary(BinaryExpr {
+                id: expr.id,
                 op: expr.op,
                 left: Box::new(self.rewrite_expr(&expr.left)),
                 right: Box::new(self.rewrite_expr(&expr.right)),
                 span: expr.span,
             }),
             Expr::Call(expr) => Expr::Call(CallExpr {
+                id: expr.id,
                 callee: Box::new(self.rewrite_expr(&expr.callee)),
                 args: expr.args.iter().map(|arg| self.rewrite_expr(arg)).collect(),
                 span: expr.span,
             }),
             Expr::If(expr) => Expr::If(IfExpr {
+                id: expr.id,
                 condition: Box::new(self.rewrite_expr(&expr.condition)),
                 then_branch: self.rewrite_value_block(&expr.then_branch),
                 else_branch: self.rewrite_value_block(&expr.else_branch),
@@ -559,6 +575,7 @@ impl<'a> PackageRewriter<'a> {
         let body = self.rewrite_value_block(&expr.body);
         self.pop_scope();
         FnExpr {
+            id: expr.id,
             params,
             return_type: expr
                 .return_type

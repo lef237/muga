@@ -32,7 +32,7 @@ The biggest remaining architectural gap is this:
 
 - the parser / package layer has moved forward
 - resolver and typechecker now use symbol-based scope lookup internally
-- but resolved identities are not yet exposed as reusable compiler data
+- resolved local binding and expression type data are now exposed as reusable compiler data
 - typed HIR does not exist yet
 - package compilation is still implemented by flattening packages into one internal program
 
@@ -175,8 +175,8 @@ Expected outcomes:
 Immediate implementation slice:
 
 - expose accepted bindings as compiler data, not only as scope internals
-- expose identifier-use resolution as `span -> BindingId` data
-- expose expression type results as typed analysis data
+- expose identifier-use resolution as `ExprId -> BindingId` data
+- expose expression type results as typed analysis data keyed by `ExprId`
 - keep the existing `check`, `run`, and bytecode paths behavior-compatible while this data becomes available
 
 The current identity design note lives in [docs/internal/identity-model.md](./docs/internal/identity-model.md).
@@ -426,14 +426,12 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. expose resolver/typechecker identity data instead of keeping it internal
-2. add stable AST/HIR node identity where span-based analysis data is not enough
-3. package-aware symbol identity design
-4. typed HIR
-5. receiver-style resolution finalization inside typed HIR lowering/checking
-6. diagnostic data model tightening
-7. package interfaces instead of flattening
-8. cache and incremental compilation
+1. package-aware symbol identity design
+2. typed HIR
+3. receiver-style resolution finalization inside typed HIR lowering/checking
+4. diagnostic data model tightening
+5. package interfaces instead of flattening
+6. cache and incremental compilation
 
 This order best matches the current state of the codebase.
 

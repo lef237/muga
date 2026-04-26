@@ -47,11 +47,11 @@ Typed HIR should later store resolved identifier uses as `BindingId` instead of 
 The first migration step is intentionally smaller than full typed HIR:
 
 - expose the accepted binding table from resolver/typechecker
-- expose identifier references as analysis records that carry source spans and `BindingId`
+- expose identifier references as analysis records that carry `ExprId`, source spans, and `BindingId`
 - expose expression type results from typechecking
 - keep the current runtime and bytecode behavior unchanged
 
-Source spans are acceptable as a temporary bridge for this step because the current AST does not yet carry stable node IDs. Before typed HIR becomes the main compiler boundary, Muga should add explicit node identity, such as `ExprId` and `StmtId`, where span-based lookup is not precise enough.
+Source spans are still kept for diagnostics, but analysis consumers should prefer explicit node identity. The current AST carries `ExprId` and `StmtId`, and resolver/typechecker outputs use `ExprId` for identifier references and expression types. Package flattening renumbers node IDs after combining files so IDs remain unique inside the final checked program.
 
 ## Package Identity
 
@@ -92,10 +92,11 @@ Done:
 - typechecker scopes use `Symbol -> BindingId`
 - resolver and typechecker both keep internal binding tables
 - shared ID wrapper types exist in `src/identity.rs`
+- AST expressions and statements carry `ExprId` / `StmtId`
+- resolver exposes accepted bindings and identifier references
+- typechecker exposes accepted bindings, identifier references, and expression types
 
 Remaining:
 
-1. expose resolved identity data instead of keeping it only inside resolver/typechecker
-2. replace temporary span-keyed analysis records with stable node identity where needed
-3. add package-aware identities before replacing package flattening
-4. lower into typed HIR using resolved identities
+1. add package-aware identities before replacing package flattening
+2. lower into typed HIR using resolved identities
