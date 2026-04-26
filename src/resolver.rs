@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::{BindingId, BindingKind};
+use crate::identity::{BindingId, BindingKind, ExprId};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
@@ -24,6 +24,7 @@ pub struct BindingInfo {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ResolvedIdentifier {
+    pub expr_id: ExprId,
     pub name: Symbol,
     pub span: Span,
     pub binding: BindingId,
@@ -249,6 +250,7 @@ impl Resolver {
                 let name = self.symbol(&expr.name);
                 if let Some(binding) = self.any_scope_lookup(name).copied() {
                     self.identifier_refs.push(ResolvedIdentifier {
+                        expr_id: expr.id,
                         name,
                         span: expr.span,
                         binding: binding.id,
