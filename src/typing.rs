@@ -2,9 +2,57 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::BindingId;
+use crate::identity::{BindingId, BindingKind};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
+
+#[derive(Clone, Debug)]
+pub struct TypeCheckOutput {
+    pub diagnostics: Vec<Diagnostic>,
+    pub bindings: Vec<TypedBindingInfo>,
+    pub identifier_refs: Vec<TypedIdentifier>,
+    pub expr_types: Vec<ExprTypeInfo>,
+    pub symbols: SymbolTable,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypedBindingInfo {
+    pub id: BindingId,
+    pub symbol: Symbol,
+    pub kind: BindingKind,
+    pub ty: TypeInfo,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TypedIdentifier {
+    pub name: Symbol,
+    pub span: Span,
+    pub binding: BindingId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExprTypeInfo {
+    pub span: Span,
+    pub ty: TypeInfo,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TypeInfo {
+    Int,
+    Bool,
+    String,
+    Record(Symbol),
+    Function(FunctionTypeInfo),
+    Builtin(&'static str),
+    Unknown,
+    Error,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionTypeInfo {
+    pub params: Vec<TypeInfo>,
+    pub ret: Box<TypeInfo>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Type {
@@ -30,19 +78,17 @@ enum BuiltinFunction {
     Println,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum BindingKind {
-    Immutable,
-    Mutable,
-    Function,
-    Parameter,
+#[derive(Clone, Debug)]
+struct Binding {
+    id: BindingId,
+    symbol: Symbol,
+    kind: BindingKind,
+    ty: Type,
 }
 
 #[derive(Clone, Debug)]
-struct Binding {
-    _id: BindingId,
-    _symbol: Symbol,
-    kind: BindingKind,
+struct ExprType {
+    span: Span,
     ty: Type,
 }
 
@@ -73,16 +119,22 @@ impl ScopeFrame {
 }
 
 pub fn typecheck(program: &Program) -> Vec<Diagnostic> {
+    typecheck_program(program).diagnostics
+}
+
+pub fn typecheck_program(program: &Program) -> TypeCheckOutput {
     let mut checker = TypeChecker::new();
     checker.predeclare_records(&program.statements);
     checker.check_scope_statements(&program.statements);
-    checker.diagnostics
+    checker.into_output()
 }
 
 struct TypeChecker {
     scopes: Vec<ScopeFrame>,
     records: HashMap<Symbol, RecordDef>,
     bindings: Vec<Binding>,
+    identifier_refs: Vec<TypedIdentifier>,
+    expr_types: Vec<ExprType>,
     symbols: SymbolTable,
     diagnostics: Vec<Diagnostic>,
     next_unknown: u32,
@@ -95,6 +147,8 @@ impl TypeChecker {
             scopes: vec![ScopeFrame::new(true)],
             records: HashMap::new(),
             bindings: Vec::new(),
+            identifier_refs: Vec::new(),
+            expr_types: Vec::new(),
             symbols: SymbolTable::default(),
             diagnostics: Vec::new(),
             next_unknown: 0,
@@ -102,6 +156,34 @@ impl TypeChecker {
         };
         checker.install_prelude();
         checker
+    }
+
+    fn into_output(self) -> TypeCheckOutput {
+        let bindings = self
+            .bindings
+            .iter()
+            .map(|binding| TypedBindingInfo {
+                id: binding.id,
+                symbol: binding.symbol,
+                kind: binding.kind,
+                ty: self.type_info_for(&binding.ty),
+            })
+            .collect();
+        let expr_types = self
+            .expr_types
+            .iter()
+            .map(|expr_type| ExprTypeInfo {
+                span: expr_type.span,
+                ty: self.type_info_for(&expr_type.ty),
+            })
+            .collect();
+        TypeCheckOutput {
+            diagnostics: self.diagnostics,
+            bindings,
+            identifier_refs: self.identifier_refs,
+            expr_types,
+            symbols: self.symbols,
+        }
     }
 
     fn install_prelude(&mut self) {
@@ -243,16 +325,23 @@ impl TypeChecker {
     }
 
     fn check_expr_with_expected(&mut self, expr: &Expr, expected: Option<Type>) -> Type {
-        match expr {
+        let span = expr.span();
+        let ty = match expr {
             Expr::Int(_) => self.apply_expected(Type::Int, expected, expr.span()),
             Expr::Bool(_) => self.apply_expected(Type::Bool, expected, expr.span()),
             Expr::String(_) => self.apply_expected(Type::String, expected, expr.span()),
             Expr::Ident(expr) => {
                 let name = self.symbol(&expr.name);
-                self.lookup(name)
-                    .map(|binding| binding.ty.clone())
-                    .map(|ty| self.apply_expected(ty, expected, expr.span))
-                    .unwrap_or(Type::Error)
+                if let Some(binding) = self.lookup(name).cloned() {
+                    self.identifier_refs.push(TypedIdentifier {
+                        name,
+                        span: expr.span,
+                        binding: binding.id,
+                    });
+                    self.apply_expected(binding.ty, expected, expr.span)
+                } else {
+                    Type::Error
+                }
             }
             Expr::RecordLit(expr) => {
                 let ty = self.check_record_lit(expr);
@@ -325,35 +414,38 @@ impl TypeChecker {
                                 format!("expected 1 arguments but found {}", expr.args.len()),
                                 expr.span,
                             ));
-                            return Type::Error;
-                        }
-
-                        let arg_ty = self.check_expr_with_expected(&expr.args[0], expected.clone());
-                        let arg_ty = self.resolve_type(&arg_ty);
-                        match arg_ty {
-                            Type::Int | Type::Bool | Type::String => {
-                                self.apply_expected(arg_ty, expected, expr.span)
-                            }
-                            Type::Unknown(_) => {
-                                self.diagnostics.push(Diagnostic::new(
-                                    "E005",
-                                    "type annotation required because inference is not unique",
-                                    expr.span,
-                                ));
-                                Type::Error
-                            }
-                            _ => {
-                                let builtin_name = match self.resolve_type(&callee_ty) {
-                                    Type::Builtin(BuiltinFunction::Print) => "print",
-                                    Type::Builtin(BuiltinFunction::Println) => "println",
-                                    _ => unreachable!("matched builtin branch"),
-                                };
-                                self.diagnostics.push(Diagnostic::new(
-                                    "T006",
-                                    format!("`{builtin_name}` accepts only Int, Bool, or String"),
-                                    expr.span,
-                                ));
-                                Type::Error
+                            Type::Error
+                        } else {
+                            let arg_ty =
+                                self.check_expr_with_expected(&expr.args[0], expected.clone());
+                            let arg_ty = self.resolve_type(&arg_ty);
+                            match arg_ty {
+                                Type::Int | Type::Bool | Type::String => {
+                                    self.apply_expected(arg_ty, expected, expr.span)
+                                }
+                                Type::Unknown(_) => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "E005",
+                                        "type annotation required because inference is not unique",
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                                _ => {
+                                    let builtin_name = match self.resolve_type(&callee_ty) {
+                                        Type::Builtin(BuiltinFunction::Print) => "print",
+                                        Type::Builtin(BuiltinFunction::Println) => "println",
+                                        _ => unreachable!("matched builtin branch"),
+                                    };
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "T006",
+                                        format!(
+                                            "`{builtin_name}` accepts only Int, Bool, or String"
+                                        ),
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
                             }
                         }
                     }
@@ -368,12 +460,13 @@ impl TypeChecker {
                                 ),
                                 expr.span,
                             ));
-                            return Type::Error;
+                            Type::Error
+                        } else {
+                            for (arg, param_ty) in expr.args.iter().zip(sig.params.iter()) {
+                                self.check_expr_with_expected(arg, Some(param_ty.clone()));
+                            }
+                            self.apply_expected(*sig.ret.clone(), expected, expr.span)
                         }
-                        for (arg, param_ty) in expr.args.iter().zip(sig.params.iter()) {
-                            self.check_expr_with_expected(arg, Some(param_ty.clone()));
-                        }
-                        self.apply_expected(*sig.ret.clone(), expected, expr.span)
                     }
                     Type::Unknown(_) => {
                         let arg_tys: Vec<Type> =
@@ -387,9 +480,10 @@ impl TypeChecker {
                         if let Err(message) = self.unify(callee_ty, inferred_sig) {
                             self.diagnostics
                                 .push(Diagnostic::new("T005", message, expr.span));
-                            return Type::Error;
+                            Type::Error
+                        } else {
+                            self.resolve_type(&ret_ty)
                         }
-                        self.resolve_type(&ret_ty)
                     }
                     Type::Error => Type::Error,
                     _ => {
@@ -444,7 +538,13 @@ impl TypeChecker {
                 self.pop_scope();
                 self.apply_expected(Type::Function(sig), expected, expr.span)
             }
-        }
+        };
+        let resolved = self.resolve_type(&ty);
+        self.expr_types.push(ExprType {
+            span,
+            ty: resolved.clone(),
+        });
+        resolved
     }
 
     fn predeclare_records(&mut self, statements: &[Stmt]) {
@@ -869,6 +969,23 @@ impl TypeChecker {
         }
     }
 
+    fn type_info_for(&self, ty: &Type) -> TypeInfo {
+        match self.resolve_type(ty) {
+            Type::Int => TypeInfo::Int,
+            Type::Bool => TypeInfo::Bool,
+            Type::String => TypeInfo::String,
+            Type::Record(symbol) => TypeInfo::Record(symbol),
+            Type::Function(sig) => TypeInfo::Function(FunctionTypeInfo {
+                params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
+                ret: Box::new(self.type_info_for(&sig.ret)),
+            }),
+            Type::Builtin(BuiltinFunction::Print) => TypeInfo::Builtin("print"),
+            Type::Builtin(BuiltinFunction::Println) => TypeInfo::Builtin("println"),
+            Type::Unknown(_) => TypeInfo::Unknown,
+            Type::Error => TypeInfo::Error,
+        }
+    }
+
     fn apply_expected(
         &mut self,
         inferred: Type,
@@ -914,8 +1031,8 @@ impl TypeChecker {
     fn insert_current(&mut self, name: Symbol, kind: BindingKind, ty: Type) -> BindingId {
         let id = BindingId::new(self.bindings.len() as u32);
         self.bindings.push(Binding {
-            _id: id,
-            _symbol: name,
+            id,
+            symbol: name,
             kind,
             ty,
         });

@@ -2,32 +2,51 @@ use std::collections::HashMap;
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::BindingId;
+use crate::identity::{BindingId, BindingKind};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
+#[derive(Clone, Debug)]
+pub struct ResolveOutput {
+    pub diagnostics: Vec<Diagnostic>,
+    pub bindings: Vec<BindingInfo>,
+    pub identifier_refs: Vec<ResolvedIdentifier>,
+    pub symbols: SymbolTable,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum BindingKind {
-    Immutable,
-    Mutable,
-    Function,
-    Parameter,
+pub struct BindingInfo {
+    pub id: BindingId,
+    pub symbol: Symbol,
+    pub kind: BindingKind,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResolvedIdentifier {
+    pub name: Symbol,
+    pub span: Span,
+    pub binding: BindingId,
 }
 
 pub fn resolve(program: &Program) -> Vec<Diagnostic> {
+    resolve_program(program).diagnostics
+}
+
+pub fn resolve_program(program: &Program) -> ResolveOutput {
     let mut resolver = Resolver::new();
     resolver.install_prelude();
     resolver.predeclare_records(&program.statements);
     resolver.resolve_scope_statements(&program.statements);
-    resolver.diagnostics
+    resolver.into_output()
 }
 
 #[derive(Clone, Copy, Debug)]
 struct Binding {
-    _id: BindingId,
-    _symbol: Symbol,
+    id: BindingId,
+    symbol: Symbol,
     kind: BindingKind,
-    _span: Span,
+    span: Span,
 }
 
 struct ScopeFrame {
@@ -48,6 +67,7 @@ struct Resolver {
     scopes: Vec<ScopeFrame>,
     records: HashMap<Symbol, Span>,
     bindings: Vec<Binding>,
+    identifier_refs: Vec<ResolvedIdentifier>,
     symbols: SymbolTable,
     diagnostics: Vec<Diagnostic>,
 }
@@ -58,8 +78,28 @@ impl Resolver {
             scopes: vec![ScopeFrame::new(true)],
             records: HashMap::new(),
             bindings: Vec::new(),
+            identifier_refs: Vec::new(),
             symbols: SymbolTable::default(),
             diagnostics: Vec::new(),
+        }
+    }
+
+    fn into_output(self) -> ResolveOutput {
+        let bindings = self
+            .bindings
+            .iter()
+            .map(|binding| BindingInfo {
+                id: binding.id,
+                symbol: binding.symbol,
+                kind: binding.kind,
+                span: binding.span,
+            })
+            .collect();
+        ResolveOutput {
+            diagnostics: self.diagnostics,
+            bindings,
+            identifier_refs: self.identifier_refs,
+            symbols: self.symbols,
         }
     }
 
@@ -207,7 +247,13 @@ impl Resolver {
             Expr::Int(_) | Expr::Bool(_) | Expr::String(_) => {}
             Expr::Ident(expr) => {
                 let name = self.symbol(&expr.name);
-                if self.any_scope_lookup(name).is_none() {
+                if let Some(binding) = self.any_scope_lookup(name).copied() {
+                    self.identifier_refs.push(ResolvedIdentifier {
+                        name,
+                        span: expr.span,
+                        binding: binding.id,
+                    });
+                } else {
                     self.diagnostics.push(Diagnostic::new(
                         "N001",
                         format!("unresolved name `{}`", expr.name),
@@ -369,10 +415,10 @@ impl Resolver {
     fn insert_current(&mut self, name: Symbol, kind: BindingKind, span: Span) -> BindingId {
         let id = BindingId::new(self.bindings.len() as u32);
         self.bindings.push(Binding {
-            _id: id,
-            _symbol: name,
+            id,
+            symbol: name,
             kind,
-            _span: span,
+            span,
         });
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, id);

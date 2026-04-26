@@ -44,6 +44,15 @@ Each `BindingId` records at least:
 
 Typed HIR should later store resolved identifier uses as `BindingId` instead of looking names up again.
 
+The first migration step is intentionally smaller than full typed HIR:
+
+- expose the accepted binding table from resolver/typechecker
+- expose identifier references as analysis records that carry source spans and `BindingId`
+- expose expression type results from typechecking
+- keep the current runtime and bytecode behavior unchanged
+
+Source spans are acceptable as a temporary bridge for this step because the current AST does not yet carry stable node IDs. Before typed HIR becomes the main compiler boundary, Muga should add explicit node identity, such as `ExprId` and `StmtId`, where span-based lookup is not precise enough.
+
 ## Package Identity
 
 Package work should introduce a package symbol graph before package flattening is removed.
@@ -73,6 +82,8 @@ By the time code reaches typed HIR, these should be fixed:
 
 Typed HIR should not perform string-based name lookup.
 
+Typed HIR should consume analysis outputs rather than rerunning resolver or typechecker logic. In particular, identifier expressions should already know their binding identity, and expressions should already have a resolved type.
+
 ## Current Migration Status
 
 Done:
@@ -85,5 +96,6 @@ Done:
 Remaining:
 
 1. expose resolved identity data instead of keeping it only inside resolver/typechecker
-2. add package-aware identities before replacing package flattening
-3. lower into typed HIR using resolved identities
+2. replace temporary span-keyed analysis records with stable node identity where needed
+3. add package-aware identities before replacing package flattening
+4. lower into typed HIR using resolved identities
