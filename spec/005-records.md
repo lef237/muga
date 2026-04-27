@@ -38,7 +38,7 @@ v1 rules:
 - record fields must not have function type in v1
 - record fields participate in the package/module visibility model
 - a field without a visibility modifier is module-private in package mode
-- `pub(package)` fields are visible inside the same package
+- `pkg` fields are visible inside the same package
 - `pub` fields are visible from importing packages
 
 The current compiler implementation does not yet enforce field visibility. This section defines the target design before package interfaces harden.
@@ -109,7 +109,7 @@ In v1, field access is read-only syntax. Assignment through field access such as
 Field access is allowed only when the current module is allowed to see that field:
 
 - module-private fields are visible only in the declaring module/file
-- `pub(package)` fields are visible in the same package
+- `pkg` fields are visible in the same package
 - `pub` fields are visible from importing packages
 
 ## 5. Record Update

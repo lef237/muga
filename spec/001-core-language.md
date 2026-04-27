@@ -129,6 +129,7 @@ Reserved keywords are:
 - `package`
 - `import`
 - `pub`
+- `pkg`
 - `as`
 - `if`
 - `else`
@@ -198,7 +199,7 @@ assign_like_stmt  := "mut" IDENT "=" expr
 record_decl       := "record" IDENT "{" record_field_decl* "}"
 record_field_decl := field_visibility? IDENT ":" type_expr
 field_visibility   := "pub"
-                   | "pub" "(" "package" ")"
+                   | "pkg"
 
 func_decl         := "fn" IDENT "(" params? ")" return_annot? value_block
 return_annot      := ":" type_expr
