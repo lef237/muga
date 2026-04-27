@@ -36,6 +36,34 @@ v1 rules:
 - field names must be unique within the record
 - field order is declaration order, but field access is by name
 - record fields must not have function type in v1
+- record fields participate in the package/module visibility model
+- a field without a visibility modifier is module-private in package mode
+- `pub(package)` fields are visible inside the same package
+- `pub` fields are visible from importing packages
+
+The current compiler implementation does not yet enforce field visibility. This section defines the target design before package interfaces harden.
+
+Example:
+
+```txt
+package app::counter
+
+pub record Counter {
+  value: Int
+}
+
+pub fn new_counter(): Counter {
+  Counter {
+    value: 0
+  }
+}
+
+pub fn inc(counter: Counter): Counter {
+  counter.with(value: counter.value + 1)
+}
+```
+
+Here `Counter` is public, but `value` is not. Other packages can name `Counter` and call public functions that return it, but they cannot directly read, construct, or update `value`.
 
 ## 3. Record Literals
 
@@ -54,6 +82,9 @@ v1 rules:
 - every declared field must be provided exactly once
 - extra fields are errors
 - field initializers are checked against the declared field types
+- the current module must be allowed to name every initialized field
+
+If a public record has private fields, code outside the declaring module cannot construct it directly with a record literal. The record should provide constructor-style functions instead.
 
 ## 4. Field Access
 
@@ -75,6 +106,12 @@ config.port
 
 In v1, field access is read-only syntax. Assignment through field access such as `user.name = "Ada"` is not part of v1.
 
+Field access is allowed only when the current module is allowed to see that field:
+
+- module-private fields are visible only in the declaring module/file
+- `pub(package)` fields are visible in the same package
+- `pub` fields are visible from importing packages
+
 ## 5. Record Update
 
 A record update has the form:
@@ -91,6 +128,7 @@ v1 rules:
 - each mentioned field may appear at most once
 - at least one field must be updated
 - each replacement expression must match the declared field type
+- the current module must be allowed to name each updated field
 - unspecified fields are preserved from the original value
 - the update is non-destructive
 
@@ -236,7 +274,35 @@ user.with(age: user.age + 1)
 user.display_name()
 ```
 
-## 11. Higher-Order Functions Remain Allowed
+## 11. Encapsulation Example
+
+This pattern is the preferred way to build small abstractions without introducing classes:
+
+```txt
+package app::counter
+
+pub record Counter {
+  value: Int
+}
+
+pub fn new_counter(): Counter {
+  Counter {
+    value: 0
+  }
+}
+
+pub fn inc(counter: Counter): Counter {
+  counter.with(value: counter.value + 1)
+}
+
+pub fn value(counter: Counter): Int {
+  counter.value
+}
+```
+
+Users of `app::counter` can hold a `Counter` value and call public functions, but cannot directly access `counter.value` outside the defining module. This keeps Muga function-centered while still allowing file-sized encapsulation.
+
+## 12. Higher-Order Functions Remain Allowed
 
 The following is valid in principle even though function-valued record fields are not:
 
@@ -255,7 +321,7 @@ apply(10, fn(n: Int): Int {
 })
 ```
 
-## 12. Notes for Future Extensions
+## 13. Notes for Future Extensions
 
 The current design leaves room for future work on:
 

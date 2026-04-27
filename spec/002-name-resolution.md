@@ -7,6 +7,7 @@ Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This docum
 The language uses lexical scopes arranged as a tree.
 
 - the program root is a scope
+- in package mode, each file is also a module boundary
 - each block introduces a child scope
 - each function body introduces a child scope
 - function parameters belong to the function-body scope
@@ -24,6 +25,15 @@ Lookup for expression names searches:
 
 Type names are resolved in a separate type namespace.
 
+Package mode adds a visibility check after candidate lookup:
+
+- module-private names are visible only in the declaring module/file
+- `pub(package)` names are visible from other modules in the same package
+- `pub` names are visible from importing packages
+- importing packages see only `pub` names through `alias::Name`
+
+The current compiler implementation does not yet enforce module-private visibility. This is the target resolution model before real package interfaces are finalized.
+
 ## 1.1 Type Namespace
 
 v1 distinguishes:
@@ -32,6 +42,8 @@ v1 distinguishes:
 - the type namespace, which contains nominal record names
 
 `record User { ... }` introduces `User` in the type namespace only.
+
+Package visibility applies independently in both namespaces. For example, a module-private `record Internal` cannot appear in a public function signature, and a module-private function cannot be referenced from a sibling module.
 
 ## 2. Binding Kinds
 
