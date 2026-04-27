@@ -105,6 +105,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
 - Current next steps: [docs/current-next-steps.md](./docs/current-next-steps.md)
 - Language design reference: [docs/language-design-reference.md](./docs/language-design-reference.md)
+- Syntax marker case study: [docs/syntax-marker-case-study.md](./docs/syntax-marker-case-study.md)
 - Compiler identity note: [docs/internal/identity-model.md](./docs/internal/identity-model.md)
 
 ## Examples

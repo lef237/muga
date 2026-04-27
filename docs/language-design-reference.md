@@ -282,7 +282,48 @@ Reason:
 - broad dynamic escape hatches make diagnostics and optimization weaker
 - web and CLI development still benefit from type precision at boundaries
 
-### 3.10 No ambiguous dot syntax
+### 3.10 One symbol should not carry unrelated meanings
+
+Muga should avoid assigning unrelated meanings to the same symbol.
+
+This does not mean that every punctuation character can appear in only one grammar production. It means a reader should not need to remember several unrelated interpretations for the same visual marker.
+
+Preferred direction:
+
+- one symbol should have one primary conceptual role
+- related surface forms are acceptable only when the relationship is obvious
+- unrelated roles should use different syntax, even if that costs a few extra characters
+- keywords are acceptable when they make the code easier to read
+- compactness should not beat local readability
+
+Current examples:
+
+- `:` marks type-related annotation positions
+- `->` appears inside function type expressions
+- `::` marks package-qualified access
+- `.` is reserved for field access and chained-call surface syntax
+- `=` is statement-level binding/update syntax, not an expression operator
+
+If Muga later adds pointer-like, reference-like, ownership, or borrowing concepts, their syntax should follow this rule.
+
+In particular, Muga should avoid designs where one marker has to mean several context-dependent things such as:
+
+- type constructor
+- value dereference
+- address creation
+- mutation marker
+- pattern binding modifier
+
+Reason:
+
+- overloaded punctuation is hard to learn from reading code
+- context-sensitive symbols make errors harder to explain
+- simple, stable syntax helps the parser, diagnostics, and documentation
+- Muga should prefer obvious code over dense notation
+
+For concrete examples, see [syntax-marker-case-study.md](./syntax-marker-case-study.md).
+
+### 3.11 No ambiguous dot syntax
 
 Muga should keep dot syntax stable.
 
@@ -300,7 +341,7 @@ Reason:
 - `expr.name(...)` should not mean a field-function call
 - stable dot syntax keeps parsing, resolution, and reading simple
 
-### 3.11 No package-level wildcard behavior by default
+### 3.12 No package-level wildcard behavior by default
 
 Muga should keep package imports explicit.
 
@@ -317,7 +358,7 @@ Reason:
 - package interfaces stay easier to cache
 - diagnostics can point to one concrete source of a name
 
-### 3.12 No async function coloring as the primary concurrency model
+### 3.13 No async function coloring as the primary concurrency model
 
 Muga should not make the entire language revolve around `async fn` and `await` as the first concurrency model.
 
@@ -337,7 +378,7 @@ Reason:
 
 This does not forbid future async-specific APIs.
 
-### 3.13 Stable syntax over overloaded forms
+### 3.14 Stable syntax over overloaded forms
 
 Muga should keep common syntax forms stable.
 
@@ -354,7 +395,7 @@ Reason:
 - stable syntax simplifies parser and resolver design
 - ambiguity is expensive in both implementation and documentation
 
-### 3.14 No runtime metaprogramming as a core mechanism
+### 3.15 No runtime metaprogramming as a core mechanism
 
 Muga should not rely on runtime reflection, monkey patching, or dynamic metaprogramming for ordinary abstraction.
 
