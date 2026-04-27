@@ -86,6 +86,8 @@ For more entry points, browse the [Samples](#samples) section below.
 - record fields may not have function type
 - higher-order functions are allowed
 - function types use `->`
+- collection design is drafted around `List[T]` first, then `Option[T]` and `Map[K, V]`
+- source-level Ruby-style symbols/atoms are deferred from v1
 
 ## Documentation
 
@@ -98,6 +100,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/005-records.md](./spec/005-records.md)
   - [spec/006-packages.md](./spec/006-packages.md) (draft)
   - [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) (draft)
+  - [spec/008-collections.md](./spec/008-collections.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
 - Compiler identity note: [docs/internal/identity-model.md](./docs/internal/identity-model.md)
@@ -143,6 +146,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
 - file-based package mode with `package`, `import`, `pub`, and `alias::Name` is implemented
 - current package implementation still requires fully annotated `pub fn`; the design direction is to allow inferred public signatures once package interfaces can store them
+- generic collection types, list literals, `Option[T]`, and `Map[K, V]` are design drafts and not implemented yet
 - explicit receiver-style distinction is not implemented yet
 - package manifests, configurable source roots, and package caching are not implemented yet
 

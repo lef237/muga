@@ -44,7 +44,17 @@ Examples:
 - `(Int, String) -> Bool`
 - `() -> Int`
 
-There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
+The currently implemented subset has no generics, no user-written type variables, and no polymorphic type syntax.
+
+The collection draft reserves square-bracket type application for future collection types:
+
+```txt
+List[Int]
+Map[String, Int]
+Option[User]
+```
+
+That syntax is specified in [008-collections.md](./008-collections.md) as a design draft and is not implemented yet.
 
 ## 3. Prelude Built-ins
 
@@ -298,6 +308,19 @@ inc = fn(x: Int): Int {
 }
 ```
 
+Collection literals introduce one important planned extension: local binding type annotations.
+
+Target syntax:
+
+```txt
+items: List[Int] = []
+mut names: List[String] = []
+```
+
+This is needed because an empty collection literal does not determine its element type by itself.
+
+This syntax is still a draft and is not implemented yet.
+
 ## 11. Conditions and Branches
 
 The condition expression of:
@@ -361,7 +384,7 @@ fn apply(x: Int, f: Int -> Int): Int {
 }
 ```
 
-## 12. Function Return Inference
+## 13. Function Return Inference
 
 The return type of a function is inferred from the final expression in the body.
 
@@ -369,7 +392,7 @@ When control flow branches, the return type is inferred from the unified branch 
 
 If the body does not provide enough information to infer a unique return type, a return annotation is required.
 
-## 13. Inference Boundary
+## 14. Inference Boundary
 
 v1 intentionally uses local-only inference.
 
@@ -406,7 +429,7 @@ fn id(x) {
 
 is not.
 
-## 14. Mandatory Annotations
+## 15. Mandatory Annotations
 
 Annotations are required in the following cases:
 
@@ -422,7 +445,7 @@ For v1, an explicit function signature means:
 - at least one parameter or the return type is annotated for direct recursion
 - every function in a mutually recursive group has enough annotations to determine its full callable type before body checking
 
-## 15. Direct Recursion Rule
+## 16. Direct Recursion Rule
 
 For a directly recursive function, at least one of the following must be present:
 
@@ -465,7 +488,7 @@ fn fact(n) {
 }
 ```
 
-## 13. Mutual Recursion Rule
+## 17. Mutual Recursion Rule
 
 Mutually recursive functions require explicit signatures.
 
