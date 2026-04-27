@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports `package`, `import`, `pub`, and `alias::Name` lookup for directory-based packages. Manifest syntax, configurable source roots, selective imports, module-private visibility, `pub(package)`, and package-level caching are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports `package`, `import`, `pub`, and `alias::Name` lookup for directory-based packages. Manifest syntax, configurable source roots, selective imports, module-private visibility, `pkg`, and package-level caching are still deferred.
 
 ## 1. Design Goals
 
@@ -66,7 +66,7 @@ Once a file is in package mode:
 - top-level executable statements are not allowed
 - top-level items are restricted to declarations
 - imports are explicit
-- visibility may be marked with `pub(package)` or `pub`
+- visibility may be marked with `pkg` or `pub`
 
 This keeps package compilation deterministic and avoids runtime initialization order problems.
 
@@ -106,7 +106,7 @@ The intended visibility levels are:
 | Syntax | Meaning |
 |---|---|
 | no modifier | visible only inside the declaring module/file |
-| `pub(package)` | visible inside the same package |
+| `pkg` | visible inside the same package |
 | `pub` | visible from importing packages |
 
 This applies to:
@@ -118,7 +118,7 @@ This applies to:
 Current implementation note:
 
 - the compiler currently implements only a subset: top-level `pub` and package-level flattening
-- module-private default and `pub(package)` are target design and should be implemented before real package interfaces harden
+- module-private default and `pkg` are target design and should be implemented before real package interfaces harden
 
 Example:
 
@@ -179,7 +179,7 @@ import_alias  := "as" IDENT
 package_item  := visibility? record_decl
                | visibility? func_decl
 visibility    := "pub"
-               | "pub" "(" "package" ")"
+               | "pkg"
 qualified_ref := IDENT "::" IDENT
 ```
 
@@ -187,7 +187,7 @@ Additional parser rules for package mode:
 
 - `package` must be the first significant token in the file
 - `import` declarations must come after `package` and before the first item
-- `pub` and `pub(package)` are valid on top-level `record` and `fn`
+- `pub` and `pkg` are valid on top-level `record` and `fn`
 - top-level items are separated by newlines
 - type and value qualification uses exactly `alias::Name`
 
@@ -258,7 +258,7 @@ It gives the compiler:
 The target draft uses module-private-by-default visibility.
 
 - a top-level item without a modifier is visible only within the declaring module/file
-- a top-level item with `pub(package)` is visible from other modules in the same package
+- a top-level item with `pkg` is visible from other modules in the same package
 - a top-level item with `pub` is visible from other packages
 
 Example:
@@ -282,7 +282,7 @@ Here:
 
 Imported packages expose only `pub` items.
 
-`pub(package)` items are not exposed through package interfaces.
+`pkg` items are not exposed through package interfaces.
 
 Module-private items are not visible from sibling files in the same package.
 
@@ -320,7 +320,7 @@ This keeps value and type lookup visually consistent.
 Within the current package:
 
 - top-level names from the current module may be referenced unqualified
-- top-level names from sibling modules may be referenced only if they are `pub(package)` or `pub`
+- top-level names from sibling modules may be referenced only if they are `pkg` or `pub`
 - module-private top-level names are not visible from sibling modules
 - package-visible and public top-level names are collected across files before body checking
 
@@ -416,7 +416,7 @@ A public item may not mention a non-public top-level name in its visible type.
 This includes both:
 
 - module-private names
-- `pub(package)` names
+- `pkg` names
 
 Examples of invalid public API:
 

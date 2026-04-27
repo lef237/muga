@@ -28,7 +28,7 @@ Type names are resolved in a separate type namespace.
 Package mode adds a visibility check after candidate lookup:
 
 - module-private names are visible only in the declaring module/file
-- `pub(package)` names are visible from other modules in the same package
+- `pkg` names are visible from other modules in the same package
 - `pub` names are visible from importing packages
 - importing packages see only `pub` names through `alias::Name`
 
