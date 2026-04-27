@@ -55,7 +55,6 @@ These are no longer top-level roadmap questions:
 3. package qualification uses `::`
 4. package mode and script mode are distinct
 5. collection direction starts with `List[T]`, then `Option[T]` and `Map[K, V]`
-6. source-level Ruby-style symbols/atoms are deferred from v1
 
 Those topics may still need refinement, but they are no longer the main blockers.
 
@@ -70,7 +69,6 @@ Current draft decisions:
 - `List[T]` is the first collection to implement
 - `Option[T]` should exist before or alongside safe lookup APIs
 - `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
-- source-level symbols/atoms are not part of v1
 
 The collection draft lives in [spec/008-collections.md](./spec/008-collections.md).
 
