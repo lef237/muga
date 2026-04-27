@@ -103,6 +103,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/008-collections.md](./spec/008-collections.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
+- Current next steps: [docs/current-next-steps.md](./docs/current-next-steps.md)
 - Language design reference: [docs/language-design-reference.md](./docs/language-design-reference.md)
 - Compiler identity note: [docs/internal/identity-model.md](./docs/internal/identity-model.md)
 

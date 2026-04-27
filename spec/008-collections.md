@@ -176,6 +176,27 @@ Why this matters:
 
 The exact syntax for constructing and handling `Option[T]` should be decided with enum, pattern matching, or sum-type design. Until then, this draft only reserves `Option[T]` as the recommended return shape for safe lookup.
 
+### 6.1 Optional shorthand
+
+`Option[T]` should remain the canonical source spelling for now.
+
+Muga may later add `T?` as shorthand:
+
+```muga
+User?      // future shorthand for Option[User]
+String?    // future shorthand for Option[String]
+```
+
+This is intentionally not part of the first collection implementation.
+
+Reason:
+
+- `Option[T]` is explicit and works before deciding the rest of the `?` syntax family
+- `?` may also be useful for future error propagation or optional chaining
+- keeping `T?` as future sugar avoids taking that syntax too early
+
+If `T?` is added later, it should mean exactly `Option[T]`, not a separate nullable type.
+
 ## 7. Map
 
 `Map[K, V]` is the recommended dictionary/hash type.
