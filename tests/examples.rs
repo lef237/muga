@@ -176,6 +176,58 @@ fn package_loader_renumbers_statement_ids_after_flattening() {
 }
 
 #[test]
+fn package_loader_exposes_package_symbol_graph() {
+    let loaded =
+        muga::package::load_from_entry(Path::new("samples/packages/app/main/main.muga")).unwrap();
+    let graph = loaded.package_graph;
+
+    let app = graph
+        .package_id("app::main")
+        .expect("app package should exist");
+    let numbers = graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let users = graph
+        .package_id("util::users")
+        .expect("users package should exist");
+
+    let app_info = graph.package(app).expect("app package info should exist");
+    assert!(
+        app_info
+            .imports
+            .iter()
+            .any(|import| import.alias == "numbers" && import.package == numbers)
+    );
+    assert!(
+        app_info
+            .imports
+            .iter()
+            .any(|import| import.alias == "users" && import.package == users)
+    );
+
+    let inc_twice = graph
+        .item_id(
+            numbers,
+            "inc_twice",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("inc_twice should exist");
+    let inc_twice = graph.item(inc_twice).expect("inc_twice info should exist");
+    assert_eq!(inc_twice.visibility, muga::ast::Visibility::Public);
+    assert_eq!(
+        inc_twice.mangled_name,
+        "__muga_pkg__util__numbers__inc_twice"
+    );
+
+    let user = graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User record should exist");
+    let user = graph.item(user).expect("User info should exist");
+    assert_eq!(user.visibility, muga::ast::Visibility::Public);
+    assert_eq!(user.mangled_name, "__muga_pkg__util__users__User");
+}
+
+#[test]
 fn package_alias_demo_runs() {
     assert_package_runs("samples/packages/app/alias_demo/main.muga", "112", "");
 }
