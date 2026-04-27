@@ -176,6 +176,58 @@ fn package_loader_renumbers_statement_ids_after_flattening() {
 }
 
 #[test]
+fn package_loader_exposes_package_symbol_graph() {
+    let loaded =
+        muga::package::load_from_entry(Path::new("samples/packages/app/main/main.muga")).unwrap();
+    let graph = loaded.package_graph;
+
+    let app = graph
+        .package_id("app::main")
+        .expect("app package should exist");
+    let numbers = graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let users = graph
+        .package_id("util::users")
+        .expect("users package should exist");
+
+    let app_info = graph.package(app).expect("app package info should exist");
+    assert!(
+        app_info
+            .imports
+            .iter()
+            .any(|import| import.alias == "numbers" && import.package == numbers)
+    );
+    assert!(
+        app_info
+            .imports
+            .iter()
+            .any(|import| import.alias == "users" && import.package == users)
+    );
+
+    let inc_twice = graph
+        .item_id(
+            numbers,
+            "inc_twice",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("inc_twice should exist");
+    let inc_twice = graph.item(inc_twice).expect("inc_twice info should exist");
+    assert_eq!(inc_twice.visibility, muga::ast::Visibility::Public);
+    assert_eq!(
+        inc_twice.mangled_name,
+        "__muga_pkg__util__numbers__inc_twice"
+    );
+
+    let user = graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User record should exist");
+    let user = graph.item(user).expect("User info should exist");
+    assert_eq!(user.visibility, muga::ast::Visibility::Public);
+    assert_eq!(user.mangled_name, "__muga_pkg__util__users__User");
+}
+
+#[test]
 fn package_alias_demo_runs() {
     assert_package_runs("samples/packages/app/alias_demo/main.muga", "112", "");
 }
@@ -272,6 +324,72 @@ fn main(): Int {
     };
     assert_eq!(value_symbol, final_symbol);
     assert_eq!(program.symbols.resolve(value_symbol), "value");
+}
+
+#[test]
+fn compile_typed_source_exposes_resolved_bindings_and_types() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  value
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    assert_eq!(main.return_ty, muga::typing::TypeInfo::Int);
+
+    let assign = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected typed assignment"),
+    };
+    assert!(!assign.is_update);
+    assert_eq!(assign.value.ty, muga::typing::TypeInfo::Int);
+
+    let final_ident = match &main.body.expr.kind {
+        muga::typed_hir::ExprKind::Ident(ident) => ident,
+        _ => panic!("expected typed identifier"),
+    };
+    assert_eq!(final_ident.binding, assign.binding);
+    assert_eq!(main.body.expr.ty, muga::typing::TypeInfo::Int);
+}
+
+#[test]
+fn compile_typed_source_marks_mutable_updates() {
+    let source = r#"
+fn main(): Int {
+  mut value = 1
+  value = 2
+  value
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    let first = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected first assignment"),
+    };
+    let second = match &main.body.statements[1] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected second assignment"),
+    };
+    assert!(!first.is_update);
+    assert!(second.is_update);
+    assert_eq!(first.binding, second.binding);
+}
+
+#[test]
+fn compile_typed_path_preserves_package_symbol_graph() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    assert!(program.package_graph.package_id("app::main").is_some());
+    assert!(program.package_graph.package_id("util::numbers").is_some());
+    assert!(program.package_graph.package_id("util::users").is_some());
 }
 
 #[test]

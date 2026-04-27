@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::{BindingId, BindingKind, ExprId};
+use crate::identity::{BindingId, BindingKind, ExprId, StmtId};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
@@ -10,6 +10,7 @@ use crate::symbol::{Symbol, SymbolTable};
 pub struct TypeCheckOutput {
     pub diagnostics: Vec<Diagnostic>,
     pub bindings: Vec<TypedBindingInfo>,
+    pub assignment_targets: Vec<TypedAssignmentTarget>,
     pub identifier_refs: Vec<TypedIdentifier>,
     pub expr_types: Vec<ExprTypeInfo>,
     pub symbols: SymbolTable,
@@ -21,6 +22,16 @@ pub struct TypedBindingInfo {
     pub symbol: Symbol,
     pub kind: BindingKind,
     pub ty: TypeInfo,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TypedAssignmentTarget {
+    pub stmt_id: StmtId,
+    pub name: Symbol,
+    pub span: Span,
+    pub binding: BindingId,
+    pub is_update: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,6 +97,7 @@ struct Binding {
     symbol: Symbol,
     kind: BindingKind,
     ty: Type,
+    span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -136,6 +148,7 @@ struct TypeChecker {
     scopes: Vec<ScopeFrame>,
     records: HashMap<Symbol, RecordDef>,
     bindings: Vec<Binding>,
+    assignment_targets: Vec<TypedAssignmentTarget>,
     identifier_refs: Vec<TypedIdentifier>,
     expr_types: Vec<ExprType>,
     symbols: SymbolTable,
@@ -150,6 +163,7 @@ impl TypeChecker {
             scopes: vec![ScopeFrame::new(true)],
             records: HashMap::new(),
             bindings: Vec::new(),
+            assignment_targets: Vec::new(),
             identifier_refs: Vec::new(),
             expr_types: Vec::new(),
             symbols: SymbolTable::default(),
@@ -170,6 +184,7 @@ impl TypeChecker {
                 symbol: binding.symbol,
                 kind: binding.kind,
                 ty: self.type_info_for(&binding.ty),
+                span: binding.span,
             })
             .collect();
         let expr_types = self
@@ -184,6 +199,7 @@ impl TypeChecker {
         TypeCheckOutput {
             diagnostics: self.diagnostics,
             bindings,
+            assignment_targets: self.assignment_targets,
             identifier_refs: self.identifier_refs,
             expr_types,
             symbols: self.symbols,
@@ -196,12 +212,14 @@ impl TypeChecker {
             print,
             BindingKind::Function,
             Type::Builtin(BuiltinFunction::Print),
+            Span::default(),
         );
         let println = self.symbol("println");
         self.insert_current(
             println,
             BindingKind::Function,
             Type::Builtin(BuiltinFunction::Println),
+            Span::default(),
         );
     }
 
@@ -274,7 +292,14 @@ impl TypeChecker {
         let value_ty = self.check_expr(&stmt.value);
         let name = self.symbol(&stmt.name);
         if stmt.mutable {
-            self.insert_current(name, BindingKind::Mutable, value_ty);
+            let binding = self.insert_current(name, BindingKind::Mutable, value_ty, stmt.span);
+            self.assignment_targets.push(TypedAssignmentTarget {
+                stmt_id: stmt.id,
+                name,
+                span: stmt.span,
+                binding,
+                is_update: false,
+            });
             return;
         }
 
@@ -282,11 +307,25 @@ impl TypeChecker {
             if binding.kind == BindingKind::Mutable {
                 self.require_exact(&binding.ty, &value_ty, stmt.span, "T002");
             }
+            self.assignment_targets.push(TypedAssignmentTarget {
+                stmt_id: stmt.id,
+                name,
+                span: stmt.span,
+                binding: binding.id,
+                is_update: true,
+            });
             return;
         }
 
         if self.lookup_beyond_current_function(name).is_none() {
-            self.insert_current(name, BindingKind::Immutable, value_ty);
+            let binding = self.insert_current(name, BindingKind::Immutable, value_ty, stmt.span);
+            self.assignment_targets.push(TypedAssignmentTarget {
+                stmt_id: stmt.id,
+                name,
+                span: stmt.span,
+                binding,
+                is_update: false,
+            });
         }
     }
 
@@ -299,7 +338,7 @@ impl TypeChecker {
         self.push_scope(true);
         for (param, param_ty) in func.params.iter().zip(sig.params.iter().cloned()) {
             let name = self.symbol(&param.name);
-            self.insert_current(name, BindingKind::Parameter, param_ty);
+            self.insert_current(name, BindingKind::Parameter, param_ty, param.span);
         }
         let nested_functions = self.predeclare_functions(&func.body.statements);
         self.check_recursive_requirements(&func.body.statements, &nested_functions);
@@ -529,7 +568,7 @@ impl TypeChecker {
                 self.push_scope(true);
                 for (param, param_ty) in expr.params.iter().zip(sig.params.iter().cloned()) {
                     let name = self.symbol(&param.name);
-                    self.insert_current(name, BindingKind::Parameter, param_ty);
+                    self.insert_current(name, BindingKind::Parameter, param_ty, param.span);
                 }
                 let nested_functions = self.predeclare_functions(&expr.body.statements);
                 self.check_recursive_requirements(&expr.body.statements, &nested_functions);
@@ -818,7 +857,7 @@ impl TypeChecker {
                     ret: Box::new(ret),
                 };
                 functions.insert(name, sig.clone());
-                self.insert_current(name, BindingKind::Function, Type::Function(sig));
+                self.insert_current(name, BindingKind::Function, Type::Function(sig), func.span);
             }
         }
         functions
@@ -1034,13 +1073,20 @@ impl TypeChecker {
         self.scopes.pop();
     }
 
-    fn insert_current(&mut self, name: Symbol, kind: BindingKind, ty: Type) -> BindingId {
+    fn insert_current(
+        &mut self,
+        name: Symbol,
+        kind: BindingKind,
+        ty: Type,
+        span: Span,
+    ) -> BindingId {
         let id = BindingId::new(self.bindings.len() as u32);
         self.bindings.push(Binding {
             id,
             symbol: name,
             kind,
             ty,
+            span,
         });
         if let Some(scope) = self.scopes.last_mut() {
             scope.bindings.insert(name, id);

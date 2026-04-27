@@ -27,13 +27,15 @@ As of now, Muga already has:
 - records, field access, record update, and UFCS-style chains
 - higher-order functions with local bidirectional inference
 - file-based package mode with `package`, `import`, `pub`, `alias::Name`, and `as`
+- initial typed HIR with resolved local bindings and expression types
 
 The biggest remaining architectural gap is this:
 
 - the parser / package layer has moved forward
 - resolver and typechecker now use symbol-based scope lookup internally
 - resolved local binding and expression type data are now exposed as reusable compiler data
-- typed HIR does not exist yet
+- package loading now exposes a package symbol graph with `PackageId` / `PackageItemId`
+- typed HIR exists, but calls do not yet carry an explicit resolved callee shape
 - package compilation is still implemented by flattening packages into one internal program
 
 That means the language surface is ahead of the compiler core.
@@ -200,6 +202,14 @@ Expected outcomes:
 - a clear distinction between local binding identity and package-exported symbol identity
 - a package symbol graph that survives the end of flattening
 
+Current implementation:
+
+- package loading exposes `PackageSymbolGraph`
+- each loaded package has a `PackageId`
+- each top-level record/function has a `PackageItemId`
+- import edges store alias, target package, source path, and span
+- flattening still exists, but the identity model no longer depends only on mangled names
+
 This is the architectural bridge between:
 
 - symbol-based local analysis
@@ -225,6 +235,15 @@ Expected outcomes:
 - each function call has an already chosen callee shape
 - visibility, import resolution, and qualified-path resolution are already settled
 - receiver-style and chained-call resolution become explicit compiler data, not repeated logic
+
+Current implementation:
+
+- `typed_hir` lowers checked AST into a language-shaped typed HIR
+- expression nodes carry `ExprId` and resolved `TypeInfo`
+- identifier expressions carry resolved `BindingId`
+- assignment statements carry target `BindingId` and update-vs-new-binding information
+- package symbol graph is preserved on typed HIR programs
+- existing VM bytecode still uses the older untyped HIR path
 
 Note:
 
@@ -426,14 +445,25 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. package-aware symbol identity design
-2. typed HIR
-3. receiver-style resolution finalization inside typed HIR lowering/checking
-4. diagnostic data model tightening
-5. package interfaces instead of flattening
-6. cache and incremental compilation
+1. receiver-style and ordinary-call callee shape finalization inside typed HIR
+2. package-qualified references in typed HIR
+3. diagnostic data model tightening
+4. package interfaces instead of flattening
+5. cache and incremental compilation
 
 This order best matches the current state of the codebase.
+
+## Current Typed HIR Follow-Ups
+
+The initial typed HIR is in place as a foundation, with the following follow-ups intentionally deferred:
+
+- call expressions should carry an explicit resolved callee shape
+- chained calls should record whether they resolved as receiver-style or UFCS-style calls
+- package-qualified references should point to package item identities, not only flattened/mangled names
+- package compilation still uses flattening internally
+- package interfaces and real compilation units remain future work
+
+These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 
 ## Short Version
 

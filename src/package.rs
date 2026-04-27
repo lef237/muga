@@ -4,9 +4,14 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
+use crate::identity::{PackageId, PackageItemId};
 use crate::span::Span;
 
 pub fn load_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> {
+    Ok(load_from_entry(path)?.program)
+}
+
+pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
     let entry_source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) => {
@@ -20,11 +25,87 @@ pub fn load_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> 
     let entry_tokens = crate::lexer::lex(&entry_source)?;
     let entry_program = crate::parser::parse(entry_tokens)?;
     if entry_program.package.is_none() {
-        return Ok(entry_program);
+        return Ok(LoadedProgram {
+            program: entry_program,
+            package_graph: PackageSymbolGraph::default(),
+        });
     }
 
     let mut loader = PackageLoader::new(path.to_path_buf(), entry_program);
     loader.load_and_flatten()
+}
+
+#[derive(Clone, Debug)]
+pub struct LoadedProgram {
+    pub program: Program,
+    pub package_graph: PackageSymbolGraph,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PackageSymbolGraph {
+    pub packages: Vec<PackageInfo>,
+    pub items: Vec<PackageItemInfo>,
+}
+
+impl PackageSymbolGraph {
+    pub fn package(&self, id: PackageId) -> Option<&PackageInfo> {
+        self.packages.get(id.as_u32() as usize)
+    }
+
+    pub fn item(&self, id: PackageItemId) -> Option<&PackageItemInfo> {
+        self.items.get(id.as_u32() as usize)
+    }
+
+    pub fn package_id(&self, path: &str) -> Option<PackageId> {
+        self.packages
+            .iter()
+            .find(|package| package.path == path)
+            .map(|package| package.id)
+    }
+
+    pub fn item_id(
+        &self,
+        package: PackageId,
+        name: &str,
+        kind: PackageItemKind,
+    ) -> Option<PackageItemId> {
+        self.items
+            .iter()
+            .find(|item| item.package == package && item.name == name && item.kind == kind)
+            .map(|item| item.id)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageInfo {
+    pub id: PackageId,
+    pub path: String,
+    pub imports: Vec<PackageImportInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageImportInfo {
+    pub alias: String,
+    pub package: PackageId,
+    pub path: String,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageItemInfo {
+    pub id: PackageItemId,
+    pub package: PackageId,
+    pub name: String,
+    pub kind: PackageItemKind,
+    pub visibility: Visibility,
+    pub span: Span,
+    pub mangled_name: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackageItemKind {
+    Record,
+    Function,
 }
 
 struct ParsedFile {
@@ -70,7 +151,7 @@ impl PackageLoader {
         }
     }
 
-    fn load_and_flatten(&mut self) -> Result<Program, Vec<Diagnostic>> {
+    fn load_and_flatten(&mut self) -> Result<LoadedProgram, Vec<Diagnostic>> {
         match infer_source_root(&self.entry_file, &self.entry_package) {
             Ok(source_root) => self.source_root = source_root,
             Err(diagnostic) => self.diagnostics.push(diagnostic),
@@ -87,12 +168,11 @@ impl PackageLoader {
             return Err(std::mem::take(&mut self.diagnostics));
         }
 
-        let mut package_paths: Vec<String> = self.packages.keys().cloned().collect();
-        package_paths.sort();
+        let package_paths = self.sorted_package_paths();
 
         let mut statements = Vec::new();
-        for package_path in package_paths {
-            let Some(package) = self.packages.get(&package_path) else {
+        for package_path in &package_paths {
+            let Some(package) = self.packages.get(package_path) else {
                 continue;
             };
             let all_records = package.all_records.clone();
@@ -119,13 +199,17 @@ impl PackageLoader {
         }
 
         if self.diagnostics.is_empty() {
+            let package_graph = self.build_symbol_graph(&package_paths);
             let mut program = Program {
                 package: None,
                 imports: Vec::new(),
                 statements,
             };
             renumber_node_ids(&mut program);
-            Ok(program)
+            Ok(LoadedProgram {
+                program,
+                package_graph,
+            })
         } else {
             Err(std::mem::take(&mut self.diagnostics))
         }
@@ -311,6 +395,86 @@ impl PackageLoader {
             path.push(segment);
         }
         path
+    }
+
+    fn sorted_package_paths(&self) -> Vec<String> {
+        let mut package_paths: Vec<String> = self.packages.keys().cloned().collect();
+        package_paths.sort();
+        package_paths
+    }
+
+    fn build_symbol_graph(&self, package_paths: &[String]) -> PackageSymbolGraph {
+        let package_ids: HashMap<&str, PackageId> = package_paths
+            .iter()
+            .enumerate()
+            .map(|(index, path)| (path.as_str(), PackageId::new(index as u32)))
+            .collect();
+
+        let mut packages = Vec::with_capacity(package_paths.len());
+        let mut items = Vec::new();
+
+        for package_path in package_paths {
+            let Some(package) = self.packages.get(package_path) else {
+                continue;
+            };
+            let package_id = package_ids[package_path.as_str()];
+            let mut imports = Vec::new();
+            for file in &package.files {
+                for import in &file.program.imports {
+                    if let Some(imported_package) = package_ids.get(import.path.as_str()) {
+                        imports.push(PackageImportInfo {
+                            alias: import.alias.clone(),
+                            package: *imported_package,
+                            path: import.path.clone(),
+                            span: import.span,
+                        });
+                    }
+                }
+            }
+            packages.push(PackageInfo {
+                id: package_id,
+                path: package_path.clone(),
+                imports,
+            });
+
+            for file in &package.files {
+                for statement in &file.program.statements {
+                    match statement {
+                        Stmt::RecordDecl(record) => {
+                            let id = PackageItemId::new(items.len() as u32);
+                            items.push(PackageItemInfo {
+                                id,
+                                package: package_id,
+                                name: record.name.clone(),
+                                kind: PackageItemKind::Record,
+                                visibility: record.visibility,
+                                span: record.span,
+                                mangled_name: mangle_record_name(package_path, &record.name),
+                            });
+                        }
+                        Stmt::FuncDecl(func) => {
+                            let id = PackageItemId::new(items.len() as u32);
+                            items.push(PackageItemInfo {
+                                id,
+                                package: package_id,
+                                name: func.name.clone(),
+                                kind: PackageItemKind::Function,
+                                visibility: func.visibility,
+                                span: func.span,
+                                mangled_name: mangle_function_name(
+                                    package_path,
+                                    &func.name,
+                                    &self.entry_package,
+                                ),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        PackageSymbolGraph { packages, items }
     }
 }
 
