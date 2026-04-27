@@ -87,7 +87,6 @@ For more entry points, browse the [Samples](#samples) section below.
 - higher-order functions are allowed
 - function types use `->`
 - collection design is drafted around `List[T]` first, then `Option[T]` and `Map[K, V]`
-- source-level Ruby-style symbols/atoms are deferred from v1
 
 ## Documentation
 

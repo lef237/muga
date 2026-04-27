@@ -134,16 +134,47 @@ Safe lookup should use `get` and return `Option[T]`.
 
 ## 6. Option
 
-`Option[T]` represents either a value or no value.
+`Option[T]` represents a value that may or may not exist.
 
-It is needed for collection APIs such as:
+It is not a collection. It is a small result type used when an operation can fail without being an exceptional runtime error.
+
+Conceptually:
+
+```txt
+Conceptual shape only. Exact enum syntax is deferred.
+
+Option[T] =
+  Some(T)
+  None
+```
+
+The important point is that absence becomes part of the static type.
+
+For example, direct indexing can fail if the index is out of bounds:
+
+```muga
+value = numbers[10]  // runtime bounds error if the index does not exist
+```
+
+Safe lookup should instead return `Option[T]`:
 
 ```muga
 numbers.get(0)        // Option[Int]
 users.get("ada")      // Option[User]
 ```
 
-The exact syntax for constructing and handling `Option[T]` should be decided with enum or sum-type design. Until then, this draft only reserves `Option[T]` as the recommended return shape for safe lookup.
+This forces the caller to handle both cases:
+
+- there is a value
+- there is no value
+
+Why this matters:
+
+- it avoids using `null` as a universal missing-value marker
+- it lets the typechecker see that a lookup may fail
+- it makes collection APIs safer without turning ordinary misses into runtime errors
+
+The exact syntax for constructing and handling `Option[T]` should be decided with enum, pattern matching, or sum-type design. Until then, this draft only reserves `Option[T]` as the recommended return shape for safe lookup.
 
 ## 7. Map
 
@@ -209,28 +240,7 @@ ages = map {
 
 This syntax is not decided.
 
-## 9. No Source-Level Symbols Or Atoms In v1
-
-Muga should not add a Ruby-style symbol type in v1.
-
-Recommended alternatives:
-
-- use `record` when the shape is known
-- use future enums or sum types for finite tags
-- use `String` keys for external data, JSON-like data, headers, and user input
-- use compiler-internal symbols only inside the implementation, not as a source-language feature
-
-If a source-level interned key type is needed later, it should probably be named `Atom`, not `Symbol`, to avoid confusion with compiler symbol interning.
-
-Possible future syntax:
-
-```muga
-status = #ok
-```
-
-This is intentionally deferred.
-
-## 10. Deferred Collection Topics
+## 9. Deferred Collection Topics
 
 The following should not block the first collection implementation:
 
