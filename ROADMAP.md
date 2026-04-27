@@ -453,6 +453,18 @@ If work resumes right now, the best order is:
 
 This order best matches the current state of the codebase.
 
+## Current Typed HIR Follow-Ups
+
+The initial typed HIR is in place as a foundation, with the following follow-ups intentionally deferred:
+
+- call expressions should carry an explicit resolved callee shape
+- chained calls should record whether they resolved as receiver-style or UFCS-style calls
+- package-qualified references should point to package item identities, not only flattened/mangled names
+- package compilation still uses flattening internally
+- package interfaces and real compilation units remain future work
+
+These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
+
 ## Short Version
 
 The roadmap is now:
