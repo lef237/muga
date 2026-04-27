@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports `package`, `import`, `pub`, and `alias::Name` lookup for directory-based packages. Manifest syntax, configurable source roots, selective imports, and package-level caching are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports `package`, `import`, `pub`, and `alias::Name` lookup for directory-based packages. Manifest syntax, configurable source roots, selective imports, module-private visibility, `pub(package)`, and package-level caching are still deferred.
 
 ## 1. Design Goals
 
@@ -20,6 +20,7 @@ The draft introduces a distinction between:
 
 - script files, which are the current v1 file form
 - package files, which are used for multi-file programs and libraries
+- modules, which are the encapsulation boundary inside a package
 
 This separation is intentional.
 
@@ -35,6 +36,14 @@ The package form is meant for:
 - reusable libraries
 - web backends and services
 - fast incremental compilation
+
+The module model is meant for:
+
+- small, file-local abstractions
+- hiding implementation details without creating many tiny packages
+- keeping package boundaries focused on import, build, and cache behavior
+
+In the current draft, a module is one `.muga` source file in package mode. Future manifest support may allow explicit multi-file modules, but v1 should start with file-as-module because it is simple and cheap to compile.
 
 ## 3. Two File Modes
 
@@ -57,7 +66,7 @@ Once a file is in package mode:
 - top-level executable statements are not allowed
 - top-level items are restricted to declarations
 - imports are explicit
-- visibility may be marked with `pub`
+- visibility may be marked with `pub(package)` or `pub`
 
 This keeps package compilation deterministic and avoids runtime initialization order problems.
 
@@ -70,6 +79,7 @@ The draft adopts the following model:
 - the package path is written explicitly in each file
 - file order is not semantically meaningful
 - the compilation unit for caching is the package, not the file
+- the smallest default encapsulation unit is the module/file, not the package
 
 Example:
 
@@ -81,9 +91,64 @@ This package path is expected to match the directory structure under a source ro
 
 The exact source-root and dependency manifest format is deferred. The purpose of this draft is to define the language-facing part first.
 
-## 5. Package Syntax
+## 5. Package, Module, and Visibility Model
 
-### 5.1 Package path
+Muga separates compilation units from encapsulation units:
+
+- a package is the import, dependency, interface, and build-cache unit
+- a module is the local encapsulation unit
+- in v1 draft form, one package file is one module
+
+This avoids the problem where every private implementation detail is visible everywhere in the package. Code can build small abstractions inside one file without splitting the project into many tiny directories.
+
+The intended visibility levels are:
+
+| Syntax | Meaning |
+|---|---|
+| no modifier | visible only inside the declaring module/file |
+| `pub(package)` | visible inside the same package |
+| `pub` | visible from importing packages |
+
+This applies to:
+
+- top-level `record` declarations
+- top-level `fn` declarations
+- record fields
+
+Current implementation note:
+
+- the compiler currently implements only a subset: top-level `pub` and package-level flattening
+- module-private default and `pub(package)` are target design and should be implemented before real package interfaces harden
+
+Example:
+
+```txt
+package app::counter
+
+record Counter {
+  value: Int
+}
+
+pub fn new_counter(): Counter {
+  Counter {
+    value: 0
+  }
+}
+
+pub fn inc(counter: Counter): Counter {
+  counter.with(value: counter.value + 1)
+}
+
+pub fn value(counter: Counter): Int {
+  counter.value
+}
+```
+
+Here `Counter.value` is an implementation detail of this module. Other modules should use `new_counter`, `inc`, and `value` rather than accessing the field directly.
+
+## 6. Package Syntax
+
+### 6.1 Package path
 
 Package paths use `::`-separated identifiers:
 
@@ -99,7 +164,7 @@ company::auth::session
 - package qualification does not look like field access
 - type names and value names can use the same qualified form
 
-### 5.2 Concrete grammar
+### 6.2 Concrete grammar
 
 At the parser level, the file grammar is intentionally split in two:
 
@@ -114,6 +179,7 @@ import_alias  := "as" IDENT
 package_item  := visibility? record_decl
                | visibility? func_decl
 visibility    := "pub"
+               | "pub" "(" "package" ")"
 qualified_ref := IDENT "::" IDENT
 ```
 
@@ -121,7 +187,7 @@ Additional parser rules for package mode:
 
 - `package` must be the first significant token in the file
 - `import` declarations must come after `package` and before the first item
-- `pub` is only valid on top-level `record` and `fn`
+- `pub` and `pub(package)` are valid on top-level `record` and `fn`
 - top-level items are separated by newlines
 - type and value qualification uses exactly `alias::Name`
 
@@ -130,7 +196,7 @@ In package mode:
 - `record_decl` and `func_decl` keep their existing meanings
 - `assign_like_stmt`, `if_stmt`, `while_stmt`, and `expr_stmt` are not allowed at the top level
 
-## 6. Imports
+## 7. Imports
 
 An import introduces a package alias into the current file.
 
@@ -164,7 +230,7 @@ v1-like package rules:
 - re-export syntax is not part of the draft
 - if two imports would introduce the same alias, that is an error unless one uses `as`
 
-## 7. Top-Level Items in Package Mode
+## 8. Top-Level Items in Package Mode
 
 Package files may contain only:
 
@@ -187,11 +253,12 @@ It gives the compiler:
 - no cross-file execution ordering
 - no package import side effects during interface loading
 
-## 8. Visibility
+## 9. Visibility
 
-The draft uses package-private-by-default visibility.
+The target draft uses module-private-by-default visibility.
 
-- a top-level item without `pub` is visible only within the same package
+- a top-level item without a modifier is visible only within the declaring module/file
+- a top-level item with `pub(package)` is visible from other modules in the same package
 - a top-level item with `pub` is visible from other packages
 
 Example:
@@ -215,7 +282,13 @@ Here:
 
 Imported packages expose only `pub` items.
 
-## 9. Qualified Name Use
+`pub(package)` items are not exposed through package interfaces.
+
+Module-private items are not visible from sibling files in the same package.
+
+This is deliberately more restrictive than Go-style package-private visibility. The goal is to allow small abstractions inside one file without forcing every implementation detail to be visible throughout the package.
+
+## 10. Qualified Name Use
 
 The same `package_alias::Name` form is used for both types and values.
 
@@ -246,14 +319,16 @@ This keeps value and type lookup visually consistent.
 
 Within the current package:
 
-- top-level names may be referenced unqualified
-- top-level names are collected across files before body checking
+- top-level names from the current module may be referenced unqualified
+- top-level names from sibling modules may be referenced only if they are `pub(package)` or `pub`
+- module-private top-level names are not visible from sibling modules
+- package-visible and public top-level names are collected across files before body checking
 
 Across packages:
 
 - references must be qualified through an imported package alias
 
-## 10. Public API Signature Policy
+## 11. Public API Signature Policy
 
 To support both minimal annotations and fast package compilation, package interfaces store **resolved public signatures**.
 
@@ -265,7 +340,7 @@ The important boundary is:
 - importers read cached package interfaces, not the full bodies of unchanged dependencies
 - package interfaces contain concrete resolved signatures whether they were written or inferred
 
-### 10.1 Public functions
+### 11.1 Public functions
 
 Every `pub fn` must have an inferable public signature.
 
@@ -312,11 +387,13 @@ pub fn apply(x, f) {
 
 These are invalid without more annotations because the exported signature is ambiguous.
 
-### 10.2 Public records
+### 11.2 Public records
 
 `record` fields already require explicit types, so `pub record` introduces no additional annotation burden there.
 
-### 10.3 Why this rule exists
+However, a `pub record` may still contain non-public fields. Such fields are part of the record's representation but are not directly nameable outside their visibility boundary.
+
+### 11.3 Why this rule exists
 
 This rule is recommended for three reasons:
 
@@ -332,9 +409,14 @@ The cost trade-off is explicit:
 - downstream packages can use the cached inferred interface without reading those bodies again
 - first builds may do slightly more work, but incremental and dependency builds stay fast
 
-### 10.4 Public signatures may not leak private names
+### 11.4 Public signatures may not leak non-public names
 
-A public item may not mention a package-private top-level name in its visible type.
+A public item may not mention a non-public top-level name in its visible type.
+
+This includes both:
+
+- module-private names
+- `pub(package)` names
 
 Examples of invalid public API:
 
@@ -362,7 +444,7 @@ pub record Session {
 
 These are invalid because importers of the package could see the public API but would have no legal way to name the leaked private type.
 
-## 11. Build and Compilation Model
+## 12. Build and Compilation Model
 
 The package system is designed around package-level compilation units.
 
@@ -386,7 +468,7 @@ In particular, the draft intentionally does not rely on:
 - package load order effects
 - top-level execution during import
 
-## 12. Cycles
+## 13. Cycles
 
 Import cycles are prohibited.
 
@@ -403,7 +485,7 @@ The draft keeps the dependency graph acyclic so that:
 - package compilation order is deterministic
 - build caching stays cheap
 
-## 13. Executable Packages
+## 14. Executable Packages
 
 The draft reserves `package main` for executable packages.
 
@@ -434,7 +516,7 @@ Current implementation note:
 - the current file-based CLI accepts any package path, as long as the chosen entry package contains `fn main()`
 - the source root is currently inferred from the entry file path and the declared package path
 
-## 14. Why This Is Meant To Feel Modern
+## 15. Why This Is Meant To Feel Modern
 
 The draft aims to borrow the good parts of modern languages without carrying in their full complexity.
 
@@ -455,7 +537,7 @@ It avoids, for now:
 - trait/protocol solving at package boundaries
 - package-scoped execution order rules
 
-## 15. Example
+## 16. Example
 
 ```txt
 package app::users
@@ -479,7 +561,7 @@ pub fn show(user: users::User): String {
 }
 ```
 
-## 16. Deferred Topics
+## 17. Deferred Topics
 
 This draft intentionally leaves the following topics for later:
 
@@ -494,7 +576,7 @@ This draft intentionally leaves the following topics for later:
 - protocol/trait-like abstractions
 - testing and benchmark file conventions
 
-## 17. Recommendation
+## 18. Recommendation
 
 If Muga continues to optimize for:
 

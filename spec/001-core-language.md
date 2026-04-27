@@ -71,6 +71,7 @@ The language has the following core constructs:
 - expression statements
 - record literals
 - field access, chained dot calls, and record updates
+- package/module visibility modifiers in package mode
 
 To keep the grammar unambiguous, v1 distinguishes:
 
@@ -125,6 +126,10 @@ Reserved keywords are:
 - `fn`
 - `record`
 - `mut`
+- `package`
+- `import`
+- `pub`
+- `as`
 - `if`
 - `else`
 - `while`
@@ -191,7 +196,9 @@ assign_like_stmt  := "mut" IDENT "=" expr
                    | IDENT "=" expr
 
 record_decl       := "record" IDENT "{" record_field_decl* "}"
-record_field_decl := IDENT ":" type_expr
+record_field_decl := field_visibility? IDENT ":" type_expr
+field_visibility   := "pub"
+                   | "pub" "(" "package" ")"
 
 func_decl         := "fn" IDENT "(" params? ")" return_annot? value_block
 return_annot      := ":" type_expr

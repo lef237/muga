@@ -20,6 +20,7 @@ Muga should keep these concepts separate:
 - `BindingId`: resolved binding inside a checked program body or scope tree
 - `LocalId`: lowered local storage slot after name resolution and typing
 - `PackageId`: package node in the package graph
+- future `ModuleId`: module/file node inside a package
 - `PackageItemId`: top-level exported or private item inside a package
 
 `Symbol` is not enough by itself because two different scopes can define the same spelling. A resolved identifier should eventually point to a `BindingId` or `PackageItemId`, not just to the interned text.
@@ -60,6 +61,7 @@ Package loading now introduces a package symbol graph before package flattening 
 Recommended model:
 
 - `PackageId` identifies one loaded package
+- a future `ModuleId` should identify one source module/file inside that package
 - `PackageItemId` identifies one top-level item in that package
 - imports map local alias symbols to `PackageId`
 - qualified references resolve to `(PackageId, PackageItemId)`
@@ -70,6 +72,8 @@ Current implementation:
 - `PackageSymbolGraph` stores package nodes, top-level item nodes, and import edges
 - item records keep source name, kind, visibility, source span, and current mangled name
 - the existing VM path still consumes the flattened program
+
+Module-private visibility will require package items to also know their declaring module/file. This is not implemented yet, but it should be added before package interfaces harden so that Muga does not fall into package-wide private visibility as the only encapsulation boundary.
 
 This lets the compiler distinguish:
 
@@ -118,8 +122,9 @@ Done:
 Remaining:
 
 1. make typed HIR calls carry resolved callee shape
-2. make package-qualified references point to package item identities before flattening is removed
-3. replace package flattening with package interfaces and real compilation units
+2. add module/file identity for module-private visibility
+3. make package-qualified references point to package item identities before flattening is removed
+4. replace package flattening with package interfaces and real compilation units
 
 ## Foundation Note
 
