@@ -87,6 +87,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - record fields may not have function type
 - higher-order functions are allowed
 - function types use `->`
+- v1 generics are drafted for generic type expressions, generic records, and generic functions
 - collection design is drafted around `List[T]` first, then `Option[T]` and `Map[K, V]`
 
 ## Documentation
@@ -101,6 +102,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/006-packages.md](./spec/006-packages.md) (draft)
   - [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) (draft)
   - [spec/008-collections.md](./spec/008-collections.md) (draft)
+  - [spec/009-generics.md](./spec/009-generics.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
 - Current next steps: [docs/current-next-steps.md](./docs/current-next-steps.md)
@@ -149,7 +151,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
 - file-based package mode with `package`, `import`, `pub`, and `alias::Name` is implemented
 - current package implementation still requires fully annotated `pub fn`; the design direction is to allow inferred public signatures once package interfaces can store them
-- generic collection types, list literals, `Option[T]`, and `Map[K, V]` are design drafts and not implemented yet
+- generics, generic collection types, list literals, `Option[T]`, and `Map[K, V]` are design drafts and not implemented yet
 - explicit receiver-style distinction is not implemented yet
 - package manifests, configurable source roots, and package caching are not implemented yet
 

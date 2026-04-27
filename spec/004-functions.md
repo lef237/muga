@@ -139,13 +139,37 @@ v1 still has a single ordinary function namespace and does not add overloading b
 Therefore, the following is not allowed in the same scope:
 
 ```txt
-fn len(self: List): Int { ... }
+fn len(self: List[Int]): Int { ... }
 fn len(self: String): Int { ... }   // duplicate binding in v1
 ```
 
 This keeps resolution simple and compile-time cost low, but it also means common method names across unrelated types are deferred to a future protocol/trait-like design.
 
-## 5. Parameter Semantics
+## 5. Generic Functions
+
+Generic functions are part of the v1 target.
+
+```txt
+fn id[T](value: T): T {
+  value
+}
+```
+
+A generic function is still an ordinary immutable function binding. The type parameter list belongs to the function's type signature, not to a runtime value scope.
+
+Generic functions must declare their type parameters explicitly. Muga does not implicitly generalize an ordinary function such as:
+
+```txt
+fn id(value) {
+  value
+}
+```
+
+into a generic function.
+
+The full generics policy is defined in [009-generics.md](./009-generics.md).
+
+## 6. Parameter Semantics
 
 Parameters are introduced as immutable bindings in the function-body scope.
 
@@ -172,7 +196,7 @@ fn combine(a: Int, b: Int, f: (Int, Int) -> Int): Int {
 }
 ```
 
-## 6. Return Semantics
+## 7. Return Semantics
 
 The value of a function is the value of the final expression in its body.
 
@@ -192,7 +216,7 @@ fn abs(x: Int) {
 }
 ```
 
-## 7. Name Availability Inside Functions
+## 8. Name Availability Inside Functions
 
 When a function body is resolved and typed, the following names may be available:
 
@@ -207,7 +231,7 @@ The following are not allowed:
 - updating an enclosing mutable binding
 - introducing a local binding that shadows an enclosing binding
 
-## 8. Closure Capture
+## 9. Closure Capture
 
 Functions use lexical scope and may capture readable bindings from enclosing scopes.
 
@@ -226,7 +250,7 @@ Captured outer bindings remain subject to the ordinary v1 rules:
 - outer bindings may be read
 - outer mutable bindings may not be updated from the inner function
 
-## 9. Direct Recursion
+## 10. Direct Recursion
 
 Direct recursion is allowed.
 
@@ -247,7 +271,7 @@ fn fact(n: Int) {
 }
 ```
 
-## 10. Mutual Recursion
+## 11. Mutual Recursion
 
 Mutual recursion is allowed only when explicit signatures are present for the entire recursive group.
 
@@ -291,13 +315,14 @@ fn is_odd(n) {
 }
 ```
 
-## 11. Summary
+## 12. Summary
 
 Functions in v1 are ordinary immutable bindings of function values, with:
 
 - immutable parameters
 - optional receiver-style first parameters whose names are unconstrained
 - higher-order use through function values and function-type annotations
+- generic functions with explicit type parameter lists
 - final-expression returns
 - lexical closure capture for readable outer bindings
 - access to the prelude builtins `print` and `println`

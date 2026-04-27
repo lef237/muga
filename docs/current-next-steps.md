@@ -14,6 +14,7 @@ Muga's current direction is:
 - package interfaces for fast separate compilation
 - explicit package qualification with `::`
 - module/file privacy before package-only privacy
+- v1 generics as a small MVP
 - `List[T]` first for collections, then `Option[T]`, then `Map[K, V]`
 - structured task groups before channels or async-function coloring
 
@@ -29,6 +30,9 @@ These points are now documented and should be treated as the current baseline:
 - Ruby is an important readability reference, but language features should be chosen by Muga's own constraints.
 - Whole-program inference should not be the default compilation model.
 - Public signatures may be inferred in the defining package, then stored in package interfaces.
+- v1 generics include generic type expressions, generic records, and generic functions.
+- v1 generics do not include bounds, typeclasses, higher-kinded types, const generics, or specialization.
+- generic declarations must declare their type parameters explicitly, such as `fn id[T](value: T): T`.
 - `Option[T]` is the canonical spelling for optional values.
 - `T?` is only reserved as possible future shorthand for `Option[T]`.
 - `List[T]` means zero or more values.
@@ -66,8 +70,6 @@ These decisions affect near-term implementation and should be made before implem
 Decide:
 
 - exact grammar for local binding type annotations: recommended `name: Type = expr` and `mut name: Type = expr`
-- exact parser shape for generic type expressions: recommended `Type[Arg1, Arg2]`
-- whether generic declarations are deferred while builtin generic collections are implemented first
 - how `Option[T]` values are constructed and consumed
 - whether `match` or another pattern form is needed before exposing `Option[T]` broadly
 - direct indexing policy: runtime bounds error for `xs[i]`, safe lookup through `xs.get(i)`
@@ -75,6 +77,11 @@ Decide:
 Current recommendation:
 
 - implement local binding annotations and generic type expressions first
+- parse generic type expressions as `Type[Arg1, Arg2]`
+- parse generic declarations as `record Box[T]` and `fn id[T](value: T): T`
+- implement generic records and generic functions as part of v1
+- rely on local type-argument inference rather than explicit call-site type arguments in the v1 MVP
+- defer bounds, typeclasses, higher-kinded types, const generics, and specialization
 - implement `List[T]` and list literals before `Map[K, V]`
 - keep `T?` reserved, not implemented
 - do not implement map literals in the first collection slice

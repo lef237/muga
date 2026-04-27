@@ -321,11 +321,37 @@ apply(10, fn(n: Int): Int {
 })
 ```
 
-## 13. Notes for Future Extensions
+## 13. Generic Records
+
+Generic record declarations are part of the v1 target.
+
+```txt
+record Box[T] {
+  value: T
+}
+```
+
+An instantiated generic record type may be used in record literals and type annotations:
+
+```txt
+box = Box[Int] {
+  value: 1
+}
+```
+
+Generic record fields still follow the same record rules:
+
+- fields may not have function type in v1
+- field visibility follows the package/module model
+- field access remains `expr.name`
+- record update remains `expr.with(...)`
+
+The full generics policy is defined in [009-generics.md](./009-generics.md).
+
+## 14. Notes for Future Extensions
 
 The current design leaves room for future work on:
 
 - protocol/trait-like dispatch
 - limited overloading keyed by receiver type
 - mutable or persistent-update record operations
-- generic record declarations

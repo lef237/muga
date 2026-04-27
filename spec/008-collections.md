@@ -2,7 +2,7 @@
 
 Status: design draft only. This document is not implemented in the Rust compiler yet.
 
-This draft defines the recommended direction for Muga collections before implementing generics, collection literals, dictionary-like maps, or collection APIs.
+This draft defines the recommended direction for Muga collections on top of the v1 generics MVP.
 
 ## 1. Design Goals
 
@@ -51,7 +51,7 @@ This syntax is especially useful for empty collections, because `[]` alone does 
 
 ## 4. Generic Type Syntax
 
-Collection types should use square-bracket type arguments:
+Collection types use the square-bracket type arguments defined in [009-generics.md](./009-generics.md):
 
 ```muga
 List[Int]
@@ -59,7 +59,7 @@ Map[String, Int]
 Option[User]
 ```
 
-The same syntax can later extend to user-defined generic records and functions:
+The same syntax is also used by user-defined generic records and functions:
 
 ```muga
 record Box[T] {
@@ -71,7 +71,7 @@ fn id[T](value: T): T {
 }
 ```
 
-Generic declarations are not part of the first collection implementation. The immediate need is source type expressions such as `List[Int]` and `Map[String, Int]`.
+Generics are part of the v1 target. The first collection implementation may still be phased so that generic type expressions and builtin generic collection types land before user-defined generic records and functions.
 
 ## 5. List
 
@@ -274,6 +274,6 @@ The following should not block the first collection implementation:
 - collection comprehensions
 - builder or mutable collection APIs
 - equality and hashing protocols
-- advanced generic functions
+- advanced generic features such as bounds, typeclasses, higher-kinded types, and specialization
 
 The immediate goal is a small, typed, useful collection core.
