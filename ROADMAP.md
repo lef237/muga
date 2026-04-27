@@ -55,6 +55,7 @@ These are no longer top-level roadmap questions:
 3. package qualification uses `::`
 4. package mode and script mode are distinct
 5. collection direction starts with `List[T]`, then `Option[T]` and `Map[K, V]`
+6. v1 generics are in scope as a small MVP
 
 Those topics may still need refinement, but they are no longer the main blockers.
 
@@ -64,6 +65,9 @@ Some language-surface choices are not the immediate compiler-core task, but they
 
 Current draft decisions:
 
+- generics use square brackets: `List[Int]`, `record Box[T]`, `fn id[T](value: T): T`
+- v1 generics include generic type expressions, generic records, and generic functions
+- v1 generics exclude bounds, typeclasses, higher-kinded types, const generics, specialization, and implicit polymorphic generalization
 - collection types use square-bracket type arguments such as `List[Int]` and `Map[String, Int]`
 - empty collection literals need an expected type, most likely from a local binding annotation such as `items: List[Int] = []`
 - `List[T]` is the first collection to implement
@@ -71,6 +75,8 @@ Current draft decisions:
 - `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
 
 The collection draft lives in [spec/008-collections.md](./spec/008-collections.md).
+
+The generics draft lives in [spec/009-generics.md](./spec/009-generics.md).
 
 The current resume guide and decision queue live in [docs/current-next-steps.md](./docs/current-next-steps.md).
 

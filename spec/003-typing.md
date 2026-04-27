@@ -22,6 +22,7 @@ In addition, v1 introduces:
 
 - user-defined nominal record types introduced by `record`
 - source-level function types written with `->`
+- generic type expressions written with `[]`
 
 Therefore, source `type_expr` is:
 
@@ -31,10 +32,12 @@ function_type      := function_domain "->" type_expr
                     | non_function_type
 function_domain    := non_function_type
                     | "(" type_expr_list? ")"
-non_function_type  := "Int"
+non_function_type  := type_primary type_args?
+type_primary       := "Int"
                     | "Bool"
                     | "String"
                     | IDENT
+type_args          := "[" type_expr_list "]"
 type_expr_list     := type_expr ("," type_expr)*
 ```
 
@@ -43,18 +46,25 @@ Examples:
 - `Int -> Int`
 - `(Int, String) -> Bool`
 - `() -> Int`
+- `List[Int]`
+- `Map[String, Int]`
+- `Option[User]`
 
-The currently implemented subset has no generics, no user-written type variables, and no polymorphic type syntax.
+The v1 target includes a restricted generics MVP.
 
-The collection draft reserves square-bracket type application for future collection types:
+Examples:
 
 ```txt
-List[Int]
-Map[String, Int]
-Option[User]
+record Box[T] {
+  value: T
+}
+
+fn id[T](value: T): T {
+  value
+}
 ```
 
-That syntax is specified in [008-collections.md](./008-collections.md) as a design draft and is not implemented yet.
+The current Rust implementation does not support generics yet. The generics MVP is specified in [009-generics.md](./009-generics.md).
 
 ## 3. Prelude Built-ins
 
@@ -408,7 +418,7 @@ Disallowed:
 
 - inferring a callee parameter type from call sites alone
 - propagating constraints across unrelated top-level declarations
-- polymorphic generalization
+- implicit polymorphic generalization of non-generic declarations
 - inferring a complete higher-order parameter shape from distant call sites alone
 
 This means:

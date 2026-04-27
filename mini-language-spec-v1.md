@@ -341,6 +341,7 @@ In addition, v1 introduces:
 
 - nominal record types introduced by `record`
 - source-level function types written with `->`
+- generic type expressions written with `[]`
 
 Therefore, source `type_expr` is:
 
@@ -350,10 +351,12 @@ function_type     := function_domain "->" type_expr
                    | non_function_type
 function_domain   := non_function_type
                    | "(" type_expr_list? ")"
-non_function_type := "Int"
+non_function_type := type_primary type_args?
+type_primary      := "Int"
                    | "Bool"
                    | "String"
                    | IDENT
+type_args         := "[" type_expr_list "]"
 type_expr_list    := type_expr ("," type_expr)*
 ```
 
@@ -362,8 +365,11 @@ Examples:
 - `Int -> Int`
 - `(Int, String) -> Bool`
 - `() -> Int`
+- `List[Int]`
+- `Map[String, Int]`
+- `Option[User]`
 
-There are no generics, no user-written type variables, and no polymorphic type syntax in v1.
+v1 includes a restricted generics MVP for generic type expressions, generic records, and generic functions. Bounds, typeclasses, higher-kinded types, const generics, specialization, and implicit polymorphic generalization are not part of v1.
 
 ### 7.3 Prelude built-ins
 
@@ -511,7 +517,7 @@ Disallowed:
 
 - inferring a callee parameter type from call sites alone
 - propagating constraints across unrelated top-level declarations
-- polymorphic generalization
+- implicit polymorphic generalization of non-generic declarations
 
 ### 7.9 When type annotations are required
 
