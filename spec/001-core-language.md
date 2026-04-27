@@ -20,9 +20,41 @@ The v1 language is intentionally small and follows these constraints:
 - type annotations are omitted unless inference cannot determine a unique type
 - higher-order functions are supported
 
-## 2. Core Binding Forms
+## 2. Syntax Marker Discipline
 
-### 2.1 Mutable binding
+Muga prefers one primary conceptual role per symbol.
+
+This does not require every punctuation character to appear in only one grammar production. It means the same visual marker should not carry several unrelated meanings that must be remembered from context.
+
+Guidelines:
+
+- a symbol should have one primary conceptual role
+- related surface forms are allowed only when the relationship is obvious
+- unrelated roles should use different syntax, even if the result is longer
+- keywords are acceptable when they make code easier to read
+- compact notation must not override local readability
+
+Current examples:
+
+- `:` marks type-related annotation positions
+- `->` appears inside function type expressions
+- `::` marks package-qualified access
+- `.` is reserved for field access and chained-call surface syntax
+- `=` is statement-level binding/update syntax, not an expression operator
+
+Future pointer-like, reference-like, ownership, or borrowing concepts must follow this rule.
+
+In particular, Muga should avoid using one marker for several context-dependent roles such as:
+
+- type constructor
+- value dereference
+- address creation
+- mutation marker
+- pattern binding modifier
+
+## 3. Core Binding Forms
+
+### 3.1 Mutable binding
 
 ```txt
 mut x = e
@@ -30,7 +62,7 @@ mut x = e
 
 This form always attempts to introduce a new mutable binding in the current scope.
 
-### 2.2 Plain assignment-like form
+### 3.2 Plain assignment-like form
 
 ```txt
 x = e
@@ -46,7 +78,7 @@ For `x = e`, current-scope immutable names include ordinary immutable bindings, 
 
 The exact static resolution rules are normative in [002-name-resolution.md](./002-name-resolution.md).
 
-## 3. Blocks and Scope
+## 4. Blocks and Scope
 
 The language uses lexical scoping.
 
@@ -59,7 +91,7 @@ Within a single function body, an inner block may update a mutable binding intro
 
 Across a function boundary, outer bindings may be read from inner scopes, but v1 does not allow updating outer-scope bindings.
 
-## 4. Statements and Expressions
+## 5. Statements and Expressions
 
 The language has the following core constructs:
 
@@ -94,9 +126,9 @@ abs = fn(n: Int) {
 }
 ```
 
-## 5. Lexical Conventions
+## 6. Lexical Conventions
 
-### 5.1 Whitespace and comments
+### 6.1 Whitespace and comments
 
 v1 uses line comments only:
 
@@ -113,7 +145,7 @@ Newlines are statement separators, with the following exceptions:
 
 Within a block, statements are separated by newlines. Multiple statements on one line are not allowed in v1.
 
-### 5.2 Identifiers and keywords
+### 6.2 Identifiers and keywords
 
 Identifiers are ASCII-only and match:
 
@@ -137,7 +169,7 @@ Reserved keywords are:
 - `true`
 - `false`
 
-### 5.3 Literals
+### 6.3 Literals
 
 The minimal v1 literal set is:
 
@@ -147,7 +179,7 @@ The minimal v1 literal set is:
 
 Raw strings and multiline strings are not part of v1.
 
-## 6. Operators and Precedence
+## 7. Operators and Precedence
 
 The v1 operator set is:
 
@@ -178,7 +210,7 @@ The dot operator has three surface forms:
 
 Because record fields cannot have function type in v1, the dot operator keeps those three stable meanings without field-function-call ambiguity.
 
-## 7. Grammar Sketch
+## 8. Grammar Sketch
 
 This is a v1-oriented EBNF sketch. `type_expr` is defined abstractly here and constrained further by [003-typing.md](./003-typing.md). Records and dot expressions are introduced here, with detailed semantics in [005-records.md](./005-records.md).
 
@@ -253,7 +285,7 @@ non_expr_stmt     := assign_like_stmt
 
 In a value block, only non-expression statements may appear before the final expression. This reserves a single trailing expression slot and keeps final-expression return syntax deterministic.
 
-## 8. Execution-Oriented Summary
+## 9. Execution-Oriented Summary
 
 The core language model is:
 
@@ -272,7 +304,7 @@ The core language model is:
 - `while` is statement-only
 - the top-level program does not produce a value
 
-## 9. Examples
+## 10. Examples
 
 Valid:
 
