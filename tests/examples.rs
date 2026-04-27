@@ -327,6 +327,72 @@ fn main(): Int {
 }
 
 #[test]
+fn compile_typed_source_exposes_resolved_bindings_and_types() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  value
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    assert_eq!(main.return_ty, muga::typing::TypeInfo::Int);
+
+    let assign = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected typed assignment"),
+    };
+    assert!(!assign.is_update);
+    assert_eq!(assign.value.ty, muga::typing::TypeInfo::Int);
+
+    let final_ident = match &main.body.expr.kind {
+        muga::typed_hir::ExprKind::Ident(ident) => ident,
+        _ => panic!("expected typed identifier"),
+    };
+    assert_eq!(final_ident.binding, assign.binding);
+    assert_eq!(main.body.expr.ty, muga::typing::TypeInfo::Int);
+}
+
+#[test]
+fn compile_typed_source_marks_mutable_updates() {
+    let source = r#"
+fn main(): Int {
+  mut value = 1
+  value = 2
+  value
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    let first = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected first assignment"),
+    };
+    let second = match &main.body.statements[1] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected second assignment"),
+    };
+    assert!(!first.is_update);
+    assert!(second.is_update);
+    assert_eq!(first.binding, second.binding);
+}
+
+#[test]
+fn compile_typed_path_preserves_package_symbol_graph() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    assert!(program.package_graph.package_id("app::main").is_some());
+    assert!(program.package_graph.package_id("util::numbers").is_some());
+    assert!(program.package_graph.package_id("util::users").is_some());
+}
+
+#[test]
 fn resolver_exposes_identifier_binding_identity() {
     let source = r#"
 fn main(): Int {

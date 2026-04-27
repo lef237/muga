@@ -91,6 +91,16 @@ Typed HIR should not perform string-based name lookup.
 
 Typed HIR should consume analysis outputs rather than rerunning resolver or typechecker logic. In particular, identifier expressions should already know their binding identity, and expressions should already have a resolved type.
 
+Current typed HIR status:
+
+- checked AST can lower into `typed_hir::Program`
+- typed HIR keeps language-shaped statements and expressions
+- expressions carry `ExprId` and resolved `TypeInfo`
+- identifier expressions carry `BindingId`
+- assignment statements carry target `BindingId`
+- package symbol graph is preserved on typed HIR programs
+- call expressions still need an explicit resolved callee shape
+
 ## Current Migration Status
 
 Done:
@@ -103,8 +113,10 @@ Done:
 - resolver exposes accepted bindings and identifier references
 - typechecker exposes accepted bindings, identifier references, and expression types
 - package loading exposes `PackageSymbolGraph`
+- initial typed HIR exists
 
 Remaining:
 
-1. lower into typed HIR using resolved local and package identities
-2. replace package flattening with package interfaces and real compilation units
+1. make typed HIR calls carry resolved callee shape
+2. make package-qualified references point to package item identities before flattening is removed
+3. replace package flattening with package interfaces and real compilation units
