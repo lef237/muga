@@ -79,6 +79,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - source-level type annotations may use `Int`, `Bool`, `String`, nominal record types, and function types such as `A -> B`
 - type inference is local-only
 - type inference is locally bidirectional inside one function body, including some higher-order parameters
+- Muga does not introduce classes; data uses `record`, behavior uses functions, and method-like calls are surface syntax
 - receiver-style functions use a record type as the first parameter, and `self` is only a conventional parameter name
 - `expr.name` is field access, while `expr.name(...)` and `expr.alias::name(...)` are chained calls
 - `record.with(field: expr, ...)` is a record-only non-destructive update
@@ -102,6 +103,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/008-collections.md](./spec/008-collections.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
+- Language design reference: [docs/language-design-reference.md](./docs/language-design-reference.md)
 - Compiler identity note: [docs/internal/identity-model.md](./docs/internal/identity-model.md)
 
 ## Examples
