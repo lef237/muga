@@ -27,6 +27,7 @@ As of now, Muga already has:
 - records, field access, record update, and UFCS-style chains
 - higher-order functions with local bidirectional inference
 - file-based package mode with `package`, `import`, `pub`, `alias::Name`, and `as`
+- initial typed HIR with resolved local bindings and expression types
 
 The biggest remaining architectural gap is this:
 
@@ -34,7 +35,7 @@ The biggest remaining architectural gap is this:
 - resolver and typechecker now use symbol-based scope lookup internally
 - resolved local binding and expression type data are now exposed as reusable compiler data
 - package loading now exposes a package symbol graph with `PackageId` / `PackageItemId`
-- typed HIR does not exist yet
+- typed HIR exists, but calls do not yet carry an explicit resolved callee shape
 - package compilation is still implemented by flattening packages into one internal program
 
 That means the language surface is ahead of the compiler core.
@@ -234,6 +235,15 @@ Expected outcomes:
 - each function call has an already chosen callee shape
 - visibility, import resolution, and qualified-path resolution are already settled
 - receiver-style and chained-call resolution become explicit compiler data, not repeated logic
+
+Current implementation:
+
+- `typed_hir` lowers checked AST into a language-shaped typed HIR
+- expression nodes carry `ExprId` and resolved `TypeInfo`
+- identifier expressions carry resolved `BindingId`
+- assignment statements carry target `BindingId` and update-vs-new-binding information
+- package symbol graph is preserved on typed HIR programs
+- existing VM bytecode still uses the older untyped HIR path
 
 Note:
 
@@ -435,8 +445,8 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. typed HIR
-2. receiver-style resolution finalization inside typed HIR lowering/checking
+1. receiver-style and ordinary-call callee shape finalization inside typed HIR
+2. package-qualified references in typed HIR
 3. diagnostic data model tightening
 4. package interfaces instead of flattening
 5. cache and incremental compilation
