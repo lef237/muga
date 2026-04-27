@@ -33,6 +33,7 @@ The biggest remaining architectural gap is this:
 - the parser / package layer has moved forward
 - resolver and typechecker now use symbol-based scope lookup internally
 - resolved local binding and expression type data are now exposed as reusable compiler data
+- package loading now exposes a package symbol graph with `PackageId` / `PackageItemId`
 - typed HIR does not exist yet
 - package compilation is still implemented by flattening packages into one internal program
 
@@ -199,6 +200,14 @@ Expected outcomes:
 - stable IDs or handles for package-level items
 - a clear distinction between local binding identity and package-exported symbol identity
 - a package symbol graph that survives the end of flattening
+
+Current implementation:
+
+- package loading exposes `PackageSymbolGraph`
+- each loaded package has a `PackageId`
+- each top-level record/function has a `PackageItemId`
+- import edges store alias, target package, source path, and span
+- flattening still exists, but the identity model no longer depends only on mangled names
 
 This is the architectural bridge between:
 
@@ -426,12 +435,11 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. package-aware symbol identity design
-2. typed HIR
-3. receiver-style resolution finalization inside typed HIR lowering/checking
-4. diagnostic data model tightening
-5. package interfaces instead of flattening
-6. cache and incremental compilation
+1. typed HIR
+2. receiver-style resolution finalization inside typed HIR lowering/checking
+3. diagnostic data model tightening
+4. package interfaces instead of flattening
+5. cache and incremental compilation
 
 This order best matches the current state of the codebase.
 

@@ -55,7 +55,7 @@ Source spans are still kept for diagnostics, but analysis consumers should prefe
 
 ## Package Identity
 
-Package work should introduce a package symbol graph before package flattening is removed.
+Package loading now introduces a package symbol graph before package flattening is removed.
 
 Recommended model:
 
@@ -63,6 +63,13 @@ Recommended model:
 - `PackageItemId` identifies one top-level item in that package
 - imports map local alias symbols to `PackageId`
 - qualified references resolve to `(PackageId, PackageItemId)`
+
+Current implementation:
+
+- `load_from_entry` returns both the flattened program and `PackageSymbolGraph`
+- `PackageSymbolGraph` stores package nodes, top-level item nodes, and import edges
+- item records keep source name, kind, visibility, source span, and current mangled name
+- the existing VM path still consumes the flattened program
 
 This lets the compiler distinguish:
 
@@ -95,8 +102,9 @@ Done:
 - AST expressions and statements carry `ExprId` / `StmtId`
 - resolver exposes accepted bindings and identifier references
 - typechecker exposes accepted bindings, identifier references, and expression types
+- package loading exposes `PackageSymbolGraph`
 
 Remaining:
 
-1. add package-aware identities before replacing package flattening
-2. lower into typed HIR using resolved identities
+1. lower into typed HIR using resolved local and package identities
+2. replace package flattening with package interfaces and real compilation units
