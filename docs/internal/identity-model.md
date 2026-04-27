@@ -55,7 +55,7 @@ Source spans are still kept for diagnostics, but analysis consumers should prefe
 
 ## Package Identity
 
-Package work should introduce a package symbol graph before package flattening is removed.
+Package loading now introduces a package symbol graph before package flattening is removed.
 
 Recommended model:
 
@@ -63,6 +63,13 @@ Recommended model:
 - `PackageItemId` identifies one top-level item in that package
 - imports map local alias symbols to `PackageId`
 - qualified references resolve to `(PackageId, PackageItemId)`
+
+Current implementation:
+
+- `load_from_entry` returns both the flattened program and `PackageSymbolGraph`
+- `PackageSymbolGraph` stores package nodes, top-level item nodes, and import edges
+- item records keep source name, kind, visibility, source span, and current mangled name
+- the existing VM path still consumes the flattened program
 
 This lets the compiler distinguish:
 
@@ -84,6 +91,16 @@ Typed HIR should not perform string-based name lookup.
 
 Typed HIR should consume analysis outputs rather than rerunning resolver or typechecker logic. In particular, identifier expressions should already know their binding identity, and expressions should already have a resolved type.
 
+Current typed HIR status:
+
+- checked AST can lower into `typed_hir::Program`
+- typed HIR keeps language-shaped statements and expressions
+- expressions carry `ExprId` and resolved `TypeInfo`
+- identifier expressions carry `BindingId`
+- assignment statements carry target `BindingId`
+- package symbol graph is preserved on typed HIR programs
+- call expressions still need an explicit resolved callee shape
+
 ## Current Migration Status
 
 Done:
@@ -95,8 +112,17 @@ Done:
 - AST expressions and statements carry `ExprId` / `StmtId`
 - resolver exposes accepted bindings and identifier references
 - typechecker exposes accepted bindings, identifier references, and expression types
+- package loading exposes `PackageSymbolGraph`
+- initial typed HIR exists
 
 Remaining:
 
-1. add package-aware identities before replacing package flattening
-2. lower into typed HIR using resolved identities
+1. make typed HIR calls carry resolved callee shape
+2. make package-qualified references point to package item identities before flattening is removed
+3. replace package flattening with package interfaces and real compilation units
+
+## Foundation Note
+
+The typed HIR and package symbol graph land as a foundation ahead of the remaining items above.
+
+The reason is that they add reusable compiler data without replacing the existing VM execution path. The remaining items are handled as follow-up compiler-core work on top of this foundation.
