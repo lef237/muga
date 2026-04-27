@@ -120,3 +120,9 @@ Remaining:
 1. make typed HIR calls carry resolved callee shape
 2. make package-qualified references point to package item identities before flattening is removed
 3. replace package flattening with package interfaces and real compilation units
+
+## Foundation Note
+
+The typed HIR and package symbol graph land as a foundation ahead of the remaining items above.
+
+The reason is that they add reusable compiler data without replacing the existing VM execution path. The remaining items are handled as follow-up compiler-core work on top of this foundation.
