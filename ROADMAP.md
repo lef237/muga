@@ -72,6 +72,8 @@ Current draft decisions:
 
 The collection draft lives in [spec/008-collections.md](./spec/008-collections.md).
 
+The current resume guide and decision queue live in [docs/current-next-steps.md](./docs/current-next-steps.md).
+
 ## Execution Strategy
 
 Muga should continue as a compiler-first project.
@@ -468,6 +470,8 @@ If work resumes right now, the best order is:
 6. cache and incremental compilation
 
 This order best matches the current state of the codebase.
+
+For a shorter resume checklist and open decision queue, see [docs/current-next-steps.md](./docs/current-next-steps.md).
 
 ## Current Typed HIR Follow-Ups
 
