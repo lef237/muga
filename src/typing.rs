@@ -12,6 +12,7 @@ pub struct TypeCheckOutput {
     pub bindings: Vec<TypedBindingInfo>,
     pub assignment_targets: Vec<TypedAssignmentTarget>,
     pub identifier_refs: Vec<TypedIdentifier>,
+    pub calls: Vec<TypedCallInfo>,
     pub expr_types: Vec<ExprTypeInfo>,
     pub symbols: SymbolTable,
 }
@@ -40,6 +41,24 @@ pub struct TypedIdentifier {
     pub name: Symbol,
     pub span: Span,
     pub binding: BindingId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypedCallInfo {
+    pub expr_id: ExprId,
+    pub span: Span,
+    pub callee: TypedCalleeInfo,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TypedCalleeInfo {
+    Binding(BindingId),
+    Builtin {
+        binding: BindingId,
+        name: &'static str,
+    },
+    Value,
+    Error,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -150,6 +169,7 @@ struct TypeChecker {
     bindings: Vec<Binding>,
     assignment_targets: Vec<TypedAssignmentTarget>,
     identifier_refs: Vec<TypedIdentifier>,
+    calls: Vec<TypedCallInfo>,
     expr_types: Vec<ExprType>,
     symbols: SymbolTable,
     diagnostics: Vec<Diagnostic>,
@@ -165,6 +185,7 @@ impl TypeChecker {
             bindings: Vec::new(),
             assignment_targets: Vec::new(),
             identifier_refs: Vec::new(),
+            calls: Vec::new(),
             expr_types: Vec::new(),
             symbols: SymbolTable::default(),
             diagnostics: Vec::new(),
@@ -201,6 +222,7 @@ impl TypeChecker {
             bindings,
             assignment_targets: self.assignment_targets,
             identifier_refs: self.identifier_refs,
+            calls: self.calls,
             expr_types,
             symbols: self.symbols,
         }
@@ -450,7 +472,7 @@ impl TypeChecker {
             },
             Expr::Call(expr) => {
                 let callee_ty = self.check_expr(&expr.callee);
-                match self.resolve_type(&callee_ty) {
+                let ty = match self.resolve_type(&callee_ty) {
                     Type::Builtin(BuiltinFunction::Print | BuiltinFunction::Println) => {
                         if expr.args.len() != 1 {
                             self.diagnostics.push(Diagnostic::new(
@@ -521,7 +543,7 @@ impl TypeChecker {
                             params: arg_tys,
                             ret: Box::new(ret_ty.clone()),
                         });
-                        if let Err(message) = self.unify(callee_ty, inferred_sig) {
+                        if let Err(message) = self.unify(callee_ty.clone(), inferred_sig) {
                             self.diagnostics
                                 .push(Diagnostic::new("T005", message, expr.span));
                             Type::Error
@@ -538,7 +560,14 @@ impl TypeChecker {
                         ));
                         Type::Error
                     }
-                }
+                };
+                let resolved_callee = self.resolve_type(&callee_ty);
+                self.calls.push(TypedCallInfo {
+                    expr_id: expr.id,
+                    span: expr.span,
+                    callee: self.typed_callee_for(&expr.callee, &resolved_callee),
+                });
+                ty
             }
             Expr::If(expr) => {
                 let condition = self.check_expr(&expr.condition);
@@ -1028,6 +1057,39 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::Println) => TypeInfo::Builtin("println"),
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
+        }
+    }
+
+    fn typed_callee_for(&self, callee: &Expr, resolved_ty: &Type) -> TypedCalleeInfo {
+        match resolved_ty {
+            Type::Builtin(builtin) => self
+                .binding_for_expr(callee.id())
+                .map(|binding| TypedCalleeInfo::Builtin {
+                    binding,
+                    name: Self::builtin_name(*builtin),
+                })
+                .unwrap_or(TypedCalleeInfo::Error),
+            Type::Function(_) | Type::Unknown(_) => self
+                .binding_for_expr(callee.id())
+                .map(TypedCalleeInfo::Binding)
+                .unwrap_or(TypedCalleeInfo::Value),
+            Type::Error => TypedCalleeInfo::Error,
+            _ => TypedCalleeInfo::Error,
+        }
+    }
+
+    fn binding_for_expr(&self, expr_id: ExprId) -> Option<BindingId> {
+        self.identifier_refs
+            .iter()
+            .rev()
+            .find(|identifier| identifier.expr_id == expr_id)
+            .map(|identifier| identifier.binding)
+    }
+
+    fn builtin_name(builtin: BuiltinFunction) -> &'static str {
+        match builtin {
+            BuiltinFunction::Print => "print",
+            BuiltinFunction::Println => "println",
         }
     }
 

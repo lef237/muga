@@ -8,6 +8,7 @@ use crate::{
     symbol::SymbolTable,
     typing::{
         FunctionTypeInfo, TypeCheckOutput, TypeInfo, TypedAssignmentTarget, TypedBindingInfo,
+        TypedCalleeInfo,
     },
 };
 
@@ -216,6 +217,15 @@ pub struct BinaryExpr {
 pub struct CallExpr {
     pub callee: Box<Expr>,
     pub args: Vec<Expr>,
+    pub origin: CallOrigin,
+    pub resolved_callee: TypedCalleeInfo,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallOrigin {
+    Ordinary,
+    Chained,
+    QualifiedChained,
 }
 
 #[derive(Clone, Debug)]
@@ -255,6 +265,7 @@ struct Lowerer<'a> {
     analysis: &'a TypeCheckOutput,
     expr_types: HashMap<ExprId, TypeInfo>,
     identifier_refs: HashMap<ExprId, BindingId>,
+    calls: HashMap<ExprId, TypedCalleeInfo>,
     assignment_targets: HashMap<StmtId, TypedAssignmentTarget>,
 }
 
@@ -271,6 +282,11 @@ impl<'a> Lowerer<'a> {
                 .identifier_refs
                 .iter()
                 .map(|identifier| (identifier.expr_id, identifier.binding))
+                .collect(),
+            calls: analysis
+                .calls
+                .iter()
+                .map(|call| (call.expr_id, call.callee))
                 .collect(),
             assignment_targets: analysis
                 .assignment_targets
@@ -437,6 +453,8 @@ impl<'a> Lowerer<'a> {
             ast::Expr::Call(expr) => ExprKind::Call(CallExpr {
                 callee: Box::new(self.lower_expr(&expr.callee)),
                 args: expr.args.iter().map(|arg| self.lower_expr(arg)).collect(),
+                origin: CallOrigin::from(expr.origin),
+                resolved_callee: self.resolved_callee_for_call(expr.id),
             }),
             ast::Expr::If(expr) => ExprKind::If(IfExpr {
                 condition: Box::new(self.lower_expr(&expr.condition)),
@@ -498,6 +516,13 @@ impl<'a> Lowerer<'a> {
             .expect("checked expression should have a type")
     }
 
+    fn resolved_callee_for_call(&self, id: ExprId) -> TypedCalleeInfo {
+        *self
+            .calls
+            .get(&id)
+            .expect("checked call should have resolved callee info")
+    }
+
     fn binding_for_decl(&self, name: &str, span: Span, kind: BindingKind) -> BindingId {
         self.analysis
             .bindings
@@ -546,6 +571,16 @@ impl<'a> Lowerer<'a> {
                     .collect(),
                 ret: Box::new(self.type_info_from_type_expr(&function.ret)),
             }),
+        }
+    }
+}
+
+impl From<ast::CallOrigin> for CallOrigin {
+    fn from(origin: ast::CallOrigin) -> Self {
+        match origin {
+            ast::CallOrigin::Ordinary => Self::Ordinary,
+            ast::CallOrigin::Chained => Self::Chained,
+            ast::CallOrigin::QualifiedChained => Self::QualifiedChained,
         }
     }
 }

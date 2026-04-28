@@ -59,10 +59,31 @@ Why this comes next:
 
 Expected result:
 
-- a typed HIR call expression says exactly what it calls
-- chained calls record whether they resolved through receiver-style or UFCS-style lookup
-- package-qualified calls can eventually point to `PackageItemId`
+- a typed HIR call expression says which binding, builtin, or function value it calls
+- parser-level call origin distinguishes ordinary calls from chained calls
+- package-qualified calls currently point to flattened bindings and can later point to `PackageItemId`
 - later lowering stages do not need to repeat resolver/typechecker logic
+
+Completed work order for this task:
+
+1. Add resolved call information to the typechecker output.
+2. Preserve that call information in typed HIR call expressions.
+3. Add tests for ordinary function calls, local function-value calls, builtin calls, and package-qualified calls.
+4. Keep the existing VM bytecode path behavior-compatible.
+5. Add AST-level call origin data so typed HIR can distinguish ordinary calls from chained calls instead of relying on parser desugaring.
+
+Current implementation status:
+
+- `TypeCheckOutput` exposes resolved call information.
+- typed HIR `CallExpr` preserves the resolved callee.
+- parser/AST call origin is threaded into typed HIR for ordinary calls, chained calls, and package-qualified chained calls.
+- tests cover ordinary function calls, local function-value calls, builtin calls, chained calls, and package-qualified calls.
+- the existing VM bytecode path remains behavior-compatible.
+
+Remaining immediate follow-up:
+
+1. When package interfaces are introduced, upgrade package-qualified call targets from flattened `BindingId` data to package-aware item identity.
+2. Use the resolved callee and call-origin data as MIR/package-interface inputs rather than re-running call resolution later.
 
 ## 4. Decisions To Make Soon
 

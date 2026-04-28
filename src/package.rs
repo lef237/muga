@@ -709,6 +709,7 @@ impl<'a> PackageRewriter<'a> {
                 id: expr.id,
                 callee: Box::new(self.rewrite_expr(&expr.callee)),
                 args: expr.args.iter().map(|arg| self.rewrite_expr(arg)).collect(),
+                origin: expr.origin,
                 span: expr.span,
             }),
             Expr::If(expr) => Expr::If(IfExpr {

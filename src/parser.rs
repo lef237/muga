@@ -595,6 +595,7 @@ impl Parser {
                     id: self.expr_id(),
                     callee: Box::new(expr),
                     args,
+                    origin: CallOrigin::Ordinary,
                     span,
                 });
                 continue;
@@ -656,6 +657,11 @@ impl Parser {
                         id: self.expr_id(),
                         callee: Box::new(callee),
                         args: call_args,
+                        origin: if qualified {
+                            CallOrigin::QualifiedChained
+                        } else {
+                            CallOrigin::Chained
+                        },
                         span: base_span.merge(start).merge(end),
                     });
                     continue;

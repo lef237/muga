@@ -304,7 +304,15 @@ pub struct CallExpr {
     pub id: ExprId,
     pub callee: Box<Expr>,
     pub args: Vec<Expr>,
+    pub origin: CallOrigin,
     pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallOrigin {
+    Ordinary,
+    Chained,
+    QualifiedChained,
 }
 
 #[derive(Clone, Debug)]
