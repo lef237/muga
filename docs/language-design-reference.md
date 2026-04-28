@@ -321,7 +321,7 @@ Reason:
 - simple, stable syntax helps the parser, diagnostics, and documentation
 - Muga should prefer obvious code over dense notation
 
-For concrete examples, see [syntax-marker-case-study.md](./syntax-marker-case-study.md).
+For concrete examples, see [syntax-marker-case-study.md](./syntax-marker-case-study.md). For the current reference and borrow direction, see [010-references-draft.md](../spec/010-references-draft.md).
 
 ### 3.11 No ambiguous dot syntax
 

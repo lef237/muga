@@ -167,11 +167,11 @@ That is not the direction Muga should take.
 
 If Muga later adds pointer-like, reference-like, ownership, or borrowing concepts, prefer a design where type names and value operations remain visibly distinct.
 
-Preferred chained direction:
+The current reference draft prefers non-escaping read-only `ref T` for ordinary borrowed parameters. Muga should not introduce `Ref[T]` as a second spelling for the same concept.
+
+Preferred borrowed-parameter direction:
 
 ```muga
-value: Ref[Int] = count.borrow()
-next = value.read() + 1
 mask = flags.bit_and(allowed)
 
 fn add_delta(counter: Counter, delta: Int): Counter {
@@ -179,26 +179,26 @@ fn add_delta(counter: Counter, delta: Int): Counter {
   counter.with(value: next_value)
 }
 
-fn inc(counter: Ref[Counter], delta: Ref[Int]): Ref[Counter] {
-  current_counter = counter.read()
-  current_delta = delta.read()
-  next_counter = current_counter.add_delta(current_delta)
-  counter.write(next_counter)
-  counter
+fn next_value(counter: ref Counter, delta: Int): Int {
+  counter.value + delta
 }
 
-counter = counter.borrow().inc(count.borrow())
+fn inc(counter: ref Counter, delta: Int): Counter {
+  updated_value = counter.next_value(delta)
+  counter.with(value: updated_value)
+}
+
+counter = counter.inc(count)
 ```
 
 This is longer than dense punctuation, but it is easier to read:
 
-- `Ref[Int]` is clearly a type
-- `Ref[Counter]` is clearly a receiver/parameter/return type
-- `count.borrow()` clearly creates a reference-like value
-- `value.read()` clearly reads through it
-- `counter.write(...)` clearly writes through it
-- `current_counter`, `current_delta`, and `next_counter` make the data flow explicit
-- `current_counter.add_delta(...)` keeps record-update logic separate from reference-like operations
+- `ref Counter` clearly marks a borrowed parameter
+- the call site does not need address syntax such as `&counter`
+- field access still reads as `counter.value`
+- `counter.with(...)` keeps updates non-destructive
+- `updated_value` makes the data flow explicit
+- `counter.next_value(...)` keeps the chain readable because the step is named
 - `flags.bit_and(allowed)` clearly performs a bit operation
 
 This fits Muga's chained-call style: a chain is encouraged when each step is a small, named transformation.
@@ -206,19 +206,18 @@ This fits Muga's chained-call style: a chain is encouraged when each step is a s
 More explicit equivalent:
 
 ```muga
-value: Ref[Int] = borrow(count)
-next = read(value) + 1
 mask = bit_and(flags, allowed)
 
-fn inc(counter: Ref[Counter], delta: Ref[Int]): Ref[Counter] {
-  current_counter = read(counter)
-  current_delta = read(delta)
-  next_counter = add_delta(current_counter, current_delta)
-  write(counter, next_counter)
-  counter
+fn next_value(counter: ref Counter, delta: Int): Int {
+  counter.value + delta
 }
 
-counter = inc(borrow(counter), borrow(count))
+fn inc(counter: ref Counter, delta: Int): Counter {
+  updated_value = next_value(counter, delta)
+  counter.with(value: updated_value)
+}
+
+counter = inc(counter, count)
 ```
 
 This is also acceptable, but Muga should generally prefer the chained form when it reads naturally.
@@ -228,19 +227,21 @@ The important style rule is to avoid hiding several operations inside one nested
 Avoid dense chains that combine too many concerns:
 
 ```muga
-counter.borrow().write(counter.borrow().read().add_delta(count.borrow().read()))
+counter = counter.with(value: counter.value + count).render().println()
 ```
 
-This uses chaining, but it is not the desired style because it hides reference creation, reading, transformation, and writing inside one expression.
+This uses chaining, but it is not the desired style because it combines update construction, rendering, and output in one expression.
 
 Prefer:
 
 - name intermediate values
 - split transformation logic into small functions
-- keep reference-like operations visible as separate steps
+- keep borrowed parameters visible in function signatures
 - use chaining when it reads as a clear sequence of named operations
 
 These examples are not final syntax. They illustrate the design constraint: avoid reusing one symbol for unrelated concepts.
+
+For the current borrow direction, see [spec/010-references-draft.md](../spec/010-references-draft.md).
 
 ## 5. Design Checklist
 

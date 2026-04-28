@@ -73,10 +73,16 @@ Current draft decisions:
 - `List[T]` is the first collection to implement
 - `Option[T]` should exist before or alongside safe lookup APIs
 - `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
+- raw pointers are not part of v1 and should not be exposed in ordinary source code
+- future safe borrowing should prefer read-only `ref T` over `*T`, `*expr`, or `&expr`
+- `ref T` should initially be non-escaping and parameter-oriented if implemented
+- mutable references, explicit dereference syntax, and raw pointer escape hatches are deferred
 
 The collection draft lives in [spec/008-collections.md](./spec/008-collections.md).
 
 The generics draft lives in [spec/009-generics.md](./spec/009-generics.md).
+
+The references and borrowing draft lives in [spec/010-references-draft.md](./spec/010-references-draft.md).
 
 The current resume guide and decision queue live in [docs/current-next-steps.md](./docs/current-next-steps.md).
 
@@ -442,6 +448,7 @@ Initial language-level direction:
 Safety direction:
 
 - immutable-by-default values should remain easy to share
+- read-only `ref T`, if implemented, should be safe to use with task boundaries only when its lifetime and capture rules are explicit
 - mutable capture across task boundaries should be restricted or made explicit
 - synchronization primitives should exist, but they should not define the primary style
 

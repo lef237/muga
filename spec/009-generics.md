@@ -117,6 +117,29 @@ Option[(Int, String) -> Bool]
 Map[String, List[Int]]
 ```
 
+Future read-only borrowing can compose with generic types without making borrow itself a generic type:
+
+```muga
+ref List[Int]
+ref List[T]
+(ref T) -> String
+```
+
+This means:
+
+- `ref List[T]` borrows a generic list value
+- `ref T` borrows a value whose type is the type parameter `T`
+- `ref T` is not the same kind of syntax as `Ref[T]`
+
+The first borrow design should still reject borrowed references stored inside generic containers:
+
+```muga
+List[ref User]   // deferred
+Option[ref User] // deferred
+```
+
+The borrow policy is defined in [010-references-draft.md](./010-references-draft.md).
+
 ## 5. Type Parameters
 
 Type parameters are introduced by a generic declaration.
