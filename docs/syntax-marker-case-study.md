@@ -195,6 +195,10 @@ This is longer than dense punctuation, but it is easier to read:
 - `counter.add_delta(delta)` and `next_counter.inc()` keep the chain readable because each step is named
 - the final `result` expression has the same shape without address or dereference syntax
 
+The main benefit is that pointer-like representation does not leak into ordinary value flow.
+
+The caller writes `counter.add_delta(delta)` rather than manufacturing address-like values with `&counter` and `&delta`. The callee signature says `counter: ref Counter`, so the borrowing relationship is still visible where the API is defined. Inside the function, reads use ordinary field access such as `counter.value`, not explicit dereference syntax. The return type is `Counter`, so the caller receives an ordinary value instead of having to reason about what a returned `*Counter` points to.
+
 This fits Muga's chained-call style: a chain is encouraged when each step is a small, named transformation.
 
 More explicit ordinary-call equivalent:
