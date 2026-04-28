@@ -89,6 +89,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - function types use `->`
 - v1 generics are drafted for generic type expressions, generic records, and generic functions
 - collection design is drafted around `List[T]` first, then `Option[T]` and `Map[K, V]`
+- raw pointers are not part of v1; future safe borrowing is drafted around read-only `ref T`
 
 ## Documentation
 
@@ -103,6 +104,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) (draft)
   - [spec/008-collections.md](./spec/008-collections.md) (draft)
   - [spec/009-generics.md](./spec/009-generics.md) (draft)
+  - [spec/010-references-draft.md](./spec/010-references-draft.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
 - Current next steps: [docs/current-next-steps.md](./docs/current-next-steps.md)
@@ -152,6 +154,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - file-based package mode with `package`, `import`, `pub`, and `alias::Name` is implemented
 - current package implementation still requires fully annotated `pub fn`; the design direction is to allow inferred public signatures once package interfaces can store them
 - generics, generic collection types, list literals, `Option[T]`, and `Map[K, V]` are design drafts and not implemented yet
+- raw pointers, `ref T`, mutable references, and explicit dereference syntax are not implemented yet
 - explicit receiver-style distinction is not implemented yet
 - package manifests, configurable source roots, and package caching are not implemented yet
 
