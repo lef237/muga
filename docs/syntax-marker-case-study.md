@@ -4,66 +4,61 @@ Status: design note. This document is not a specification and does not define im
 
 This note explains why Muga prefers giving each symbol one primary conceptual role.
 
-The goal is not to criticize another language. The examples below show a real readability pressure that Muga should avoid when designing future syntax.
+The goal is not to criticize another language or language community. The examples below use only hypothetical Muga-like syntax to show a readability pressure that Muga should avoid when designing future features.
 
 ## 1. The Problem
 
-Some languages use compact punctuation heavily.
+Compact punctuation can be efficient for experienced users, but it can also make the same marker carry several different concepts depending on context.
 
-That can be efficient for experienced users, but it can also make the same marker carry several different concepts depending on context.
+The following is not current Muga syntax.
 
-Example:
+It shows the kind of design Muga should avoid:
 
-```go
-type Counter struct {
-    value int
+```muga
+record Counter {
+  value: Int
 }
 
-func (c *Counter) Inc(delta *int) {
-    c.value += *delta
+count = 3
+counter = Counter {
+  value: 0
 }
 
-func NewCounter(initial int) *Counter {
-    return &Counter{value: initial}
+flags = 12
+allowed = 4
+
+value: *Int = &count
+next = *value + 1
+product = count * 2
+mask = flags & allowed
+
+fn inc(counter: *Counter, delta: *Int): *Counter {
+  (*counter).value = (*counter).value + *delta
+  counter
 }
 
-var x int
-var p *int
-var flags int = 12
-var allowed int = 4
-
-p = &x
-*p = 20
-
-counter := NewCounter(0)
-counter.Inc(&x)
-
-product := x * 2
-mask := flags & allowed
+counter = inc(&counter, &count)
 ```
 
 In this fragment:
 
-- `(c *Counter)` uses `*` in a receiver type
-- `delta *int` uses `*` in a parameter type
-- `NewCounter(...) *Counter` uses `*` in a return type
-- `*int` uses `*` as part of a pointer type
-- `*delta` and `*p` use `*` as dereference operations
-- `x * 2` uses `*` as multiplication
-- `return &Counter{...}` uses `&` to create an address from a composite value
-- `&x` uses `&` as address creation
-- `flags & allowed` uses `&` as bitwise AND
-
-These forms are learnable, and they are useful in the language that uses them. The issue for Muga is different: Muga wants code to be understood locally with low symbolic load.
+- `*Int` makes `*` a type constructor
+- `*value` makes `*` a value operation
+- `count * 2` makes `*` multiplication
+- `&count` makes `&` address creation
+- `flags & allowed` makes `&` bitwise AND
+- `counter: *Counter` puts the same marker into receiver-style API shape
+- `delta: *Int` puts the same marker into parameter API shape
+- `: *Counter` puts the same marker into return type API shape
+- `inc(&counter, &count)` puts the paired marker at the call site
 
 For a new reader, the same marker switching between receiver type, parameter type, return type, value access, arithmetic, address creation, and bit operations increases the amount of context they must hold in their head.
 
 The pressure is stronger in function signatures because the symbol appears in both API shape and implementation details:
 
-```go
-func (c *Counter) Inc(delta *int)
-func NewCounter(initial int) *Counter
-counter.Inc(&x)
+```muga
+fn inc(counter: *Counter, delta: *Int): *Counter
+counter = inc(&counter, &count)
 ```
 
 A reader has to map:
@@ -130,54 +125,7 @@ Here:
 - `expr.name(...)` is chained-call surface syntax
 - function-valued record fields are not allowed in v1, so this syntax does not also mean field-function call
 
-## 3. Hypothetical Bad Muga Design
-
-The following is not current Muga syntax.
-
-It shows the kind of design Muga should avoid:
-
-```muga
-record Counter {
-  value: Int
-}
-
-count = 3
-counter = Counter {
-  value: 0
-}
-
-flags = 12
-allowed = 4
-
-value: *Int = &count
-next = *value + 1
-mask = flags & allowed
-
-fn inc(counter: *Counter, delta: *Int): *Counter {
-  (*counter).value = (*counter).value + *delta
-  counter
-}
-
-counter = inc(&counter, &count)
-```
-
-Problem:
-
-- `*Int` would make `*` a type constructor
-- `*value` would make `*` a value operation
-- `*` would already be multiplication
-- `&count` would make `&` address creation
-- `flags & allowed` would make `&` bitwise AND
-- `counter: *Counter` would put the same marker into receiver-style API shape
-- `delta: *Int` would put the same marker into parameter API shape
-- `: *Counter` would put the same marker into return type API shape
-- `inc(&counter, &count)` would put the paired marker at the call site
-
-This is compact, but it puts several unrelated jobs onto the same visual markers.
-
-That is not the direction Muga should take.
-
-## 4. Better Muga Direction
+## 3. Better Muga Direction
 
 If Muga later adds pointer-like, reference-like, ownership, or borrowing concepts, prefer a design where type names and value operations remain visibly distinct.
 
@@ -279,7 +227,7 @@ These examples are not final syntax. They illustrate the design constraint: avoi
 
 For the current borrow direction, see [spec/010-references-draft.md](../spec/010-references-draft.md).
 
-## 5. Design Checklist
+## 4. Design Checklist
 
 Before adding a new symbol or operator, ask:
 
