@@ -4,13 +4,13 @@ Status: design note. This document is not a specification and does not define im
 
 This note explains why Muga prefers giving each symbol one primary conceptual role.
 
-The goal is not to criticize another language or language community. The examples below use only hypothetical Muga-like syntax to show a readability pressure that Muga should avoid when designing future features.
+The goal is not to criticize another language or language community. The examples below use hypothetical Muga-like syntax to show a readability pressure that Muga should avoid when designing future features.
 
 ## 1. The Problem
 
 Compact punctuation can be efficient for experienced users, but it can also make the same marker carry several different concepts depending on context.
 
-The following is not current Muga syntax.
+The following is pointer-style pseudocode, not current Muga syntax.
 
 It shows the kind of design Muga should avoid. The example deliberately mixes a few small tasks:
 
@@ -22,6 +22,19 @@ It shows the kind of design Muga should avoid. The example deliberately mixes a 
 ```muga
 record Counter {
   value: Int
+}
+
+fn add_delta(counter: *Counter, delta: *Int): *Counter {
+  next_value = counter.value + *delta
+  next = Counter {
+    value: next_value
+  }
+  &next
+}
+
+fn inc(counter: *Counter): *Counter {
+  one = 1
+  add_delta(counter, &one)
 }
 
 count = 3
@@ -38,48 +51,40 @@ next_count = *count_ref + 1
 product = count * 2
 mask = flags & allowed
 
-fn add_delta(counter: *Counter, delta: *Int): Counter {
-  next_value = (*counter).value + *delta
-  Counter {
-    value: next_value
-  }
-}
-
-fn inc(counter: *Counter): Counter {
-  one = 1
-  add_delta(counter, &one)
-}
-
 next_counter = add_delta(&counter, &delta)
-incremented_counter = inc(&next_counter)
+incremented_counter = inc(next_counter)
+result = incremented_counter.value + next_count + product + mask
 ```
 
 In this fragment:
 
-- `*Int` makes `*` a type constructor
-- `*count_ref` makes `*` a value operation
+- `*Int` and `*Counter` make `*` part of pointer type syntax
+- `*count_ref` and `*delta` make `*` a value operation
 - `count * 2` makes `*` multiplication
 - `&count` makes `&` address creation
 - `flags & allowed` makes `&` bitwise AND
-- `counter: *Counter` puts the same marker into receiver-style API shape
+- `counter: *Counter` puts the same marker into first-parameter API shape
 - `delta: *Int` puts the same marker into parameter API shape
+- `: *Counter` puts the same marker into return type shape
+- final `&next` returns an address-like value
 - `add_delta(&counter, &delta)` puts the paired marker at the call site
 
-For a new reader, the same marker switching between receiver type, parameter type, value access, arithmetic, address creation, and bit operations increases the amount of context they must hold in their head.
+For a new reader, the same marker switching between first-parameter type, parameter type, return type, value access, arithmetic, address creation, and bit operations increases the amount of context they must hold in their head.
 
 The pressure is stronger in function signatures because the symbol appears in both API shape and implementation details:
 
 ```muga
-fn add_delta(counter: *Counter, delta: *Int): Counter
+fn add_delta(counter: *Counter, delta: *Int): *Counter
 next_counter = add_delta(&counter, &delta)
 ```
 
 A reader has to map:
 
-- receiver type is pointer-like
+- first input type is pointer-like
 - parameter type is pointer-like
+- return type is pointer-like
 - call site passes an address-like value
-- implementation body must explicitly dereference both values
+- implementation body may dereference values or return an address-like value
 
 This is compact, but the relationship between API design and call-site behavior is not visually self-explanatory.
 
@@ -144,7 +149,7 @@ If Muga later adds pointer-like, reference-like, ownership, or borrowing concept
 
 The current reference draft prefers non-escaping read-only `ref T` for ordinary borrowed parameters. Muga should not introduce `Ref[T]` as a second spelling for the same concept.
 
-The comparable Muga-shaped version of the earlier example keeps the same small tasks and the same core names:
+The comparable Muga-shaped version of the earlier example keeps the same small tasks and uses Muga naming:
 
 ```muga
 record Counter {
@@ -175,6 +180,7 @@ fn inc(counter: ref Counter): Counter {
 
 next_counter = counter.add_delta(delta)
 incremented_counter = next_counter.inc()
+result = incremented_counter.value + next_count + product + mask
 ```
 
 This is longer than dense punctuation, but it is easier to read:
@@ -187,6 +193,7 @@ This is longer than dense punctuation, but it is easier to read:
 - `counter.with(...)` keeps updates non-destructive
 - `flags.bit_and(allowed)` keeps bit operations named instead of reusing `&`
 - `counter.add_delta(delta)` and `next_counter.inc()` keep the chain readable because each step is named
+- the final `result` expression has the same shape without address or dereference syntax
 
 This fits Muga's chained-call style: a chain is encouraged when each step is a small, named transformation.
 
@@ -195,6 +202,7 @@ More explicit ordinary-call equivalent:
 ```muga
 next_counter = add_delta(counter, delta)
 incremented_counter = inc(next_counter)
+result = incremented_counter.value + next_count + product + mask
 ```
 
 This is also acceptable, but Muga should generally prefer the chained form when it reads naturally.
@@ -207,12 +215,14 @@ The examples above are intended to line up concept by concept:
 | --- | --- | --- |
 | `count_ref: *Int = &count` and `*count_ref` | `next_count = count + 1` | ordinary reads should not need address and dereference markers |
 | `count * 2` | `count * 2` | `*` stays available for multiplication |
-| `fn add_delta(counter: *Counter, delta: *Int): Counter` | `fn add_delta(counter: ref Counter, delta: Int): Counter` | borrowed input is marked with a word in the callee signature, while `delta` stays an ordinary value |
-| `fn inc(counter: *Counter): Counter` | `fn inc(counter: ref Counter): Counter` | the same borrowing rule applies to receiver-style APIs |
-| `(*counter).value` | `counter.value` | field access should stay stable; the reference draft allows small read-through behavior for `ref T` |
+| `fn add_delta(counter: *Counter, delta: *Int): *Counter` | `fn add_delta(counter: ref Counter, delta: Int): Counter` | borrowed input and returned value are visibly different concepts |
+| final `&next` | `counter.with(value: next_value)` | ordinary transformations return values instead of addresses |
+| `counter.value + *delta` | `counter.value + delta` | field access stays stable and `delta` stays an ordinary value |
+| `fn inc(counter: *Counter): *Counter` | `fn inc(counter: ref Counter): Counter` | the same borrowing rule applies to receiver-style APIs without pointer return syntax |
 | `add_delta(&counter, &delta)` | `add_delta(counter, delta)` or `counter.add_delta(delta)` | call sites should pass values without address punctuation for ordinary borrowing |
-| `inc(&next_counter)` | `inc(next_counter)` or `next_counter.inc()` | the increment step has the same shape as any other named transformation |
+| `inc(next_counter)` | `inc(next_counter)` or `next_counter.inc()` | the increment step has the same shape as any other named transformation |
 | `flags & allowed` | `flags.bit_and(allowed)` | bit operations should not reuse address syntax |
+| `result = incremented_counter.value + next_count + product + mask` | `result = incremented_counter.value + next_count + product + mask` | after the noisy setup is removed, the final data use can stay structurally identical |
 
 `record.with(...)` and chained calls are implemented today. `ref T` and any `bit_and` operation are design directions, not implemented v1 behavior.
 
