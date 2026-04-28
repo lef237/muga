@@ -29,6 +29,8 @@ func NewCounter(initial int) *Counter {
 
 var x int
 var p *int
+var flags int = 12
+var allowed int = 4
 
 p = &x
 *p = 20
@@ -135,13 +137,25 @@ The following is not current Muga syntax.
 It shows the kind of design Muga should avoid:
 
 ```muga
+record Counter {
+  value: Int
+}
+
+count = 3
+counter = Counter {
+  value: 0
+}
+
+flags = 12
+allowed = 4
+
 value: *Int = &count
 next = *value + 1
 mask = flags & allowed
 
-fn inc(self: *Counter, delta: *Int): *Counter {
-  *self.value = *self.value + *delta
-  self
+fn inc(counter: *Counter, delta: *Int): *Counter {
+  (*counter).value = (*counter).value + *delta
+  counter
 }
 
 counter = inc(&counter, &count)
@@ -154,7 +168,7 @@ Problem:
 - `*` would already be multiplication
 - `&count` would make `&` address creation
 - `flags & allowed` would make `&` bitwise AND
-- `self: *Counter` would put the same marker into receiver-style API shape
+- `counter: *Counter` would put the same marker into receiver-style API shape
 - `delta: *Int` would put the same marker into parameter API shape
 - `: *Counter` would put the same marker into return type API shape
 - `inc(&counter, &count)` would put the paired marker at the call site
@@ -172,7 +186,9 @@ The current reference draft prefers non-escaping read-only `ref T` for ordinary 
 Preferred borrowed-parameter direction:
 
 ```muga
-mask = flags.bit_and(allowed)
+record Counter {
+  value: Int
+}
 
 fn add_delta(counter: Counter, delta: Int): Counter {
   next_value = counter.value + delta
@@ -188,49 +204,68 @@ fn inc(counter: ref Counter, delta: Int): Counter {
   counter.with(value: updated_value)
 }
 
-counter = counter.inc(count)
+counter = Counter {
+  value: 0
+}
+
+next_counter = counter.inc(3)
 ```
 
 This is longer than dense punctuation, but it is easier to read:
 
+- `Counter`, `counter`, and `delta` are introduced before use
 - `ref Counter` clearly marks a borrowed parameter
 - the call site does not need address syntax such as `&counter`
 - field access still reads as `counter.value`
 - `counter.with(...)` keeps updates non-destructive
 - `updated_value` makes the data flow explicit
 - `counter.next_value(...)` keeps the chain readable because the step is named
-- `flags.bit_and(allowed)` clearly performs a bit operation
 
 This fits Muga's chained-call style: a chain is encouraged when each step is a small, named transformation.
 
-More explicit equivalent:
+More explicit ordinary-call equivalent:
 
 ```muga
-mask = bit_and(flags, allowed)
-
-fn next_value(counter: ref Counter, delta: Int): Int {
-  counter.value + delta
-}
-
-fn inc(counter: ref Counter, delta: Int): Counter {
-  updated_value = next_value(counter, delta)
-  counter.with(value: updated_value)
-}
-
-counter = inc(counter, count)
+next_counter = inc(counter, 3)
 ```
 
 This is also acceptable, but Muga should generally prefer the chained form when it reads naturally.
 
-The important style rule is to avoid hiding several operations inside one nested expression.
-
-Avoid dense chains that combine too many concerns:
+If Muga later adds bit operations, a named operation is clearer than spending `&` on another unrelated meaning:
 
 ```muga
-counter = counter.with(value: counter.value + count).render().println()
+flags = 12
+allowed = 4
+mask = flags.bit_and(allowed)
 ```
 
-This uses chaining, but it is not the desired style because it combines update construction, rendering, and output in one expression.
+The important style rule is not "avoid chains".
+
+Muga should encourage chains when each step stays in the same conceptual flow.
+
+Good chain:
+
+```muga
+final_counter = counter.inc(1).add_delta(10).inc(1)
+```
+
+This reads as a sequence of named `Counter -> Counter` transformations.
+
+Be more careful when a chain crosses abstraction boundaries:
+
+```muga
+counter.inc(1).add_delta(10).inc(1).value.println()
+```
+
+This combines state transformation, field extraction, and output in one expression. That may be acceptable in small examples, but it is not the style Muga should use to explain core design rules.
+
+Prefer:
+
+```muga
+final_counter = counter.inc(1).add_delta(10).inc(1)
+result = final_counter.value
+println(result)
+```
 
 Prefer:
 
@@ -238,6 +273,7 @@ Prefer:
 - split transformation logic into small functions
 - keep borrowed parameters visible in function signatures
 - use chaining when it reads as a clear sequence of named operations
+- break the chain when it switches from transformation to extraction or side effect
 
 These examples are not final syntax. They illustrate the design constraint: avoid reusing one symbol for unrelated concepts.
 
