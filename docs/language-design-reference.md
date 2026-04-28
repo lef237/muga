@@ -35,6 +35,16 @@ These languages are useful references for Muga because they are widely used, adm
 | Crystal | Ruby-like readability with static typing and native compilation |
 | Lua | small language core, lightweight implementation, embeddability, practical data-description style |
 | Pony | actor-model concurrency, data-race freedom, no null, AOT native compilation as a high-bar safety reference |
+| Dart | sound null safety, AOT and JIT modes, mainstream typed-evolution lessons in a class-based ecosystem |
+| Julia | multiple dispatch as the central abstraction, type-stable code, high-level syntax with native-speed numerics |
+| PureScript | pure functional ML targeting the web, row polymorphism, principal type inference |
+| Reason | OCaml-family semantics with JavaScript-leaning syntax, on-ramp ergonomics for ML newcomers |
+| Mojo | Python-readable syntax with static types and AOT compilation, MLIR-based optimization stack |
+| Carbon | greenfield C++ successor experiment, explicit syntax design choices, interoperability-first goals |
+| Roc | simple ML-family syntax, fast compile-edit loop, function-centered design, no required GC runtime |
+| Grain | WebAssembly-first ML-style language, simple syntax with strong static types |
+| Gren | Elm-derived simplicity, immutable-first design, focus on application correctness and readable output |
+| Koka | row-typed algebraic effects, side effects visible in signatures as an alternative to async function coloring |
 
 Muga does not need to copy any one of these languages. It should instead combine a small number of compatible ideas:
 
