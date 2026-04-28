@@ -12,7 +12,12 @@ Compact punctuation can be efficient for experienced users, but it can also make
 
 The following is not current Muga syntax.
 
-It shows the kind of design Muga should avoid:
+It shows the kind of design Muga should avoid. The example deliberately mixes a few small tasks:
+
+- read an integer and compute the next value
+- add a delta to a counter
+- increment a counter by one
+- compute a bit mask
 
 ```muga
 record Counter {
@@ -20,6 +25,7 @@ record Counter {
 }
 
 count = 3
+delta = 4
 counter = Counter {
   value: 0
 }
@@ -27,46 +33,53 @@ counter = Counter {
 flags = 12
 allowed = 4
 
-value: *Int = &count
-next = *value + 1
+count_ref: *Int = &count
+next_count = *count_ref + 1
 product = count * 2
 mask = flags & allowed
 
-fn inc(counter: *Counter, delta: *Int): *Counter {
-  (*counter).value = (*counter).value + *delta
-  counter
+fn add_delta(counter: *Counter, delta: *Int): Counter {
+  next_value = (*counter).value + *delta
+  Counter {
+    value: next_value
+  }
 }
 
-counter = inc(&counter, &count)
+fn inc(counter: *Counter): Counter {
+  one = 1
+  add_delta(counter, &one)
+}
+
+next_counter = add_delta(&counter, &delta)
+incremented_counter = inc(&next_counter)
 ```
 
 In this fragment:
 
 - `*Int` makes `*` a type constructor
-- `*value` makes `*` a value operation
+- `*count_ref` makes `*` a value operation
 - `count * 2` makes `*` multiplication
 - `&count` makes `&` address creation
 - `flags & allowed` makes `&` bitwise AND
 - `counter: *Counter` puts the same marker into receiver-style API shape
 - `delta: *Int` puts the same marker into parameter API shape
-- `: *Counter` puts the same marker into return type API shape
-- `inc(&counter, &count)` puts the paired marker at the call site
+- `add_delta(&counter, &delta)` puts the paired marker at the call site
 
-For a new reader, the same marker switching between receiver type, parameter type, return type, value access, arithmetic, address creation, and bit operations increases the amount of context they must hold in their head.
+For a new reader, the same marker switching between receiver type, parameter type, value access, arithmetic, address creation, and bit operations increases the amount of context they must hold in their head.
 
 The pressure is stronger in function signatures because the symbol appears in both API shape and implementation details:
 
 ```muga
-fn inc(counter: *Counter, delta: *Int): *Counter
-counter = inc(&counter, &count)
+fn add_delta(counter: *Counter, delta: *Int): Counter
+next_counter = add_delta(&counter, &delta)
 ```
 
 A reader has to map:
 
 - receiver type is pointer-like
 - parameter type is pointer-like
-- return type is pointer-like
 - call site passes an address-like value
+- implementation body must explicitly dereference both values
 
 This is compact, but the relationship between API design and call-site behavior is not visually self-explanatory.
 
@@ -125,59 +138,83 @@ Here:
 - `expr.name(...)` is chained-call surface syntax
 - function-valued record fields are not allowed in v1, so this syntax does not also mean field-function call
 
-## 3. Better Muga Direction
+## 3. Comparable Muga Direction
 
 If Muga later adds pointer-like, reference-like, ownership, or borrowing concepts, prefer a design where type names and value operations remain visibly distinct.
 
 The current reference draft prefers non-escaping read-only `ref T` for ordinary borrowed parameters. Muga should not introduce `Ref[T]` as a second spelling for the same concept.
 
-Preferred borrowed-parameter direction:
+The comparable Muga-shaped version of the earlier example keeps the same small tasks and the same core names:
 
 ```muga
 record Counter {
   value: Int
 }
 
-fn add_delta(counter: Counter, delta: Int): Counter {
-  next_value = counter.value + delta
-  counter.with(value: next_value)
-}
-
-fn next_value(counter: ref Counter, delta: Int): Int {
-  counter.value + delta
-}
-
-fn inc(counter: ref Counter, delta: Int): Counter {
-  updated_value = counter.next_value(delta)
-  counter.with(value: updated_value)
-}
-
+count = 3
+delta = 4
 counter = Counter {
   value: 0
 }
 
-next_counter = counter.inc(3)
+flags = 12
+allowed = 4
+
+next_count = count + 1
+product = count * 2
+mask = flags.bit_and(allowed)
+
+fn add_delta(counter: ref Counter, delta: Int): Counter {
+  next_value = counter.value + delta
+  counter.with(value: next_value)
+}
+
+fn inc(counter: ref Counter): Counter {
+  counter.add_delta(1)
+}
+
+next_counter = counter.add_delta(delta)
+incremented_counter = next_counter.inc()
 ```
 
 This is longer than dense punctuation, but it is easier to read:
 
-- `Counter`, `counter`, and `delta` are introduced before use
-- `ref Counter` clearly marks a borrowed parameter
+- `Counter`, `counter`, `count`, and `delta` are introduced before use
+- `Int`, `Counter`, and `ref Counter` remain type syntax rather than symbolic pointer syntax
 - the call site does not need address syntax such as `&counter`
+- the implementation body does not need dereference syntax such as `*counter`
 - field access still reads as `counter.value`
 - `counter.with(...)` keeps updates non-destructive
-- `updated_value` makes the data flow explicit
-- `counter.next_value(...)` keeps the chain readable because the step is named
+- `flags.bit_and(allowed)` keeps bit operations named instead of reusing `&`
+- `counter.add_delta(delta)` and `next_counter.inc()` keep the chain readable because each step is named
 
 This fits Muga's chained-call style: a chain is encouraged when each step is a small, named transformation.
 
 More explicit ordinary-call equivalent:
 
 ```muga
-next_counter = inc(counter, 3)
+next_counter = add_delta(counter, delta)
+incremented_counter = inc(next_counter)
 ```
 
 This is also acceptable, but Muga should generally prefer the chained form when it reads naturally.
+
+### Comparison Map
+
+The examples above are intended to line up concept by concept:
+
+| Avoid | Prefer | Reason |
+| --- | --- | --- |
+| `count_ref: *Int = &count` and `*count_ref` | `next_count = count + 1` | ordinary reads should not need address and dereference markers |
+| `count * 2` | `count * 2` | `*` stays available for multiplication |
+| `fn add_delta(counter: *Counter, delta: *Int): Counter` | `fn add_delta(counter: ref Counter, delta: Int): Counter` | borrowed input is marked with a word in the callee signature, while `delta` stays an ordinary value |
+| `fn inc(counter: *Counter): Counter` | `fn inc(counter: ref Counter): Counter` | the same borrowing rule applies to receiver-style APIs |
+| `(*counter).value` | `counter.value` | field access should stay stable; the reference draft allows small read-through behavior for `ref T` |
+| `add_delta(&counter, &delta)` | `add_delta(counter, delta)` or `counter.add_delta(delta)` | call sites should pass values without address punctuation for ordinary borrowing |
+| `inc(&next_counter)` | `inc(next_counter)` or `next_counter.inc()` | the increment step has the same shape as any other named transformation |
+| `flags & allowed` | `flags.bit_and(allowed)` | bit operations should not reuse address syntax |
+
+`record.with(...)` and chained calls are implemented today. `ref T` and any `bit_and` operation are design directions, not implemented v1 behavior.
 
 If Muga later adds bit operations, a named operation is clearer than spending `&` on another unrelated meaning:
 
@@ -194,7 +231,7 @@ Muga should encourage chains when each step stays in the same conceptual flow.
 Good chain:
 
 ```muga
-final_counter = counter.inc(1).add_delta(10).inc(1)
+final_counter = counter.inc().add_delta(10).inc()
 ```
 
 This reads as a sequence of named `Counter -> Counter` transformations.
@@ -202,7 +239,7 @@ This reads as a sequence of named `Counter -> Counter` transformations.
 Be more careful when a chain crosses abstraction boundaries:
 
 ```muga
-counter.inc(1).add_delta(10).inc(1).value.println()
+counter.inc().add_delta(10).inc().value.println()
 ```
 
 This combines state transformation, field extraction, and output in one expression. That may be acceptable in small examples, but it is not the style Muga should use to explain core design rules.
@@ -210,7 +247,7 @@ This combines state transformation, field extraction, and output in one expressi
 Prefer:
 
 ```muga
-final_counter = counter.inc(1).add_delta(10).inc(1)
+final_counter = counter.inc().add_delta(10).inc()
 result = final_counter.value
 println(result)
 ```
