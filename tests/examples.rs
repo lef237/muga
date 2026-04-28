@@ -514,6 +514,136 @@ fn main(): Int {
 }
 
 #[test]
+fn typechecker_output_resolves_direct_call_callee() {
+    let source = r#"
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn main(): Int {
+  inc(1)
+}
+"#;
+    let program = parse_source(source);
+    let output = muga::typing::typecheck_program(&program);
+    assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+
+    let inc = typecheck_binding_id(&output, "inc");
+    assert!(
+        output
+            .calls
+            .iter()
+            .any(|call| call.callee == muga::typing::TypedCalleeInfo::Binding(inc)),
+        "{:#?}",
+        output.calls
+    );
+}
+
+#[test]
+fn typed_hir_preserves_direct_call_callee() {
+    let source = r#"
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn main(): Int {
+  inc(1)
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let inc = typed_binding_id(&program, "inc");
+    let calls = collect_typed_calls(&program);
+    assert!(
+        calls.iter().any(|call| {
+            call.origin == muga::typed_hir::CallOrigin::Ordinary
+                && call.resolved_callee == muga::typing::TypedCalleeInfo::Binding(inc)
+        }),
+        "{calls:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_preserves_local_function_value_call_callee() {
+    let source = r#"
+fn main(): Int {
+  add = fn(x: Int): Int {
+    x + 1
+  }
+  add(41)
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let add = typed_binding_id(&program, "add");
+    let calls = collect_typed_calls(&program);
+    assert!(
+        calls
+            .iter()
+            .any(|call| call.resolved_callee == muga::typing::TypedCalleeInfo::Binding(add)),
+        "{calls:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_preserves_chained_call_origin() {
+    let source = r#"
+fn inc(x: Int): Int {
+  x + 1
+}
+
+fn main(): Int {
+  1.inc()
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let inc = typed_binding_id(&program, "inc");
+    let calls = collect_typed_calls(&program);
+    assert!(
+        calls.iter().any(|call| {
+            call.origin == muga::typed_hir::CallOrigin::Chained
+                && call.resolved_callee == muga::typing::TypedCalleeInfo::Binding(inc)
+        }),
+        "{calls:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_preserves_builtin_call_callee() {
+    let source = r#"
+fn main(): Int {
+  println(1)
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let println = typed_binding_id(&program, "println");
+    let calls = collect_typed_calls(&program);
+    assert!(
+        calls.iter().any(|call| {
+            call.resolved_callee
+                == muga::typing::TypedCalleeInfo::Builtin {
+                    binding: println,
+                    name: "println",
+                }
+        }),
+        "{calls:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_preserves_package_qualified_call_callee() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let inc_twice = typed_binding_id(&program, "__muga_pkg__util__numbers__inc_twice");
+    let calls = collect_typed_calls(&program);
+    assert!(
+        calls.iter().any(|call| {
+            call.origin == muga::typed_hir::CallOrigin::QualifiedChained
+                && call.resolved_callee == muga::typing::TypedCalleeInfo::Binding(inc_twice)
+        }),
+        "{calls:#?}"
+    );
+}
+
+#[test]
 fn closures_capture_outer_bindings() {
     let source = r#"
 fn main(): Int {
@@ -597,6 +727,137 @@ fn assert_package_runs(path: &str, expected_main: &str, expected_output: &str) {
 fn parse_source(source: &str) -> muga::ast::Program {
     let tokens = muga::lexer::lex(source).unwrap();
     muga::parser::parse(tokens).unwrap()
+}
+
+fn typecheck_binding_id(
+    output: &muga::typing::TypeCheckOutput,
+    name: &str,
+) -> muga::identity::BindingId {
+    output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == name)
+        .map(|binding| binding.id)
+        .unwrap_or_else(|| {
+            let names: Vec<_> = output
+                .bindings
+                .iter()
+                .map(|binding| output.symbols.resolve(binding.symbol))
+                .collect();
+            panic!("binding `{name}` should exist; found {names:?}");
+        })
+}
+
+fn typed_binding_id(program: &muga::typed_hir::Program, name: &str) -> muga::identity::BindingId {
+    program
+        .bindings
+        .iter()
+        .find(|binding| program.symbols.resolve(binding.symbol) == name)
+        .map(|binding| binding.id)
+        .unwrap_or_else(|| {
+            let names: Vec<_> = program
+                .bindings
+                .iter()
+                .map(|binding| program.symbols.resolve(binding.symbol))
+                .collect();
+            panic!("binding `{name}` should exist; found {names:?}");
+        })
+}
+
+fn collect_typed_calls(program: &muga::typed_hir::Program) -> Vec<&muga::typed_hir::CallExpr> {
+    let mut calls = Vec::new();
+    for statement in &program.statements {
+        collect_typed_calls_in_stmt(statement, &mut calls);
+    }
+    calls
+}
+
+fn collect_typed_calls_in_stmt<'a>(
+    statement: &'a muga::typed_hir::Stmt,
+    calls: &mut Vec<&'a muga::typed_hir::CallExpr>,
+) {
+    match statement {
+        muga::typed_hir::Stmt::Assign(stmt) => collect_typed_calls_in_expr(&stmt.value, calls),
+        muga::typed_hir::Stmt::Record(_) => {}
+        muga::typed_hir::Stmt::Function(stmt) => {
+            collect_typed_calls_in_value_block(&stmt.body, calls);
+        }
+        muga::typed_hir::Stmt::If(stmt) => {
+            collect_typed_calls_in_expr(&stmt.condition, calls);
+            collect_typed_calls_in_block(&stmt.then_branch, calls);
+            if let Some(else_branch) = &stmt.else_branch {
+                collect_typed_calls_in_block(else_branch, calls);
+            }
+        }
+        muga::typed_hir::Stmt::While(stmt) => {
+            collect_typed_calls_in_expr(&stmt.condition, calls);
+            collect_typed_calls_in_block(&stmt.body, calls);
+        }
+        muga::typed_hir::Stmt::Expr(stmt) => collect_typed_calls_in_expr(&stmt.expr, calls),
+    }
+}
+
+fn collect_typed_calls_in_block<'a>(
+    block: &'a muga::typed_hir::Block,
+    calls: &mut Vec<&'a muga::typed_hir::CallExpr>,
+) {
+    for statement in &block.statements {
+        collect_typed_calls_in_stmt(statement, calls);
+    }
+}
+
+fn collect_typed_calls_in_value_block<'a>(
+    block: &'a muga::typed_hir::ValueBlock,
+    calls: &mut Vec<&'a muga::typed_hir::CallExpr>,
+) {
+    for statement in &block.statements {
+        collect_typed_calls_in_stmt(statement, calls);
+    }
+    collect_typed_calls_in_expr(&block.expr, calls);
+}
+
+fn collect_typed_calls_in_expr<'a>(
+    expr: &'a muga::typed_hir::Expr,
+    calls: &mut Vec<&'a muga::typed_hir::CallExpr>,
+) {
+    match &expr.kind {
+        muga::typed_hir::ExprKind::Int(_)
+        | muga::typed_hir::ExprKind::Bool(_)
+        | muga::typed_hir::ExprKind::String(_)
+        | muga::typed_hir::ExprKind::Ident(_) => {}
+        muga::typed_hir::ExprKind::RecordLit(expr) => {
+            for field in &expr.fields {
+                collect_typed_calls_in_expr(&field.value, calls);
+            }
+        }
+        muga::typed_hir::ExprKind::Field(expr) => collect_typed_calls_in_expr(&expr.base, calls),
+        muga::typed_hir::ExprKind::RecordUpdate(expr) => {
+            collect_typed_calls_in_expr(&expr.base, calls);
+            for field in &expr.fields {
+                collect_typed_calls_in_expr(&field.value, calls);
+            }
+        }
+        muga::typed_hir::ExprKind::Unary(expr) => collect_typed_calls_in_expr(&expr.expr, calls),
+        muga::typed_hir::ExprKind::Binary(expr) => {
+            collect_typed_calls_in_expr(&expr.left, calls);
+            collect_typed_calls_in_expr(&expr.right, calls);
+        }
+        muga::typed_hir::ExprKind::Call(expr) => {
+            calls.push(expr);
+            collect_typed_calls_in_expr(&expr.callee, calls);
+            for arg in &expr.args {
+                collect_typed_calls_in_expr(arg, calls);
+            }
+        }
+        muga::typed_hir::ExprKind::If(expr) => {
+            collect_typed_calls_in_expr(&expr.condition, calls);
+            collect_typed_calls_in_value_block(&expr.then_branch, calls);
+            collect_typed_calls_in_value_block(&expr.else_branch, calls);
+        }
+        muga::typed_hir::ExprKind::Fn(expr) => {
+            collect_typed_calls_in_value_block(&expr.body, calls);
+        }
+    }
 }
 
 fn collect_stmt_ids(statements: &[muga::ast::Stmt], ids: &mut HashSet<u32>) {
