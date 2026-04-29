@@ -117,28 +117,18 @@ Option[(Int, String) -> Bool]
 Map[String, List[Int]]
 ```
 
-Future read-only borrowing can compose with generic types without making borrow itself a generic type:
+Explicit source-level references are not part of the generic type model.
+
+For example, v1 should not add forms such as:
 
 ```muga
-ref List[Int]
-ref List[T]
-(ref T) -> String
+List[ref User]   // not planned
+Option[ref User] // not planned
 ```
 
-This means:
+Generic performance should instead come from local type-argument inference, package interfaces, specialization when needed, and efficient runtime/native representations.
 
-- `ref List[T]` borrows a generic list value
-- `ref T` borrows a value whose type is the type parameter `T`
-- `ref T` is not the same kind of syntax as `Ref[T]`
-
-The first borrow design should still reject borrowed references stored inside generic containers:
-
-```muga
-List[ref User]   // deferred
-Option[ref User] // deferred
-```
-
-The borrow policy is defined in [010-references-draft.md](./010-references-draft.md).
+The value semantics and performance policy is defined in [011-value-semantics.md](./011-value-semantics.md).
 
 ## 5. Type Parameters
 

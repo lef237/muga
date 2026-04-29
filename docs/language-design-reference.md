@@ -31,7 +31,7 @@ These languages are useful references for Muga because they are widely used, adm
 | MoonBit | modern ML-style design, fast tooling goals, WebAssembly-oriented direction |
 | Nim | expressive syntax, systems capability, metaprogramming, Python-like readability goals |
 | Elm | simple functional UI architecture, strong static guarantees, no uncontrolled runtime exceptions as a design goal |
-| V | fast compilation goals, simple syntax, Go-like practicality |
+| V | fast compilation goals, simple syntax, practical minimalism |
 | Crystal | Ruby-like readability with static typing and native compilation |
 | Lua | small language core, lightweight implementation, embeddability, practical data-description style |
 | Pony | actor-model concurrency, data-race freedom, no null, AOT native compilation as a high-bar safety reference |
@@ -48,7 +48,7 @@ These languages are useful references for Muga because they are widely used, adm
 
 Muga does not need to copy any one of these languages. It should instead combine a small number of compatible ideas:
 
-- Go-like compile-speed ambition
+- fast-build ambition for compiled-language workflows
 - Rust-like explicitness around absence and errors
 - Ruby-like readability and low visual noise
 - TypeScript-like annotation-light ergonomics
@@ -314,7 +314,7 @@ Current examples:
 - `.` is reserved for field access and chained-call surface syntax
 - `=` is statement-level binding/update syntax, not an expression operator
 
-If Muga later adds pointer-like, reference-like, ownership, or borrowing concepts, their syntax should follow this rule.
+Muga should not add pointer-like, reference-like, ownership, or borrowing syntax to ordinary source code unless there is a concrete measured need.
 
 In particular, Muga should avoid designs where one marker has to mean several context-dependent things such as:
 
@@ -331,7 +331,7 @@ Reason:
 - simple, stable syntax helps the parser, diagnostics, and documentation
 - Muga should prefer obvious code over dense notation
 
-For concrete examples, see [syntax-marker-case-study.md](./syntax-marker-case-study.md). For the current reference and borrow direction, see [010-references-draft.md](../spec/010-references-draft.md).
+For concrete examples, see [syntax-marker-case-study.md](./syntax-marker-case-study.md). For the current value semantics and performance direction, see [011-value-semantics.md](../spec/011-value-semantics.md).
 
 ### 3.11 No ambiguous dot syntax
 

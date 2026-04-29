@@ -42,7 +42,9 @@ Current examples:
 - `.` is reserved for field access and chained-call surface syntax
 - `=` is statement-level binding/update syntax, not an expression operator
 
-Future pointer-like, reference-like, ownership, or borrowing concepts must follow this rule.
+Muga currently does not plan pointer-like, reference-like, ownership, or borrowing syntax in ordinary source code.
+
+If such concepts are ever reconsidered, they must follow this rule.
 
 In particular, Muga should avoid using one marker for several context-dependent roles such as:
 

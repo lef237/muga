@@ -286,7 +286,7 @@ Imported packages expose only `pub` items.
 
 Module-private items are not visible from sibling files in the same package.
 
-This is deliberately more restrictive than Go-style package-private visibility. The goal is to allow small abstractions inside one file without forcing every implementation detail to be visible throughout the package.
+This is deliberately more restrictive than package-wide private visibility. The goal is to allow small abstractions inside one file without forcing every implementation detail to be visible throughout the package.
 
 ## 10. Qualified Name Use
 
