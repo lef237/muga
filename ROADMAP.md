@@ -73,18 +73,16 @@ Current draft decisions:
 - `List[T]` is the first collection to implement
 - `Option[T]` should exist before or alongside safe lookup APIs
 - `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
-- raw pointers are not part of v1 and should not be exposed in ordinary source code
 - ordinary source code should use value semantics; the compiler/runtime may share immutable storage internally when safe
-- future safe borrowing should prefer read-only `ref T` over `*T`, `*expr`, or `&expr`
-- `ref T` should initially be non-escaping and parameter-oriented if implemented
-- `ref T` is not required for the v1 implementation and should remain deferred until concrete performance/API pressure justifies it
-- mutable references, explicit dereference syntax, and raw pointer escape hatches are deferred
+- explicit source-level references such as `ref T`, `mut ref T`, `*T`, and `&value` are not planned for ordinary Muga code
+- write-oriented APIs should prefer value-returning updates, builder/buffer types, or resource handles
+- performance competitive with fast mainstream compiled languages should be pursued through package interfaces, typed HIR, MIR, internal sharing, copy elision, resource handles, and native backend work
 
 The collection draft lives in [spec/008-collections.md](./spec/008-collections.md).
 
 The generics draft lives in [spec/009-generics.md](./spec/009-generics.md).
 
-The references and borrowing draft lives in [spec/010-references-draft.md](./spec/010-references-draft.md).
+The explicit references decision note lives in [spec/010-references-draft.md](./spec/010-references-draft.md).
 
 The value semantics and internal sharing draft lives in [spec/011-value-semantics.md](./spec/011-value-semantics.md).
 
@@ -337,7 +335,7 @@ Goal:
 Why this is fifth:
 
 - package interfaces must exist first
-- compile speed at Go-like scale depends heavily on package caching
+- compile speed at fast compiled-language scale depends heavily on package caching
 
 Expected outcomes:
 
@@ -432,14 +430,14 @@ Why this is here and not earlier:
 
 What Muga should try to combine:
 
-- Go-like ease of spawning lightweight concurrent work
+- simple spawning of lightweight concurrent work
 - structured lifetime management similar to modern structured-concurrency systems
 - static restrictions that fit Muga's immutable-by-default model
 - runtime designs that can be benchmarked directly against real concurrent workloads
 
 Important constraint:
 
-- the roadmap should treat "Go-level or better" as a benchmark target, not as something syntax alone can guarantee
+- the roadmap should treat top-tier compiled-language performance as a benchmark target, not as something syntax alone can guarantee
 - the actual result will depend on scheduler design, allocation behavior, synchronization costs, and backend quality
 
 Initial language-level direction:
@@ -452,8 +450,8 @@ Initial language-level direction:
 Safety direction:
 
 - immutable-by-default values should remain easy to share
-- read-only `ref T`, if implemented, should be safe to use with task boundaries only when its lifetime and capture rules are explicit
 - mutable capture across task boundaries should be restricted or made explicit
+- resource handles should define their own send/share/close rules
 - synchronization primitives should exist, but they should not define the primary style
 
 ## 9. Standard Library And Web-Oriented Capabilities

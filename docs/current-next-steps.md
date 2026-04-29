@@ -16,7 +16,8 @@ Muga's current direction is:
 - module/file privacy before package-only privacy
 - v1 generics as a small MVP
 - `List[T]` first for collections, then `Option[T]`, then `Map[K, V]`
-- no raw pointers in v1; future safe borrowing is drafted around read-only `ref T`
+- no explicit source-level references in ordinary Muga code
+- value semantics with internal sharing and copy elision
 - structured task groups before channels or async-function coloring
 
 The most important constraint is that ergonomics should not come at the cost of unstable semantics or slow whole-program compilation.
@@ -39,11 +40,11 @@ These points are now documented and should be treated as the current baseline:
 - `List[T]` means zero or more values.
 - `Option[T]` means zero or one value.
 - Empty list literals require an expected type such as `items: List[Int] = []`.
-- Pointer-like syntax such as `*T`, `*expr`, and `&expr` should not be ordinary Muga source syntax.
-- If safe borrowing is added later, the current draft prefers non-escaping read-only `ref T` before any mutable reference model.
 - Ordinary source code should use value semantics.
 - The implementation may share immutable storage internally when that is not observable.
-- `ref T` is not required for v1 and should remain deferred until concrete performance or API pressure justifies it.
+- Explicit source-level references such as `ref T`, `mut ref T`, `*T`, and `&value` are not planned for ordinary Muga code.
+- Write-oriented APIs should prefer value-returning updates, builder/buffer types, or resource handles.
+- performance competitive with fast mainstream compiled languages should be pursued through package interfaces, typed HIR, MIR, internal sharing, copy elision, resource handles, and native backend work.
 
 ## 3. Recommended Next Implementation Task
 
@@ -162,27 +163,28 @@ Current recommendation:
 - reserve `T?` only as possible future shorthand
 - do not spend `?` on multiple meanings until error handling is designed
 
-### 4.5 Before reference / borrow implementation
+### 4.5 Before write-oriented API implementation
 
 Decide:
 
-- exact type grammar for `ref T` and `(ref T) -> U`
-- whether `ref T` is allowed only in parameter positions at first
-- exact non-escaping rule
-- exact auto-deref boundaries for field access and chained calls
-- how borrowed values appear in package interfaces
-- how borrow diagnostics explain lifetime or escape failures
-- how `ref T` interacts with structured task spawning
+- which standard types should represent repeated construction, such as `StringBuilder` or `Buffer`
+- which standard types should represent external effects, such as file, socket, process, and timer handles
+- whether ordinary collection update APIs return new values, builder-like values, or both
+- how resource handles are owned, closed, and shared
+- how resource handles interact with structured concurrency
+- how MIR represents destructive update lowering for uniquely owned values
 
 Current recommendation:
 
-- do not add source-level raw pointers
-- do not add `*T`, `*expr`, or `&expr` as ordinary syntax
-- add no explicit dereference operator in the first borrow design
-- treat read-only `ref T` as the only near-term candidate
-- defer `mut ref T` until aliasing and concurrency rules are specified
+- do not add explicit source-level references
+- do not add raw pointer, address-of, or dereference syntax
+- prefer value-returning updates for ordinary data
+- prefer builder/buffer types for repeated construction
+- prefer resource/handle types for file, socket, process, timer, and OS-backed effects
+- use MIR/native lowering for copy elision and internal destructive update when safe
 
-The draft lives in [spec/010-references-draft.md](../spec/010-references-draft.md).
+The value semantics and performance direction lives in [spec/011-value-semantics.md](../spec/011-value-semantics.md).
+The explicit references decision note lives in [spec/010-references-draft.md](../spec/010-references-draft.md).
 
 ## 5. What Not To Reopen Now
 

@@ -2,7 +2,7 @@
 
 Status: design draft.
 
-This document records Muga's current direction for ordinary value passing, internal sharing, and future read-only borrowing.
+This document records Muga's current direction for ordinary value passing, internal sharing, write-oriented APIs, and performance.
 
 ## 1. Core Decision
 
@@ -64,19 +64,31 @@ The preferred split is:
 
 - source semantics: value semantics
 - implementation strategy: share immutable storage internally when safe
-- explicit future feature: non-escaping read-only `ref T`
+- write-oriented APIs: use explicit resource or builder types instead of general source-level references
 
-## 4. Relationship To `ref T`
+## 4. No Planned `ref T`
 
-`ref T` is the preferred future syntax for explicit read-only borrowing.
+Muga should not plan `ref T` as a normal language feature.
 
-It should not become the default calling convention.
+This is a stronger position than "not required for v1".
 
-It is also not required for the v1 implementation.
+The current direction is:
 
-Muga can proceed with ordinary value semantics first, then add `ref T` later only if real examples show that explicit read-only borrowing is needed for performance, APIs, or diagnostics.
+- do not add `ref T` for ordinary read-only borrowing
+- do not add `mut ref T` for ordinary write access
+- do not add call-site address syntax such as `&value`
+- do not expose pointer identity in ordinary Muga code
 
-Use ordinary `T` when the function conceptually consumes or works with a value:
+Reasons:
+
+- it adds a second way to think about every function parameter
+- it makes aliasing part of the source language
+- writable references require exclusivity rules
+- escaping references require lifetime or ownership rules
+- references interact heavily with generics, closures, package interfaces, and structured concurrency
+- the same performance goals can usually be met by internal sharing, copy elision, and better resource types
+
+Use ordinary `T` when a function works with a value:
 
 ```txt
 fn birthday(user: User): User {
@@ -84,35 +96,71 @@ fn birthday(user: User): User {
 }
 ```
 
-Use future `ref T` when the function only reads a large value and should make that contract visible:
+If a value is large, the compiler may still pass it internally by pointer or shared storage when that is not observable.
+
+This means the source stays simple:
 
 ```txt
-fn display_name(user: ref User): String {
+fn display_name(user: User): String {
   user.name
 }
 ```
 
-The first `ref T` version, if implemented, should be:
+while the implementation may avoid copying `User`.
 
-- read-only
-- non-escaping
-- primarily allowed in parameter positions
-- allowed in receiver-shaped first parameter positions
-- usable without call-site address syntax
+## 5. Write-Oriented APIs
 
-This keeps calls lightweight:
+Write-oriented APIs should not require general mutable references.
 
-```txt
-display_name(user)
-```
+Muga should prefer one of three patterns.
 
-not:
+### 5.1 Return A New Value
+
+For ordinary data, return an updated value:
 
 ```txt
-display_name(&user)
+next = user.with(age: user.age + 1)
+items = items.push(item)
 ```
 
-## 5. Performance Model
+If the old value is no longer used, MIR/native lowering may perform the update in place internally.
+
+### 5.2 Use Builder Or Buffer Types
+
+For repeated construction, use explicit builder-like values:
+
+```txt
+mut builder = StringBuilder.new()
+builder = builder.push("hello")
+builder = builder.push(" world")
+builder.to_string()
+```
+
+For byte or text buffers, the same style should stay readable:
+
+```txt
+mut buf = Buffer.empty()
+buf = buf.append("hello")
+buf = buf.append(" world")
+```
+
+The source still uses value update, but the implementation can keep the builder storage mutable and uniquely owned internally.
+
+### 5.3 Use Resource Or Handle Types
+
+For external side effects, use resource handles:
+
+```txt
+writer = file_writer("out.txt")
+writer.write("hello")
+writer.flush()
+```
+
+Here `writer` represents an external resource. The side effect is part of the resource API, not a general `mut ref T` mechanism.
+
+This keeps write effects readable without exposing arbitrary writable aliases.
+
+## 6. Performance Model
 
 Value semantics do not imply slow code.
 
@@ -121,10 +169,12 @@ The compiler and runtime should optimize ordinary values with internal represent
 - immediate scalar values for `Int` and `Bool`
 - shared immutable storage for `String`
 - shared immutable storage for future `List[T]`, `Map[K, V]`, and buffers
+- resource handles for files, sockets, timers, and OS-backed state
 - compact record layout in MIR/native backends
 - stack allocation for non-escaping values
 - copy elision when a value is moved directly into a call or binding
 - scalar replacement for small records
+- destructive update lowering when a value is uniquely owned
 - structural sharing or copy-on-write-like lowering for `record.with(...)` when safe
 - inlining and specialization for hot generic or higher-order functions
 
@@ -136,7 +186,35 @@ The performance goal should be:
 
 The main risk is a naive implementation that copies large aggregates repeatedly. That is an IR and backend problem, not a reason to expose pointer syntax in ordinary Muga code.
 
-## 6. Compile-Time Model
+## 7. Top-Tier Compiled-Language Performance
+
+This design can support performance competitive with fast mainstream compiled languages, but it does not guarantee it by syntax alone.
+
+The direction is compatible with that goal because:
+
+- ordinary source semantics do not force observable reference identity
+- immutable data can be shared safely inside the runtime
+- package interfaces can avoid rechecking unchanged dependencies
+- typed HIR and MIR can avoid repeating semantic analysis
+- value update syntax can lower to in-place mutation when uniqueness is known
+- resource handles can model IO without general mutable references
+- native code generation can choose efficient ABI-level passing conventions
+
+To reach or exceed that performance class, Muga needs implementation work in these areas:
+
+- fast package interfaces and build cache
+- local incremental compilation
+- low-allocation front end
+- MIR with explicit locals, moves, calls, and control flow
+- escape analysis and stack allocation
+- efficient string/list/map representations
+- copy elision and destructive update lowering
+- fast native backend
+- benchmark-driven decisions from the beginning
+
+The syntax choice alone is not enough. The important point is that removing `ref T` from the surface language does not block these optimizations.
+
+## 8. Compile-Time Model
 
 Fast compilation is still a core goal.
 
@@ -146,22 +224,22 @@ Recommended compile-time approach:
 
 - keep ordinary calls simple and value-semantics based
 - use typed HIR to record resolved calls, binding identity, and expression types
-- lower to MIR where moves, copies, borrows, local slots, and evaluation order are explicit
+- lower to MIR where moves, copies, local slots, resource operations, and evaluation order are explicit
 - perform local escape analysis before advanced whole-program optimization
 - use package interfaces so dependencies do not need to be rechecked repeatedly
-- reserve `ref T` for explicit local borrow contracts rather than inferring pervasive reference behavior
+- avoid source-level reference features that require global lifetime or alias reasoning
 
 This keeps Muga open to high-performance implementation without making every program pay the complexity cost of a heavy borrow system.
 
-## 7. Design Consequences
+## 9. Design Consequences
 
 For v1 and near-term implementation:
 
 - ordinary function parameters should continue to be immutable bindings
 - `record.with(...)` should remain non-destructive
 - record field assignment such as `user.name = "Ada"` should remain out of v1
-- raw pointer syntax should remain out of ordinary source code
-- future `ref T` should be added deliberately, not implicitly
+- explicit reference syntax should remain out of ordinary source code
+- `ref T`, `mut ref T`, and `&value` should not be planned features
 - VM behavior may stay simple while MIR/native backend work improves performance
 
 For collections:
@@ -170,20 +248,28 @@ For collections:
 - their implementation should use shared storage or another efficient representation
 - source-level mutation semantics must be decided before mutable collection operations are added
 
+For write-oriented standard library APIs:
+
+- prefer value-returning updates for ordinary data
+- prefer builder/buffer types for repeated construction
+- prefer resource/handle types for file, socket, process, timer, and OS-backed effects
+- avoid general writable aliases as a language feature
+
 For concurrency:
 
 - immutable values may be shareable across tasks when their representation is safe
-- mutable references should not cross task boundaries by default
+- resource handles must define their own send/share rules
+- mutable aliases should not cross task boundaries because ordinary Muga should not expose them
 - task capture rules should be specified before structured concurrency is implemented
 
-## 8. Open Questions
+## 10. Open Questions
 
 Before this design is fully normative, decide:
 
 - whether this document should be merged into the core language spec or remain a separate design note
-- the exact first implementation boundary for `ref T`
-- whether `ref T` appears in package interfaces in the first borrow release
 - how large records are represented in MIR
 - how `record.with(...)` is lowered for large records
 - how future collection storage handles sharing, copying, and mutation
+- how builder and buffer types express efficient repeated writes
+- how resource handles express side effects, ownership, and task-safety
 - whether aggregate equality remains explicit and limited, or expands beyond primitive equality
