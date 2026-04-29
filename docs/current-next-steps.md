@@ -41,6 +41,9 @@ These points are now documented and should be treated as the current baseline:
 - Empty list literals require an expected type such as `items: List[Int] = []`.
 - Pointer-like syntax such as `*T`, `*expr`, and `&expr` should not be ordinary Muga source syntax.
 - If safe borrowing is added later, the current draft prefers non-escaping read-only `ref T` before any mutable reference model.
+- Ordinary source code should use value semantics.
+- The implementation may share immutable storage internally when that is not observable.
+- `ref T` is not required for v1 and should remain deferred until concrete performance or API pressure justifies it.
 
 ## 3. Recommended Next Implementation Task
 

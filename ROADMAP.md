@@ -74,8 +74,10 @@ Current draft decisions:
 - `Option[T]` should exist before or alongside safe lookup APIs
 - `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
 - raw pointers are not part of v1 and should not be exposed in ordinary source code
+- ordinary source code should use value semantics; the compiler/runtime may share immutable storage internally when safe
 - future safe borrowing should prefer read-only `ref T` over `*T`, `*expr`, or `&expr`
 - `ref T` should initially be non-escaping and parameter-oriented if implemented
+- `ref T` is not required for the v1 implementation and should remain deferred until concrete performance/API pressure justifies it
 - mutable references, explicit dereference syntax, and raw pointer escape hatches are deferred
 
 The collection draft lives in [spec/008-collections.md](./spec/008-collections.md).
@@ -83,6 +85,8 @@ The collection draft lives in [spec/008-collections.md](./spec/008-collections.m
 The generics draft lives in [spec/009-generics.md](./spec/009-generics.md).
 
 The references and borrowing draft lives in [spec/010-references-draft.md](./spec/010-references-draft.md).
+
+The value semantics and internal sharing draft lives in [spec/011-value-semantics.md](./spec/011-value-semantics.md).
 
 The current resume guide and decision queue live in [docs/current-next-steps.md](./docs/current-next-steps.md).
 
