@@ -273,7 +273,7 @@ The following should not block the first collection implementation:
 - arbitrary record keys for `Map`
 - collection comprehensions
 - builder or mutable collection APIs
-- equality and hashing protocols
+- equality and hashing protocol-like abstractions
 - advanced generic features such as bounds, typeclasses, higher-kinded types, and specialization
 
 The immediate goal is a small, typed, useful collection core.

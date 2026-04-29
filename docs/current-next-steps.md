@@ -15,6 +15,7 @@ Muga's current direction is:
 - explicit package qualification with `::`
 - module/file privacy before package-only privacy
 - v1 generics as a small MVP
+- no trait, interface, protocol, typeclass, or overloaded dispatch declarations in v1
 - `List[T]` first for collections, then `Option[T]`, then `Map[K, V]`
 - no explicit source-level references in ordinary Muga code
 - value semantics with internal sharing and copy elision
@@ -34,6 +35,8 @@ These points are now documented and should be treated as the current baseline:
 - Public signatures may be inferred in the defining package, then stored in package interfaces.
 - v1 generics include generic type expressions, generic records, and generic functions.
 - v1 generics do not include bounds, typeclasses, higher-kinded types, const generics, or specialization.
+- v1 does not introduce trait, interface, protocol, typeclass, or overloaded dispatch declarations.
+- if a protocol-like abstraction is added later, `protocol` is the preferred spelling.
 - generic declarations must declare their type parameters explicitly, such as `fn id[T](value: T): T`.
 - `Option[T]` is the canonical spelling for optional values.
 - `T?` is only reserved as possible future shorthand for `Option[T]`.
@@ -110,6 +113,7 @@ Current recommendation:
 - implement generic records and generic functions as part of v1
 - rely on local type-argument inference rather than explicit call-site type arguments in the v1 MVP
 - defer bounds, typeclasses, higher-kinded types, const generics, and specialization
+- defer trait, interface, protocol, and overloaded dispatch declarations
 - implement `List[T]` and list literals before `Map[K, V]`
 - keep `T?` reserved, not implemented
 - do not implement map literals in the first collection slice
@@ -199,6 +203,7 @@ These decisions are settled enough to avoid re-litigating during the next implem
 - no function-valued record fields in v1
 - `expr.name` is field access
 - `expr.name(...)` is chained call
+- no trait, interface, protocol, typeclass, or overloaded dispatch declarations in v1
 - package qualification uses `::`
 - comments use `//`
 - no source-level raw pointers in v1

@@ -2,7 +2,9 @@
 
 Status: v1 design draft. This document defines the intended Muga v1 generics MVP. The current Rust compiler does not implement this yet.
 
-Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing a large trait/typeclass system in the first version.
+Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing a trait, interface, protocol, typeclass, or overloaded dispatch system in the first version.
+
+The protocol-like abstractions decision note is [012-protocols-deferred.md](./012-protocols-deferred.md).
 
 ## 1. Design Goals
 
@@ -33,6 +35,7 @@ Muga v1 does not include:
 
 - explicit call-site type arguments
 - trait bounds or protocol bounds
+- trait, interface, or protocol declarations
 - typeclasses
 - higher-kinded types
 - const generics

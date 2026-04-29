@@ -534,7 +534,7 @@ It avoids, for now:
 - implicit re-exports
 - top-level import side effects
 - nested module trees inside a file
-- trait/protocol solving at package boundaries
+- protocol-like solving at package boundaries
 - package-scoped execution order rules
 
 ## 16. Example

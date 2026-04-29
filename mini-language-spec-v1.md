@@ -369,7 +369,7 @@ Examples:
 - `Map[String, Int]`
 - `Option[User]`
 
-v1 includes a restricted generics MVP for generic type expressions, generic records, and generic functions. Bounds, typeclasses, higher-kinded types, const generics, specialization, and implicit polymorphic generalization are not part of v1.
+v1 includes a restricted generics MVP for generic type expressions, generic records, and generic functions. Bounds, trait/interface/protocol declarations, typeclasses, higher-kinded types, const generics, specialization, overloaded dispatch, and implicit polymorphic generalization are not part of v1.
 
 ### 7.3 Prelude built-ins
 

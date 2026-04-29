@@ -143,7 +143,9 @@ fn len(self: List[Int]): Int { ... }
 fn len(self: String): Int { ... }   // duplicate binding in v1
 ```
 
-This keeps resolution simple and compile-time cost low, but it also means common method names across unrelated types are deferred to a future protocol/trait-like design.
+This keeps resolution simple and compile-time cost low, but it also means common method names across unrelated types are deferred to a possible future protocol-like design.
+
+The policy for protocol-like abstractions is defined in [012-protocols-deferred.md](./012-protocols-deferred.md).
 
 ## 5. Generic Functions
 
