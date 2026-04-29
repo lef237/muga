@@ -352,6 +352,8 @@ The full generics policy is defined in [009-generics.md](./009-generics.md).
 
 The current design leaves room for future work on:
 
-- protocol/trait-like dispatch
+- protocol-like dispatch, if later justified by concrete examples
 - limited overloading keyed by receiver type
 - mutable or persistent-update record operations
+
+The policy for protocol-like abstractions is defined in [012-protocols-deferred.md](./012-protocols-deferred.md).

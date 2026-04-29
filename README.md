@@ -88,6 +88,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - higher-order functions are allowed
 - function types use `->`
 - v1 generics are drafted for generic type expressions, generic records, and generic functions
+- v1 does not introduce trait, interface, protocol, typeclass, or overloaded dispatch declarations
 - collection design is drafted around `List[T]` first, then `Option[T]` and `Map[K, V]`
 - source-level values use value semantics; the implementation may share immutable storage internally when that is not observable
 - explicit source-level references such as `ref T`, `mut ref T`, and `&value` are not planned for ordinary Muga code
@@ -108,6 +109,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/009-generics.md](./spec/009-generics.md) (draft)
   - [spec/010-references-draft.md](./spec/010-references-draft.md) (decision note)
   - [spec/011-value-semantics.md](./spec/011-value-semantics.md) (draft)
+  - [spec/012-protocols-deferred.md](./spec/012-protocols-deferred.md) (decision note)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
 - Current next steps: [docs/current-next-steps.md](./docs/current-next-steps.md)

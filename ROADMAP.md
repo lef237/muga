@@ -68,6 +68,7 @@ Current draft decisions:
 - generics use square brackets: `List[Int]`, `record Box[T]`, `fn id[T](value: T): T`
 - v1 generics include generic type expressions, generic records, and generic functions
 - v1 generics exclude bounds, typeclasses, higher-kinded types, const generics, specialization, and implicit polymorphic generalization
+- v1 excludes trait, interface, protocol, typeclass, and overloaded dispatch declarations
 - collection types use square-bracket type arguments such as `List[Int]` and `Map[String, Int]`
 - empty collection literals need an expected type, most likely from a local binding annotation such as `items: List[Int] = []`
 - `List[T]` is the first collection to implement
@@ -85,6 +86,8 @@ The generics draft lives in [spec/009-generics.md](./spec/009-generics.md).
 The explicit references decision note lives in [spec/010-references-draft.md](./spec/010-references-draft.md).
 
 The value semantics and internal sharing draft lives in [spec/011-value-semantics.md](./spec/011-value-semantics.md).
+
+The protocol-like abstractions decision note lives in [spec/012-protocols-deferred.md](./spec/012-protocols-deferred.md).
 
 The current resume guide and decision queue live in [docs/current-next-steps.md](./docs/current-next-steps.md).
 
