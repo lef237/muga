@@ -90,6 +90,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - v1 generics are drafted for generic type expressions, generic records, and generic functions
 - collection design is drafted around `List[T]` first, then `Option[T]` and `Map[K, V]`
 - raw pointers are not part of v1; future safe borrowing is drafted around read-only `ref T`
+- source-level values use value semantics; the implementation may share immutable storage internally when that is not observable
 
 ## Documentation
 
@@ -105,6 +106,7 @@ For more entry points, browse the [Samples](#samples) section below.
   - [spec/008-collections.md](./spec/008-collections.md) (draft)
   - [spec/009-generics.md](./spec/009-generics.md) (draft)
   - [spec/010-references-draft.md](./spec/010-references-draft.md) (draft)
+  - [spec/011-value-semantics.md](./spec/011-value-semantics.md) (draft)
 - Error catalog: [errors.md](./errors.md)
 - Implementation roadmap: [ROADMAP.md](./ROADMAP.md)
 - Current next steps: [docs/current-next-steps.md](./docs/current-next-steps.md)

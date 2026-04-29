@@ -4,6 +4,8 @@ Status: design draft. This document is not implemented behavior yet.
 
 This draft defines Muga's current direction for pointer-like and reference-like concepts.
 
+This draft is not a prerequisite for the v1 implementation. Ordinary source-level value semantics and internal sharing are tracked separately in [011-value-semantics.md](./011-value-semantics.md).
+
 The main decision is:
 
 - Muga should not expose raw pointers in v1.
