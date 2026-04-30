@@ -1,4 +1,4 @@
-# muga
+# Muga
 
 "Muga" is a Japanese term meaning "selflessness" or "transcendence of self," referring to a state of being beyond personal limitations or free from self-centered thinking.
 
