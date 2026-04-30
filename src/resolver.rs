@@ -158,18 +158,24 @@ impl Resolver {
         self.resolve_expr(&stmt.value);
         let name = self.symbol(&stmt.name);
         if stmt.mutable {
-            if self.current_scope_contains(name) {
-                self.diagnostics.push(Diagnostic::new(
-                    "E002",
-                    format!("duplicate binding `{}` in the current scope", stmt.name),
-                    stmt.span,
-                ));
-            } else if self.any_enclosing_scope_lookup(name).is_some() {
-                self.diagnostics.push(Diagnostic::new(
-                    "E003",
-                    format!("shadowing is prohibited for `{}`", stmt.name),
-                    stmt.span,
-                ));
+            if let Some(binding) = self.current_scope_binding(name) {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E002",
+                        format!("duplicate binding `{}` in the current scope", stmt.name),
+                        stmt.span,
+                    )
+                    .with_related("previous binding is here", binding.span),
+                );
+            } else if let Some(binding) = self.any_enclosing_scope_lookup(name).copied() {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E003",
+                        format!("shadowing is prohibited for `{}`", stmt.name),
+                        stmt.span,
+                    )
+                    .with_related("shadowed binding is here", binding.span),
+                );
             } else {
                 self.insert_current(name, BindingKind::Mutable, stmt.span);
             }
@@ -180,11 +186,14 @@ impl Resolver {
             match binding.kind {
                 BindingKind::Mutable => {}
                 BindingKind::Immutable | BindingKind::Function | BindingKind::Parameter => {
-                    self.diagnostics.push(Diagnostic::new(
-                        "E001",
-                        format!("cannot update immutable binding `{}`", stmt.name),
-                        stmt.span,
-                    ));
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "E001",
+                            format!("cannot update immutable binding `{}`", stmt.name),
+                            stmt.span,
+                        )
+                        .with_related("binding is declared here", binding.span),
+                    );
                 }
             }
             return;
@@ -193,21 +202,30 @@ impl Resolver {
         if let Some(binding) = self.lookup_beyond_current_function(name) {
             match binding.kind {
                 BindingKind::Mutable => {
-                    self.diagnostics.push(Diagnostic::new(
-                        "E004",
-                        format!(
-                            "cannot update outer-scope mutable binding `{}` in v1",
-                            stmt.name
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "E004",
+                            format!(
+                                "cannot update outer-scope mutable binding `{}` in v1",
+                                stmt.name
+                            ),
+                            stmt.span,
+                        )
+                        .with_related("outer mutable binding is declared here", binding.span)
+                        .with_suggestion(
+                            "pass the value into this function and return the updated value",
                         ),
-                        stmt.span,
-                    ));
+                    );
                 }
                 BindingKind::Immutable | BindingKind::Function | BindingKind::Parameter => {
-                    self.diagnostics.push(Diagnostic::new(
-                        "E003",
-                        format!("shadowing is prohibited for `{}`", stmt.name),
-                        stmt.span,
-                    ));
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "E003",
+                            format!("shadowing is prohibited for `{}`", stmt.name),
+                            stmt.span,
+                        )
+                        .with_related("shadowed binding is here", binding.span),
+                    );
                 }
             }
             return;
@@ -220,20 +238,26 @@ impl Resolver {
         self.push_scope(true);
         for param in &stmt.params {
             let name = self.symbol(&param.name);
-            if self.current_scope_contains(name) {
-                self.diagnostics.push(Diagnostic::new(
-                    "E002",
-                    format!("duplicate binding `{}` in the current scope", param.name),
-                    param.span,
-                ));
+            if let Some(binding) = self.current_scope_binding(name) {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E002",
+                        format!("duplicate binding `{}` in the current scope", param.name),
+                        param.span,
+                    )
+                    .with_related("previous binding is here", binding.span),
+                );
                 continue;
             }
-            if self.any_enclosing_scope_lookup(name).is_some() {
-                self.diagnostics.push(Diagnostic::new(
-                    "E003",
-                    format!("shadowing is prohibited for `{}`", param.name),
-                    param.span,
-                ));
+            if let Some(binding) = self.any_enclosing_scope_lookup(name).copied() {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E003",
+                        format!("shadowing is prohibited for `{}`", param.name),
+                        param.span,
+                    )
+                    .with_related("shadowed binding is here", binding.span),
+                );
                 continue;
             }
             self.insert_current(name, BindingKind::Parameter, param.span);
@@ -295,20 +319,26 @@ impl Resolver {
                 self.push_scope(true);
                 for param in &expr.params {
                     let name = self.symbol(&param.name);
-                    if self.current_scope_contains(name) {
-                        self.diagnostics.push(Diagnostic::new(
-                            "E002",
-                            format!("duplicate binding `{}` in the current scope", param.name),
-                            param.span,
-                        ));
+                    if let Some(binding) = self.current_scope_binding(name) {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                "E002",
+                                format!("duplicate binding `{}` in the current scope", param.name),
+                                param.span,
+                            )
+                            .with_related("previous binding is here", binding.span),
+                        );
                         continue;
                     }
-                    if self.any_enclosing_scope_lookup(name).is_some() {
-                        self.diagnostics.push(Diagnostic::new(
-                            "E003",
-                            format!("shadowing is prohibited for `{}`", param.name),
-                            param.span,
-                        ));
+                    if let Some(binding) = self.any_enclosing_scope_lookup(name).copied() {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                "E003",
+                                format!("shadowing is prohibited for `{}`", param.name),
+                                param.span,
+                            )
+                            .with_related("shadowed binding is here", binding.span),
+                        );
                         continue;
                     }
                     self.insert_current(name, BindingKind::Parameter, param.span);
@@ -324,18 +354,24 @@ impl Resolver {
         for statement in statements {
             if let Stmt::FuncDecl(func) = statement {
                 let name = self.symbol(&func.name);
-                if self.current_scope_contains(name) {
-                    self.diagnostics.push(Diagnostic::new(
-                        "E002",
-                        format!("duplicate binding `{}` in the current scope", func.name),
-                        func.span,
-                    ));
-                } else if self.any_enclosing_scope_lookup(name).is_some() {
-                    self.diagnostics.push(Diagnostic::new(
-                        "E003",
-                        format!("shadowing is prohibited for `{}`", func.name),
-                        func.span,
-                    ));
+                if let Some(binding) = self.current_scope_binding(name) {
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "E002",
+                            format!("duplicate binding `{}` in the current scope", func.name),
+                            func.span,
+                        )
+                        .with_related("previous binding is here", binding.span),
+                    );
+                } else if let Some(binding) = self.any_enclosing_scope_lookup(name).copied() {
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "E003",
+                            format!("shadowing is prohibited for `{}`", func.name),
+                            func.span,
+                        )
+                        .with_related("shadowed binding is here", binding.span),
+                    );
                 } else {
                     self.insert_current(name, BindingKind::Function, func.span);
                 }
@@ -347,12 +383,15 @@ impl Resolver {
         for statement in statements {
             if let Stmt::RecordDecl(record) = statement {
                 let name = self.symbol(&record.name);
-                if self.records.contains_key(&name) {
-                    self.diagnostics.push(Diagnostic::new(
-                        "E002",
-                        format!("duplicate record `{}` in the current scope", record.name),
-                        record.span,
-                    ));
+                if let Some(span) = self.records.get(&name).copied() {
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "E002",
+                            format!("duplicate record `{}` in the current scope", record.name),
+                            record.span,
+                        )
+                        .with_related("previous record declaration is here", span),
+                    );
                 } else {
                     self.records.insert(name, record.span);
                 }
@@ -368,11 +407,10 @@ impl Resolver {
         self.scopes.pop();
     }
 
-    fn current_scope_contains(&self, name: Symbol) -> bool {
+    fn current_scope_binding(&self, name: Symbol) -> Option<Binding> {
         self.scopes
             .last()
-            .map(|scope| scope.bindings.contains_key(&name))
-            .unwrap_or(false)
+            .and_then(|scope| scope.bindings.get(&name).map(|id| *self.binding(*id)))
     }
 
     fn lookup_in_current_function(&self, name: Symbol) -> Option<&Binding> {
