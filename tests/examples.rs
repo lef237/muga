@@ -79,6 +79,44 @@ fn main(): Int {
 }
 
 #[test]
+fn diagnostic_display_without_notes_stays_single_line() {
+    let diagnostic = muga::diagnostic::Diagnostic::new(
+        "X001",
+        "example diagnostic",
+        muga::span::Span::new(
+            muga::span::Position::new(1, 2),
+            muga::span::Position::new(1, 9),
+        ),
+    );
+    assert_eq!(diagnostic.to_string(), "1:2: X001 example diagnostic");
+}
+
+#[test]
+fn diagnostic_display_includes_related_notes_and_suggestions() {
+    let diagnostic = muga::diagnostic::Diagnostic::new(
+        "X002",
+        "primary",
+        muga::span::Span::new(
+            muga::span::Position::new(1, 1),
+            muga::span::Position::new(1, 8),
+        ),
+    )
+    .with_related(
+        "related",
+        muga::span::Span::new(
+            muga::span::Position::new(2, 3),
+            muga::span::Position::new(2, 10),
+        ),
+    )
+    .with_suggestion("try this");
+
+    assert_eq!(
+        diagnostic.to_string(),
+        "1:1: X002 primary\n  note: 2:3: related\n  help: try this"
+    );
+}
+
+#[test]
 fn runnable_main_returns_value() {
     assert_sample_runs("samples/sum_to.muga", "10", "");
 }
@@ -185,6 +223,24 @@ fn package_module_private_item_from_sibling_file_is_rejected() {
             .iter()
             .any(|diagnostic| diagnostic.code == "PK015"),
         "{diagnostics:#?}"
+    );
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK015")
+        .expect("PK015 diagnostic should exist");
+    assert!(
+        diagnostic
+            .related
+            .iter()
+            .any(|note| note.message.contains("module-private")),
+        "{diagnostic:#?}"
+    );
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("pkg")),
+        "{diagnostic:#?}"
     );
 }
 

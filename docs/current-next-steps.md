@@ -63,26 +63,28 @@ Recently completed:
 - typed HIR identifiers can distinguish local bindings from package item targets.
 - typed HIR package call targets use `PackageItemId`-backed callee data.
 - typed HIR package record types use `PackageItemId`-backed type data.
+- diagnostics can carry related notes and suggestions while preserving the existing single-line display for simple diagnostics.
+- package module-private visibility diagnostics now point at the private declaration and suggest `pkg` when sharing within a package is intended.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. tighten the diagnostic data model before package interfaces harden
-2. add structured related notes / suggestions where package and type diagnostics need context
+1. roll structured diagnostics through the highest-value resolver/typechecker/package errors
+2. add related notes for duplicate declarations, type mismatches, unresolved names, and public API leaks
 3. keep current diagnostic rendering compatible while moving producers away from ad hoc message-only errors
 
 Why this comes next:
 
 - package/type/package-interface errors need related locations and actionable notes
 - package interfaces should serialize stable compiler facts, while diagnostics should keep source-facing context
-- the current `Diagnostic` type is still message/span only
+- the `Diagnostic` type now has the structure needed for this, but most producers still emit message/span only
 - tightening diagnostics before package interfaces avoids baking weak error shapes into the next layer
 
 Expected result:
 
-- diagnostics can carry primary span, related spans, and optional suggestions
+- important frontend diagnostics consistently carry primary span, related spans, and optional suggestions
 - existing CLI output remains readable
 - package visibility, duplicate declarations, and future interface errors can point at both the use site and declaration site
 
