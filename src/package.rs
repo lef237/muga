@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::{PackageId, PackageItemId};
+use crate::identity::{ModuleId, PackageId, PackageItemId};
 use crate::span::Span;
 
 pub fn load_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> {
@@ -65,6 +65,7 @@ pub struct LoadedProgram {
 #[derive(Clone, Debug, Default)]
 pub struct PackageSymbolGraph {
     pub packages: Vec<PackageInfo>,
+    pub modules: Vec<PackageModuleInfo>,
     pub items: Vec<PackageItemInfo>,
 }
 
@@ -75,6 +76,17 @@ impl PackageSymbolGraph {
 
     pub fn item(&self, id: PackageItemId) -> Option<&PackageItemInfo> {
         self.items.get(id.as_u32() as usize)
+    }
+
+    pub fn module(&self, id: ModuleId) -> Option<&PackageModuleInfo> {
+        self.modules.get(id.as_u32() as usize)
+    }
+
+    pub fn module_id(&self, package: PackageId, path: &str) -> Option<ModuleId> {
+        self.modules
+            .iter()
+            .find(|module| module.package == package && module.path == path)
+            .map(|module| module.id)
     }
 
     pub fn package_id(&self, path: &str) -> Option<PackageId> {
@@ -95,13 +107,33 @@ impl PackageSymbolGraph {
             .find(|item| item.package == package && item.name == name && item.kind == kind)
             .map(|item| item.id)
     }
+
+    pub fn item_id_in_module(
+        &self,
+        module: ModuleId,
+        name: &str,
+        kind: PackageItemKind,
+    ) -> Option<PackageItemId> {
+        self.items
+            .iter()
+            .find(|item| item.module == module && item.name == name && item.kind == kind)
+            .map(|item| item.id)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PackageInfo {
     pub id: PackageId,
     pub path: String,
+    pub modules: Vec<ModuleId>,
     pub imports: Vec<PackageImportInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageModuleInfo {
+    pub id: ModuleId,
+    pub package: PackageId,
+    pub path: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,6 +148,7 @@ pub struct PackageImportInfo {
 pub struct PackageItemInfo {
     pub id: PackageItemId,
     pub package: PackageId,
+    pub module: ModuleId,
     pub name: String,
     pub kind: PackageItemKind,
     pub visibility: Visibility,
@@ -131,6 +164,7 @@ pub enum PackageItemKind {
 
 struct ParsedFile {
     program: Program,
+    module_path: String,
 }
 
 #[derive(Clone, Debug)]
@@ -141,10 +175,14 @@ struct ProjectManifest {
 
 struct PackageData {
     files: Vec<ParsedFile>,
-    public_records: HashSet<String>,
-    public_functions: HashSet<String>,
-    all_records: HashSet<String>,
-    all_functions: HashSet<String>,
+    records: HashMap<String, Vec<PackageItemDecl>>,
+    functions: HashMap<String, Vec<PackageItemDecl>>,
+}
+
+#[derive(Clone, Debug)]
+struct PackageItemDecl {
+    visibility: Visibility,
+    module_path: String,
 }
 
 struct PackageLoader {
@@ -207,20 +245,16 @@ impl PackageLoader {
             let Some(package) = self.packages.get(package_path) else {
                 continue;
             };
-            let all_records = package.all_records.clone();
-            let all_functions = package.all_functions.clone();
-            let public_records = package.public_records.clone();
             for file in &package.files {
                 let import_aliases =
                     file_import_aliases(&file.program.imports, &mut self.diagnostics);
                 let mut rewriter = PackageRewriter {
                     diagnostics: &mut self.diagnostics,
                     current_package: package_path.clone(),
+                    current_module: file.module_path.clone(),
                     entry_package: self.entry_package.clone(),
                     imports: import_aliases,
-                    package_public_records: &public_records,
-                    package_records: &all_records,
-                    package_functions: &all_functions,
+                    current_package_data: package,
                     packages: &self.packages,
                     scopes: Vec::new(),
                 };
@@ -267,43 +301,35 @@ impl PackageLoader {
             }
         }
 
-        let mut public_records = HashSet::new();
-        let mut public_functions = HashSet::new();
-        let mut all_records = HashSet::new();
-        let mut all_functions = HashSet::new();
+        let mut records: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
+        let mut functions: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
 
         for file in &files {
             for statement in &file.program.statements {
                 match statement {
                     Stmt::RecordDecl(record) => {
-                        if !all_records.insert(record.name.clone()) {
-                            self.diagnostics.push(Diagnostic::new(
-                                "PK013",
-                                format!(
-                                    "duplicate top-level record `{}` in package `{package_path}`",
-                                    record.name
-                                ),
-                                record.span,
-                            ));
-                        }
-                        if record.visibility == Visibility::Public {
-                            public_records.insert(record.name.clone());
-                        }
+                        insert_package_item_decl(
+                            &mut records,
+                            &record.name,
+                            record.visibility,
+                            &file.module_path,
+                            record.span,
+                            PackageItemKind::Record,
+                            package_path.as_str(),
+                            &mut self.diagnostics,
+                        );
                     }
                     Stmt::FuncDecl(func) => {
-                        if !all_functions.insert(func.name.clone()) {
-                            self.diagnostics.push(Diagnostic::new(
-                                "PK013",
-                                format!(
-                                    "duplicate top-level function `{}` in package `{package_path}`",
-                                    func.name
-                                ),
-                                func.span,
-                            ));
-                        }
-                        if func.visibility == Visibility::Public {
-                            public_functions.insert(func.name.clone());
-                        }
+                        insert_package_item_decl(
+                            &mut functions,
+                            &func.name,
+                            func.visibility,
+                            &file.module_path,
+                            func.span,
+                            PackageItemKind::Function,
+                            package_path.as_str(),
+                            &mut self.diagnostics,
+                        );
                     }
                     _ => {}
                 }
@@ -314,10 +340,8 @@ impl PackageLoader {
             package_path.clone(),
             PackageData {
                 files,
-                public_records,
-                public_functions,
-                all_records,
-                all_functions,
+                records,
+                functions,
             },
         );
         self.loading.remove(&package_path);
@@ -401,7 +425,11 @@ impl PackageLoader {
                     continue;
                 }
             }
-            files.push(ParsedFile { program });
+            let module_path = module_path_for_file(&file_path);
+            files.push(ParsedFile {
+                program,
+                module_path,
+            });
         }
         files
     }
@@ -454,6 +482,7 @@ impl PackageLoader {
             .collect();
 
         let mut packages = Vec::with_capacity(package_paths.len());
+        let mut modules = Vec::new();
         let mut items = Vec::new();
 
         for package_path in package_paths {
@@ -461,6 +490,18 @@ impl PackageLoader {
                 continue;
             };
             let package_id = package_ids[package_path.as_str()];
+            let mut package_modules = Vec::new();
+            let mut file_modules = HashMap::new();
+            for file in &package.files {
+                let id = ModuleId::new(modules.len() as u32);
+                package_modules.push(id);
+                file_modules.insert(file.module_path.as_str(), id);
+                modules.push(PackageModuleInfo {
+                    id,
+                    package: package_id,
+                    path: file.module_path.clone(),
+                });
+            }
             let mut imports = Vec::new();
             for file in &package.files {
                 for import in &file.program.imports {
@@ -477,10 +518,12 @@ impl PackageLoader {
             packages.push(PackageInfo {
                 id: package_id,
                 path: package_path.clone(),
+                modules: package_modules,
                 imports,
             });
 
             for file in &package.files {
+                let module_id = file_modules[file.module_path.as_str()];
                 for statement in &file.program.statements {
                     match statement {
                         Stmt::RecordDecl(record) => {
@@ -488,11 +531,17 @@ impl PackageLoader {
                             items.push(PackageItemInfo {
                                 id,
                                 package: package_id,
+                                module: module_id,
                                 name: record.name.clone(),
                                 kind: PackageItemKind::Record,
                                 visibility: record.visibility,
                                 span: record.span,
-                                mangled_name: mangle_record_name(package_path, &record.name),
+                                mangled_name: mangle_record_name_for_visibility(
+                                    package_path,
+                                    &file.module_path,
+                                    &record.name,
+                                    record.visibility,
+                                ),
                             });
                         }
                         Stmt::FuncDecl(func) => {
@@ -500,13 +549,16 @@ impl PackageLoader {
                             items.push(PackageItemInfo {
                                 id,
                                 package: package_id,
+                                module: module_id,
                                 name: func.name.clone(),
                                 kind: PackageItemKind::Function,
                                 visibility: func.visibility,
                                 span: func.span,
-                                mangled_name: mangle_function_name(
+                                mangled_name: mangle_function_name_for_visibility(
                                     package_path,
+                                    &file.module_path,
                                     &func.name,
+                                    func.visibility,
                                     &self.entry_package,
                                 ),
                             });
@@ -517,18 +569,21 @@ impl PackageLoader {
             }
         }
 
-        PackageSymbolGraph { packages, items }
+        PackageSymbolGraph {
+            packages,
+            modules,
+            items,
+        }
     }
 }
 
 struct PackageRewriter<'a> {
     diagnostics: &'a mut Vec<Diagnostic>,
     current_package: String,
+    current_module: String,
     entry_package: String,
     imports: HashMap<String, String>,
-    package_public_records: &'a HashSet<String>,
-    package_records: &'a HashSet<String>,
-    package_functions: &'a HashSet<String>,
+    current_package_data: &'a PackageData,
     packages: &'a HashMap<String, PackageData>,
     scopes: Vec<HashSet<String>>,
 }
@@ -543,15 +598,20 @@ impl<'a> PackageRewriter<'a> {
     }
 
     fn rewrite_record_decl(&mut self, record: &RecordDecl) -> RecordDecl {
-        if record.visibility == Visibility::Public {
+        if record.visibility == Visibility::Public || record.visibility == Visibility::Package {
             for field in &record.fields {
-                self.validate_public_type(&field.type_name, field.span);
+                self.validate_visible_type(&field.type_name, record.visibility, field.span);
             }
         }
 
         RecordDecl {
             id: record.id,
-            name: mangle_record_name(&self.current_package, &record.name),
+            name: mangle_record_name_for_visibility(
+                &self.current_package,
+                &self.current_module,
+                &record.name,
+                record.visibility,
+            ),
             visibility: Visibility::Private,
             fields: record
                 .fields
@@ -579,11 +639,20 @@ impl<'a> PackageRewriter<'a> {
             }
             for param in &func.params {
                 if let Some(type_name) = &param.type_name {
-                    self.validate_public_type(type_name, param.span);
+                    self.validate_visible_type(type_name, Visibility::Public, param.span);
                 }
             }
             if let Some(type_name) = &func.return_type {
-                self.validate_public_type(type_name, func.span);
+                self.validate_visible_type(type_name, Visibility::Public, func.span);
+            }
+        } else if top_level && func.visibility == Visibility::Package {
+            for param in &func.params {
+                if let Some(type_name) = &param.type_name {
+                    self.validate_visible_type(type_name, Visibility::Package, param.span);
+                }
+            }
+            if let Some(type_name) = &func.return_type {
+                self.validate_visible_type(type_name, Visibility::Package, func.span);
             }
         }
 
@@ -607,7 +676,13 @@ impl<'a> PackageRewriter<'a> {
         FuncDecl {
             id: func.id,
             name: if top_level {
-                mangle_function_name(&self.current_package, &func.name, &self.entry_package)
+                mangle_function_name_for_visibility(
+                    &self.current_package,
+                    &self.current_module,
+                    &func.name,
+                    func.visibility,
+                    &self.entry_package,
+                )
             } else {
                 func.name.clone()
             },
@@ -815,8 +890,27 @@ impl<'a> PackageRewriter<'a> {
         if let Some((alias, item)) = split_qualified_name(name) {
             return self.resolve_imported_item(alias, item, ImportedItemKind::Record, span);
         }
-        if self.package_records.contains(name) {
-            return mangle_record_name(&self.current_package, name);
+        if let Some(item) = resolve_package_item(
+            &self.current_package_data.records,
+            name,
+            &self.current_module,
+        ) {
+            return mangle_record_name_for_visibility(
+                &self.current_package,
+                &item.module_path,
+                name,
+                item.visibility,
+            );
+        }
+        if inaccessible_package_item(&self.current_package_data.records, name).is_some() {
+            self.diagnostics.push(Diagnostic::new(
+                "PK015",
+                format!(
+                    "record `{name}` is not visible from module `{}`",
+                    self.current_module
+                ),
+                span,
+            ));
         }
         name.to_string()
     }
@@ -828,13 +922,38 @@ impl<'a> PackageRewriter<'a> {
         if self.lookup_local(name) || is_builtin_name(name) {
             return name.to_string();
         }
-        if self.package_functions.contains(name) {
-            return mangle_function_name(&self.current_package, name, &self.entry_package);
+        if let Some(item) = resolve_package_item(
+            &self.current_package_data.functions,
+            name,
+            &self.current_module,
+        ) {
+            return mangle_function_name_for_visibility(
+                &self.current_package,
+                &item.module_path,
+                name,
+                item.visibility,
+                &self.entry_package,
+            );
+        }
+        if inaccessible_package_item(&self.current_package_data.functions, name).is_some() {
+            self.diagnostics.push(Diagnostic::new(
+                "PK015",
+                format!(
+                    "function `{name}` is not visible from module `{}`",
+                    self.current_module
+                ),
+                span,
+            ));
         }
         name.to_string()
     }
 
-    fn validate_public_type(&mut self, type_expr: &TypeExpr, span: Span) {
+    fn validate_visible_type(
+        &mut self,
+        type_expr: &TypeExpr,
+        api_visibility: Visibility,
+        span: Span,
+    ) {
         match type_expr {
             TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
             TypeExpr::Named(name) => {
@@ -842,21 +961,27 @@ impl<'a> PackageRewriter<'a> {
                     let _ = self.resolve_imported_item(alias, item, ImportedItemKind::Record, span);
                     return;
                 }
-                if self.package_records.contains(name)
-                    && !self.package_public_records.contains(name)
-                {
-                    self.diagnostics.push(Diagnostic::new(
-                        "PK012",
-                        format!("public API may not expose private record `{name}`"),
-                        span,
-                    ));
+                if let Some(item) = resolve_package_item(
+                    &self.current_package_data.records,
+                    name,
+                    &self.current_module,
+                ) {
+                    if !visibility_can_expose(item.visibility, api_visibility) {
+                        let api = visibility_label(api_visibility);
+                        let item_visibility = visibility_label(item.visibility);
+                        self.diagnostics.push(Diagnostic::new(
+                            "PK012",
+                            format!("{api} API may not expose {item_visibility} record `{name}`"),
+                            span,
+                        ));
+                    }
                 }
             }
             TypeExpr::Function(function) => {
                 for param in &function.params {
-                    self.validate_public_type(param, span);
+                    self.validate_visible_type(param, api_visibility, span);
                 }
-                self.validate_public_type(&function.ret, span);
+                self.validate_visible_type(&function.ret, api_visibility, span);
             }
         }
     }
@@ -887,7 +1012,7 @@ impl<'a> PackageRewriter<'a> {
 
         match kind {
             ImportedItemKind::Record => {
-                if package.public_records.contains(item) {
+                if package_item_is_public(&package.records, item) {
                     mangle_record_name(package_path, item)
                 } else {
                     self.diagnostics.push(Diagnostic::new(
@@ -899,7 +1024,7 @@ impl<'a> PackageRewriter<'a> {
                 }
             }
             ImportedItemKind::Function => {
-                if package.public_functions.contains(item) {
+                if package_item_is_public(&package.functions, item) {
                     mangle_function_name(package_path, item, &self.entry_package)
                 } else {
                     self.diagnostics.push(Diagnostic::new(
@@ -944,6 +1069,93 @@ impl<'a> PackageRewriter<'a> {
 enum ImportedItemKind {
     Record,
     Function,
+}
+
+fn insert_package_item_decl(
+    items: &mut HashMap<String, Vec<PackageItemDecl>>,
+    name: &str,
+    visibility: Visibility,
+    module_path: &str,
+    span: Span,
+    kind: PackageItemKind,
+    package_path: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let existing = items.entry(name.to_string()).or_default();
+    let duplicate_in_module = existing.iter().any(|item| item.module_path == module_path);
+    let duplicate_visible = visibility != Visibility::Private
+        && existing
+            .iter()
+            .any(|item| item.visibility != Visibility::Private);
+
+    if duplicate_in_module || duplicate_visible {
+        let kind_name = match kind {
+            PackageItemKind::Record => "record",
+            PackageItemKind::Function => "function",
+        };
+        diagnostics.push(Diagnostic::new(
+            "PK013",
+            format!("duplicate top-level {kind_name} `{name}` in package `{package_path}`"),
+            span,
+        ));
+    }
+
+    existing.push(PackageItemDecl {
+        visibility,
+        module_path: module_path.to_string(),
+    });
+}
+
+fn resolve_package_item<'a>(
+    items: &'a HashMap<String, Vec<PackageItemDecl>>,
+    name: &str,
+    current_module: &str,
+) -> Option<&'a PackageItemDecl> {
+    let candidates = items.get(name)?;
+    candidates
+        .iter()
+        .find(|item| item.module_path == current_module)
+        .or_else(|| {
+            candidates.iter().find(|item| {
+                item.visibility == Visibility::Package || item.visibility == Visibility::Public
+            })
+        })
+}
+
+fn inaccessible_package_item<'a>(
+    items: &'a HashMap<String, Vec<PackageItemDecl>>,
+    name: &str,
+) -> Option<&'a PackageItemDecl> {
+    items
+        .get(name)?
+        .iter()
+        .find(|item| item.visibility == Visibility::Private)
+}
+
+fn package_item_is_public(items: &HashMap<String, Vec<PackageItemDecl>>, name: &str) -> bool {
+    items.get(name).is_some_and(|items| {
+        items
+            .iter()
+            .any(|item| item.visibility == Visibility::Public)
+    })
+}
+
+fn visibility_can_expose(item_visibility: Visibility, api_visibility: Visibility) -> bool {
+    match api_visibility {
+        Visibility::Public => item_visibility == Visibility::Public,
+        Visibility::Package => {
+            item_visibility == Visibility::Package || item_visibility == Visibility::Public
+        }
+        Visibility::Private => true,
+    }
+}
+
+fn visibility_label(visibility: Visibility) -> &'static str {
+    match visibility {
+        Visibility::Private => "module-private",
+        Visibility::Package => "package-visible",
+        Visibility::Public => "public",
+    }
 }
 
 fn infer_source_root(entry_file: &Path, package_path: &str) -> Result<PathBuf, Diagnostic> {
@@ -1152,6 +1364,12 @@ fn split_package_path(path: &str) -> Vec<String> {
     path.split("::").map(ToString::to_string).collect()
 }
 
+fn module_path_for_file(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string_lossy().into_owned())
+}
+
 fn split_qualified_name(name: &str) -> Option<(&str, &str)> {
     let mut parts = name.split("::");
     let first = parts.next()?;
@@ -1191,8 +1409,60 @@ fn mangle_function_name(package_path: &str, name: &str, entry_package: &str) -> 
     }
 }
 
+fn mangle_function_name_for_visibility(
+    package_path: &str,
+    module_path: &str,
+    name: &str,
+    visibility: Visibility,
+    entry_package: &str,
+) -> String {
+    if package_path == entry_package && name == "main" {
+        return "main".to_string();
+    }
+    match visibility {
+        Visibility::Private => mangle_module_item_name(package_path, module_path, name),
+        Visibility::Package | Visibility::Public => {
+            mangle_function_name(package_path, name, entry_package)
+        }
+    }
+}
+
 fn mangle_record_name(package_path: &str, name: &str) -> String {
     format!("__muga_pkg__{}__{}", package_path.replace("::", "__"), name)
+}
+
+fn mangle_record_name_for_visibility(
+    package_path: &str,
+    module_path: &str,
+    name: &str,
+    visibility: Visibility,
+) -> String {
+    match visibility {
+        Visibility::Private => mangle_module_item_name(package_path, module_path, name),
+        Visibility::Package | Visibility::Public => mangle_record_name(package_path, name),
+    }
+}
+
+fn mangle_module_item_name(package_path: &str, module_path: &str, name: &str) -> String {
+    format!(
+        "__muga_mod__{}__{}__{}",
+        package_path.replace("::", "__"),
+        sanitize_mangle_segment(module_path),
+        name
+    )
+}
+
+fn sanitize_mangle_segment(segment: &str) -> String {
+    segment
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 fn is_builtin_name(name: &str) -> bool {

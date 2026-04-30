@@ -480,12 +480,12 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. receiver-style and ordinary-call callee shape finalization inside typed HIR
-2. module/file identity and module-private visibility in package mode
-3. package-qualified references in typed HIR
-4. diagnostic data model tightening
-5. package interfaces instead of flattening
-6. cache and incremental compilation
+1. package-qualified references in typed HIR
+2. diagnostic data model tightening
+3. package interfaces instead of flattening
+4. cache and incremental compilation
+5. MIR and native backend work
+6. collection/generic runtime expansion once the semantic boundary is stable
 
 This order best matches the current state of the codebase.
 
@@ -495,12 +495,17 @@ For a shorter resume checklist and open decision queue, see [docs/current-next-s
 
 The initial typed HIR is in place as a foundation, with the following follow-ups intentionally deferred:
 
-- call expressions should carry an explicit resolved callee shape
-- chained calls should record whether they resolved as receiver-style or UFCS-style calls
 - package-qualified references should point to package item identities, not only flattened/mangled names
-- package and typed HIR should track module/file identity for module-private visibility
+- typed HIR should consume module/package item identity directly instead of relying on rewritten names
 - package compilation still uses flattening internally
 - package interfaces and real compilation units remain future work
+
+Recently completed:
+
+- call expressions carry explicit resolved callee shape
+- chained calls record their call origin
+- package loading tracks module/file identity
+- top-level module-private, `pkg`, and `pub` visibility are enforced before flattening
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

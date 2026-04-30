@@ -170,6 +170,25 @@ fn package_entry_reads_all_files_in_entry_directory() {
 }
 
 #[test]
+fn package_module_visibility_allows_pkg_item_from_sibling_file() {
+    assert_package_runs("samples/packages/app/module_visibility/main.muga", "42", "");
+}
+
+#[test]
+fn package_module_private_item_from_sibling_file_is_rejected() {
+    let diagnostics = muga::check_path(Path::new(
+        "samples/packages_invalid/app/private_from_sibling/main.muga",
+    ))
+    .unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "PK015"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn manifest_project_infers_package_paths_from_directories() {
     assert_package_runs(
         "samples/projects/my_service/src/main/main.muga",
@@ -239,6 +258,50 @@ fn package_loader_exposes_package_symbol_graph() {
     let user = graph.item(user).expect("User info should exist");
     assert_eq!(user.visibility, muga::ast::Visibility::Public);
     assert_eq!(user.mangled_name, "__muga_pkg__util__users__User");
+}
+
+#[test]
+fn package_symbol_graph_exposes_module_identity() {
+    let loaded = muga::package::load_from_entry(Path::new(
+        "samples/packages/app/module_visibility/main.muga",
+    ))
+    .unwrap();
+    let graph = loaded.package_graph;
+    let package = graph
+        .package_id("app::module_visibility")
+        .expect("package should exist");
+    let package_info = graph.package(package).expect("package info should exist");
+
+    let module_paths: HashSet<_> = package_info
+        .modules
+        .iter()
+        .map(|module| {
+            graph
+                .module(*module)
+                .expect("module should exist")
+                .path
+                .as_str()
+        })
+        .collect();
+    assert!(module_paths.contains("main.muga"), "{module_paths:#?}");
+    assert!(module_paths.contains("helper.muga"), "{module_paths:#?}");
+
+    let helper_module = graph
+        .module_id(package, "helper.muga")
+        .expect("helper module should exist");
+    let helper = graph
+        .item_id_in_module(
+            helper_module,
+            "helper",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("helper should exist");
+    let helper = graph.item(helper).expect("helper info should exist");
+    assert_eq!(helper.visibility, muga::ast::Visibility::Package);
+    let helper_module = graph
+        .module(helper.module)
+        .expect("helper module should exist");
+    assert_eq!(helper_module.path, "helper.muga");
 }
 
 #[test]

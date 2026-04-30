@@ -32,7 +32,7 @@ Package mode adds a visibility check after candidate lookup:
 - `pub` names are visible from importing packages
 - importing packages see only `pub` names through `alias::Name`
 
-The current compiler implementation does not yet enforce module-private visibility. This is the target resolution model before real package interfaces are finalized.
+The current compiler implementation enforces this model for top-level package records and functions before package flattening. Record field visibility is defined separately and remains a later implementation slice.
 
 ## 1.1 Type Namespace
 

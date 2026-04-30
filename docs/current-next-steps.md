@@ -49,54 +49,46 @@ These points are now documented and should be treated as the current baseline:
 - Write-oriented APIs should prefer value-returning updates, builder/buffer types, or resource handles.
 - performance competitive with fast mainstream compiled languages should be pursued through package interfaces, typed HIR, MIR, internal sharing, copy elision, resource handles, and native backend work.
 
-## 3. Recommended Next Implementation Task
+## 3. Current Implementation Status
 
-The best next implementation task is still:
-
-1. finalize call resolution data in typed HIR
-2. make ordinary calls, chained calls, builtins, and package-qualified calls carry explicit resolved callee shape
-3. keep existing VM behavior compatible while typed HIR becomes the compiler-facing semantic boundary
-
-Why this comes next:
-
-- typed HIR already exists
-- calls are the largest remaining semantic gap in typed HIR
-- later package interfaces and MIR should not redo callee resolution
-- this supports future collections, generics, package interfaces, and native backend work
-
-Expected result:
-
-- a typed HIR call expression says which binding, builtin, or function value it calls
-- parser-level call origin distinguishes ordinary calls from chained calls
-- package-qualified calls currently point to flattened bindings and can later point to `PackageItemId`
-- later lowering stages do not need to repeat resolver/typechecker logic
-
-Completed work order for this task:
-
-1. Add resolved call information to the typechecker output.
-2. Preserve that call information in typed HIR call expressions.
-3. Add tests for ordinary function calls, local function-value calls, builtin calls, and package-qualified calls.
-4. Keep the existing VM bytecode path behavior-compatible.
-5. Add AST-level call origin data so typed HIR can distinguish ordinary calls from chained calls instead of relying on parser desugaring.
-
-Current implementation status:
+Recently completed:
 
 - `TypeCheckOutput` exposes resolved call information.
 - typed HIR `CallExpr` preserves the resolved callee.
 - parser/AST call origin is threaded into typed HIR for ordinary calls, chained calls, and package-qualified chained calls.
 - tests cover ordinary function calls, local function-value calls, builtin calls, chained calls, and package-qualified calls.
+- package loading now records `ModuleId` data in `PackageSymbolGraph`.
+- `pkg` is accepted for top-level package items.
+- unmodified top-level package items are module-private, `pkg` / `pub` items are visible to sibling files, and imports expose only `pub` items.
 - the existing VM bytecode path remains behavior-compatible.
 
-Remaining immediate follow-up:
+## 4. Recommended Next Implementation Task
 
-1. When package interfaces are introduced, upgrade package-qualified call targets from flattened `BindingId` data to package-aware item identity.
-2. Use the resolved callee and call-origin data as MIR/package-interface inputs rather than re-running call resolution later.
+The best next implementation task is:
 
-## 4. Decisions To Make Soon
+1. make package-qualified typed HIR references point to package-aware item identity
+2. upgrade package-qualified call targets from flattened `BindingId` data to `PackageItemId`-backed data
+3. keep the current flattening backend compatible while typed HIR becomes the semantic boundary for package interfaces
+
+Why this comes next:
+
+- `PackageId`, `ModuleId`, and `PackageItemId` now exist in the package graph
+- call shape is already explicit in typed HIR
+- package interfaces should not depend on mangled names or re-run import resolution
+- this is the last identity step before replacing package flattening with real package interfaces
+
+Expected result:
+
+- typed HIR can distinguish local binding references from package item references
+- qualified package calls no longer look like ordinary calls to flattened internal bindings
+- visibility and import resolution are represented as compiler data, not only as rewritten strings
+- package interface generation can consume stable package identities
+
+## 5. Decisions To Make Soon
 
 These decisions affect near-term implementation and should be made before implementing the related feature.
 
-### 4.1 Before collection implementation
+### 5.1 Before collection implementation
 
 Decide:
 
@@ -118,7 +110,7 @@ Current recommendation:
 - keep `T?` reserved, not implemented
 - do not implement map literals in the first collection slice
 
-### 4.2 Before package interface implementation
+### 5.2 Before package interface implementation
 
 Decide:
 
@@ -135,7 +127,7 @@ Current recommendation:
 - stop flattening packages only after package item identity and typed HIR references are stable
 - store resolved public signatures in package interfaces
 
-### 4.3 Before concurrency implementation
+### 5.3 Before concurrency implementation
 
 Decide:
 
@@ -152,7 +144,7 @@ Current recommendation:
 - do not make `async fn` / `await` the primary model
 - reject mutable outer capture across task boundaries by default
 
-### 4.4 Before enum / error handling design
+### 5.4 Before enum / error handling design
 
 Decide:
 
@@ -167,7 +159,7 @@ Current recommendation:
 - reserve `T?` only as possible future shorthand
 - do not spend `?` on multiple meanings until error handling is designed
 
-### 4.5 Before write-oriented API implementation
+### 5.5 Before write-oriented API implementation
 
 Decide:
 
@@ -190,7 +182,7 @@ Current recommendation:
 The value semantics and performance direction lives in [spec/011-value-semantics.md](../spec/011-value-semantics.md).
 The explicit references decision note lives in [spec/010-references-draft.md](../spec/010-references-draft.md).
 
-## 5. What Not To Reopen Now
+## 6. What Not To Reopen Now
 
 These decisions are settled enough to avoid re-litigating during the next implementation slice:
 
@@ -209,7 +201,7 @@ These decisions are settled enough to avoid re-litigating during the next implem
 - no source-level raw pointers in v1
 - VM and compiler can coexist through a shared checked pipeline
 
-## 6. Resume Checklist
+## 7. Resume Checklist
 
 When resuming implementation:
 

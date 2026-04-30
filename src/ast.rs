@@ -34,6 +34,7 @@ pub struct ImportDecl {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Visibility {
     Private,
+    Package,
     Public,
 }
 

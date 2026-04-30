@@ -1,0 +1,5 @@
+package app::module_visibility
+
+pkg fn helper(): Int {
+  41
+}

@@ -171,12 +171,12 @@ For more entry points, browse the [Samples](#samples) section below.
 - `println(x)` writes `Int`, `Bool`, or `String` with a trailing newline and returns the same value
 - `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
-- file-based package mode with `package`, `import`, `pub`, and `alias::Name` is implemented
+- file-based package mode with `package`, `import`, `pkg`, `pub`, module-private top-level items, and `alias::Name` is implemented
 - minimal `muga.toml` project mode with `[package] name/source` and inferred package paths is implemented
 - current package implementation still requires fully annotated `pub fn`; the design direction is to allow inferred public signatures once package interfaces can store them
 - generics, generic collection types, list literals, `Option[T]`, and `Map[K, V]` are design drafts and not implemented yet
 - explicit source-level references, mutable references, and explicit dereference syntax are not planned for ordinary Muga code
-- explicit receiver-style distinction is not implemented yet
+- typed HIR preserves resolved call shape and ordinary/chained/package-qualified call origin
 - dependency declarations, registries, package interfaces, and package caching are not implemented yet
 
 ## Planned Priority

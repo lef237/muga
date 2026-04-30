@@ -187,6 +187,7 @@ impl Lexer {
             "package" => TokenKind::Package,
             "import" => TokenKind::Import,
             "pub" => TokenKind::Pub,
+            "pkg" => TokenKind::Pkg,
             "as" => TokenKind::As,
             "fn" => TokenKind::Fn,
             "record" => TokenKind::Record,

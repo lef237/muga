@@ -1,0 +1,9 @@
+package app::module_visibility
+
+fn local(): Int {
+  1
+}
+
+fn main(): Int {
+  helper() + local()
+}
