@@ -1,0 +1,7 @@
+pub fn display_name(user: User): String {
+  user.name
+}
+
+pub fn next_age(user: User): Int {
+  user.age + 1
+}

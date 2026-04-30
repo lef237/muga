@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports `package`, `import`, `pub`, and `alias::Name` lookup for directory-based packages. Manifest syntax, configurable source roots, selective imports, module-private visibility, `pkg`, and package-level caching are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pub`, `alias::Name` lookup, directory-based packages, and a minimal `muga.toml` project mode that infers package paths from `name` and `source`. Dependency manifests, registries, selective imports, module-private visibility, `pkg`, and package-level caching are still deferred.
 
 ## 1. Design Goals
 
@@ -59,7 +59,12 @@ It keeps the current v1 behavior:
 
 ### 3.2 Package file
 
-A package file begins with a `package` declaration.
+A package file is a source file that belongs to a package.
+
+There are two ways for this to happen:
+
+- explicit file-based package mode: the file begins with a `package` declaration
+- manifest project mode: the file is under the manifest source root, and the package path is inferred from the directory layout
 
 Once a file is in package mode:
 
@@ -75,8 +80,9 @@ This keeps package compilation deterministic and avoids runtime initialization o
 The draft adopts the following model:
 
 - one directory corresponds to one package
-- every `.muga` file in that directory must declare the same package path
-- the package path is written explicitly in each file
+- every `.muga` file in that directory belongs to the same package
+- explicit file-based package mode requires each file to declare the same package path
+- manifest project mode infers the package path from the manifest and directory layout, so files may omit `package`
 - file order is not semantically meaningful
 - the compilation unit for caching is the package, not the file
 - the smallest default encapsulation unit is the module/file, not the package
@@ -89,7 +95,7 @@ package app::web
 
 This package path is expected to match the directory structure under a source root.
 
-The exact source-root and dependency manifest format is deferred. The purpose of this draft is to define the language-facing part first.
+Full dependency manifest syntax is deferred. The current implementation supports only a minimal `[package]` manifest with `name` and `source`.
 
 ## 5. Package, Module, and Visibility Model
 
@@ -171,7 +177,7 @@ At the parser level, the file grammar is intentionally split in two:
 ```ebnf
 file          := script_file | package_file
 script_file   := stmt*
-package_file  := package_decl import_decl* package_item*
+package_file  := package_decl? import_decl* package_item*
 package_decl  := "package" package_path
 package_path  := IDENT ("::" IDENT)*
 import_decl   := "import" package_path import_alias?
@@ -185,8 +191,9 @@ qualified_ref := IDENT "::" IDENT
 
 Additional parser rules for package mode:
 
-- `package` must be the first significant token in the file
-- `import` declarations must come after `package` and before the first item
+- if present, `package` must be the first significant token in the file
+- without manifest inference, `package` is required
+- `import` declarations must come after `package` when it is present and before the first item
 - `pub` and `pkg` are valid on top-level `record` and `fn`
 - top-level items are separated by newlines
 - type and value qualification uses exactly `alias::Name`
@@ -585,14 +592,13 @@ If `muga.toml` declares `name = "my_service"` and `source = "src"`, then:
 - `src/users/` maps to `my_service::users`
 - `src/http/` maps to `my_service::http`
 
-Each directory under the source root is one package. All `.muga` files in the same directory declare the same package path.
+Each directory under the source root is one package. All `.muga` files in the same directory belong to the same package path.
+In manifest project mode, those files may omit the package declaration because the package path is inferred. If a file still includes an explicit package declaration, it must match the inferred package path.
 
 Example:
 
 ```txt
 // src/users/model.muga
-package my_service::users
-
 pub record User {
   name: String
   age: Int
@@ -601,8 +607,6 @@ pub record User {
 
 ```txt
 // src/users/service.muga
-package my_service::users
-
 pub fn display_name(user: User): String {
   user.name
 }
@@ -613,8 +617,7 @@ The files in `src/users/` form one package. They may refer to package-visible de
 Other packages import the package by logical package path:
 
 ```txt
-package my_service::main
-
+// src/main/main.muga
 import my_service::users
 
 fn main(): Int {
@@ -656,11 +659,17 @@ The exact manifest format is deferred, but the intended roles are:
 - pin dependency versions
 - define build targets such as applications, libraries, tests, and benchmarks
 
+The current implementation supports only the minimal `[package]` subset:
+
+```toml
+[package]
+name = "my_service"
+source = "src"
+```
+
 Muga source files should continue to use logical package paths:
 
 ```txt
-package my_service::main
-
 import json
 import http::server as server
 ```
@@ -726,12 +735,15 @@ Consumers should write imports against package paths, not archive paths, registr
 
 ### 17.3 Current Implementation Boundary
 
-The current implementation does not yet have a manifest, registry, package cache, or real package interface files.
+The current implementation has only a minimal manifest mode. It does not yet have dependency declarations, registries, package cache, or real package interface files.
 
 It currently:
 
 - accepts a file entrypoint
-- infers the source root from the entry file path and declared package path
+- discovers `muga.toml` by walking up from the entry file
+- supports `[package] name = "..."` and `source = "..."`
+- infers package paths from source-root-relative directories in manifest project mode
+- infers the source root from the entry file path and declared package path in explicit file-based package mode
 - reads all `.muga` files in each loaded package directory
 - follows `import` declarations recursively
 - rejects import alias collisions
@@ -767,8 +779,8 @@ pub fn show(user: users::User): String {
 
 This draft intentionally leaves the following topics for later:
 
-- dependency manifest syntax such as `muga.toml`
-- source-root discovery rules
+- dependency manifest syntax beyond the minimal `[package]` `name`/`source` subset
+- full source-root discovery rules
 - standard library package layout
 - selective imports
 - wildcard imports

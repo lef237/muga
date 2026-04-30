@@ -11,6 +11,16 @@ pub fn parse(tokens: Vec<Token>) -> Result<Program, Vec<Diagnostic>> {
         .map_err(|diagnostic| vec![diagnostic])
 }
 
+pub fn parse_inferred_package(
+    tokens: Vec<Token>,
+    package_path: String,
+) -> Result<Program, Vec<Diagnostic>> {
+    let mut parser = Parser::new(tokens);
+    parser
+        .parse_inferred_package_program(package_path)
+        .map_err(|diagnostic| vec![diagnostic])
+}
+
 struct Parser {
     tokens: Vec<Token>,
     current: usize,
@@ -66,6 +76,45 @@ impl Parser {
 
         Ok(Program {
             package,
+            imports,
+            statements,
+        })
+    }
+
+    fn parse_inferred_package_program(
+        &mut self,
+        inferred_package_path: String,
+    ) -> Result<Program, Diagnostic> {
+        let package;
+        let mut imports = Vec::new();
+        let mut statements = Vec::new();
+        self.skip_newlines();
+
+        if matches!(self.peek_kind(), TokenKind::Package) {
+            package = self.parse_package_decl()?;
+            self.consume_package_boundary()?;
+            self.skip_newlines();
+        } else {
+            package = PackageDecl {
+                path: inferred_package_path,
+                span: Span::default(),
+            };
+        }
+
+        while matches!(self.peek_kind(), TokenKind::Import) {
+            imports.push(self.parse_import_decl()?);
+            self.consume_package_boundary()?;
+            self.skip_newlines();
+        }
+
+        while !self.is_eof() {
+            statements.push(self.parse_package_item()?);
+            self.consume_package_boundary()?;
+            self.skip_newlines();
+        }
+
+        Ok(Program {
+            package: Some(package),
             imports,
             statements,
         })
