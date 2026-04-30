@@ -133,6 +133,7 @@ struct ExprType {
 
 #[derive(Clone, Debug)]
 struct RecordDef {
+    span: Span,
     fields: Vec<RecordField>,
 }
 
@@ -632,12 +633,15 @@ impl TypeChecker {
                 continue;
             };
             let name = self.symbol(&record.name);
-            if self.records.contains_key(&name) {
-                self.diagnostics.push(Diagnostic::new(
-                    "E002",
-                    format!("duplicate record `{}` in the current scope", record.name),
-                    record.span,
-                ));
+            if let Some(existing) = self.records.get(&name) {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E002",
+                        format!("duplicate record `{}` in the current scope", record.name),
+                        record.span,
+                    )
+                    .with_related("previous record declaration is here", existing.span),
+                );
                 continue;
             }
             let mut fields = Vec::new();
@@ -648,23 +652,32 @@ impl TypeChecker {
                     span: field.span,
                 });
             }
-            self.records.insert(name, RecordDef { fields });
+            self.records.insert(
+                name,
+                RecordDef {
+                    span: record.span,
+                    fields,
+                },
+            );
         }
     }
 
     fn check_record_decl(&mut self, record: &RecordDecl) {
-        let mut field_names = HashSet::new();
+        let mut field_names = HashMap::new();
         for field in &record.fields {
             let field_name = self.symbol(&field.name);
-            if !field_names.insert(field_name) {
-                self.diagnostics.push(Diagnostic::new(
-                    "E002",
-                    format!(
-                        "duplicate field `{}` in record `{}`",
-                        field.name, record.name
-                    ),
-                    field.span,
-                ));
+            if let Some(previous_span) = field_names.insert(field_name, field.span) {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E002",
+                        format!(
+                            "duplicate field `{}` in record `{}`",
+                            field.name, record.name
+                        ),
+                        field.span,
+                    )
+                    .with_related("previous field declaration is here", previous_span),
+                );
             }
             let field_ty = self.type_from_expr(&field.type_name, field.span);
             if matches!(self.resolve_type(&field_ty), Type::Function(_)) {
@@ -697,50 +710,61 @@ impl TypeChecker {
             let value_ty = self.check_expr(&field.value);
             let field_name = self.symbol(&field.name);
             if !seen.insert(field_name) {
-                self.diagnostics.push(Diagnostic::new(
-                    "E009",
-                    format!(
-                        "invalid record literal for `{}`: duplicate field `{}`",
-                        expr.type_name, field.name
-                    ),
-                    field.span,
-                ));
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E009",
+                        format!(
+                            "invalid record literal for `{}`: duplicate field `{}`",
+                            expr.type_name, field.name
+                        ),
+                        field.span,
+                    )
+                    .with_related("record is declared here", record.span),
+                );
                 has_error = true;
                 continue;
             }
 
             let Some(declared) = find_record_field(&record, field_name) else {
-                self.diagnostics.push(Diagnostic::new(
-                    "E009",
-                    format!(
-                        "invalid record literal for `{}`: unknown field `{}`",
-                        expr.type_name, field.name
-                    ),
-                    field.span,
-                ));
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E009",
+                        format!(
+                            "invalid record literal for `{}`: unknown field `{}`",
+                            expr.type_name, field.name
+                        ),
+                        field.span,
+                    )
+                    .with_related("record is declared here", record.span),
+                );
                 has_error = true;
                 continue;
             };
 
             let field_ty = self.type_from_expr(&declared.type_name, declared.span);
             if let Err(message) = self.unify(field_ty, value_ty) {
-                self.diagnostics
-                    .push(Diagnostic::new("E009", message, field.span));
+                self.diagnostics.push(
+                    Diagnostic::new("E009", message, field.span)
+                        .with_related("field type is declared here", declared.span),
+                );
                 has_error = true;
             }
         }
 
         for declared in &record.fields {
             if !seen.contains(&declared.name) {
-                self.diagnostics.push(Diagnostic::new(
-                    "E009",
-                    format!(
-                        "invalid record literal for `{}`: missing field `{}`",
-                        expr.type_name,
-                        self.symbols.resolve(declared.name)
-                    ),
-                    expr.span,
-                ));
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E009",
+                        format!(
+                            "invalid record literal for `{}`: missing field `{}`",
+                            expr.type_name,
+                            self.symbols.resolve(declared.name)
+                        ),
+                        expr.span,
+                    )
+                    .with_related("required field is declared here", declared.span),
+                );
                 has_error = true;
             }
         }
@@ -776,11 +800,10 @@ impl TypeChecker {
 
         let field_name = self.symbol(&expr.field);
         let Some(field) = find_record_field(&record, field_name) else {
-            self.diagnostics.push(Diagnostic::new(
-                "E008",
-                format!("unknown field `{}`", expr.field),
-                expr.span,
-            ));
+            self.diagnostics.push(
+                Diagnostic::new("E008", format!("unknown field `{}`", expr.field), expr.span)
+                    .with_related("record is declared here", record.span),
+            );
             return Type::Error;
         };
 
@@ -815,23 +838,29 @@ impl TypeChecker {
             let value_ty = self.check_expr(&field.value);
             let field_name = self.symbol(&field.name);
             if !seen.insert(field_name) {
-                self.diagnostics
-                    .push(Diagnostic::new("E012", "invalid record update", field.span));
+                self.diagnostics.push(
+                    Diagnostic::new("E012", "invalid record update", field.span)
+                        .with_related("record is declared here", record.span),
+                );
                 has_error = true;
                 continue;
             }
 
             let Some(declared) = find_record_field(&record, field_name) else {
-                self.diagnostics
-                    .push(Diagnostic::new("E012", "invalid record update", field.span));
+                self.diagnostics.push(
+                    Diagnostic::new("E012", "invalid record update", field.span)
+                        .with_related("record is declared here", record.span),
+                );
                 has_error = true;
                 continue;
             };
 
             let field_ty = self.type_from_expr(&declared.type_name, declared.span);
             if let Err(message) = self.unify(field_ty, value_ty) {
-                self.diagnostics
-                    .push(Diagnostic::new("E012", message, field.span));
+                self.diagnostics.push(
+                    Diagnostic::new("E012", message, field.span)
+                        .with_related("field type is declared here", declared.span),
+                );
                 has_error = true;
             }
         }

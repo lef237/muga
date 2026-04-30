@@ -65,28 +65,31 @@ Recently completed:
 - typed HIR package record types use `PackageItemId`-backed type data.
 - diagnostics can carry related notes and suggestions while preserving the existing single-line display for simple diagnostics.
 - package module-private visibility diagnostics now point at the private declaration and suggest `pkg` when sharing within a package is intended.
+- duplicate binding/record/field diagnostics point at the previous declaration.
+- selected record literal/update and field-access diagnostics point at the relevant record or field declaration.
+- package import alias conflicts and public-signature diagnostics include actionable suggestions.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. roll structured diagnostics through the highest-value resolver/typechecker/package errors
-2. add related notes for duplicate declarations, type mismatches, unresolved names, and public API leaks
-3. keep current diagnostic rendering compatible while moving producers away from ad hoc message-only errors
+1. introduce package interface data structures
+2. generate in-memory package interface summaries from checked packages while keeping flattening as the execution backend
+3. store public record/function signatures with `PackageItemId` and `TypeInfo` data, not only text or mangled names
 
 Why this comes next:
 
-- package/type/package-interface errors need related locations and actionable notes
-- package interfaces should serialize stable compiler facts, while diagnostics should keep source-facing context
-- the `Diagnostic` type now has the structure needed for this, but most producers still emit message/span only
-- tightening diagnostics before package interfaces avoids baking weak error shapes into the next layer
+- package item identity is now present in the package graph and typed HIR
+- typed HIR package calls and record types have `PackageItemId`-backed identity
+- diagnostics can now report multi-location interface errors cleanly
+- generating interfaces in memory first keeps runtime behavior stable while replacing flattening in controlled steps
 
 Expected result:
 
-- important frontend diagnostics consistently carry primary span, related spans, and optional suggestions
-- existing CLI output remains readable
-- package visibility, duplicate declarations, and future interface errors can point at both the use site and declaration site
+- each loaded package has a summary of exported records and functions
+- public signatures are available without re-inspecting downstream use sites
+- package interface generation can be tested before changing `run` / bytecode execution
 
 ## 5. Decisions To Make Soon
 

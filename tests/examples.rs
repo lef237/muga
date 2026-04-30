@@ -117,6 +117,58 @@ fn diagnostic_display_includes_related_notes_and_suggestions() {
 }
 
 #[test]
+fn resolver_duplicate_binding_diagnostic_points_to_previous_binding() {
+    let source = r#"
+fn main(): Int {
+  mut value = 1
+  mut value = 2
+  value
+}
+"#;
+    let program = parse_source(source);
+    let output = muga::resolver::resolve_program(&program);
+    let diagnostic = output
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "E002")
+        .expect("duplicate binding diagnostic should exist");
+    assert!(
+        diagnostic
+            .related
+            .iter()
+            .any(|note| note.message.contains("previous binding")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
+fn typechecker_record_literal_mismatch_points_to_field_declaration() {
+    let source = r#"
+record User {
+  age: Int
+}
+
+fn main(): User {
+  User {
+    age: "old"
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "E009")
+        .expect("record literal diagnostic should exist");
+    assert!(
+        diagnostic
+            .related
+            .iter()
+            .any(|note| note.message.contains("field type")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
 fn runnable_main_returns_value() {
     assert_sample_runs("samples/sum_to.muga", "10", "");
 }
@@ -375,6 +427,17 @@ fn package_public_function_requires_explicit_signature() {
             .any(|diagnostic| diagnostic.code == "PK011"),
         "{diagnostics:#?}"
     );
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK011")
+        .expect("PK011 diagnostic should exist");
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("return type")),
+        "{diagnostic:#?}"
+    );
 }
 
 #[test]
@@ -388,6 +451,24 @@ fn package_import_alias_conflict_is_rejected() {
             .iter()
             .any(|diagnostic| diagnostic.code == "PK007"),
         "{diagnostics:#?}"
+    );
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK007")
+        .expect("PK007 diagnostic should exist");
+    assert!(
+        diagnostic
+            .related
+            .iter()
+            .any(|note| note.message.contains("previous import")),
+        "{diagnostic:#?}"
+    );
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("as")),
+        "{diagnostic:#?}"
     );
 }
 

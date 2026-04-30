@@ -632,11 +632,14 @@ impl<'a> PackageRewriter<'a> {
             let has_full_signature = func.params.iter().all(|param| param.type_name.is_some())
                 && func.return_type.is_some();
             if !has_full_signature {
-                self.diagnostics.push(Diagnostic::new(
-                    "PK011",
-                    "public functions must annotate every parameter and the return type",
-                    func.span,
-                ));
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "PK011",
+                        "public functions must annotate every parameter and the return type",
+                        func.span,
+                    )
+                    .with_suggestion("add parameter type annotations and an explicit return type"),
+                );
             }
             for param in &func.params {
                 if let Some(type_name) = &param.type_name {
@@ -1419,18 +1422,27 @@ fn file_import_aliases(
 ) -> HashMap<String, String> {
     let mut aliases = HashMap::new();
     for import in imports {
-        if let Some(previous) = aliases.insert(import.alias.clone(), import.path.clone()) {
-            diagnostics.push(Diagnostic::new(
-                "PK007",
-                format!(
-                    "duplicate import alias `{}` for `{}` and `{}`",
-                    import.alias, previous, import.path
-                ),
-                import.span,
-            ));
+        if let Some((previous, previous_span)) = aliases.get(&import.alias) {
+            diagnostics.push(
+                Diagnostic::new(
+                    "PK007",
+                    format!(
+                        "duplicate import alias `{}` for `{}` and `{}`",
+                        import.alias, previous, import.path
+                    ),
+                    import.span,
+                )
+                .with_related("previous import using this alias is here", *previous_span)
+                .with_suggestion("use `as` to give one import a distinct local alias"),
+            );
+        } else {
+            aliases.insert(import.alias.clone(), (import.path.clone(), import.span));
         }
     }
     aliases
+        .into_iter()
+        .map(|(alias, (path, _))| (alias, path))
+        .collect()
 }
 
 fn mangle_function_name(package_path: &str, name: &str, entry_package: &str) -> String {
