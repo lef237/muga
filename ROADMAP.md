@@ -482,7 +482,7 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. diagnostic data model tightening
+1. structured diagnostics rollout across resolver/typechecker/package errors
 2. package interfaces instead of flattening
 3. cache and incremental compilation
 4. MIR and native backend work
@@ -507,6 +507,7 @@ Recently completed:
 - package loading tracks module/file identity
 - top-level module-private, `pkg`, and `pub` visibility are enforced before flattening
 - typed HIR identifiers, package call targets, and package record types carry `PackageItemId`-backed identity
+- diagnostics can carry related notes and suggestions while preserving simple single-line output
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

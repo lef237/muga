@@ -183,6 +183,7 @@ struct PackageData {
 struct PackageItemDecl {
     visibility: Visibility,
     module_path: String,
+    span: Span,
 }
 
 struct PackageLoader {
@@ -902,15 +903,25 @@ impl<'a> PackageRewriter<'a> {
                 item.visibility,
             );
         }
-        if inaccessible_package_item(&self.current_package_data.records, name).is_some() {
-            self.diagnostics.push(Diagnostic::new(
-                "PK015",
-                format!(
-                    "record `{name}` is not visible from module `{}`",
-                    self.current_module
-                ),
-                span,
-            ));
+        if let Some(item) = inaccessible_package_item(&self.current_package_data.records, name) {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "PK015",
+                    format!(
+                        "record `{name}` is not visible from module `{}`",
+                        self.current_module
+                    ),
+                    span,
+                )
+                .with_related(
+                    format!(
+                        "record `{name}` is module-private to `{}`",
+                        item.module_path
+                    ),
+                    item.span,
+                )
+                .with_suggestion("mark the declaration as `pkg` to share it within the package"),
+            );
         }
         name.to_string()
     }
@@ -935,15 +946,25 @@ impl<'a> PackageRewriter<'a> {
                 &self.entry_package,
             );
         }
-        if inaccessible_package_item(&self.current_package_data.functions, name).is_some() {
-            self.diagnostics.push(Diagnostic::new(
-                "PK015",
-                format!(
-                    "function `{name}` is not visible from module `{}`",
-                    self.current_module
-                ),
-                span,
-            ));
+        if let Some(item) = inaccessible_package_item(&self.current_package_data.functions, name) {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "PK015",
+                    format!(
+                        "function `{name}` is not visible from module `{}`",
+                        self.current_module
+                    ),
+                    span,
+                )
+                .with_related(
+                    format!(
+                        "function `{name}` is module-private to `{}`",
+                        item.module_path
+                    ),
+                    item.span,
+                )
+                .with_suggestion("mark the declaration as `pkg` to share it within the package"),
+            );
         }
         name.to_string()
     }
@@ -969,11 +990,16 @@ impl<'a> PackageRewriter<'a> {
                     if !visibility_can_expose(item.visibility, api_visibility) {
                         let api = visibility_label(api_visibility);
                         let item_visibility = visibility_label(item.visibility);
-                        self.diagnostics.push(Diagnostic::new(
-                            "PK012",
-                            format!("{api} API may not expose {item_visibility} record `{name}`"),
-                            span,
-                        ));
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                "PK012",
+                                format!(
+                                    "{api} API may not expose {item_visibility} record `{name}`"
+                                ),
+                                span,
+                            )
+                            .with_related(format!("record `{name}` is declared here"), item.span),
+                        );
                     }
                 }
             }
@@ -1082,27 +1108,33 @@ fn insert_package_item_decl(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let existing = items.entry(name.to_string()).or_default();
-    let duplicate_in_module = existing.iter().any(|item| item.module_path == module_path);
-    let duplicate_visible = visibility != Visibility::Private
-        && existing
-            .iter()
-            .any(|item| item.visibility != Visibility::Private);
+    let duplicate = existing.iter().find(|item| {
+        item.module_path == module_path
+            || (visibility != Visibility::Private && item.visibility != Visibility::Private)
+    });
 
-    if duplicate_in_module || duplicate_visible {
+    if let Some(previous) = duplicate {
         let kind_name = match kind {
             PackageItemKind::Record => "record",
             PackageItemKind::Function => "function",
         };
-        diagnostics.push(Diagnostic::new(
-            "PK013",
-            format!("duplicate top-level {kind_name} `{name}` in package `{package_path}`"),
-            span,
-        ));
+        diagnostics.push(
+            Diagnostic::new(
+                "PK013",
+                format!("duplicate top-level {kind_name} `{name}` in package `{package_path}`"),
+                span,
+            )
+            .with_related(
+                format!("previous `{name}` declaration is here"),
+                previous.span,
+            ),
+        );
     }
 
     existing.push(PackageItemDecl {
         visibility,
         module_path: module_path.to_string(),
+        span,
     });
 }
 
