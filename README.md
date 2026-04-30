@@ -222,6 +222,7 @@ cargo run -- path/to/file.muga
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
 - [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
+- [samples/packages/app/split_main/main.muga](./samples/packages/app/split_main/main.muga) (runnable package sample where the entry package is split across multiple files)
 - [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)
 
 Planned concurrency draft samples:
