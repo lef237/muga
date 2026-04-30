@@ -172,11 +172,12 @@ For more entry points, browse the [Samples](#samples) section below.
 - `record`, field access, `record.with` update, chained UFCS-style calls, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
 - file-based package mode with `package`, `import`, `pub`, and `alias::Name` is implemented
+- minimal `muga.toml` project mode with `[package] name/source` and inferred package paths is implemented
 - current package implementation still requires fully annotated `pub fn`; the design direction is to allow inferred public signatures once package interfaces can store them
 - generics, generic collection types, list literals, `Option[T]`, and `Map[K, V]` are design drafts and not implemented yet
 - explicit source-level references, mutable references, and explicit dereference syntax are not planned for ordinary Muga code
 - explicit receiver-style distinction is not implemented yet
-- package manifests, configurable source roots, and package caching are not implemented yet
+- dependency declarations, registries, package interfaces, and package caching are not implemented yet
 
 ## Planned Priority
 
@@ -224,6 +225,7 @@ cargo run -- path/to/file.muga
 - [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
 - [samples/packages/app/split_main/main.muga](./samples/packages/app/split_main/main.muga) (runnable package sample where the entry package is split across multiple files)
 - [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)
+- [samples/projects/my_service/src/main/main.muga](./samples/projects/my_service/src/main/main.muga) (runnable manifest project sample where package declarations are inferred from `muga.toml` and directories)
 
 Planned concurrency draft samples:
 
@@ -250,7 +252,7 @@ Package layout note:
 
 - Muga's package draft uses `directory = package` and `file = module`.
 - Source files import logical package paths such as `my_service::users`, not filesystem paths such as `../users`.
-- In the future manifest model, `name = "my_service"` and `source = "src"` let `src/users/` map to `my_service::users` without nesting another `my_service/` directory under `src/`.
+- In manifest project mode, `name = "my_service"` and `source = "src"` let `src/users/` map to `my_service::users` without nesting another `my_service/` directory under `src/`.
 - The future distribution model is manifest-based and should use cached package interfaces for fast rebuilds.
 - See [spec/006-packages.md](./spec/006-packages.md) for the large-project layout and distribution model.
 

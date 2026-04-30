@@ -23,7 +23,28 @@ pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
         }
     };
     let entry_tokens = crate::lexer::lex(&entry_source)?;
-    let entry_program = crate::parser::parse(entry_tokens)?;
+    let manifest = discover_manifest(path)?;
+    let entry_program = if let Some(manifest) = &manifest {
+        let inferred_package = infer_manifest_package_path(path, manifest)?;
+        let program =
+            crate::parser::parse_inferred_package(entry_tokens, inferred_package.clone())?;
+        if let Some(package) = &program.package {
+            if package.path != inferred_package {
+                return Err(vec![Diagnostic::new(
+                    "PK006",
+                    format!(
+                        "file {} declares package `{}` but manifest layout expects `{inferred_package}`",
+                        path.display(),
+                        package.path
+                    ),
+                    package.span,
+                )]);
+            }
+        }
+        program
+    } else {
+        crate::parser::parse(entry_tokens)?
+    };
     if entry_program.package.is_none() {
         return Ok(LoadedProgram {
             program: entry_program,
@@ -31,7 +52,7 @@ pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
         });
     }
 
-    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program);
+    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest);
     loader.load_and_flatten()
 }
 
@@ -112,6 +133,12 @@ struct ParsedFile {
     program: Program,
 }
 
+#[derive(Clone, Debug)]
+struct ProjectManifest {
+    source_root: PathBuf,
+    name: String,
+}
+
 struct PackageData {
     files: Vec<ParsedFile>,
     public_records: HashSet<String>,
@@ -124,25 +151,32 @@ struct PackageLoader {
     entry_file: PathBuf,
     source_root: PathBuf,
     entry_package: String,
+    manifest: Option<ProjectManifest>,
     packages: HashMap<String, PackageData>,
     loading: HashSet<String>,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl PackageLoader {
-    fn new(entry_file: PathBuf, entry_program: Program) -> Self {
+    fn new(entry_file: PathBuf, entry_program: Program, manifest: Option<ProjectManifest>) -> Self {
         let entry_package = entry_program
             .package
             .as_ref()
             .expect("checked package mode")
             .path
             .clone();
-        let source_root =
-            infer_source_root(&entry_file, &entry_package).unwrap_or_else(|_| entry_file.clone());
+        let source_root = manifest
+            .as_ref()
+            .map(|manifest| manifest.source_root.clone())
+            .unwrap_or_else(|| {
+                infer_source_root(&entry_file, &entry_package)
+                    .unwrap_or_else(|_| entry_file.clone())
+            });
         Self {
             entry_file,
             source_root,
             entry_package,
+            manifest,
             packages: HashMap::new(),
             loading: HashSet::new(),
             diagnostics: Vec::new(),
@@ -150,11 +184,13 @@ impl PackageLoader {
     }
 
     fn load_and_flatten(&mut self) -> Result<LoadedProgram, Vec<Diagnostic>> {
-        match infer_source_root(&self.entry_file, &self.entry_package) {
-            Ok(source_root) => self.source_root = source_root,
-            Err(diagnostic) => {
-                self.diagnostics.push(diagnostic);
-                return Err(std::mem::take(&mut self.diagnostics));
+        if self.manifest.is_none() {
+            match infer_source_root(&self.entry_file, &self.entry_package) {
+                Ok(source_root) => self.source_root = source_root,
+                Err(diagnostic) => {
+                    self.diagnostics.push(diagnostic);
+                    return Err(std::mem::take(&mut self.diagnostics));
+                }
             }
         }
 
@@ -332,14 +368,7 @@ impl PackageLoader {
                     continue;
                 }
             };
-            let tokens = match crate::lexer::lex(&source) {
-                Ok(tokens) => tokens,
-                Err(diagnostics) => {
-                    self.diagnostics.extend(diagnostics);
-                    continue;
-                }
-            };
-            let program = match crate::parser::parse(tokens) {
+            let program = match self.parse_package_file(&source, package_path) {
                 Ok(program) => program,
                 Err(diagnostics) => {
                     self.diagnostics.extend(diagnostics);
@@ -377,7 +406,33 @@ impl PackageLoader {
         files
     }
 
+    fn parse_package_file(
+        &self,
+        source: &str,
+        package_path: &str,
+    ) -> Result<Program, Vec<Diagnostic>> {
+        let tokens = crate::lexer::lex(source)?;
+        if self.manifest.is_some() {
+            crate::parser::parse_inferred_package(tokens, package_path.to_string())
+        } else {
+            crate::parser::parse(tokens)
+        }
+    }
+
     fn package_dir(&self, package_path: &str) -> PathBuf {
+        if let Some(manifest) = &self.manifest {
+            if package_path == manifest.name {
+                return self.source_root.clone();
+            }
+            if let Some(rest) = package_path.strip_prefix(&(manifest.name.clone() + "::")) {
+                let mut path = self.source_root.clone();
+                for segment in split_package_path(rest) {
+                    path.push(segment);
+                }
+                return path;
+            }
+        }
+
         let mut path = self.source_root.clone();
         for segment in split_package_path(package_path) {
             path.push(segment);
@@ -932,6 +987,165 @@ fn infer_source_root(entry_file: &Path, package_path: &str) -> Result<PathBuf, D
         })?;
     }
     Ok(root)
+}
+
+fn discover_manifest(entry_file: &Path) -> Result<Option<ProjectManifest>, Vec<Diagnostic>> {
+    let mut current = entry_file.parent();
+    while let Some(dir) = current {
+        let manifest_path = dir.join("muga.toml");
+        if manifest_path.is_file() {
+            return parse_manifest(&manifest_path).map(Some);
+        }
+        current = dir.parent();
+    }
+    Ok(None)
+}
+
+fn parse_manifest(path: &Path) -> Result<ProjectManifest, Vec<Diagnostic>> {
+    let source = fs::read_to_string(path).map_err(|error| {
+        vec![Diagnostic::new(
+            "PK002",
+            format!("failed to read {}: {error}", path.display()),
+            Span::default(),
+        )]
+    })?;
+
+    let mut in_package = false;
+    let mut name = None;
+    let mut source_dir = "src".to_string();
+
+    for raw_line in source.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_package = line == "[package]";
+            continue;
+        }
+        if !in_package {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let Some(value) = parse_manifest_string(value.trim()) else {
+            return Err(vec![Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest field `{key}` in {} must be a string",
+                    path.display()
+                ),
+                Span::default(),
+            )]);
+        };
+        match key {
+            "name" => name = Some(value),
+            "source" => source_dir = value,
+            _ => {}
+        }
+    }
+
+    let Some(name) = name else {
+        return Err(vec![Diagnostic::new(
+            "PK014",
+            format!("manifest {} must define [package] name", path.display()),
+            Span::default(),
+        )]);
+    };
+    if !is_valid_package_path(&name) {
+        return Err(vec![Diagnostic::new(
+            "PK014",
+            format!("manifest package name `{name}` is not a valid package path"),
+            Span::default(),
+        )]);
+    }
+
+    let root = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let source_root = if Path::new(&source_dir).is_absolute() {
+        PathBuf::from(source_dir)
+    } else {
+        root.join(source_dir)
+    };
+
+    Ok(ProjectManifest { source_root, name })
+}
+
+fn parse_manifest_string(value: &str) -> Option<String> {
+    value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .map(ToString::to_string)
+}
+
+fn infer_manifest_package_path(
+    entry_file: &Path,
+    manifest: &ProjectManifest,
+) -> Result<String, Vec<Diagnostic>> {
+    let Some(package_dir) = entry_file.parent() else {
+        return Err(vec![Diagnostic::new(
+            "PK003",
+            "entry file must live inside a package directory",
+            Span::default(),
+        )]);
+    };
+    let relative = package_dir
+        .strip_prefix(&manifest.source_root)
+        .map_err(|_| {
+            vec![Diagnostic::new(
+                "PK003",
+                format!(
+                    "entry file {} must live under manifest source root {}",
+                    entry_file.display(),
+                    manifest.source_root.display()
+                ),
+                Span::default(),
+            )]
+        })?;
+
+    let mut segments = vec![manifest.name.clone()];
+    for component in relative {
+        let Some(segment) = component.to_str() else {
+            return Err(vec![Diagnostic::new(
+                "PK003",
+                format!(
+                    "package path for {} contains non-UTF-8 segment",
+                    entry_file.display()
+                ),
+                Span::default(),
+            )]);
+        };
+        if segment.is_empty() {
+            continue;
+        }
+        if !is_valid_package_segment(segment) {
+            return Err(vec![Diagnostic::new(
+                "PK003",
+                format!(
+                    "directory segment `{segment}` in {} is not a valid package segment",
+                    entry_file.display()
+                ),
+                Span::default(),
+            )]);
+        }
+        segments.push(segment.to_string());
+    }
+
+    Ok(segments.join("::"))
+}
+
+fn is_valid_package_path(path: &str) -> bool {
+    !path.is_empty() && path.split("::").all(is_valid_package_segment)
+}
+
+fn is_valid_package_segment(segment: &str) -> bool {
+    let mut chars = segment.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 fn split_package_path(path: &str) -> Vec<String> {

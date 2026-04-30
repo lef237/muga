@@ -1,0 +1,4 @@
+pub record User {
+  name: String
+  age: Int
+}
