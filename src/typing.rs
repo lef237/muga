@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::{BindingId, BindingKind, ExprId, StmtId};
+use crate::identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
@@ -53,6 +53,10 @@ pub struct TypedCallInfo {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TypedCalleeInfo {
     Binding(BindingId),
+    PackageItem {
+        binding: BindingId,
+        item: PackageItemId,
+    },
     Builtin {
         binding: BindingId,
         name: &'static str,
@@ -74,6 +78,7 @@ pub enum TypeInfo {
     Bool,
     String,
     Record(Symbol),
+    PackageRecord { symbol: Symbol, item: PackageItemId },
     Function(FunctionTypeInfo),
     Builtin(&'static str),
     Unknown,

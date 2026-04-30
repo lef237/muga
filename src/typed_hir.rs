@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use crate::{
     ast,
-    identity::{BindingId, BindingKind, ExprId, StmtId},
+    identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId},
     package::PackageSymbolGraph,
     span::Span,
-    symbol::SymbolTable,
+    symbol::{Symbol, SymbolTable},
     typing::{
         FunctionTypeInfo, TypeCheckOutput, TypeInfo, TypedAssignmentTarget, TypedBindingInfo,
         TypedCalleeInfo,
@@ -153,6 +153,16 @@ pub enum ExprKind {
 pub struct IdentExpr {
     pub name: String,
     pub binding: BindingId,
+    pub target: IdentTarget,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdentTarget {
+    Binding(BindingId),
+    PackageItem {
+        binding: BindingId,
+        item: PackageItemId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -247,7 +257,8 @@ pub fn lower(
     analysis: &TypeCheckOutput,
     package_graph: PackageSymbolGraph,
 ) -> Program {
-    let lowerer = Lowerer::new(analysis);
+    let lowerer = Lowerer::new(analysis, &package_graph);
+    let bindings = lowerer.lower_bindings();
     let statements = program
         .statements
         .iter()
@@ -255,7 +266,7 @@ pub fn lower(
         .collect();
     Program {
         statements,
-        bindings: analysis.bindings.clone(),
+        bindings,
         package_graph,
         symbols: analysis.symbols.clone(),
     }
@@ -266,11 +277,38 @@ struct Lowerer<'a> {
     expr_types: HashMap<ExprId, TypeInfo>,
     identifier_refs: HashMap<ExprId, BindingId>,
     calls: HashMap<ExprId, TypedCalleeInfo>,
+    package_items_by_binding: HashMap<BindingId, PackageItemId>,
+    package_items_by_symbol: HashMap<Symbol, PackageItemId>,
     assignment_targets: HashMap<StmtId, TypedAssignmentTarget>,
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(analysis: &'a TypeCheckOutput) -> Self {
+    fn new(analysis: &'a TypeCheckOutput, package_graph: &PackageSymbolGraph) -> Self {
+        let package_items_by_mangled_name: HashMap<&str, PackageItemId> = package_graph
+            .items
+            .iter()
+            .map(|item| (item.mangled_name.as_str(), item.id))
+            .collect();
+        let package_items_by_binding = analysis
+            .bindings
+            .iter()
+            .filter_map(|binding| {
+                package_items_by_mangled_name
+                    .get(analysis.symbols.resolve(binding.symbol))
+                    .copied()
+                    .map(|item| (binding.id, item))
+            })
+            .collect();
+        let package_items_by_symbol = package_graph
+            .items
+            .iter()
+            .filter_map(|item| {
+                analysis
+                    .symbols
+                    .lookup(&item.mangled_name)
+                    .map(|symbol| (symbol, item.id))
+            })
+            .collect();
         Self {
             analysis,
             expr_types: analysis
@@ -288,12 +326,28 @@ impl<'a> Lowerer<'a> {
                 .iter()
                 .map(|call| (call.expr_id, call.callee))
                 .collect(),
+            package_items_by_binding,
+            package_items_by_symbol,
             assignment_targets: analysis
                 .assignment_targets
                 .iter()
                 .map(|target| (target.stmt_id, *target))
                 .collect(),
         }
+    }
+
+    fn lower_bindings(&self) -> Vec<TypedBindingInfo> {
+        self.analysis
+            .bindings
+            .iter()
+            .map(|binding| TypedBindingInfo {
+                id: binding.id,
+                symbol: binding.symbol,
+                kind: binding.kind,
+                ty: self.package_target_for_type(binding.ty.clone()),
+                span: binding.span,
+            })
+            .collect()
     }
 
     fn lower_stmt(&self, statement: &ast::Stmt) -> Stmt {
@@ -398,6 +452,7 @@ impl<'a> Lowerer<'a> {
             ast::Expr::Ident(expr) => ExprKind::Ident(IdentExpr {
                 name: expr.name.clone(),
                 binding: self.binding_for_expr(expr.id),
+                target: self.target_for_expr(expr.id),
             }),
             ast::Expr::RecordLit(expr) => ExprKind::RecordLit(RecordLitExpr {
                 type_name: expr.type_name.clone(),
@@ -510,17 +565,41 @@ impl<'a> Lowerer<'a> {
     }
 
     fn type_for_expr(&self, id: ExprId) -> TypeInfo {
-        self.expr_types
+        let ty = self
+            .expr_types
             .get(&id)
             .cloned()
-            .expect("checked expression should have a type")
+            .expect("checked expression should have a type");
+        self.package_target_for_type(ty)
     }
 
     fn resolved_callee_for_call(&self, id: ExprId) -> TypedCalleeInfo {
-        *self
+        let callee = *self
             .calls
             .get(&id)
-            .expect("checked call should have resolved callee info")
+            .expect("checked call should have resolved callee info");
+        self.package_target_for_callee(callee)
+    }
+
+    fn target_for_expr(&self, id: ExprId) -> IdentTarget {
+        let binding = self.binding_for_expr(id);
+        self.package_items_by_binding
+            .get(&binding)
+            .copied()
+            .map(|item| IdentTarget::PackageItem { binding, item })
+            .unwrap_or(IdentTarget::Binding(binding))
+    }
+
+    fn package_target_for_callee(&self, callee: TypedCalleeInfo) -> TypedCalleeInfo {
+        match callee {
+            TypedCalleeInfo::Binding(binding) => self
+                .package_items_by_binding
+                .get(&binding)
+                .copied()
+                .map(|item| TypedCalleeInfo::PackageItem { binding, item })
+                .unwrap_or(TypedCalleeInfo::Binding(binding)),
+            other => other,
+        }
     }
 
     fn binding_for_decl(&self, name: &str, span: Span, kind: BindingKind) -> BindingId {
@@ -537,12 +616,14 @@ impl<'a> Lowerer<'a> {
     }
 
     fn type_for_binding(&self, id: BindingId) -> TypeInfo {
-        self.analysis
+        let ty = self
+            .analysis
             .bindings
             .iter()
             .find(|binding| binding.id == id)
             .map(|binding| binding.ty.clone())
-            .expect("checked binding should have a type")
+            .expect("checked binding should have a type");
+        self.package_target_for_type(ty)
     }
 
     fn function_return_type(&self, id: BindingId) -> TypeInfo {
@@ -562,6 +643,7 @@ impl<'a> Lowerer<'a> {
                 .symbols
                 .lookup(name)
                 .map(TypeInfo::Record)
+                .map(|ty| self.package_target_for_type(ty))
                 .unwrap_or(TypeInfo::Error),
             ast::TypeExpr::Function(function) => TypeInfo::Function(FunctionTypeInfo {
                 params: function
@@ -571,6 +653,26 @@ impl<'a> Lowerer<'a> {
                     .collect(),
                 ret: Box::new(self.type_info_from_type_expr(&function.ret)),
             }),
+        }
+    }
+
+    fn package_target_for_type(&self, ty: TypeInfo) -> TypeInfo {
+        match ty {
+            TypeInfo::Record(symbol) => self
+                .package_items_by_symbol
+                .get(&symbol)
+                .copied()
+                .map(|item| TypeInfo::PackageRecord { symbol, item })
+                .unwrap_or(TypeInfo::Record(symbol)),
+            TypeInfo::Function(function) => TypeInfo::Function(FunctionTypeInfo {
+                params: function
+                    .params
+                    .into_iter()
+                    .map(|param| self.package_target_for_type(param))
+                    .collect(),
+                ret: Box::new(self.package_target_for_type(*function.ret)),
+            }),
+            other => other,
         }
     }
 }

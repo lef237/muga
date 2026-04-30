@@ -101,10 +101,11 @@ Current typed HIR status:
 - checked AST can lower into `typed_hir::Program`
 - typed HIR keeps language-shaped statements and expressions
 - expressions carry `ExprId` and resolved `TypeInfo`
-- identifier expressions carry `BindingId`
+- identifier expressions carry `BindingId` plus `IdentTarget`, which can point at a package item
 - assignment statements carry target `BindingId`
 - package symbol graph is preserved on typed HIR programs
 - call expressions carry explicit resolved callee shape and call origin
+- package call targets and package record types carry `PackageItemId`-backed identity
 
 ## Current Migration Status
 
@@ -121,12 +122,13 @@ Done:
 - initial typed HIR exists
 - typed HIR calls carry resolved callee shape and call origin
 - package loading exposes `ModuleId` data and enforces top-level module-private / `pkg` / `pub` visibility
+- typed HIR package identifiers, call targets, and record types point to package item identities
 
 Remaining:
 
-1. make package-qualified references point to package item identities before flattening is removed
-2. replace package flattening with package interfaces and real compilation units
-3. add record field visibility enforcement on top of module identity
+1. replace package flattening with package interfaces and real compilation units
+2. add record field visibility enforcement on top of module identity
+3. tighten the diagnostic model for related notes and suggestions before interface errors expand
 
 ## Foundation Note
 
