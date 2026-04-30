@@ -538,7 +538,208 @@ It avoids, for now:
 - protocol-like solving at package boundaries
 - package-scoped execution order rules
 
-## 16. Example
+## 16. Large Project Layout
+
+For larger codebases, Muga should keep the mental model simple:
+
+- directory = package
+- file = module and default encapsulation boundary
+- manifest = project, dependency, and source-root configuration
+- package interface = cached public API summary
+
+Example future project layout:
+
+```txt
+my_service/
+  muga.toml
+  src/
+    main/
+      main.muga
+
+    config/
+      config.muga
+
+    http/
+      server.muga
+      router.muga
+
+    users/
+      model.muga
+      repository.muga
+      service.muga
+
+    orders/
+      model.muga
+      service.muga
+
+    db/
+      connection.muga
+      query.muga
+```
+
+In this layout, the manifest package name supplies the package-path prefix.
+
+If `muga.toml` declares `name = "my_service"` and `source = "src"`, then:
+
+- `src/main/` maps to `my_service::main`
+- `src/users/` maps to `my_service::users`
+- `src/http/` maps to `my_service::http`
+
+Each directory under the source root is one package. All `.muga` files in the same directory declare the same package path.
+
+Example:
+
+```txt
+// src/users/model.muga
+package my_service::users
+
+pub record User {
+  name: String
+  age: Int
+}
+```
+
+```txt
+// src/users/service.muga
+package my_service::users
+
+pub fn display_name(user: User): String {
+  user.name
+}
+```
+
+The files in `src/users/` form one package. They may refer to package-visible declarations from the same package without importing that package.
+
+Other packages import the package by logical package path:
+
+```txt
+package my_service::main
+
+import my_service::users
+
+fn main(): Int {
+  user = users::User {
+    name: "Ada"
+    age: 20
+  }
+
+  println(users::display_name(user))
+}
+```
+
+The source code does not import by filesystem path such as `./users` or `../users`. Filesystem layout is handled by the source root and manifest.
+
+This keeps code portable across operating systems and keeps import names stable when files move inside a package.
+
+## 17. Distribution and Dependency Model
+
+The future distribution model should be manifest-based.
+
+Example future manifest:
+
+```toml
+[package]
+name = "my_service"
+version = "0.1.0"
+source = "src"
+
+[dependencies]
+json = "muga.io/json@1.2.0"
+http = "muga.io/http@0.4.0"
+```
+
+The exact manifest format is deferred, but the intended roles are:
+
+- declare the root package name
+- declare the source root
+- declare direct dependencies
+- pin dependency versions
+- define build targets such as applications, libraries, tests, and benchmarks
+
+Muga source files should continue to use logical package paths:
+
+```txt
+package my_service::main
+
+import json
+import http::server as server
+```
+
+Dependency resolution maps those logical package paths to local source directories or downloaded package artifacts.
+
+The compiler should not typecheck dependency bodies on every build. Instead, dependencies should expose package interfaces.
+
+A package interface contains at least:
+
+- public package path
+- public records and their visible fields
+- public functions and resolved signatures
+- public generic signatures
+- visibility metadata
+- interface hash
+
+Build artifacts can then be cached by:
+
+- source hash
+- interface hash
+- compiler version
+- target backend
+- dependency interface hashes
+
+This supports fast rebuilds:
+
+- private implementation changes should not force downstream typechecking if the public interface hash is unchanged
+- dependency packages can be loaded from cached interfaces
+- independent packages can compile in parallel
+- applications and libraries share the same package model
+
+### 17.1 Local Development
+
+During local development, a project should be able to depend on local packages by manifest configuration rather than source-level path imports.
+
+Conceptual example:
+
+```toml
+[dependencies]
+shared = { path = "../shared" }
+```
+
+Source code still imports the logical package:
+
+```txt
+import shared::logging
+```
+
+This prevents local directory layout from leaking into ordinary source files.
+
+### 17.2 Publishing
+
+A published package should include:
+
+- source files
+- manifest
+- package metadata
+- version
+- public package interfaces, if precomputed interfaces are supported
+
+Consumers should write imports against package paths, not archive paths, registry URLs, or filesystem paths.
+
+### 17.3 Current Implementation Boundary
+
+The current implementation does not yet have a manifest, registry, package cache, or real package interface files.
+
+It currently:
+
+- accepts a file entrypoint
+- infers the source root from the entry file path and declared package path
+- reads all `.muga` files in each loaded package directory
+- follows `import` declarations recursively
+- rejects import alias collisions
+- flattens loaded packages into one internal program before resolver/typechecker work
+
+This is sufficient for testing the surface syntax, but it is not the final compilation model.
+
+## 18. Example
 
 ```txt
 package app::users
@@ -562,7 +763,7 @@ pub fn show(user: users::User): String {
 }
 ```
 
-## 17. Deferred Topics
+## 19. Deferred Topics
 
 This draft intentionally leaves the following topics for later:
 
@@ -577,7 +778,7 @@ This draft intentionally leaves the following topics for later:
 - protocol/trait-like abstractions
 - testing and benchmark file conventions
 
-## 18. Recommendation
+## 20. Recommendation
 
 If Muga continues to optimize for:
 
