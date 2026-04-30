@@ -60,29 +60,31 @@ Recently completed:
 - package loading now records `ModuleId` data in `PackageSymbolGraph`.
 - `pkg` is accepted for top-level package items.
 - unmodified top-level package items are module-private, `pkg` / `pub` items are visible to sibling files, and imports expose only `pub` items.
+- typed HIR identifiers can distinguish local bindings from package item targets.
+- typed HIR package call targets use `PackageItemId`-backed callee data.
+- typed HIR package record types use `PackageItemId`-backed type data.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. make package-qualified typed HIR references point to package-aware item identity
-2. upgrade package-qualified call targets from flattened `BindingId` data to `PackageItemId`-backed data
-3. keep the current flattening backend compatible while typed HIR becomes the semantic boundary for package interfaces
+1. tighten the diagnostic data model before package interfaces harden
+2. add structured related notes / suggestions where package and type diagnostics need context
+3. keep current diagnostic rendering compatible while moving producers away from ad hoc message-only errors
 
 Why this comes next:
 
-- `PackageId`, `ModuleId`, and `PackageItemId` now exist in the package graph
-- call shape is already explicit in typed HIR
-- package interfaces should not depend on mangled names or re-run import resolution
-- this is the last identity step before replacing package flattening with real package interfaces
+- package/type/package-interface errors need related locations and actionable notes
+- package interfaces should serialize stable compiler facts, while diagnostics should keep source-facing context
+- the current `Diagnostic` type is still message/span only
+- tightening diagnostics before package interfaces avoids baking weak error shapes into the next layer
 
 Expected result:
 
-- typed HIR can distinguish local binding references from package item references
-- qualified package calls no longer look like ordinary calls to flattened internal bindings
-- visibility and import resolution are represented as compiler data, not only as rewritten strings
-- package interface generation can consume stable package identities
+- diagnostics can carry primary span, related spans, and optional suggestions
+- existing CLI output remains readable
+- package visibility, duplicate declarations, and future interface errors can point at both the use site and declaration site
 
 ## 5. Decisions To Make Soon
 
@@ -208,7 +210,7 @@ When resuming implementation:
 1. Run `cargo test`.
 2. Read [ROADMAP.md](../ROADMAP.md) "Recommended Immediate Next Steps".
 3. Read [docs/internal/identity-model.md](./internal/identity-model.md).
-4. Start with typed HIR callee-shape finalization unless a language-design decision is explicitly being made first.
+4. Start with diagnostic model tightening unless a language-design decision is explicitly being made first.
 5. After each compiler-core change, keep `check`, `run`, and existing samples behavior-compatible.
 
 Useful validation commands:

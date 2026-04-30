@@ -710,13 +710,60 @@ fn typed_hir_preserves_package_qualified_call_callee() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
         .expect("typed package compilation should pass");
     let inc_twice = typed_binding_id(&program, "__muga_pkg__util__numbers__inc_twice");
+    let numbers = program
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let users = program
+        .package_graph
+        .package_id("util::users")
+        .expect("users package should exist");
+    let inc_twice_item = program
+        .package_graph
+        .item_id(
+            numbers,
+            "inc_twice",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("inc_twice package item should exist");
+    let user_item = program
+        .package_graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User package item should exist");
     let calls = collect_typed_calls(&program);
     assert!(
         calls.iter().any(|call| {
             call.origin == muga::typed_hir::CallOrigin::QualifiedChained
-                && call.resolved_callee == muga::typing::TypedCalleeInfo::Binding(inc_twice)
+                && call.resolved_callee
+                    == muga::typing::TypedCalleeInfo::PackageItem {
+                        binding: inc_twice,
+                        item: inc_twice_item,
+                    }
+                && matches!(
+                    &call.callee.kind,
+                    muga::typed_hir::ExprKind::Ident(muga::typed_hir::IdentExpr {
+                        target: muga::typed_hir::IdentTarget::PackageItem {
+                            binding,
+                            item,
+                        },
+                        ..
+                    }) if *binding == inc_twice && *item == inc_twice_item
+                )
         }),
         "{calls:#?}"
+    );
+
+    let user_binding = program
+        .bindings
+        .iter()
+        .find(|binding| program.symbols.resolve(binding.symbol) == "user")
+        .expect("local user binding should exist");
+    assert!(
+        matches!(
+            &user_binding.ty,
+            muga::typing::TypeInfo::PackageRecord { item, .. } if *item == user_item
+        ),
+        "{user_binding:#?}"
     );
 }
 

@@ -26,8 +26,8 @@ As of now, Muga already has:
 - symbol interning in HIR / bytecode / runtime
 - records, field access, record update, and UFCS-style chains
 - higher-order functions with local bidirectional inference
-- file-based package mode with `package`, `import`, `pub`, `alias::Name`, and `as`
-- initial typed HIR with resolved local bindings and expression types
+- file-based package mode with `package`, `import`, `pkg`, `pub`, `alias::Name`, and `as`
+- initial typed HIR with resolved local bindings, expression types, call targets, and package item identities
 
 The biggest remaining architectural gap is this:
 
@@ -35,7 +35,7 @@ The biggest remaining architectural gap is this:
 - resolver and typechecker now use symbol-based scope lookup internally
 - resolved local binding and expression type data are now exposed as reusable compiler data
 - package loading now exposes a package symbol graph with `PackageId` / `PackageItemId`
-- typed HIR exists, but calls do not yet carry an explicit resolved callee shape
+- typed HIR now carries explicit call targets and package item identities
 - package compilation is still implemented by flattening packages into one internal program
 
 That means the language surface is ahead of the compiler core.
@@ -274,8 +274,10 @@ Current implementation:
 
 - `typed_hir` lowers checked AST into a language-shaped typed HIR
 - expression nodes carry `ExprId` and resolved `TypeInfo`
-- identifier expressions carry resolved `BindingId`
+- identifier expressions carry resolved `BindingId` and can carry package item targets
 - assignment statements carry target `BindingId` and update-vs-new-binding information
+- call expressions carry resolved callee shape and call origin
+- package call targets and package record types carry `PackageItemId`-backed identity
 - package symbol graph is preserved on typed HIR programs
 - existing VM bytecode still uses the older untyped HIR path
 
@@ -480,12 +482,11 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. package-qualified references in typed HIR
-2. diagnostic data model tightening
-3. package interfaces instead of flattening
-4. cache and incremental compilation
-5. MIR and native backend work
-6. collection/generic runtime expansion once the semantic boundary is stable
+1. diagnostic data model tightening
+2. package interfaces instead of flattening
+3. cache and incremental compilation
+4. MIR and native backend work
+5. collection/generic runtime expansion once the semantic boundary is stable
 
 This order best matches the current state of the codebase.
 
@@ -495,10 +496,9 @@ For a shorter resume checklist and open decision queue, see [docs/current-next-s
 
 The initial typed HIR is in place as a foundation, with the following follow-ups intentionally deferred:
 
-- package-qualified references should point to package item identities, not only flattened/mangled names
-- typed HIR should consume module/package item identity directly instead of relying on rewritten names
 - package compilation still uses flattening internally
 - package interfaces and real compilation units remain future work
+- package item identity should feed package interface generation before flattening is removed
 
 Recently completed:
 
@@ -506,6 +506,7 @@ Recently completed:
 - chained calls record their call origin
 - package loading tracks module/file identity
 - top-level module-private, `pkg`, and `pub` visibility are enforced before flattening
+- typed HIR identifiers, package call targets, and package record types carry `PackageItemId`-backed identity
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 
