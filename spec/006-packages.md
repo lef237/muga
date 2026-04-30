@@ -513,6 +513,7 @@ Current implementation note:
 
 - `cargo run -- check path/to/entry.muga` already supports package files
 - `cargo run -- path/to/entry.muga` already runs a package graph by flattening imported packages into one internal program
+- the entry file identifies the entry package, and the compiler reads all `.muga` files in that package directory
 - the current file-based CLI accepts any package path, as long as the chosen entry package contains `fn main()`
 - the source root is currently inferred from the entry file path and the declared package path
 

@@ -122,7 +122,6 @@ struct PackageData {
 
 struct PackageLoader {
     entry_file: PathBuf,
-    entry_program: Program,
     source_root: PathBuf,
     entry_package: String,
     packages: HashMap<String, PackageData>,
@@ -142,7 +141,6 @@ impl PackageLoader {
             infer_source_root(&entry_file, &entry_package).unwrap_or_else(|_| entry_file.clone());
         Self {
             entry_file,
-            entry_program,
             source_root,
             entry_package,
             packages: HashMap::new(),
@@ -154,15 +152,13 @@ impl PackageLoader {
     fn load_and_flatten(&mut self) -> Result<LoadedProgram, Vec<Diagnostic>> {
         match infer_source_root(&self.entry_file, &self.entry_package) {
             Ok(source_root) => self.source_root = source_root,
-            Err(diagnostic) => self.diagnostics.push(diagnostic),
+            Err(diagnostic) => {
+                self.diagnostics.push(diagnostic);
+                return Err(std::mem::take(&mut self.diagnostics));
+            }
         }
 
-        self.load_package(
-            self.entry_package.clone(),
-            Some(ParsedFile {
-                program: self.entry_program.clone(),
-            }),
-        );
+        self.load_package(self.entry_package.clone());
 
         if !self.diagnostics.is_empty() {
             return Err(std::mem::take(&mut self.diagnostics));
@@ -215,7 +211,7 @@ impl PackageLoader {
         }
     }
 
-    fn load_package(&mut self, package_path: String, entry_file: Option<ParsedFile>) {
+    fn load_package(&mut self, package_path: String) {
         if self.packages.contains_key(&package_path) {
             return;
         }
@@ -228,10 +224,10 @@ impl PackageLoader {
             return;
         }
 
-        let files = self.load_package_files(&package_path, entry_file);
+        let files = self.load_package_files(&package_path);
         for file in &files {
             for import in &file.program.imports {
-                self.load_package(import.path.clone(), None);
+                self.load_package(import.path.clone());
             }
         }
 
@@ -291,15 +287,7 @@ impl PackageLoader {
         self.loading.remove(&package_path);
     }
 
-    fn load_package_files(
-        &mut self,
-        package_path: &str,
-        entry_file: Option<ParsedFile>,
-    ) -> Vec<ParsedFile> {
-        if let Some(entry_file) = entry_file {
-            return vec![entry_file];
-        }
-
+    fn load_package_files(&mut self, package_path: &str) -> Vec<ParsedFile> {
         let package_dir = self.package_dir(package_path);
         let read_dir = match fs::read_dir(&package_dir) {
             Ok(read_dir) => read_dir,

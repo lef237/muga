@@ -165,6 +165,11 @@ fn package_entry_runs() {
 }
 
 #[test]
+fn package_entry_reads_all_files_in_entry_directory() {
+    assert_package_runs("samples/packages/app/split_main/main.muga", "42", "");
+}
+
+#[test]
 fn package_loader_renumbers_statement_ids_after_flattening() {
     let program = muga::check_path(Path::new("samples/packages/app/main/main.muga")).unwrap();
     let mut ids = HashSet::new();
