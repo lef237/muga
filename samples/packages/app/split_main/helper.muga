@@ -1,5 +1,5 @@
 package app::split_main
 
-fn base(): Int {
+pkg fn base(): Int {
   40
 }

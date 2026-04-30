@@ -20,7 +20,7 @@ Muga should keep these concepts separate:
 - `BindingId`: resolved binding inside a checked program body or scope tree
 - `LocalId`: lowered local storage slot after name resolution and typing
 - `PackageId`: package node in the package graph
-- future `ModuleId`: module/file node inside a package
+- `ModuleId`: module/file node inside a package
 - `PackageItemId`: top-level exported or private item inside a package
 
 `Symbol` is not enough by itself because two different scopes can define the same spelling. A resolved identifier should eventually point to a `BindingId` or `PackageItemId`, not just to the interned text.
@@ -61,7 +61,7 @@ Package loading now introduces a package symbol graph before package flattening 
 Recommended model:
 
 - `PackageId` identifies one loaded package
-- a future `ModuleId` should identify one source module/file inside that package
+- `ModuleId` identifies one source module/file inside that package
 - `PackageItemId` identifies one top-level item in that package
 - imports map local alias symbols to `PackageId`
 - qualified references resolve to `(PackageId, PackageItemId)`
@@ -70,10 +70,11 @@ Current implementation:
 
 - `load_from_entry` returns both the flattened program and `PackageSymbolGraph`
 - `PackageSymbolGraph` stores package nodes, top-level item nodes, and import edges
-- item records keep source name, kind, visibility, source span, and current mangled name
+- module records keep package membership and source file/module path
+- item records keep source name, kind, visibility, declaring module, source span, and current mangled name
 - the existing VM path still consumes the flattened program
 
-Module-private visibility will require package items to also know their declaring module/file. This is not implemented yet, but it should be added before package interfaces harden so that Muga does not fall into package-wide private visibility as the only encapsulation boundary.
+Module-private visibility is now enforced for top-level package items during package rewriting. Unmodified top-level items are visible only inside their declaring source file, `pkg` items are visible to sibling files in the same package, and imports expose only `pub` items. Record field visibility is still a later slice.
 
 This lets the compiler distinguish:
 
@@ -103,7 +104,7 @@ Current typed HIR status:
 - identifier expressions carry `BindingId`
 - assignment statements carry target `BindingId`
 - package symbol graph is preserved on typed HIR programs
-- call expressions still need an explicit resolved callee shape
+- call expressions carry explicit resolved callee shape and call origin
 
 ## Current Migration Status
 
@@ -118,13 +119,14 @@ Done:
 - typechecker exposes accepted bindings, identifier references, and expression types
 - package loading exposes `PackageSymbolGraph`
 - initial typed HIR exists
+- typed HIR calls carry resolved callee shape and call origin
+- package loading exposes `ModuleId` data and enforces top-level module-private / `pkg` / `pub` visibility
 
 Remaining:
 
-1. make typed HIR calls carry resolved callee shape
-2. add module/file identity for module-private visibility
-3. make package-qualified references point to package item identities before flattening is removed
-4. replace package flattening with package interfaces and real compilation units
+1. make package-qualified references point to package item identities before flattening is removed
+2. replace package flattening with package interfaces and real compilation units
+3. add record field visibility enforcement on top of module identity
 
 ## Foundation Note
 

@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pub`, `alias::Name` lookup, directory-based packages, and a minimal `muga.toml` project mode that infers package paths from `name` and `source`. Dependency manifests, registries, selective imports, module-private visibility, `pkg`, and package-level caching are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, and a minimal `muga.toml` project mode that infers package paths from `name` and `source`. Dependency manifests, registries, selective imports, record-field visibility, and package-level caching are still deferred.
 
 ## 1. Design Goals
 
@@ -123,8 +123,10 @@ This applies to:
 
 Current implementation note:
 
-- the compiler currently implements only a subset: top-level `pub` and package-level flattening
-- module-private default and `pkg` are target design and should be implemented before real package interfaces harden
+- the compiler currently implements top-level module-private, `pkg`, and `pub` visibility before flattening
+- imports expose only `pub` items
+- record-field visibility is still deferred
+- package-level flattening still exists and should be replaced after typed HIR package references use stable package item identity
 
 Example:
 

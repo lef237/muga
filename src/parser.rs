@@ -122,9 +122,9 @@ impl Parser {
 
     fn parse_top_stmt(&mut self) -> Result<Stmt, Diagnostic> {
         match self.peek_kind() {
-            TokenKind::Pub => Err(Diagnostic::new(
+            TokenKind::Pub | TokenKind::Pkg => Err(Diagnostic::new(
                 "P014",
-                "`pub` is only allowed in package mode",
+                "`pub` and `pkg` are only allowed in package mode",
                 self.current_span(),
             )),
             TokenKind::Import => Err(Diagnostic::new(
@@ -178,10 +178,16 @@ impl Parser {
     }
 
     fn parse_package_item(&mut self) -> Result<Stmt, Diagnostic> {
-        let visibility = if self.matches_simple(&TokenKind::Pub) {
-            Visibility::Public
-        } else {
-            Visibility::Private
+        let visibility = match self.peek_kind() {
+            TokenKind::Pub => {
+                self.advance();
+                Visibility::Public
+            }
+            TokenKind::Pkg => {
+                self.advance();
+                Visibility::Package
+            }
+            _ => Visibility::Private,
         };
         match self.peek_kind() {
             TokenKind::Record => self
@@ -206,9 +212,9 @@ impl Parser {
                 "record declarations are top-level only",
                 self.current_span(),
             )),
-            TokenKind::Pub => Err(Diagnostic::new(
+            TokenKind::Pub | TokenKind::Pkg => Err(Diagnostic::new(
                 "P014",
-                "`pub` is only allowed for top-level declarations in package mode",
+                "`pub` and `pkg` are only allowed for top-level declarations in package mode",
                 self.current_span(),
             )),
             TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self

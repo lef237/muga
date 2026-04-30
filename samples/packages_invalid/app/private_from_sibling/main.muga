@@ -1,0 +1,5 @@
+package app::private_from_sibling
+
+fn main(): Int {
+  hidden()
+}

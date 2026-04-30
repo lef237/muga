@@ -10,6 +10,7 @@ pub enum TokenKind {
     Package,
     Import,
     Pub,
+    Pkg,
     As,
     Fn,
     Record,

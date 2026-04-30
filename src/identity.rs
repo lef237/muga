@@ -59,6 +59,19 @@ impl LocalId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModuleId(u32);
+
+impl ModuleId {
+    pub const fn new(index: u32) -> Self {
+        Self(index)
+    }
+
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PackageId(u32);
 
 impl PackageId {
