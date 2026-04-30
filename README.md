@@ -6,6 +6,21 @@ This programming language borrows that idea for a small language focused on simp
 
 This repository currently contains a v1 specification draft and an early Rust implementation.
 
+## Installation
+
+Install the published command with Cargo:
+
+```bash
+cargo install muga
+```
+
+Run a source file with:
+
+```bash
+muga path/to/file.muga
+muga check path/to/file.muga
+```
+
 ## Quickstart
 
 Prerequisites: a recent Rust toolchain (edition 2024, so Rust 1.85 or later).
