@@ -5,5 +5,8 @@ fn local(): Int {
 }
 
 fn main(): Int {
-  helper() + local()
+  value = PackageValue {
+    value: helper()
+  }
+  value.value + local()
 }

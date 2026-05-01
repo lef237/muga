@@ -1,5 +1,9 @@
 package app::module_visibility
 
+pkg record PackageValue {
+  value: Int
+}
+
 pkg fn helper(): Int {
   41
 }
