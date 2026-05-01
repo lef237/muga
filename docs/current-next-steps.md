@@ -72,7 +72,7 @@ Recently completed:
 - interface summaries store `PackageItemId` and resolved `TypeInfo` for public signatures.
 - `pkg` items are excluded from package interface summaries.
 - typed package compilation validates public package references against generated interface summaries.
-- interface validation rejects stale public function signatures and record field shapes.
+- interface validation uses package/name lookup and rejects stale public item identity, function signatures, and record field shapes.
 - package import lookup now reads a source-level public export surface instead of directly checking dependency item maps.
 - the existing VM bytecode path remains behavior-compatible.
 
@@ -89,7 +89,7 @@ Why this comes next:
 - in-memory package interface summaries now exist and are tested
 - typed package compilation already consumes summaries for public package reference and signature validation
 - import/package-qualified lookup already goes through an export-surface abstraction
-- interface summaries can now be looked up by package/name as well as by stable item id
+- interface summaries are now validated through package/name lookup before stable item identity and signature checks
 - public signatures are available as resolved compiler data
 - downstream checking should stop depending on dependency bodies before caching can matter
 - keeping flattening for execution lets this migration stay behavior-compatible
