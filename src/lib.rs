@@ -98,11 +98,14 @@ pub fn compile_typed_path(path: &Path) -> Result<TypedHirProgram, Vec<Diagnostic
     let mut diagnostics = resolve_output.diagnostics;
     diagnostics.extend(type_output.diagnostics.clone());
     if diagnostics.is_empty() {
-        Ok(typed_hir::lower(
-            &loaded.program,
-            &type_output,
-            loaded.package_graph,
-        ))
+        let program = typed_hir::lower(&loaded.program, &type_output, loaded.package_graph);
+        let interfaces = program.package_interfaces();
+        diagnostics.extend(program.validate_package_references_against_interfaces(&interfaces));
+        if diagnostics.is_empty() {
+            Ok(program)
+        } else {
+            Err(diagnostics)
+        }
     } else {
         Err(diagnostics)
     }
