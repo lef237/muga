@@ -68,28 +68,31 @@ Recently completed:
 - duplicate binding/record/field diagnostics point at the previous declaration.
 - selected record literal/update and field-access diagnostics point at the relevant record or field declaration.
 - package import alias conflicts and public-signature diagnostics include actionable suggestions.
+- typed HIR can generate in-memory package interface summaries for public records and functions.
+- interface summaries store `PackageItemId` and resolved `TypeInfo` for public signatures.
+- `pkg` items are excluded from package interface summaries.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. introduce package interface data structures
-2. generate in-memory package interface summaries from checked packages while keeping flattening as the execution backend
-3. store public record/function signatures with `PackageItemId` and `TypeInfo` data, not only text or mangled names
+1. start separating package checking from whole-program flattening
+2. make import validation and downstream type lookup consume package interface summaries
+3. keep full-source loading and flattening as the execution backend until checking no longer depends on dependency bodies
 
 Why this comes next:
 
-- package item identity is now present in the package graph and typed HIR
-- typed HIR package calls and record types have `PackageItemId`-backed identity
-- diagnostics can now report multi-location interface errors cleanly
-- generating interfaces in memory first keeps runtime behavior stable while replacing flattening in controlled steps
+- in-memory package interface summaries now exist and are tested
+- public signatures are available as resolved compiler data
+- downstream checking should stop depending on dependency bodies before caching can matter
+- keeping flattening for execution lets this migration stay behavior-compatible
 
 Expected result:
 
-- each loaded package has a summary of exported records and functions
-- public signatures are available without re-inspecting downstream use sites
-- package interface generation can be tested before changing `run` / bytecode execution
+- import/package-qualified lookup can read public records and functions from interface summaries
+- dependency bodies no longer need to be rechecked for ordinary downstream name/type lookup
+- package interface generation remains in-memory before persistence/cache format is introduced
 
 ## 5. Decisions To Make Soon
 

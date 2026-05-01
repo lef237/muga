@@ -124,10 +124,11 @@ Done:
 - package loading exposes `ModuleId` data and enforces top-level module-private / `pkg` / `pub` visibility
 - typed HIR package identifiers, call targets, and record types point to package item identities
 - diagnostics support related notes and suggestions for selected resolver, typechecker, and package errors
+- typed HIR can generate in-memory package interface summaries for public records and functions
 
 Remaining:
 
-1. replace package flattening with package interfaces and real compilation units
+1. make downstream package checking consume package interface summaries
 2. add record field visibility enforcement on top of module identity
 3. continue expanding structured diagnostics as new interface errors are introduced
 

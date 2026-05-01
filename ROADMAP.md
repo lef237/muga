@@ -482,7 +482,7 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. in-memory package interface summaries
+1. package interface consumption for downstream checking
 2. package interfaces instead of flattening
 3. cache and incremental compilation
 4. MIR and native backend work
@@ -509,6 +509,7 @@ Recently completed:
 - typed HIR identifiers, package call targets, and package record types carry `PackageItemId`-backed identity
 - diagnostics can carry related notes and suggestions while preserving simple single-line output
 - selected resolver, typechecker, and package diagnostics now include declaration-site notes and suggestions
+- typed HIR can generate in-memory package interface summaries for public records and functions
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 
