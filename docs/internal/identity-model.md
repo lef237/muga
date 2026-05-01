@@ -127,7 +127,8 @@ Done:
 - typed HIR can generate in-memory package interface summaries for public records and functions
 - typed package compilation validates public package references against generated interface summaries
 - typed package interface validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
-- import/package-qualified lookup is routed through a package export surface before whole-program flattening
+- import/package-qualified lookup is routed through `PackageExportGraph` before whole-program flattening
+- `PackageExportGraph` can be derived from either package identity data or typed package interface summaries
 
 Remaining:
 

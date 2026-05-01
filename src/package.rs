@@ -50,6 +50,7 @@ pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
         return Ok(LoadedProgram {
             program: entry_program,
             package_graph: PackageSymbolGraph::default(),
+            package_exports: PackageExportGraph::default(),
         });
     }
 
@@ -61,6 +62,7 @@ pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
 pub struct LoadedProgram {
     pub program: Program,
     pub package_graph: PackageSymbolGraph,
+    pub package_exports: PackageExportGraph,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -161,6 +163,143 @@ pub struct PackageItemInfo {
 pub enum PackageItemKind {
     Record,
     Function,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PackageExportGraph {
+    pub packages: Vec<PackageExports>,
+}
+
+impl PackageExportGraph {
+    pub fn from_symbol_graph(graph: &PackageSymbolGraph) -> Self {
+        let packages = graph
+            .packages
+            .iter()
+            .map(|package| {
+                let mut records = Vec::new();
+                let mut functions = Vec::new();
+                for item in graph.items.iter().filter(|item| {
+                    item.package == package.id && item.visibility == Visibility::Public
+                }) {
+                    let export = PackageExportItem {
+                        item: item.id,
+                        name: item.name.clone(),
+                        mangled_name: item.mangled_name.clone(),
+                        span: item.span,
+                    };
+                    match item.kind {
+                        PackageItemKind::Record => records.push(export),
+                        PackageItemKind::Function => functions.push(export),
+                    }
+                }
+                PackageExports {
+                    package: package.id,
+                    path: package.path.clone(),
+                    records,
+                    functions,
+                }
+            })
+            .collect();
+
+        Self { packages }
+    }
+
+    pub fn from_interfaces(interfaces: &PackageInterfaceGraph, graph: &PackageSymbolGraph) -> Self {
+        let packages = interfaces
+            .packages
+            .iter()
+            .map(|interface| {
+                let records = interface
+                    .records
+                    .iter()
+                    .filter_map(|record| {
+                        export_item_from_interface(
+                            graph,
+                            record.item,
+                            &record.name,
+                            record.span,
+                            PackageItemKind::Record,
+                        )
+                    })
+                    .collect();
+                let functions = interface
+                    .functions
+                    .iter()
+                    .filter_map(|function| {
+                        export_item_from_interface(
+                            graph,
+                            function.item,
+                            &function.name,
+                            function.span,
+                            PackageItemKind::Function,
+                        )
+                    })
+                    .collect();
+
+                PackageExports {
+                    package: interface.package,
+                    path: interface.path.clone(),
+                    records,
+                    functions,
+                }
+            })
+            .collect();
+
+        Self { packages }
+    }
+
+    pub fn package(&self, id: PackageId) -> Option<&PackageExports> {
+        self.packages.iter().find(|package| package.package == id)
+    }
+
+    pub fn record_by_name(&self, package: PackageId, name: &str) -> Option<&PackageExportItem> {
+        self.package(package)?
+            .records
+            .iter()
+            .find(|record| record.name == name)
+    }
+
+    pub fn function_by_name(&self, package: PackageId, name: &str) -> Option<&PackageExportItem> {
+        self.package(package)?
+            .functions
+            .iter()
+            .find(|function| function.name == name)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageExports {
+    pub package: PackageId,
+    pub path: String,
+    pub records: Vec<PackageExportItem>,
+    pub functions: Vec<PackageExportItem>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageExportItem {
+    pub item: PackageItemId,
+    pub name: String,
+    pub mangled_name: String,
+    pub span: Span,
+}
+
+fn export_item_from_interface(
+    graph: &PackageSymbolGraph,
+    item: PackageItemId,
+    name: &str,
+    span: Span,
+    kind: PackageItemKind,
+) -> Option<PackageExportItem> {
+    let info = graph.item(item)?;
+    if info.kind != kind || info.visibility != Visibility::Public {
+        return None;
+    }
+    Some(PackageExportItem {
+        item,
+        name: name.to_string(),
+        mangled_name: info.mangled_name.clone(),
+        span,
+    })
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -266,33 +405,6 @@ struct PackageData {
     files: Vec<ParsedFile>,
     records: HashMap<String, Vec<PackageItemDecl>>,
     functions: HashMap<String, Vec<PackageItemDecl>>,
-    exports: PackageExportIndex,
-}
-
-#[derive(Clone, Debug, Default)]
-struct PackageExportIndex {
-    records: HashMap<String, Span>,
-    functions: HashMap<String, Span>,
-}
-
-impl PackageExportIndex {
-    fn from_items(
-        records: &HashMap<String, Vec<PackageItemDecl>>,
-        functions: &HashMap<String, Vec<PackageItemDecl>>,
-    ) -> Self {
-        Self {
-            records: exported_items(records),
-            functions: exported_items(functions),
-        }
-    }
-
-    fn exports_record(&self, name: &str) -> bool {
-        self.records.contains_key(name)
-    }
-
-    fn exports_function(&self, name: &str) -> bool {
-        self.functions.contains_key(name)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -356,6 +468,8 @@ impl PackageLoader {
         }
 
         let package_paths = self.sorted_package_paths();
+        let package_graph = self.build_symbol_graph(&package_paths);
+        let package_exports = PackageExportGraph::from_symbol_graph(&package_graph);
 
         let mut statements = Vec::new();
         for package_path in &package_paths {
@@ -373,6 +487,8 @@ impl PackageLoader {
                     imports: import_aliases,
                     current_package_data: package,
                     packages: &self.packages,
+                    package_graph: &package_graph,
+                    package_exports: &package_exports,
                     scopes: Vec::new(),
                 };
                 for statement in &file.program.statements {
@@ -382,7 +498,6 @@ impl PackageLoader {
         }
 
         if self.diagnostics.is_empty() {
-            let package_graph = self.build_symbol_graph(&package_paths);
             let mut program = Program {
                 package: None,
                 imports: Vec::new(),
@@ -392,6 +507,7 @@ impl PackageLoader {
             Ok(LoadedProgram {
                 program,
                 package_graph,
+                package_exports,
             })
         } else {
             Err(std::mem::take(&mut self.diagnostics))
@@ -457,7 +573,6 @@ impl PackageLoader {
             package_path.clone(),
             PackageData {
                 files,
-                exports: PackageExportIndex::from_items(&records, &functions),
                 records,
                 functions,
             },
@@ -703,6 +818,8 @@ struct PackageRewriter<'a> {
     imports: HashMap<String, String>,
     current_package_data: &'a PackageData,
     packages: &'a HashMap<String, PackageData>,
+    package_graph: &'a PackageSymbolGraph,
+    package_exports: &'a PackageExportGraph,
     scopes: Vec<HashSet<String>>,
 }
 
@@ -1155,11 +1272,19 @@ impl<'a> PackageRewriter<'a> {
             ));
             return format!("{alias}::{item}");
         };
+        let Some(package_id) = self.package_graph.package_id(package_path) else {
+            self.diagnostics.push(Diagnostic::new(
+                "PK010",
+                format!("unknown imported package `{package_path}`"),
+                span,
+            ));
+            return format!("{alias}::{item}");
+        };
 
         match kind {
             ImportedItemKind::Record => {
-                if package.exports.exports_record(item) {
-                    mangle_record_name(package_path, item)
+                if let Some(export) = self.package_exports.record_by_name(package_id, item) {
+                    export.mangled_name.clone()
                 } else {
                     let diagnostic = missing_export_diagnostic(
                         package_path,
@@ -1173,8 +1298,8 @@ impl<'a> PackageRewriter<'a> {
                 }
             }
             ImportedItemKind::Function => {
-                if package.exports.exports_function(item) {
-                    mangle_function_name(package_path, item, &self.entry_package)
+                if let Some(export) = self.package_exports.function_by_name(package_id, item) {
+                    export.mangled_name.clone()
                 } else {
                     let diagnostic = missing_export_diagnostic(
                         package_path,
@@ -1288,18 +1413,6 @@ fn inaccessible_package_item<'a>(
         .get(name)?
         .iter()
         .find(|item| item.visibility == Visibility::Private)
-}
-
-fn exported_items(items: &HashMap<String, Vec<PackageItemDecl>>) -> HashMap<String, Span> {
-    let mut exports = HashMap::new();
-    for (name, declarations) in items {
-        for declaration in declarations {
-            if declaration.visibility == Visibility::Public {
-                exports.entry(name.clone()).or_insert(declaration.span);
-            }
-        }
-    }
-    exports
 }
 
 fn package_item_decl<'a>(
