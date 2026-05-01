@@ -397,6 +397,17 @@ fn package_symbol_graph_exposes_module_identity() {
     let helper_module = graph
         .module_id(package, "helper.muga")
         .expect("helper module should exist");
+    let package_value = graph
+        .item_id_in_module(
+            helper_module,
+            "PackageValue",
+            muga::package::PackageItemKind::Record,
+        )
+        .expect("PackageValue should exist");
+    let package_value = graph
+        .item(package_value)
+        .expect("PackageValue info should exist");
+    assert_eq!(package_value.visibility, muga::ast::Visibility::Package);
     let helper = graph
         .item_id_in_module(
             helper_module,
@@ -597,6 +608,13 @@ fn package_interface_summaries_exclude_pkg_items() {
             .any(|function| function.name == "helper"),
         "{interface:#?}"
     );
+    assert!(
+        !interface
+            .records
+            .iter()
+            .any(|record| record.name == "PackageValue"),
+        "{interface:#?}"
+    );
 }
 
 #[test]
@@ -667,14 +685,36 @@ fn package_imports_are_resolved_through_export_surface() {
     .unwrap_err();
     let diagnostic = diagnostics
         .iter()
-        .find(|diagnostic| diagnostic.code == "PK010")
+        .find(|diagnostic| {
+            diagnostic.code == "PK010"
+                && diagnostic
+                    .message
+                    .contains("does not export function `helper`")
+        })
         .expect("PK010 diagnostic should exist");
     assert!(
         diagnostic
-            .message
-            .contains("does not export function `helper`"),
+            .related
+            .iter()
+            .any(|note| note.message.contains("not public")),
         "{diagnostic:#?}"
     );
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("pub")),
+        "{diagnostic:#?}"
+    );
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.code == "PK010"
+                && diagnostic
+                    .message
+                    .contains("does not export record `PackageValue`")
+        })
+        .expect("PK010 record diagnostic should exist");
     assert!(
         diagnostic
             .related
