@@ -1034,7 +1034,11 @@ impl TypeChecker {
         let right = self.resolve_type(&right);
         match (left, right) {
             (Type::Error, _) | (_, Type::Error) => Ok(Type::Error),
+            (Type::Unknown(left), Type::Unknown(right)) if left == right => Ok(Type::Unknown(left)),
             (Type::Unknown(id), ty) | (ty, Type::Unknown(id)) => {
+                if self.type_contains_unknown(&ty, id) {
+                    return Err("type inference would require an infinite type".to_string());
+                }
                 self.substitutions.insert(id, ty.clone());
                 Ok(ty)
             }
@@ -1091,6 +1095,19 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::Println) => TypeInfo::Builtin("println"),
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
+        }
+    }
+
+    fn type_contains_unknown(&self, ty: &Type, needle: u32) -> bool {
+        match self.resolve_type(ty) {
+            Type::Unknown(id) => id == needle,
+            Type::Function(sig) => {
+                sig.params
+                    .iter()
+                    .any(|param| self.type_contains_unknown(param, needle))
+                    || self.type_contains_unknown(&sig.ret, needle)
+            }
+            _ => false,
         }
     }
 
@@ -1270,74 +1287,73 @@ fn build_call_graph(
 }
 
 fn strongly_connected_components(graph: &HashMap<Symbol, HashSet<Symbol>>) -> Vec<Vec<Symbol>> {
-    let mut index = 0usize;
-    let mut stack = Vec::<Symbol>::new();
-    let mut indices = HashMap::<Symbol, usize>::new();
-    let mut lowlinks = HashMap::<Symbol, usize>::new();
-    let mut on_stack = HashSet::<Symbol>::new();
-    let mut components = Vec::new();
+    let mut state = SccState::new(graph);
 
     for node in graph.keys() {
-        if !indices.contains_key(node) {
-            strong_connect(
-                *node,
-                graph,
-                &mut index,
-                &mut stack,
-                &mut indices,
-                &mut lowlinks,
-                &mut on_stack,
-                &mut components,
-            );
+        if !state.indices.contains_key(node) {
+            state.strong_connect(*node);
         }
     }
 
-    components
+    state.components
 }
 
-fn strong_connect(
-    node: Symbol,
-    graph: &HashMap<Symbol, HashSet<Symbol>>,
-    index: &mut usize,
-    stack: &mut Vec<Symbol>,
-    indices: &mut HashMap<Symbol, usize>,
-    lowlinks: &mut HashMap<Symbol, usize>,
-    on_stack: &mut HashSet<Symbol>,
-    components: &mut Vec<Vec<Symbol>>,
-) {
-    indices.insert(node, *index);
-    lowlinks.insert(node, *index);
-    *index += 1;
-    stack.push(node);
-    on_stack.insert(node);
+struct SccState<'a> {
+    graph: &'a HashMap<Symbol, HashSet<Symbol>>,
+    index: usize,
+    stack: Vec<Symbol>,
+    indices: HashMap<Symbol, usize>,
+    lowlinks: HashMap<Symbol, usize>,
+    on_stack: HashSet<Symbol>,
+    components: Vec<Vec<Symbol>>,
+}
 
-    if let Some(neighbors) = graph.get(&node) {
-        for neighbor in neighbors {
-            if !indices.contains_key(neighbor) {
-                strong_connect(
-                    *neighbor, graph, index, stack, indices, lowlinks, on_stack, components,
-                );
-                let neighbor_low = lowlinks[neighbor];
-                let node_low = lowlinks[&node];
-                lowlinks.insert(node, node_low.min(neighbor_low));
-            } else if on_stack.contains(neighbor) {
-                let neighbor_index = indices[neighbor];
-                let node_low = lowlinks[&node];
-                lowlinks.insert(node, node_low.min(neighbor_index));
-            }
+impl<'a> SccState<'a> {
+    fn new(graph: &'a HashMap<Symbol, HashSet<Symbol>>) -> Self {
+        Self {
+            graph,
+            index: 0,
+            stack: Vec::new(),
+            indices: HashMap::new(),
+            lowlinks: HashMap::new(),
+            on_stack: HashSet::new(),
+            components: Vec::new(),
         }
     }
 
-    if lowlinks[&node] == indices[&node] {
-        let mut component = Vec::new();
-        while let Some(candidate) = stack.pop() {
-            on_stack.remove(&candidate);
-            component.push(candidate);
-            if candidate == node {
-                break;
+    fn strong_connect(&mut self, node: Symbol) {
+        self.indices.insert(node, self.index);
+        self.lowlinks.insert(node, self.index);
+        self.index += 1;
+        self.stack.push(node);
+        self.on_stack.insert(node);
+
+        if let Some(neighbors) = self.graph.get(&node) {
+            for neighbor in neighbors {
+                if !self.indices.contains_key(neighbor) {
+                    self.strong_connect(*neighbor);
+                    let neighbor_low = self.lowlinks[neighbor];
+                    let node_low = self.lowlinks[&node];
+                    self.lowlinks.insert(node, node_low.min(neighbor_low));
+                } else if self.on_stack.contains(neighbor) {
+                    let neighbor_index = self.indices[neighbor];
+                    let node_low = self.lowlinks[&node];
+                    self.lowlinks.insert(node, node_low.min(neighbor_index));
+                }
             }
         }
-        components.push(component);
+
+        if self.lowlinks[&node] == self.indices[&node] {
+            let mut component = Vec::new();
+            while let Some(candidate) = self.stack.pop() {
+                self.on_stack.remove(&candidate);
+                component.push(candidate);
+                if candidate == node {
+                    break;
+                }
+            }
+            self.components.push(component);
+        }
     }
 }
 

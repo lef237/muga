@@ -46,7 +46,7 @@ impl Lexer {
                 '\r' => {
                     self.advance();
                     if self.peek() == Some('\n') {
-                        self.advance();
+                        self.index += 1;
                     }
                     self.handle_newline();
                 }

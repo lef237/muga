@@ -101,7 +101,7 @@ fn main_symbol(program: &Program) -> Option<Symbol> {
     program.symbols.lookup("main")
 }
 
-fn symbol_name<'a>(program: &'a Program, symbol: Symbol) -> &'a str {
+fn symbol_name(program: &Program, symbol: Symbol) -> &str {
     program.symbols.resolve(symbol)
 }
 
@@ -245,7 +245,12 @@ fn execute_chunk(
                     "missing operand for unary operator",
                 )?;
                 match value {
-                    Value::Int(value) => stack.push(Value::Int(-value)),
+                    Value::Int(value) => {
+                        let Some(value) = value.checked_neg() else {
+                            return Err(integer_overflow(*span));
+                        };
+                        stack.push(Value::Int(value));
+                    }
                     _ => {
                         return Err(vec![Diagnostic::new(
                             "R009",
@@ -556,13 +561,21 @@ fn eval_binary(
     span: Span,
 ) -> Result<Value, Vec<Diagnostic>> {
     match (op, left, right) {
-        (BinaryOp::Add, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left + right)),
-        (BinaryOp::Sub, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left - right)),
-        (BinaryOp::Mul, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left * right)),
+        (BinaryOp::Add, Value::Int(left), Value::Int(right)) => {
+            checked_int(left.checked_add(right), span)
+        }
+        (BinaryOp::Sub, Value::Int(left), Value::Int(right)) => {
+            checked_int(left.checked_sub(right), span)
+        }
+        (BinaryOp::Mul, Value::Int(left), Value::Int(right)) => {
+            checked_int(left.checked_mul(right), span)
+        }
         (BinaryOp::Div, Value::Int(_), Value::Int(0)) => {
             Err(vec![Diagnostic::new("R013", "division by zero", span)])
         }
-        (BinaryOp::Div, Value::Int(left), Value::Int(right)) => Ok(Value::Int(left / right)),
+        (BinaryOp::Div, Value::Int(left), Value::Int(right)) => {
+            checked_int(left.checked_div(right), span)
+        }
         (BinaryOp::Lt, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left < right)),
         (BinaryOp::LtEq, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left <= right)),
         (BinaryOp::Gt, Value::Int(left), Value::Int(right)) => Ok(Value::Bool(left > right)),
@@ -583,6 +596,14 @@ fn eval_binary(
             span,
         )]),
     }
+}
+
+fn checked_int(value: Option<i64>, span: Span) -> Result<Value, Vec<Diagnostic>> {
+    value.map(Value::Int).ok_or_else(|| integer_overflow(span))
+}
+
+fn integer_overflow(span: Span) -> Vec<Diagnostic> {
+    vec![Diagnostic::new("R019", "integer overflow", span)]
 }
 
 fn pop_args(
