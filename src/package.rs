@@ -6,6 +6,7 @@ use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{ModuleId, PackageId, PackageItemId};
 use crate::span::Span;
+use crate::typing::TypeInfo;
 
 pub fn load_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> {
     Ok(load_from_entry(path)?.program)
@@ -160,6 +161,58 @@ pub struct PackageItemInfo {
 pub enum PackageItemKind {
     Record,
     Function,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PackageInterfaceGraph {
+    pub packages: Vec<PackageInterface>,
+}
+
+impl PackageInterfaceGraph {
+    pub fn package(&self, id: PackageId) -> Option<&PackageInterface> {
+        self.packages
+            .iter()
+            .find(|interface| interface.package == id)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageInterface {
+    pub package: PackageId,
+    pub path: String,
+    pub records: Vec<PackageInterfaceRecord>,
+    pub functions: Vec<PackageInterfaceFunction>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageInterfaceRecord {
+    pub item: PackageItemId,
+    pub name: String,
+    pub fields: Vec<PackageInterfaceField>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageInterfaceField {
+    pub name: String,
+    pub ty: TypeInfo,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageInterfaceFunction {
+    pub item: PackageItemId,
+    pub name: String,
+    pub params: Vec<PackageInterfaceParam>,
+    pub ret: TypeInfo,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageInterfaceParam {
+    pub name: String,
+    pub ty: TypeInfo,
+    pub span: Span,
 }
 
 struct ParsedFile {

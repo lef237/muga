@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use crate::{
     ast,
     identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId},
-    package::PackageSymbolGraph,
+    package::{
+        PackageInterface, PackageInterfaceField, PackageInterfaceFunction, PackageInterfaceGraph,
+        PackageInterfaceParam, PackageInterfaceRecord, PackageItemKind, PackageSymbolGraph,
+    },
     span::Span,
     symbol::{Symbol, SymbolTable},
     typing::{
@@ -18,6 +21,94 @@ pub struct Program {
     pub bindings: Vec<TypedBindingInfo>,
     pub package_graph: PackageSymbolGraph,
     pub symbols: SymbolTable,
+}
+
+impl Program {
+    pub fn package_interfaces(&self) -> PackageInterfaceGraph {
+        let records_by_mangled_name: HashMap<&str, &RecordStmt> = self
+            .statements
+            .iter()
+            .filter_map(|statement| match statement {
+                Stmt::Record(record) => Some((record.name.as_str(), record)),
+                _ => None,
+            })
+            .collect();
+        let functions_by_mangled_name: HashMap<&str, &FunctionStmt> = self
+            .statements
+            .iter()
+            .filter_map(|statement| match statement {
+                Stmt::Function(function) => Some((function.name.as_str(), function)),
+                _ => None,
+            })
+            .collect();
+
+        let packages = self
+            .package_graph
+            .packages
+            .iter()
+            .map(|package| {
+                let mut records = Vec::new();
+                let mut functions = Vec::new();
+
+                for item in self.package_graph.items.iter().filter(|item| {
+                    item.package == package.id && item.visibility == ast::Visibility::Public
+                }) {
+                    match item.kind {
+                        PackageItemKind::Record => {
+                            if let Some(record) =
+                                records_by_mangled_name.get(item.mangled_name.as_str())
+                            {
+                                records.push(PackageInterfaceRecord {
+                                    item: item.id,
+                                    name: item.name.clone(),
+                                    fields: record
+                                        .fields
+                                        .iter()
+                                        .map(|field| PackageInterfaceField {
+                                            name: field.name.clone(),
+                                            ty: field.ty.clone(),
+                                            span: field.span,
+                                        })
+                                        .collect(),
+                                    span: item.span,
+                                });
+                            }
+                        }
+                        PackageItemKind::Function => {
+                            if let Some(function) =
+                                functions_by_mangled_name.get(item.mangled_name.as_str())
+                            {
+                                functions.push(PackageInterfaceFunction {
+                                    item: item.id,
+                                    name: item.name.clone(),
+                                    params: function
+                                        .params
+                                        .iter()
+                                        .map(|param| PackageInterfaceParam {
+                                            name: param.name.clone(),
+                                            ty: param.ty.clone(),
+                                            span: param.span,
+                                        })
+                                        .collect(),
+                                    ret: function.return_ty.clone(),
+                                    span: item.span,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                PackageInterface {
+                    package: package.id,
+                    path: package.path.clone(),
+                    records,
+                    functions,
+                }
+            })
+            .collect();
+
+        PackageInterfaceGraph { packages }
+    }
 }
 
 #[derive(Clone, Debug)]

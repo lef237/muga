@@ -413,6 +413,96 @@ fn package_symbol_graph_exposes_module_identity() {
 }
 
 #[test]
+fn typed_hir_generates_package_interface_summaries() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let numbers = program
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let users = program
+        .package_graph
+        .package_id("util::users")
+        .expect("users package should exist");
+
+    let numbers_interface = interfaces
+        .package(numbers)
+        .expect("numbers interface should exist");
+    let inc_twice = numbers_interface
+        .functions
+        .iter()
+        .find(|function| function.name == "inc_twice")
+        .expect("inc_twice should be exported");
+    assert_eq!(inc_twice.params.len(), 1);
+    assert_eq!(inc_twice.params[0].ty, muga::typing::TypeInfo::Int);
+    assert_eq!(inc_twice.ret, muga::typing::TypeInfo::Int);
+
+    let users_interface = interfaces
+        .package(users)
+        .expect("users interface should exist");
+    let user_item = program
+        .package_graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User item should exist");
+    let user_record = users_interface
+        .records
+        .iter()
+        .find(|record| record.name == "User")
+        .expect("User should be exported");
+    assert_eq!(user_record.item, user_item);
+    assert!(
+        user_record
+            .fields
+            .iter()
+            .any(|field| field.name == "age" && field.ty == muga::typing::TypeInfo::Int),
+        "{user_record:#?}"
+    );
+
+    let birthday = users_interface
+        .functions
+        .iter()
+        .find(|function| function.name == "birthday")
+        .expect("birthday should be exported");
+    assert_eq!(birthday.params.len(), 1);
+    assert!(
+        matches!(
+            &birthday.params[0].ty,
+            muga::typing::TypeInfo::PackageRecord { item, .. } if *item == user_item
+        ),
+        "{birthday:#?}"
+    );
+    assert!(
+        matches!(
+            &birthday.ret,
+            muga::typing::TypeInfo::PackageRecord { item, .. } if *item == user_item
+        ),
+        "{birthday:#?}"
+    );
+}
+
+#[test]
+fn package_interface_summaries_exclude_pkg_items() {
+    let program = muga::compile_typed_path(Path::new(
+        "samples/packages/app/module_visibility/main.muga",
+    ))
+    .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let package = program
+        .package_graph
+        .package_id("app::module_visibility")
+        .expect("package should exist");
+    let interface = interfaces.package(package).expect("interface should exist");
+    assert!(
+        !interface
+            .functions
+            .iter()
+            .any(|function| function.name == "helper"),
+        "{interface:#?}"
+    );
+}
+
+#[test]
 fn package_alias_demo_runs() {
     assert_package_runs("samples/packages/app/alias_demo/main.muga", "112", "");
 }
