@@ -369,12 +369,51 @@ fn package_loader_exposes_package_symbol_graph() {
 }
 
 #[test]
+fn package_loader_exposes_package_export_graph() {
+    let loaded =
+        muga::package::load_from_entry(Path::new("samples/packages/app/main/main.muga")).unwrap();
+    let graph = loaded.package_graph;
+    let exports = loaded.package_exports;
+    let numbers = graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let users = graph
+        .package_id("util::users")
+        .expect("users package should exist");
+
+    let inc_twice_item = graph
+        .item_id(
+            numbers,
+            "inc_twice",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("inc_twice item should exist");
+    let inc_twice = exports
+        .function_by_name(numbers, "inc_twice")
+        .expect("inc_twice should be exported");
+    assert_eq!(inc_twice.item, inc_twice_item);
+    assert_eq!(
+        inc_twice.mangled_name,
+        "__muga_pkg__util__numbers__inc_twice"
+    );
+
+    let user_item = graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User item should exist");
+    let user = exports
+        .record_by_name(users, "User")
+        .expect("User should be exported");
+    assert_eq!(user.item, user_item);
+    assert_eq!(user.mangled_name, "__muga_pkg__util__users__User");
+}
+
+#[test]
 fn package_symbol_graph_exposes_module_identity() {
     let loaded = muga::package::load_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",
     ))
     .unwrap();
-    let graph = loaded.package_graph;
+    let graph = &loaded.package_graph;
     let package = graph
         .package_id("app::module_visibility")
         .expect("package should exist");
@@ -421,6 +460,13 @@ fn package_symbol_graph_exposes_module_identity() {
         .module(helper.module)
         .expect("helper module should exist");
     assert_eq!(helper_module.path, "helper.muga");
+    assert!(
+        loaded
+            .package_exports
+            .function_by_name(package, "helper")
+            .is_none(),
+        "pkg helper should not be exported"
+    );
 }
 
 #[test]
@@ -478,6 +524,19 @@ fn typed_hir_generates_package_interface_summaries() {
         ),
         "{birthday:#?}"
     );
+}
+
+#[test]
+fn package_export_graph_can_be_derived_from_typed_interfaces() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let symbol_exports =
+        muga::package::PackageExportGraph::from_symbol_graph(&program.package_graph);
+    let interface_exports =
+        muga::package::PackageExportGraph::from_interfaces(&interfaces, &program.package_graph);
+
+    assert_eq!(interface_exports, symbol_exports);
 }
 
 #[test]
