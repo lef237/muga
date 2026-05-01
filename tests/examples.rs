@@ -599,6 +599,38 @@ fn package_import_alias_conflict_is_rejected() {
 }
 
 #[test]
+fn package_imports_are_resolved_through_export_surface() {
+    let diagnostics = muga::check_path(Path::new(
+        "samples/packages_invalid/app/import_pkg_item/main.muga",
+    ))
+    .unwrap_err();
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK010")
+        .expect("PK010 diagnostic should exist");
+    assert!(
+        diagnostic
+            .message
+            .contains("does not export function `helper`"),
+        "{diagnostic:#?}"
+    );
+    assert!(
+        diagnostic
+            .related
+            .iter()
+            .any(|note| note.message.contains("not public")),
+        "{diagnostic:#?}"
+    );
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("pub")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
 fn compile_source_lowers_functions_into_hir_table() {
     let source = r#"
 fn main(): Int {

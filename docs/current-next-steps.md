@@ -72,27 +72,29 @@ Recently completed:
 - interface summaries store `PackageItemId` and resolved `TypeInfo` for public signatures.
 - `pkg` items are excluded from package interface summaries.
 - typed package compilation validates public package references against generated interface summaries.
+- package import lookup now reads a source-level public export surface instead of directly checking dependency item maps.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. start separating package checking from whole-program flattening
-2. make import validation and downstream type lookup consume package interface summaries earlier in the pipeline
+1. replace the source-level export surface with typed package interface summaries for downstream lookup
+2. move downstream type lookup to those summaries before removing flattening
 3. keep full-source loading and flattening as the execution backend until checking no longer depends on dependency bodies
 
 Why this comes next:
 
 - in-memory package interface summaries now exist and are tested
 - typed package compilation already consumes summaries for public package reference validation
+- import/package-qualified lookup already goes through an export-surface abstraction
 - public signatures are available as resolved compiler data
 - downstream checking should stop depending on dependency bodies before caching can matter
 - keeping flattening for execution lets this migration stay behavior-compatible
 
 Expected result:
 
-- import/package-qualified lookup can read public records and functions from interface summaries
+- import/package-qualified lookup can read public records and functions from typed interface summaries
 - dependency bodies no longer need to be rechecked for ordinary downstream name/type lookup
 - package interface generation remains in-memory before persistence/cache format is introduced
 

@@ -126,10 +126,11 @@ Done:
 - diagnostics support related notes and suggestions for selected resolver, typechecker, and package errors
 - typed HIR can generate in-memory package interface summaries for public records and functions
 - typed package compilation validates public package references against generated interface summaries
+- import/package-qualified lookup is routed through a package export surface before whole-program flattening
 
 Remaining:
 
-1. make downstream package checking consume package interface summaries
+1. make downstream package checking consume typed package interface summaries instead of the source-level export surface
 2. add record field visibility enforcement on top of module identity
 3. continue expanding structured diagnostics as new interface errors are introduced
 

@@ -244,6 +244,33 @@ struct PackageData {
     files: Vec<ParsedFile>,
     records: HashMap<String, Vec<PackageItemDecl>>,
     functions: HashMap<String, Vec<PackageItemDecl>>,
+    exports: PackageExportIndex,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PackageExportIndex {
+    records: HashMap<String, Span>,
+    functions: HashMap<String, Span>,
+}
+
+impl PackageExportIndex {
+    fn from_items(
+        records: &HashMap<String, Vec<PackageItemDecl>>,
+        functions: &HashMap<String, Vec<PackageItemDecl>>,
+    ) -> Self {
+        Self {
+            records: exported_items(records),
+            functions: exported_items(functions),
+        }
+    }
+
+    fn exports_record(&self, name: &str) -> bool {
+        self.records.contains_key(name)
+    }
+
+    fn exports_function(&self, name: &str) -> bool {
+        self.functions.contains_key(name)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -408,6 +435,7 @@ impl PackageLoader {
             package_path.clone(),
             PackageData {
                 files,
+                exports: PackageExportIndex::from_items(&records, &functions),
                 records,
                 functions,
             },
@@ -1108,26 +1136,32 @@ impl<'a> PackageRewriter<'a> {
 
         match kind {
             ImportedItemKind::Record => {
-                if package_item_is_public(&package.records, item) {
+                if package.exports.exports_record(item) {
                     mangle_record_name(package_path, item)
                 } else {
-                    self.diagnostics.push(Diagnostic::new(
-                        "PK010",
-                        format!("package `{package_path}` does not export record `{item}`"),
+                    let diagnostic = missing_export_diagnostic(
+                        package_path,
+                        item,
+                        "record",
+                        package_item_decl(&package.records, item),
                         span,
-                    ));
+                    );
+                    self.diagnostics.push(diagnostic);
                     format!("{alias}::{item}")
                 }
             }
             ImportedItemKind::Function => {
-                if package_item_is_public(&package.functions, item) {
+                if package.exports.exports_function(item) {
                     mangle_function_name(package_path, item, &self.entry_package)
                 } else {
-                    self.diagnostics.push(Diagnostic::new(
-                        "PK010",
-                        format!("package `{package_path}` does not export function `{item}`"),
+                    let diagnostic = missing_export_diagnostic(
+                        package_path,
+                        item,
+                        "function",
+                        package_item_decl(&package.functions, item),
                         span,
-                    ));
+                    );
+                    self.diagnostics.push(diagnostic);
                     format!("{alias}::{item}")
                 }
             }
@@ -1234,12 +1268,48 @@ fn inaccessible_package_item<'a>(
         .find(|item| item.visibility == Visibility::Private)
 }
 
-fn package_item_is_public(items: &HashMap<String, Vec<PackageItemDecl>>, name: &str) -> bool {
-    items.get(name).is_some_and(|items| {
-        items
-            .iter()
-            .any(|item| item.visibility == Visibility::Public)
-    })
+fn exported_items(items: &HashMap<String, Vec<PackageItemDecl>>) -> HashMap<String, Span> {
+    let mut exports = HashMap::new();
+    for (name, declarations) in items {
+        for declaration in declarations {
+            if declaration.visibility == Visibility::Public {
+                exports.entry(name.clone()).or_insert(declaration.span);
+            }
+        }
+    }
+    exports
+}
+
+fn package_item_decl<'a>(
+    items: &'a HashMap<String, Vec<PackageItemDecl>>,
+    name: &str,
+) -> Option<&'a PackageItemDecl> {
+    items.get(name)?.first()
+}
+
+fn missing_export_diagnostic(
+    package_path: &str,
+    item: &str,
+    kind: &str,
+    declaration: Option<&PackageItemDecl>,
+    span: Span,
+) -> Diagnostic {
+    let mut diagnostic = Diagnostic::new(
+        "PK010",
+        format!("package `{package_path}` does not export {kind} `{item}`"),
+        span,
+    );
+    if let Some(declaration) = declaration {
+        diagnostic = diagnostic
+            .with_related(
+                format!("{kind} `{item}` is declared here but is not public"),
+                declaration.span,
+            )
+            .with_suggestion(format!(
+                "mark the {kind} declaration as `pub` to export it from the package"
+            ));
+    }
+    diagnostic
 }
 
 fn visibility_can_expose(item_visibility: Visibility, api_visibility: Visibility) -> bool {
