@@ -6,7 +6,8 @@ use crate::{
     identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId},
     package::{
         PackageInterface, PackageInterfaceField, PackageInterfaceFunction, PackageInterfaceGraph,
-        PackageInterfaceParam, PackageInterfaceRecord, PackageItemKind, PackageSymbolGraph,
+        PackageInterfaceParam, PackageInterfaceRecord, PackageItemInfo, PackageItemKind,
+        PackageSymbolGraph,
     },
     span::Span,
     symbol::{Symbol, SymbolTable},
@@ -251,7 +252,7 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
             return;
         }
 
-        let Some(info) = self.program.package_graph.item(item) else {
+        let Some(info) = self.program.package_graph.item(item).cloned() else {
             self.diagnostics.push(Diagnostic::new(
                 "PK016",
                 format!(
@@ -266,32 +267,129 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
             return;
         }
 
-        let exported = match info.kind {
-            PackageItemKind::Record => self.interfaces.record(item).is_some(),
-            PackageItemKind::Function => self.interfaces.function(item).is_some(),
-        };
-        if !exported {
-            let kind = match info.kind {
-                PackageItemKind::Record => "record",
-                PackageItemKind::Function => "function",
-            };
-            self.diagnostics.push(
-                Diagnostic::new(
-                    "PK016",
-                    format!(
-                        "package interface for `{}` does not export {kind} `{}`",
-                        self.program
-                            .package_graph
-                            .package(info.package)
-                            .map(|package| package.path.as_str())
-                            .unwrap_or("<unknown>"),
-                        info.name
-                    ),
-                    span,
-                )
-                .with_related("package item is declared here", info.span),
-            );
+        match info.kind {
+            PackageItemKind::Record => {
+                if let Some(interface) = self.interfaces.record(item) {
+                    self.validate_record_shape(&info, interface, span);
+                } else {
+                    self.push_missing_interface_export(&info, "record", span);
+                }
+            }
+            PackageItemKind::Function => {
+                if let Some(interface) = self.interfaces.function(item) {
+                    self.validate_function_signature(&info, interface, span);
+                } else {
+                    self.push_missing_interface_export(&info, "function", span);
+                }
+            }
         }
+    }
+
+    fn validate_record_shape(
+        &mut self,
+        info: &PackageItemInfo,
+        interface: &PackageInterfaceRecord,
+        span: Span,
+    ) {
+        let Some(record) = self.record_stmt_for(info) else {
+            self.push_stale_interface_diagnostic(info, "record shape", span);
+            return;
+        };
+        let matches = record.fields.len() == interface.fields.len()
+            && record
+                .fields
+                .iter()
+                .zip(interface.fields.iter())
+                .all(|(field, expected)| field.name == expected.name && field.ty == expected.ty);
+        if !matches {
+            self.push_stale_interface_diagnostic(info, "record shape", span);
+        }
+    }
+
+    fn validate_function_signature(
+        &mut self,
+        info: &PackageItemInfo,
+        interface: &PackageInterfaceFunction,
+        span: Span,
+    ) {
+        let Some(function) = self.function_stmt_for(info) else {
+            self.push_stale_interface_diagnostic(info, "function signature", span);
+            return;
+        };
+        let matches = function.params.len() == interface.params.len()
+            && function
+                .params
+                .iter()
+                .zip(interface.params.iter())
+                .all(|(param, expected)| param.name == expected.name && param.ty == expected.ty)
+            && function.return_ty == interface.ret;
+        if !matches {
+            self.push_stale_interface_diagnostic(info, "function signature", span);
+        }
+    }
+
+    fn record_stmt_for(&self, info: &PackageItemInfo) -> Option<&RecordStmt> {
+        self.program
+            .statements
+            .iter()
+            .find_map(|statement| match statement {
+                Stmt::Record(record) if record.name == info.mangled_name => Some(record),
+                _ => None,
+            })
+    }
+
+    fn function_stmt_for(&self, info: &PackageItemInfo) -> Option<&FunctionStmt> {
+        self.program
+            .statements
+            .iter()
+            .find_map(|statement| match statement {
+                Stmt::Function(function) if function.name == info.mangled_name => Some(function),
+                _ => None,
+            })
+    }
+
+    fn push_missing_interface_export(&mut self, info: &PackageItemInfo, kind: &str, span: Span) {
+        self.diagnostics.push(
+            Diagnostic::new(
+                "PK016",
+                format!(
+                    "package interface for `{}` does not export {kind} `{}`",
+                    self.package_path(info),
+                    info.name
+                ),
+                span,
+            )
+            .with_related("package item is declared here", info.span),
+        );
+    }
+
+    fn push_stale_interface_diagnostic(
+        &mut self,
+        info: &PackageItemInfo,
+        interface_part: &str,
+        span: Span,
+    ) {
+        self.diagnostics.push(
+            Diagnostic::new(
+                "PK017",
+                format!(
+                    "package interface for `{}` has stale {interface_part} for `{}`",
+                    self.package_path(info),
+                    info.name
+                ),
+                span,
+            )
+            .with_related("package item is declared here", info.span)
+            .with_suggestion("regenerate the package interface"),
+        );
+    }
+
+    fn package_path(&self, info: &PackageItemInfo) -> &str {
+        self.program
+            .package_graph
+            .package(info.package)
+            .map(|package| package.path.as_str())
+            .unwrap_or("<unknown>")
     }
 }
 
