@@ -151,7 +151,7 @@ impl Compiler {
         chunk.instructions.push(Instruction::Return);
         self.functions[function.id] = Function {
             id: function.id,
-            name: function.name.clone(),
+            name: function.name,
             params: function.params.clone(),
             chunk,
             span: function.span,
@@ -162,7 +162,7 @@ impl Compiler {
         for statement in statements {
             if let hir::Stmt::Function(func) = statement {
                 chunk.instructions.push(Instruction::DefineFunction {
-                    name: func.name.clone(),
+                    name: func.name,
                     function: func.function,
                     span: func.span,
                 });
@@ -179,7 +179,7 @@ impl Compiler {
             hir::Stmt::Assign(stmt) => {
                 self.compile_expr(&stmt.value, chunk);
                 chunk.instructions.push(Instruction::Assign {
-                    name: stmt.name.clone(),
+                    name: stmt.name,
                     mutable: stmt.mutable,
                     span: stmt.span,
                 });
@@ -255,7 +255,7 @@ impl Compiler {
                 });
             }
             hir::Expr::Ident(expr) => chunk.instructions.push(Instruction::LoadName {
-                name: expr.name.clone(),
+                name: expr.name,
                 span: expr.span,
             }),
             hir::Expr::Field(expr) => {

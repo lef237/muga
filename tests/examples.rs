@@ -79,6 +79,17 @@ fn main(): Int {
 }
 
 #[test]
+fn crlf_newlines_are_counted_once() {
+    let source = "fn main(): Int {\r\n  value = @\r\n  value\r\n}\r\n";
+    let diagnostics = muga::check_source(source).unwrap_err();
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "L001")
+        .expect("lexer diagnostic should exist");
+    assert_eq!(diagnostic.span.start.line, 2, "{diagnostic:#?}");
+}
+
+#[test]
 fn diagnostic_display_without_notes_stays_single_line() {
     let diagnostic = muga::diagnostic::Diagnostic::new(
         "X001",
@@ -236,6 +247,26 @@ fn higher_order_local_inference_sample_runs() {
 #[test]
 fn higher_order_explicit_arrow_sample_runs() {
     assert_sample_runs("samples/higher_order_explicit_arrow.muga", "big", "big\n");
+}
+
+#[test]
+fn closure_capture_sample_runs() {
+    assert_sample_runs("samples/closure_capture.muga", "42", "");
+}
+
+#[test]
+fn inferred_types_sample_runs() {
+    assert_sample_runs("samples/inferred_types.muga", "10", "10\n");
+}
+
+#[test]
+fn local_inferred_equality_sample_runs() {
+    assert_sample_runs("samples/local_inferred_equality.muga", "true", "");
+}
+
+#[test]
+fn no_main_sample_runs() {
+    assert_sample_without_main_runs("samples/no_main.muga", "7\n");
 }
 
 #[test]
@@ -1365,6 +1396,41 @@ fn main(): Int {
     );
 }
 
+#[test]
+fn runtime_reports_integer_overflow() {
+    let source = r#"
+fn main(): Int {
+  9223372036854775807 + 1
+}
+"#;
+    let diagnostics = muga::run_source(source).expect_err("expected runtime error");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R019"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn recursive_type_inference_is_rejected() {
+    let source = r#"
+fn main(): Int {
+  bad = fn(x) {
+    x(x)
+  }
+  0
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected type error");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "T005" && diagnostic.message.contains("infinite type")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
@@ -1385,6 +1451,13 @@ fn assert_package_runs(path: &str, expected_main: &str, expected_output: &str) {
         result.output_text, expected_output,
         "package sample: {path}"
     );
+}
+
+fn assert_sample_without_main_runs(path: &str, expected_output: &str) {
+    let source = fs::read_to_string(path).unwrap();
+    let result = muga::run_source(&source).unwrap();
+    assert!(result.main_result.is_none(), "sample: {path}");
+    assert_eq!(result.output_text, expected_output, "sample: {path}");
 }
 
 fn parse_source(source: &str) -> muga::ast::Program {

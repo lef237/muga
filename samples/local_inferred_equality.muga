@@ -1,0 +1,6 @@
+fn main(): Bool {
+  same = fn(x) {
+    x == x
+  }
+  same("muga")
+}

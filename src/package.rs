@@ -414,6 +414,15 @@ struct PackageItemDecl {
     span: Span,
 }
 
+struct PackageItemDeclInput<'a> {
+    name: &'a str,
+    visibility: Visibility,
+    module_path: &'a str,
+    span: Span,
+    kind: PackageItemKind,
+    package_path: &'a str,
+}
+
 struct PackageLoader {
     entry_file: PathBuf,
     source_root: PathBuf,
@@ -543,24 +552,28 @@ impl PackageLoader {
                     Stmt::RecordDecl(record) => {
                         insert_package_item_decl(
                             &mut records,
-                            &record.name,
-                            record.visibility,
-                            &file.module_path,
-                            record.span,
-                            PackageItemKind::Record,
-                            package_path.as_str(),
+                            PackageItemDeclInput {
+                                name: &record.name,
+                                visibility: record.visibility,
+                                module_path: &file.module_path,
+                                span: record.span,
+                                kind: PackageItemKind::Record,
+                                package_path: package_path.as_str(),
+                            },
                             &mut self.diagnostics,
                         );
                     }
                     Stmt::FuncDecl(func) => {
                         insert_package_item_decl(
                             &mut functions,
-                            &func.name,
-                            func.visibility,
-                            &file.module_path,
-                            func.span,
-                            PackageItemKind::Function,
-                            package_path.as_str(),
+                            PackageItemDeclInput {
+                                name: &func.name,
+                                visibility: func.visibility,
+                                module_path: &file.module_path,
+                                span: func.span,
+                                kind: PackageItemKind::Function,
+                                package_path: package_path.as_str(),
+                            },
                             &mut self.diagnostics,
                         );
                     }
@@ -1350,42 +1363,40 @@ enum ImportedItemKind {
 
 fn insert_package_item_decl(
     items: &mut HashMap<String, Vec<PackageItemDecl>>,
-    name: &str,
-    visibility: Visibility,
-    module_path: &str,
-    span: Span,
-    kind: PackageItemKind,
-    package_path: &str,
+    decl: PackageItemDeclInput<'_>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let existing = items.entry(name.to_string()).or_default();
+    let existing = items.entry(decl.name.to_string()).or_default();
     let duplicate = existing.iter().find(|item| {
-        item.module_path == module_path
-            || (visibility != Visibility::Private && item.visibility != Visibility::Private)
+        item.module_path == decl.module_path
+            || (decl.visibility != Visibility::Private && item.visibility != Visibility::Private)
     });
 
     if let Some(previous) = duplicate {
-        let kind_name = match kind {
+        let kind_name = match decl.kind {
             PackageItemKind::Record => "record",
             PackageItemKind::Function => "function",
         };
         diagnostics.push(
             Diagnostic::new(
                 "PK013",
-                format!("duplicate top-level {kind_name} `{name}` in package `{package_path}`"),
-                span,
+                format!(
+                    "duplicate top-level {kind_name} `{}` in package `{}`",
+                    decl.name, decl.package_path
+                ),
+                decl.span,
             )
             .with_related(
-                format!("previous `{name}` declaration is here"),
+                format!("previous `{}` declaration is here", decl.name),
                 previous.span,
             ),
         );
     }
 
     existing.push(PackageItemDecl {
-        visibility,
-        module_path: module_path.to_string(),
-        span,
+        visibility: decl.visibility,
+        module_path: decl.module_path.to_string(),
+        span: decl.span,
     });
 }
 

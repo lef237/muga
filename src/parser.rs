@@ -919,14 +919,13 @@ impl Parser {
         ) {
             index += 1;
         }
-        match (
-            self.tokens.get(index).map(|token| &token.kind),
-            self.tokens.get(index + 1).map(|token| &token.kind),
-        ) {
-            (Some(TokenKind::RBrace), _) => true,
-            (Some(TokenKind::Ident(_)), Some(TokenKind::Colon)) => true,
-            _ => false,
-        }
+        matches!(
+            (
+                self.tokens.get(index).map(|token| &token.kind),
+                self.tokens.get(index + 1).map(|token| &token.kind),
+            ),
+            (Some(TokenKind::RBrace), _) | (Some(TokenKind::Ident(_)), Some(TokenKind::Colon))
+        )
     }
 
     fn consume_statement_boundary(&mut self) -> Result<(), Diagnostic> {
