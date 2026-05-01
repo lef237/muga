@@ -482,6 +482,42 @@ fn typed_hir_generates_package_interface_summaries() {
 }
 
 #[test]
+fn typed_hir_validates_package_references_against_interfaces() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+
+    let numbers = program
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let mut broken_interfaces = interfaces.clone();
+    broken_interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .retain(|function| function.name != "inc_twice");
+
+    let diagnostics = program.validate_package_references_against_interfaces(&broken_interfaces);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK016")
+        .expect("missing interface export diagnostic should exist");
+    assert!(diagnostic.message.contains("inc_twice"), "{diagnostic:#?}");
+    assert!(
+        diagnostic
+            .related
+            .iter()
+            .any(|note| note.message.contains("declared")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
 fn package_interface_summaries_exclude_pkg_items() {
     let program = muga::compile_typed_path(Path::new(
         "samples/packages/app/module_visibility/main.muga",

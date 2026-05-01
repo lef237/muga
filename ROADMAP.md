@@ -498,7 +498,7 @@ The initial typed HIR is in place as a foundation, with the following follow-ups
 
 - package compilation still uses flattening internally
 - package interfaces and real compilation units remain future work
-- package item identity should feed package interface generation before flattening is removed
+- package interface summaries should move earlier in the checking pipeline before flattening is removed
 
 Recently completed:
 
@@ -510,6 +510,7 @@ Recently completed:
 - diagnostics can carry related notes and suggestions while preserving simple single-line output
 - selected resolver, typechecker, and package diagnostics now include declaration-site notes and suggestions
 - typed HIR can generate in-memory package interface summaries for public records and functions
+- typed package compilation validates public package references against generated interface summaries
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

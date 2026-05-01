@@ -125,6 +125,7 @@ Done:
 - typed HIR package identifiers, call targets, and record types point to package item identities
 - diagnostics support related notes and suggestions for selected resolver, typechecker, and package errors
 - typed HIR can generate in-memory package interface summaries for public records and functions
+- typed package compilation validates public package references against generated interface summaries
 
 Remaining:
 

@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast,
+    diagnostic::Diagnostic,
     identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId},
     package::{
         PackageInterface, PackageInterfaceField, PackageInterfaceFunction, PackageInterfaceGraph,
@@ -108,6 +109,189 @@ impl Program {
             .collect();
 
         PackageInterfaceGraph { packages }
+    }
+
+    pub fn validate_package_references_against_interfaces(
+        &self,
+        interfaces: &PackageInterfaceGraph,
+    ) -> Vec<Diagnostic> {
+        let mut validator = PackageInterfaceReferenceValidator {
+            program: self,
+            interfaces,
+            checked_items: HashSet::new(),
+            diagnostics: Vec::new(),
+        };
+        validator.validate();
+        validator.diagnostics
+    }
+}
+
+struct PackageInterfaceReferenceValidator<'a> {
+    program: &'a Program,
+    interfaces: &'a PackageInterfaceGraph,
+    checked_items: HashSet<PackageItemId>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl<'a> PackageInterfaceReferenceValidator<'a> {
+    fn validate(&mut self) {
+        for binding in &self.program.bindings {
+            self.validate_type(&binding.ty, binding.span);
+        }
+        for statement in &self.program.statements {
+            self.validate_stmt(statement);
+        }
+    }
+
+    fn validate_stmt(&mut self, statement: &Stmt) {
+        match statement {
+            Stmt::Assign(stmt) => self.validate_expr(&stmt.value),
+            Stmt::Record(record) => {
+                for field in &record.fields {
+                    self.validate_type(&field.ty, field.span);
+                }
+            }
+            Stmt::Function(function) => {
+                for param in &function.params {
+                    self.validate_type(&param.ty, param.span);
+                }
+                self.validate_type(&function.return_ty, function.span);
+                self.validate_value_block(&function.body);
+            }
+            Stmt::If(stmt) => {
+                self.validate_expr(&stmt.condition);
+                self.validate_block(&stmt.then_branch);
+                if let Some(else_branch) = &stmt.else_branch {
+                    self.validate_block(else_branch);
+                }
+            }
+            Stmt::While(stmt) => {
+                self.validate_expr(&stmt.condition);
+                self.validate_block(&stmt.body);
+            }
+            Stmt::Expr(stmt) => self.validate_expr(&stmt.expr),
+        }
+    }
+
+    fn validate_block(&mut self, block: &Block) {
+        for statement in &block.statements {
+            self.validate_stmt(statement);
+        }
+    }
+
+    fn validate_value_block(&mut self, block: &ValueBlock) {
+        for statement in &block.statements {
+            self.validate_stmt(statement);
+        }
+        self.validate_expr(&block.expr);
+    }
+
+    fn validate_expr(&mut self, expr: &Expr) {
+        self.validate_type(&expr.ty, expr.span);
+        match &expr.kind {
+            ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) => {}
+            ExprKind::Ident(ident) => {
+                if let IdentTarget::PackageItem { item, .. } = ident.target {
+                    self.validate_item(item, expr.span);
+                }
+            }
+            ExprKind::RecordLit(record) => {
+                for field in &record.fields {
+                    self.validate_expr(&field.value);
+                }
+            }
+            ExprKind::Field(field) => self.validate_expr(&field.base),
+            ExprKind::RecordUpdate(update) => {
+                self.validate_expr(&update.base);
+                for field in &update.fields {
+                    self.validate_expr(&field.value);
+                }
+            }
+            ExprKind::Unary(unary) => self.validate_expr(&unary.expr),
+            ExprKind::Binary(binary) => {
+                self.validate_expr(&binary.left);
+                self.validate_expr(&binary.right);
+            }
+            ExprKind::Call(call) => {
+                self.validate_expr(&call.callee);
+                for arg in &call.args {
+                    self.validate_expr(arg);
+                }
+            }
+            ExprKind::If(if_expr) => {
+                self.validate_expr(&if_expr.condition);
+                self.validate_value_block(&if_expr.then_branch);
+                self.validate_value_block(&if_expr.else_branch);
+            }
+            ExprKind::Fn(fn_expr) => {
+                for param in &fn_expr.params {
+                    self.validate_type(&param.ty, param.span);
+                }
+                self.validate_type(&fn_expr.return_ty, expr.span);
+                self.validate_value_block(&fn_expr.body);
+            }
+        }
+    }
+
+    fn validate_type(&mut self, ty: &TypeInfo, span: Span) {
+        match ty {
+            TypeInfo::PackageRecord { item, .. } => self.validate_item(*item, span),
+            TypeInfo::Function(function) => {
+                for param in &function.params {
+                    self.validate_type(param, span);
+                }
+                self.validate_type(&function.ret, span);
+            }
+            _ => {}
+        }
+    }
+
+    fn validate_item(&mut self, item: PackageItemId, span: Span) {
+        if !self.checked_items.insert(item) {
+            return;
+        }
+
+        let Some(info) = self.program.package_graph.item(item) else {
+            self.diagnostics.push(Diagnostic::new(
+                "PK016",
+                format!(
+                    "package interface reference points at unknown item {:?}",
+                    item
+                ),
+                span,
+            ));
+            return;
+        };
+        if info.visibility != ast::Visibility::Public {
+            return;
+        }
+
+        let exported = match info.kind {
+            PackageItemKind::Record => self.interfaces.record(item).is_some(),
+            PackageItemKind::Function => self.interfaces.function(item).is_some(),
+        };
+        if !exported {
+            let kind = match info.kind {
+                PackageItemKind::Record => "record",
+                PackageItemKind::Function => "function",
+            };
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "PK016",
+                    format!(
+                        "package interface for `{}` does not export {kind} `{}`",
+                        self.program
+                            .package_graph
+                            .package(info.package)
+                            .map(|package| package.path.as_str())
+                            .unwrap_or("<unknown>"),
+                        info.name
+                    ),
+                    span,
+                )
+                .with_related("package item is declared here", info.span),
+            );
+        }
     }
 }
 

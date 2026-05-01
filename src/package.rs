@@ -174,6 +174,20 @@ impl PackageInterfaceGraph {
             .iter()
             .find(|interface| interface.package == id)
     }
+
+    pub fn record(&self, item: PackageItemId) -> Option<&PackageInterfaceRecord> {
+        self.packages
+            .iter()
+            .flat_map(|package| package.records.iter())
+            .find(|record| record.item == item)
+    }
+
+    pub fn function(&self, item: PackageItemId) -> Option<&PackageInterfaceFunction> {
+        self.packages
+            .iter()
+            .flat_map(|package| package.functions.iter())
+            .find(|function| function.item == item)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

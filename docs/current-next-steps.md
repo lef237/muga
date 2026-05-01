@@ -71,6 +71,7 @@ Recently completed:
 - typed HIR can generate in-memory package interface summaries for public records and functions.
 - interface summaries store `PackageItemId` and resolved `TypeInfo` for public signatures.
 - `pkg` items are excluded from package interface summaries.
+- typed package compilation validates public package references against generated interface summaries.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
@@ -78,12 +79,13 @@ Recently completed:
 The best next implementation task is:
 
 1. start separating package checking from whole-program flattening
-2. make import validation and downstream type lookup consume package interface summaries
+2. make import validation and downstream type lookup consume package interface summaries earlier in the pipeline
 3. keep full-source loading and flattening as the execution backend until checking no longer depends on dependency bodies
 
 Why this comes next:
 
 - in-memory package interface summaries now exist and are tested
+- typed package compilation already consumes summaries for public package reference validation
 - public signatures are available as resolved compiler data
 - downstream checking should stop depending on dependency bodies before caching can matter
 - keeping flattening for execution lets this migration stay behavior-compatible
