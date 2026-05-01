@@ -1,0 +1,7 @@
+package app::import_pkg_item
+
+import app::module_visibility
+
+fn main(): Int {
+  module_visibility::helper()
+}
