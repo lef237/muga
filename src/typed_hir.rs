@@ -269,18 +269,28 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
 
         match info.kind {
             PackageItemKind::Record => {
-                if let Some(interface) = self.interfaces.record(item) {
-                    self.validate_record_shape(&info, interface, span);
-                } else {
+                let Some(interface) = self.interfaces.record_by_name(info.package, &info.name)
+                else {
                     self.push_missing_interface_export(&info, "record", span);
+                    return;
+                };
+                if interface.item != item {
+                    self.push_stale_interface_diagnostic(&info, "record identity", span);
+                    return;
                 }
+                self.validate_record_shape(&info, interface, span);
             }
             PackageItemKind::Function => {
-                if let Some(interface) = self.interfaces.function(item) {
-                    self.validate_function_signature(&info, interface, span);
-                } else {
+                let Some(interface) = self.interfaces.function_by_name(info.package, &info.name)
+                else {
                     self.push_missing_interface_export(&info, "function", span);
+                    return;
+                };
+                if interface.item != item {
+                    self.push_stale_interface_diagnostic(&info, "function identity", span);
+                    return;
                 }
+                self.validate_function_signature(&info, interface, span);
             }
         }
     }

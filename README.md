@@ -174,7 +174,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - file-based package mode with `package`, `import`, `pkg`, `pub`, module-private top-level items, and `alias::Name` is implemented
 - minimal `muga.toml` project mode with `[package] name/source` and inferred package paths is implemented
 - current package implementation still requires fully annotated `pub fn`; the design direction is to allow inferred public signatures once package interfaces can store them
-- typed HIR can generate in-memory package interface summaries for public records and functions, and typed package compilation validates public package references and stale public signatures against those summaries
+- typed HIR can generate in-memory package interface summaries for public records and functions, and typed package compilation validates public package references, export names, item identity, and stale public signatures against those summaries
 - package import lookup is separated behind a public export surface as a step toward downstream interface consumption
 - diagnostics support related notes and suggestions, with package visibility, duplicate declaration, record field, and import-alias diagnostics using declaration-site notes where useful
 - generics, generic collection types, list literals, `Option[T]`, and `Map[K, V]` are design drafts and not implemented yet

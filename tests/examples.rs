@@ -517,6 +517,90 @@ fn typed_hir_validates_package_references_against_interfaces() {
 }
 
 #[test]
+fn typed_hir_validates_package_interfaces_by_export_name() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let numbers = program
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let users = program
+        .package_graph
+        .package_id("util::users")
+        .expect("users package should exist");
+    let mut interfaces = program.package_interfaces();
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .iter_mut()
+        .find(|function| function.name == "inc_twice")
+        .expect("inc_twice should be exported")
+        .name = "inc_twice_old".to_string();
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == users)
+        .expect("users interface should exist")
+        .records
+        .iter_mut()
+        .find(|record| record.name == "User")
+        .expect("User should be exported")
+        .name = "Account".to_string();
+
+    let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK016" && diagnostic.message.contains("function `inc_twice`")
+        }),
+        "{diagnostics:#?}"
+    );
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK016" && diagnostic.message.contains("record `User`")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_rejects_stale_package_interface_item_identity() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let numbers = program
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let inc = program
+        .package_graph
+        .item_id(numbers, "inc", muga::package::PackageItemKind::Function)
+        .expect("inc should exist");
+    let mut interfaces = program.package_interfaces();
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .iter_mut()
+        .find(|function| function.name == "inc_twice")
+        .expect("inc_twice should be exported")
+        .item = inc;
+
+    let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK017")
+        .expect("stale interface diagnostic should exist");
+    assert!(
+        diagnostic.message.contains("function identity"),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
 fn typed_hir_rejects_stale_package_interface_signatures() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
         .expect("typed package compilation should pass");

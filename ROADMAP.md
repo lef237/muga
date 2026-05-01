@@ -511,7 +511,7 @@ Recently completed:
 - selected resolver, typechecker, and package diagnostics now include declaration-site notes and suggestions
 - typed HIR can generate in-memory package interface summaries for public records and functions
 - typed package compilation validates public package references against generated interface summaries
-- typed package interface validation detects stale public function signatures and record field shapes
+- typed package interface validation uses package/name lookup and detects stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup reads a package export surface before flattening, rather than checking dependency item maps directly
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.

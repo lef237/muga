@@ -126,7 +126,7 @@ Done:
 - diagnostics support related notes and suggestions for selected resolver, typechecker, and package errors
 - typed HIR can generate in-memory package interface summaries for public records and functions
 - typed package compilation validates public package references against generated interface summaries
-- typed package interface validation checks stale public function signatures and record field shapes
+- typed package interface validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup is routed through a package export surface before whole-program flattening
 
 Remaining:
