@@ -426,29 +426,19 @@ fn typed_hir_generates_package_interface_summaries() {
         .package_id("util::users")
         .expect("users package should exist");
 
-    let numbers_interface = interfaces
-        .package(numbers)
-        .expect("numbers interface should exist");
-    let inc_twice = numbers_interface
-        .functions
-        .iter()
-        .find(|function| function.name == "inc_twice")
+    let inc_twice = interfaces
+        .function_by_name(numbers, "inc_twice")
         .expect("inc_twice should be exported");
     assert_eq!(inc_twice.params.len(), 1);
     assert_eq!(inc_twice.params[0].ty, muga::typing::TypeInfo::Int);
     assert_eq!(inc_twice.ret, muga::typing::TypeInfo::Int);
 
-    let users_interface = interfaces
-        .package(users)
-        .expect("users interface should exist");
     let user_item = program
         .package_graph
         .item_id(users, "User", muga::package::PackageItemKind::Record)
         .expect("User item should exist");
-    let user_record = users_interface
-        .records
-        .iter()
-        .find(|record| record.name == "User")
+    let user_record = interfaces
+        .record_by_name(users, "User")
         .expect("User should be exported");
     assert_eq!(user_record.item, user_item);
     assert!(
@@ -459,10 +449,8 @@ fn typed_hir_generates_package_interface_summaries() {
         "{user_record:#?}"
     );
 
-    let birthday = users_interface
-        .functions
-        .iter()
-        .find(|function| function.name == "birthday")
+    let birthday = interfaces
+        .function_by_name(users, "birthday")
         .expect("birthday should be exported");
     assert_eq!(birthday.params.len(), 1);
     assert!(
@@ -513,6 +501,79 @@ fn typed_hir_validates_package_references_against_interfaces() {
             .related
             .iter()
             .any(|note| note.message.contains("declared")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_rejects_stale_package_interface_signatures() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let numbers = program
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let mut interfaces = program.package_interfaces();
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .iter_mut()
+        .find(|function| function.name == "inc_twice")
+        .expect("inc_twice should be exported")
+        .ret = muga::typing::TypeInfo::String;
+
+    let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK017")
+        .expect("stale interface diagnostic should exist");
+    assert!(
+        diagnostic.message.contains("function signature"),
+        "{diagnostic:#?}"
+    );
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("regenerate")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_rejects_stale_package_interface_record_shapes() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let users = program
+        .package_graph
+        .package_id("util::users")
+        .expect("users package should exist");
+    let mut interfaces = program.package_interfaces();
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == users)
+        .expect("users interface should exist")
+        .records
+        .iter_mut()
+        .find(|record| record.name == "User")
+        .expect("User should be exported")
+        .fields
+        .iter_mut()
+        .find(|field| field.name == "age")
+        .expect("age field should exist")
+        .ty = muga::typing::TypeInfo::String;
+
+    let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK017")
+        .expect("stale interface diagnostic should exist");
+    assert!(
+        diagnostic.message.contains("record shape"),
         "{diagnostic:#?}"
     );
 }

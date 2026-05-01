@@ -182,11 +182,33 @@ impl PackageInterfaceGraph {
             .find(|record| record.item == item)
     }
 
+    pub fn record_by_name(
+        &self,
+        package: PackageId,
+        name: &str,
+    ) -> Option<&PackageInterfaceRecord> {
+        self.package(package)?
+            .records
+            .iter()
+            .find(|record| record.name == name)
+    }
+
     pub fn function(&self, item: PackageItemId) -> Option<&PackageInterfaceFunction> {
         self.packages
             .iter()
             .flat_map(|package| package.functions.iter())
             .find(|function| function.item == item)
+    }
+
+    pub fn function_by_name(
+        &self,
+        package: PackageId,
+        name: &str,
+    ) -> Option<&PackageInterfaceFunction> {
+        self.package(package)?
+            .functions
+            .iter()
+            .find(|function| function.name == name)
     }
 }
 
