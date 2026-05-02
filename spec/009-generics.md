@@ -279,7 +279,7 @@ users: Map[String, User] = Map.empty()
 maybe_user: Option[User] = users.get("ada")
 ```
 
-The exact construction and pattern matching syntax for `Option[T]` is deferred to enum or sum-type design.
+`Option[T]` construction and consumption are implemented as `Option::Some(value)`, `Option::None`, and exhaustive Option `match`. General user-defined enum declarations are still deferred.
 
 `T?` is reserved as possible future shorthand for `Option[T]`, but `Option[T]` is the canonical v1 spelling.
 

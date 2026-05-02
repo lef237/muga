@@ -104,7 +104,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - function types use `->`
 - v1 generics are drafted for generic type expressions, generic records, and generic functions
 - v1 does not introduce trait, interface, protocol, typeclass, or overloaded dispatch declarations
-- collection design is drafted around `List[T]` first, then `Option[T]` and `Map[K, V]`
+- collection design is drafted around `List[T]` and `Option[T]` first, then safe lookup and `Map[K, V]`
 - source-level values use value semantics; the implementation may share immutable storage internally when that is not observable
 - explicit source-level references such as `ref T`, `mut ref T`, and `&value` are not planned for ordinary Muga code
 - write-oriented APIs should prefer value-returning updates, builder/buffer types, or resource handles
@@ -169,7 +169,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - `print` and `println` are available as prelude builtins
 - `print(x)` writes `Int`, `Bool`, or `String` without a trailing newline and returns the same value
 - `println(x)` writes `Int`, `Bool`, or `String` with a trailing newline and returns the same value
-- `record`, field access, `record.with` update, chained UFCS-style calls, local binding annotations, `List[T]` type annotations, list literals, and arrow function type annotations are implemented
+- `record`, field access, `record.with` update, chained UFCS-style calls, local binding annotations, `List[T]` / `Option[T]` type annotations, list literals, `Option::Some` / `Option::None`, exhaustive Option `match`, and arrow function type annotations are implemented
 - local bidirectional inference for some higher-order parameters and anonymous functions is implemented
 - file-based package mode with `package`, `import`, `pkg`, `pub`, module-private top-level items, and `alias::Name` is implemented
 - minimal `muga.toml` project mode with `[package] name/source` and inferred package paths is implemented
@@ -177,7 +177,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - typed HIR can generate in-memory package interface summaries for public records and functions, and typed package compilation validates public package references, export names, item identity, and stale public signatures against those summaries
 - package import lookup is separated behind `PackageExportGraph`, a public export surface that can be derived from package identity data or typed package interfaces
 - diagnostics support related notes and suggestions, with package visibility, duplicate declaration, record field, and import-alias diagnostics using declaration-site notes where useful
-- generic type expression syntax such as `List[Int]` is parsed; `List[T]`, list literals, and basic list operations (`len`, `is_empty`, `push`) are implemented, while `Option[T]`, safe lookup, indexing, and `Map[K, V]` are not implemented yet
+- generic type expression syntax such as `List[Int]` and `Option[Int]` is parsed; `List[T]`, list literals, basic list operations (`len`, `is_empty`, `push`), `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented, while safe lookup, indexing, general enum declarations, and `Map[K, V]` are not implemented yet
 - explicit source-level references, mutable references, and explicit dereference syntax are not planned for ordinary Muga code
 - typed HIR preserves resolved call shape, ordinary/chained/package-qualified call origin, and package item identity for package calls and record types
 - dependency declarations, registries, persisted package interfaces, and package caching are not implemented yet

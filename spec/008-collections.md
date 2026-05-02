@@ -1,6 +1,6 @@
 # Collections Draft
 
-Status: design draft. The Rust compiler implements the first slice: local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, and `len` / `is_empty` / `push`.
+Status: design draft. The Rust compiler implements the first slices: local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, `len` / `is_empty` / `push`, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match`.
 
 This draft defines the recommended direction for Muga collections on top of the v1 generics MVP.
 
@@ -24,7 +24,7 @@ The recommended order is:
 1. local binding type annotations (implemented)
 2. simple generic type syntax for collection types (implemented for type expressions)
 3. `List[T]` type annotations, list literals, `len`, `is_empty`, and `push` (implemented)
-4. `Option[T]`
+4. `Option[T]` construction and exhaustive `match` (implemented)
 5. `Map[K, V]`
 6. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
 
@@ -137,15 +137,25 @@ Safe lookup should use `get` and return `Option[T]`.
 
 It is not a collection. It is a small result type used when an operation can fail without being an exceptional runtime error.
 
-Conceptually:
+Current construction syntax:
 
-```txt
-Conceptual shape only. Exact enum syntax is deferred.
-
-Option[T] =
-  Some(T)
-  None
+```muga
+present: Option[Int] = Option::Some(1)
+missing: Option[Int] = Option::None
 ```
+
+Current consumption syntax is exhaustive `match`:
+
+```muga
+match present {
+  Option::Some(value) => value
+  Option::None => 0
+}
+```
+
+`Option::None` needs an expected `Option[T]` type, usually from a binding annotation, function return type, parameter type, or branch expectation.
+
+This is implemented as a compiler-known standard enum-like type. General user-defined enum declarations are still deferred, but this source spelling should remain compatible with that future direction.
 
 The important point is that absence becomes part of the static type.
 
@@ -173,7 +183,7 @@ Why this matters:
 - it lets the typechecker see that a lookup may fail
 - it makes collection APIs safer without turning ordinary misses into runtime errors
 
-The exact syntax for constructing and handling `Option[T]` should be decided with enum, pattern matching, or sum-type design. Until then, this draft only reserves `Option[T]` as the recommended return shape for safe lookup.
+Safe lookup APIs such as `List.get` and `Map.get` are not implemented yet, but they can now return `Option[T]` at the source level.
 
 ### 6.1 Optional shorthand
 

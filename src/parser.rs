@@ -565,6 +565,9 @@ impl Parser {
         if matches!(self.peek_kind(), TokenKind::If) {
             return self.parse_if_expr();
         }
+        if matches!(self.peek_kind(), TokenKind::Match) {
+            return self.parse_match_expr();
+        }
         self.parse_equality()
     }
 
@@ -582,6 +585,62 @@ impl Parser {
             then_branch,
             else_branch,
         }))
+    }
+
+    fn parse_match_expr(&mut self) -> Result<Expr, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::Match, "expected `match`")?;
+        let value = self.parse_expr_without_struct_literal()?;
+        self.expect_simple(TokenKind::LBrace, "expected `{` after match value")?;
+        self.skip_newlines();
+        let mut arms = Vec::new();
+        while !matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+            let arm_start = self.current_span();
+            let pattern = self.parse_match_pattern()?;
+            self.expect_simple(TokenKind::FatArrow, "expected `=>` after match pattern")?;
+            let arm_value = self.parse_expr_allowing_struct_literal()?;
+            let arm_span = arm_start.merge(arm_value.span());
+            arms.push(MatchArm {
+                pattern,
+                value: arm_value,
+                span: arm_span,
+            });
+            if matches!(self.peek_kind(), TokenKind::RBrace) {
+                break;
+            }
+            self.consume_match_arm_boundary()?;
+            self.skip_newlines();
+        }
+        let end = self.expect_simple(TokenKind::RBrace, "expected `}` after match arms")?;
+        Ok(Expr::Match(MatchExpr {
+            id: self.expr_id(),
+            value: Box::new(value),
+            arms,
+            span: start.merge(end),
+        }))
+    }
+
+    fn parse_match_pattern(&mut self) -> Result<MatchPattern, Diagnostic> {
+        let (first, first_span) = self.expect_ident()?;
+        let (name, name_span) = self.parse_value_name_after_first(first, first_span)?;
+        match name.as_str() {
+            "Option::Some" => {
+                self.expect_simple(TokenKind::LParen, "expected `(` after `Option::Some`")?;
+                let (binding, binding_span) = self.expect_ident()?;
+                let end =
+                    self.expect_simple(TokenKind::RParen, "expected `)` after match binding")?;
+                Ok(MatchPattern::OptionSome {
+                    binding,
+                    span: name_span.merge(binding_span).merge(end),
+                })
+            }
+            "Option::None" => Ok(MatchPattern::OptionNone { span: name_span }),
+            _ => Err(Diagnostic::new(
+                "P016",
+                "expected `Option::Some(name)` or `Option::None` pattern",
+                name_span,
+            )),
+        }
     }
 
     fn parse_equality(&mut self) -> Result<Expr, Diagnostic> {
@@ -1077,6 +1136,24 @@ impl Parser {
         Err(Diagnostic::new(
             "P013",
             "expected newline or `,` between record fields",
+            self.current_span(),
+        ))
+    }
+
+    fn consume_match_arm_boundary(&mut self) -> Result<(), Diagnostic> {
+        if self.matches_simple(&TokenKind::Comma) {
+            return Ok(());
+        }
+        if matches!(self.peek_kind(), TokenKind::Newline) {
+            self.skip_newlines();
+            return Ok(());
+        }
+        if matches!(self.peek_kind(), TokenKind::RBrace) {
+            return Ok(());
+        }
+        Err(Diagnostic::new(
+            "P017",
+            "expected newline or `,` between match arms",
             self.current_span(),
         ))
     }

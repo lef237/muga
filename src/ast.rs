@@ -167,6 +167,7 @@ pub enum Expr {
     Binary(BinaryExpr),
     Call(CallExpr),
     If(IfExpr),
+    Match(MatchExpr),
     Fn(FnExpr),
 }
 
@@ -185,6 +186,7 @@ impl Expr {
             Self::Binary(expr) => expr.id,
             Self::Call(expr) => expr.id,
             Self::If(expr) => expr.id,
+            Self::Match(expr) => expr.id,
             Self::Fn(expr) => expr.id,
         }
     }
@@ -203,6 +205,7 @@ impl Expr {
             Self::Binary(expr) => expr.span,
             Self::Call(expr) => expr.span,
             Self::If(expr) => expr.span,
+            Self::Match(expr) => expr.span,
             Self::Fn(expr) => expr.span,
         }
     }
@@ -334,6 +337,35 @@ pub struct IfExpr {
     pub then_branch: ValueBlock,
     pub else_branch: ValueBlock,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchExpr {
+    pub id: ExprId,
+    pub value: Box<Expr>,
+    pub arms: Vec<MatchArm>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchArm {
+    pub pattern: MatchPattern,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum MatchPattern {
+    OptionSome { binding: String, span: Span },
+    OptionNone { span: Span },
+}
+
+impl MatchPattern {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::OptionSome { span, .. } | Self::OptionNone { span } => *span,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -469,6 +501,13 @@ impl NodeIdAssigner {
                 self.assign_expr(&mut expr.condition);
                 self.assign_value_block(&mut expr.then_branch);
                 self.assign_value_block(&mut expr.else_branch);
+            }
+            Expr::Match(expr) => {
+                expr.id = self.expr_id();
+                self.assign_expr(&mut expr.value);
+                for arm in &mut expr.arms {
+                    self.assign_expr(&mut arm.value);
+                }
             }
             Expr::Fn(expr) => {
                 expr.id = self.expr_id();

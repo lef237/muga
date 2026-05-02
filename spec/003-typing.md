@@ -329,7 +329,7 @@ mut names: List[String] = []
 
 This is needed because an empty collection literal does not determine its element type by itself.
 
-This syntax is still a draft and is not implemented yet.
+This syntax is implemented for local bindings and is used to give empty collection literals and `Option::None` an expected type.
 
 ## 11. Conditions and Branches
 

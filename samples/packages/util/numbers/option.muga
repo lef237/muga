@@ -1,0 +1,16 @@
+package util::numbers
+
+pub fn maybe_positive(x: Int): Option[Int] {
+  if x > 0 {
+    Option::Some(x)
+  } else {
+    Option::None
+  }
+}
+
+pub fn value_or_zero(value: Option[Int]): Int {
+  match value {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}

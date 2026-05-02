@@ -84,6 +84,10 @@ pub enum Instruction {
         target: usize,
         span: Span,
     },
+    JumpIfOptionNone {
+        target: usize,
+        span: Span,
+    },
     Jump {
         target: usize,
     },
@@ -325,6 +329,7 @@ impl Compiler {
                 });
             }
             hir::Expr::If(expr) => self.compile_if_expr(expr, chunk),
+            hir::Expr::Match(expr) => self.compile_match_expr(expr, chunk),
             hir::Expr::Closure(expr) => chunk.instructions.push(Instruction::MakeClosure {
                 function: expr.function,
             }),
@@ -343,11 +348,57 @@ impl Compiler {
         self.patch_jump(chunk, end_jump, end_target);
     }
 
+    fn compile_match_expr(&mut self, expr: &hir::MatchExpr, chunk: &mut Chunk) {
+        let some_arm = expr
+            .arms
+            .iter()
+            .find(|arm| matches!(arm.pattern, hir::MatchPattern::OptionSome { .. }))
+            .expect("typechecked Option match should have Some arm");
+        let none_arm = expr
+            .arms
+            .iter()
+            .find(|arm| matches!(arm.pattern, hir::MatchPattern::OptionNone { .. }))
+            .expect("typechecked Option match should have None arm");
+
+        self.compile_expr(&expr.value, chunk);
+        let none_jump = self.emit_jump_if_option_none(chunk, expr.value.span());
+
+        let hir::MatchPattern::OptionSome { binding, span } = some_arm.pattern else {
+            unreachable!("selected Some arm");
+        };
+        chunk.instructions.push(Instruction::PushScope);
+        chunk.instructions.push(Instruction::Assign {
+            name: binding,
+            mutable: false,
+            span,
+        });
+        self.compile_expr(&some_arm.value, chunk);
+        chunk.instructions.push(Instruction::PopScope);
+        let end_jump = self.emit_jump(chunk);
+
+        let none_target = chunk.instructions.len();
+        self.patch_jump_if_option_none(chunk, none_jump, none_target);
+        chunk.instructions.push(Instruction::PushScope);
+        self.compile_expr(&none_arm.value, chunk);
+        chunk.instructions.push(Instruction::PopScope);
+
+        let end_target = chunk.instructions.len();
+        self.patch_jump(chunk, end_jump, end_target);
+    }
+
     fn emit_jump_if_false(&self, chunk: &mut Chunk, span: Span) -> usize {
         let index = chunk.instructions.len();
         chunk
             .instructions
             .push(Instruction::JumpIfFalse { target: 0, span });
+        index
+    }
+
+    fn emit_jump_if_option_none(&self, chunk: &mut Chunk, span: Span) -> usize {
+        let index = chunk.instructions.len();
+        chunk
+            .instructions
+            .push(Instruction::JumpIfOptionNone { target: 0, span });
         index
     }
 
@@ -374,6 +425,17 @@ impl Compiler {
         } = &mut chunk.instructions[index]
         else {
             unreachable!("expected Jump at patch site");
+        };
+        *patched_target = target;
+    }
+
+    fn patch_jump_if_option_none(&self, chunk: &mut Chunk, index: usize, target: usize) {
+        let Instruction::JumpIfOptionNone {
+            target: patched_target,
+            ..
+        } = &mut chunk.instructions[index]
+        else {
+            unreachable!("expected JumpIfOptionNone at patch site");
         };
         *patched_target = target;
     }

@@ -14,6 +14,7 @@ pub enum TokenKind {
     As,
     Fn,
     Record,
+    Match,
     Mut,
     If,
     Else,
@@ -31,6 +32,7 @@ pub enum TokenKind {
     Comma,
     Colon,
     Arrow,
+    FatArrow,
     Eq,
     EqEq,
     Bang,
@@ -64,6 +66,7 @@ impl TokenKind {
             TokenKind::Eq
                 | TokenKind::Comma
                 | TokenKind::Arrow
+                | TokenKind::FatArrow
                 | TokenKind::LBracket
                 | TokenKind::Plus
                 | TokenKind::Minus
