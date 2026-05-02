@@ -1,6 +1,6 @@
 # Collections Draft
 
-Status: design draft only. This document is not implemented in the Rust compiler yet.
+Status: design draft. The Rust compiler implements the first slice: local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, and `len` / `is_empty` / `push`.
 
 This draft defines the recommended direction for Muga collections on top of the v1 generics MVP.
 
@@ -21,9 +21,9 @@ The smallest useful collection surface should be stabilized before adding a broa
 
 The recommended order is:
 
-1. local binding type annotations
-2. simple generic type syntax for collection types
-3. `List[T]`
+1. local binding type annotations (implemented)
+2. simple generic type syntax for collection types (implemented for type expressions)
+3. `List[T]` type annotations, list literals, `len`, `is_empty`, and `push` (implemented)
 4. `Option[T]`
 5. `Map[K, V]`
 6. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
@@ -83,9 +83,6 @@ Examples:
 
 ```muga
 numbers = [1, 2, 3]
-more = numbers.push(4)
-first = more[0]
-count = more.len()
 ```
 
 Typing rules:
@@ -94,8 +91,8 @@ Typing rules:
 - `[1, 2, 3]` has type `List[Int]`
 - `["a", "b"]` has type `List[String]`
 - `[]` requires an expected type
-- indexing uses an `Int` index
-- indexing returns the element type
+- future indexing should use an `Int` index
+- future indexing should return the element type
 
 Examples:
 
@@ -121,6 +118,8 @@ Recommended initial operations:
 - `push(self: List[T], value: T): List[T]`
 - `set(self: List[T], index: Int, value: T): List[T]`
 - `get(self: List[T], index: Int): Option[T]`
+
+`len`, `is_empty`, and value-returning `push` are implemented. `set`, `get`, and index syntax are not implemented yet.
 
 Index syntax:
 

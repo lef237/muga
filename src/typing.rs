@@ -79,6 +79,7 @@ pub enum TypeInfo {
     String,
     Record(Symbol),
     PackageRecord { symbol: Symbol, item: PackageItemId },
+    List(Box<TypeInfo>),
     Function(FunctionTypeInfo),
     Builtin(&'static str),
     Unknown,
@@ -97,6 +98,7 @@ enum Type {
     Bool,
     String,
     Record(Symbol),
+    List(Box<Type>),
     Function(FunctionSig),
     Builtin(BuiltinFunction),
     Unknown(u32),
@@ -113,6 +115,9 @@ struct FunctionSig {
 enum BuiltinFunction {
     Print,
     Println,
+    Len,
+    IsEmpty,
+    ListPush,
 }
 
 #[derive(Clone, Debug)]
@@ -247,6 +252,27 @@ impl TypeChecker {
             println,
             BindingKind::Function,
             Type::Builtin(BuiltinFunction::Println),
+            Span::default(),
+        );
+        let len = self.symbol("len");
+        self.insert_current(
+            len,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::Len),
+            Span::default(),
+        );
+        let is_empty = self.symbol("is_empty");
+        self.insert_current(
+            is_empty,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::IsEmpty),
+            Span::default(),
+        );
+        let push = self.symbol("push");
+        self.insert_current(
+            push,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::ListPush),
             Span::default(),
         );
     }
@@ -430,6 +456,7 @@ impl TypeChecker {
                     Type::Error
                 }
             }
+            Expr::ListLit(expr) => self.check_list_lit(expr, expected),
             Expr::RecordLit(expr) => {
                 let ty = self.check_record_lit(expr);
                 self.apply_expected(ty, expected, expr.span)
@@ -529,6 +556,93 @@ impl TypeChecker {
                                         format!(
                                             "`{builtin_name}` accepts only Int, Bool, or String"
                                         ),
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                            }
+                        }
+                    }
+                    Type::Builtin(BuiltinFunction::Len | BuiltinFunction::IsEmpty) => {
+                        let builtin = match self.resolve_type(&callee_ty) {
+                            Type::Builtin(builtin) => builtin,
+                            _ => unreachable!("matched builtin branch"),
+                        };
+                        if expr.args.len() != 1 {
+                            self.diagnostics.push(Diagnostic::new(
+                                "T004",
+                                format!("expected 1 arguments but found {}", expr.args.len()),
+                                expr.span,
+                            ));
+                            Type::Error
+                        } else {
+                            let arg_ty = self.check_expr(&expr.args[0]);
+                            match self.resolve_type(&arg_ty) {
+                                Type::List(_) => {
+                                    let ret = match builtin {
+                                        BuiltinFunction::Len => Type::Int,
+                                        BuiltinFunction::IsEmpty => Type::Bool,
+                                        _ => unreachable!("matched list query builtin"),
+                                    };
+                                    self.apply_expected(ret, expected, expr.span)
+                                }
+                                Type::Unknown(_) => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "E005",
+                                        "type annotation required because inference is not unique",
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                                Type::Error => Type::Error,
+                                _ => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "T006",
+                                        format!(
+                                            "`{}` expects List[T] as its first argument",
+                                            Self::builtin_name(builtin)
+                                        ),
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                            }
+                        }
+                    }
+                    Type::Builtin(BuiltinFunction::ListPush) => {
+                        if expr.args.len() != 2 {
+                            self.diagnostics.push(Diagnostic::new(
+                                "T004",
+                                format!("expected 2 arguments but found {}", expr.args.len()),
+                                expr.span,
+                            ));
+                            Type::Error
+                        } else {
+                            let item_expected = Type::Unknown(self.fresh_unknown());
+                            let list_expected = Type::List(Box::new(item_expected.clone()));
+                            let list_ty =
+                                self.check_expr_with_expected(&expr.args[0], Some(list_expected));
+                            match self.resolve_type(&list_ty) {
+                                Type::List(item_ty) => {
+                                    self.check_expr_with_expected(
+                                        &expr.args[1],
+                                        Some((*item_ty).clone()),
+                                    );
+                                    self.apply_expected(Type::List(item_ty), expected, expr.span)
+                                }
+                                Type::Unknown(_) => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "E005",
+                                        "type annotation required because inference is not unique",
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                                Type::Error => Type::Error,
+                                _ => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "T006",
+                                        "`push` expects List[T] as its first argument",
                                         expr.span,
                                     ));
                                     Type::Error
@@ -702,6 +816,52 @@ impl TypeChecker {
                     field.span,
                 ));
             }
+        }
+    }
+
+    fn check_list_lit(&mut self, expr: &ListLitExpr, expected: Option<Type>) -> Type {
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        let expected_item = match expected.as_ref() {
+            Some(Type::List(item)) => Some(*item.clone()),
+            _ => None,
+        };
+
+        if expr.items.is_empty() {
+            return match expected {
+                Some(Type::List(item)) => Type::List(item),
+                Some(Type::Error) => Type::Error,
+                Some(_) | None => {
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "T015",
+                            "empty list literal requires an expected List[T] type",
+                            expr.span,
+                        )
+                        .with_suggestion(
+                            "add a local binding annotation such as `items: List[Int] = []`",
+                        ),
+                    );
+                    Type::Error
+                }
+            };
+        }
+
+        let item_ty = if let Some(expected_item) = expected_item {
+            for item in &expr.items {
+                self.check_expr_with_expected(item, Some(expected_item.clone()));
+            }
+            expected_item
+        } else {
+            let first_ty = self.check_expr(&expr.items[0]);
+            for item in expr.items.iter().skip(1) {
+                self.check_expr_with_expected(item, Some(first_ty.clone()));
+            }
+            first_ty
+        };
+        let list_ty = Type::List(Box::new(self.resolve_type(&item_ty)));
+        match expected {
+            Some(Type::List(_)) | None => list_ty,
+            Some(expected) => self.apply_expected(list_ty, Some(expected), expr.span),
         }
     }
 
@@ -1021,6 +1181,17 @@ impl TypeChecker {
                     Type::Error
                 }
             }
+            TypeExpr::Generic(generic) if generic.name == "List" => {
+                if generic.args.len() != 1 {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T016",
+                        "List expects exactly 1 type argument",
+                        span,
+                    ));
+                    return Type::Error;
+                }
+                Type::List(Box::new(self.type_from_expr(&generic.args[0], span)))
+            }
             TypeExpr::Generic(generic) => {
                 for arg in &generic.args {
                     let _ = self.type_from_expr(arg, span);
@@ -1077,6 +1248,10 @@ impl TypeChecker {
             (Type::Bool, Type::Bool) => Ok(Type::Bool),
             (Type::String, Type::String) => Ok(Type::String),
             (Type::Record(left), Type::Record(right)) if left == right => Ok(Type::Record(left)),
+            (Type::List(left), Type::List(right)) => {
+                let item = self.unify(*left, *right)?;
+                Ok(Type::List(Box::new(item)))
+            }
             (Type::Function(left), Type::Function(right)) => {
                 if left.params.len() != right.params.len() {
                     return Err("function arity mismatch".to_string());
@@ -1112,6 +1287,7 @@ impl TypeChecker {
                 params: sig.params.iter().map(|ty| self.resolve_type(ty)).collect(),
                 ret: Box::new(self.resolve_type(&sig.ret)),
             }),
+            Type::List(item) => Type::List(Box::new(self.resolve_type(item))),
             Type::Builtin(builtin) => Type::Builtin(*builtin),
             other => other.clone(),
         }
@@ -1123,12 +1299,16 @@ impl TypeChecker {
             Type::Bool => TypeInfo::Bool,
             Type::String => TypeInfo::String,
             Type::Record(symbol) => TypeInfo::Record(symbol),
+            Type::List(item) => TypeInfo::List(Box::new(self.type_info_for(&item))),
             Type::Function(sig) => TypeInfo::Function(FunctionTypeInfo {
                 params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
                 ret: Box::new(self.type_info_for(&sig.ret)),
             }),
             Type::Builtin(BuiltinFunction::Print) => TypeInfo::Builtin("print"),
             Type::Builtin(BuiltinFunction::Println) => TypeInfo::Builtin("println"),
+            Type::Builtin(BuiltinFunction::Len) => TypeInfo::Builtin("len"),
+            Type::Builtin(BuiltinFunction::IsEmpty) => TypeInfo::Builtin("is_empty"),
+            Type::Builtin(BuiltinFunction::ListPush) => TypeInfo::Builtin("push"),
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
         }
@@ -1143,6 +1323,7 @@ impl TypeChecker {
                     .any(|param| self.type_contains_unknown(param, needle))
                     || self.type_contains_unknown(&sig.ret, needle)
             }
+            Type::List(item) => self.type_contains_unknown(&item, needle),
             _ => false,
         }
     }
@@ -1177,6 +1358,9 @@ impl TypeChecker {
         match builtin {
             BuiltinFunction::Print => "print",
             BuiltinFunction::Println => "println",
+            BuiltinFunction::Len => "len",
+            BuiltinFunction::IsEmpty => "is_empty",
+            BuiltinFunction::ListPush => "push",
         }
     }
 
@@ -1294,9 +1478,13 @@ impl Type {
             Self::Bool => "Bool",
             Self::String => "String",
             Self::Record(_) => "Record",
+            Self::List(_) => "List",
             Self::Function(_) => "Function",
             Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
             Self::Builtin(BuiltinFunction::Println) => "Builtin(println)",
+            Self::Builtin(BuiltinFunction::Len) => "Builtin(len)",
+            Self::Builtin(BuiltinFunction::IsEmpty) => "Builtin(is_empty)",
+            Self::Builtin(BuiltinFunction::ListPush) => "Builtin(push)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
         }
@@ -1438,6 +1626,11 @@ fn collect_calls_in_expr(
 ) {
     match expr {
         Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Ident(_) => {}
+        Expr::ListLit(expr) => {
+            for item in &expr.items {
+                collect_calls_in_expr(item, local_names, calls, symbols);
+            }
+        }
         Expr::RecordLit(expr) => {
             for field in &expr.fields {
                 collect_calls_in_expr(&field.value, local_names, calls, symbols);

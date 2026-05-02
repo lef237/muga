@@ -76,56 +76,55 @@ Recently completed:
 - package import lookup now reads `PackageExportGraph`, a `PackageSymbolGraph`-derived public export surface, instead of dependency item maps.
 - `PackageExportGraph` can also be derived from typed package interface summaries, giving the next pipeline step a drop-in export lookup shape.
 - local binding annotations parse and typecheck as `name: Type = expr` and `mut name: Type = expr`.
-- generic type expressions parse as `Type[Arg1, Arg2]`; generic collection semantics are still reserved for the collection implementation.
+- generic type expressions parse as `Type[Arg1, Arg2]`.
+- `List[T]` type annotations and list literals are implemented through AST, resolver, typechecker, HIR, bytecode, VM runtime, typed HIR, and in-memory package interface summaries.
+- `len`, `is_empty`, and value-returning `push` are implemented as typed prelude builtins and work through chained-call syntax.
+- Empty list literals are accepted only when an expected `List[T]` type is available, such as `items: List[Int] = []`.
+- `Option[T]`, `Map[K, V]`, list indexing, `set`, and safe lookup are not implemented yet.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. replace the source-level export surface with typed package interface summaries for downstream lookup
-2. move downstream type lookup to those summaries before removing flattening
-3. keep full-source loading and flattening as the execution backend until checking no longer depends on dependency bodies
+1. decide how `Option[T]` values are constructed and consumed
+2. decide whether enum/sum type and `match` must land before public `Option[T]`
+3. defer safe lookup (`get`) until `Option[T]` has that source-level story
+4. keep direct indexing and `set` out of the next slice unless the runtime bounds-error policy is finalized
 
 Why this comes next:
 
-- in-memory package interface summaries now exist and are tested
-- typed package compilation already consumes summaries for public package reference and signature validation
-- import/package-qualified lookup already goes through `PackageExportGraph`, matching the package/name lookup shape used by interfaces
-- interface summaries are now validated through package/name lookup before stable item identity and signature checks
-- typed interface summaries can be adapted into the same `PackageExportGraph` consumed by package rewriting
-- public signatures are available as resolved compiler data
-- downstream checking should stop depending on dependency bodies before caching can matter
-- keeping flattening for execution lets this migration stay behavior-compatible
+- `List[T]` now has syntax, static typing, typed HIR representation, package interface representation, runtime values, and a small non-indexing operation surface
+- `get` naturally returns `Option[T]`, so it should wait until optional values have a source-level construction and consumption story
+- `set` and direct indexing require a clear bounds-error policy
+- `Option[T]` also informs future `Map[K, V]` lookup semantics
 
 Expected result:
 
-- import/package-qualified lookup can read public records and functions from typed interface summaries
-- dependency bodies no longer need to be rechecked for ordinary downstream name/type lookup
-- package interface generation remains in-memory before persistence/cache format is introduced
+- `Option[T]` has a coherent source-level representation before collection APIs expose it
+- later indexing, `set`, `get`, and `Map[K, V]` work can build on the same collection typing/runtime path
 
 ## 5. Decisions To Make Soon
 
 These decisions affect near-term implementation and should be made before implementing the related feature.
 
-### 5.1 Before collection implementation
+### 5.1 Before the next collection slice
 
 Decide:
 
-- exact grammar for local binding type annotations: recommended `name: Type = expr` and `mut name: Type = expr`
 - how `Option[T]` values are constructed and consumed
 - whether `match` or another pattern form is needed before exposing `Option[T]` broadly
 - direct indexing policy: runtime bounds error for `xs[i]`, safe lookup through `xs.get(i)`
 
 Current recommendation:
 
-- local binding annotations and generic type expression parsing are now implemented
+- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, and `push` are now implemented
 - parse generic declarations as `record Box[T]` and `fn id[T](value: T): T`
 - implement generic records and generic functions as part of v1
 - rely on local type-argument inference rather than explicit call-site type arguments in the v1 MVP
 - defer bounds, typeclasses, higher-kinded types, const generics, and specialization
 - defer trait, interface, protocol, and overloaded dispatch declarations
-- implement `List[T]` and list literals before `Map[K, V]`
+- decide `Option[T]` before safe list or map lookup
 - keep `T?` reserved, not implemented
 - do not implement map literals in the first collection slice
 
@@ -227,7 +226,7 @@ When resuming implementation:
 1. Run `cargo test`.
 2. Read [ROADMAP.md](../ROADMAP.md) "Recommended Immediate Next Steps".
 3. Read [docs/internal/identity-model.md](./internal/identity-model.md).
-4. Start with diagnostic model tightening unless a language-design decision is explicitly being made first.
+4. Start with `Option[T]` construction/consumption design unless a compiler-core package task is explicitly being resumed first.
 5. After each compiler-core change, keep `check`, `run`, and existing samples behavior-compatible.
 
 Useful validation commands:

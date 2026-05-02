@@ -71,7 +71,7 @@ Current draft decisions:
 - v1 excludes trait, interface, protocol, typeclass, and overloaded dispatch declarations
 - collection types use square-bracket type arguments such as `List[Int]` and `Map[String, Int]`
 - empty collection literals need an expected type, most likely from a local binding annotation such as `items: List[Int] = []`
-- `List[T]` is the first collection to implement
+- `List[T]` type annotations, list literals, and basic list operations (`len`, `is_empty`, `push`) are implemented as the first collection slice
 - `Option[T]` should exist before or alongside safe lookup APIs
 - `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
 - ordinary source code should use value semantics; the compiler/runtime may share immutable storage internally when safe
@@ -482,11 +482,11 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. package interface consumption for downstream checking
-2. package interfaces instead of flattening
-3. cache and incremental compilation
-4. MIR and native backend work
-5. collection/generic runtime expansion once the semantic boundary is stable
+1. decide `Option[T]` construction and consumption before safe lookup APIs
+2. decide direct indexing and bounds-error policy before `xs[i]` or `set`
+3. return to package interface consumption for downstream checking
+4. package interfaces instead of flattening
+5. cache, MIR, and native backend work once the semantic boundary is stable
 
 This order best matches the current state of the codebase.
 
@@ -513,7 +513,7 @@ Recently completed:
 - typed package compilation validates public package references against generated interface summaries
 - typed package interface validation uses package/name lookup and detects stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup reads `PackageExportGraph` before flattening, and `PackageExportGraph` can be derived from typed interfaces
-- local binding annotations are implemented, and generic type expressions such as `List[Int]` parse as reserved syntax ahead of collection semantics
+- local binding annotations, `List[T]` type annotations, list literals, and basic list operations are implemented; other generic collection types remain reserved
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

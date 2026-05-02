@@ -1031,6 +1031,15 @@ impl<'a> PackageRewriter<'a> {
                 name: self.rewrite_value_name(&expr.name, expr.span),
                 span: expr.span,
             }),
+            Expr::ListLit(expr) => Expr::ListLit(ListLitExpr {
+                id: expr.id,
+                items: expr
+                    .items
+                    .iter()
+                    .map(|item| self.rewrite_expr(item))
+                    .collect(),
+                span: expr.span,
+            }),
             Expr::RecordLit(expr) => Expr::RecordLit(RecordLitExpr {
                 id: expr.id,
                 type_name: self.rewrite_type_name(&expr.type_name, expr.span),
@@ -1192,7 +1201,7 @@ impl<'a> PackageRewriter<'a> {
         if let Some((alias, item)) = split_qualified_name(name) {
             return self.resolve_imported_item(alias, item, ImportedItemKind::Function, span);
         }
-        if self.lookup_local(name) || is_builtin_name(name) {
+        if self.lookup_local(name) {
             return name.to_string();
         }
         if let Some(item) = resolve_package_item(
@@ -1207,6 +1216,9 @@ impl<'a> PackageRewriter<'a> {
                 item.visibility,
                 &self.entry_package,
             );
+        }
+        if is_builtin_name(name) {
+            return name.to_string();
         }
         if let Some(item) = inaccessible_package_item(&self.current_package_data.functions, name) {
             self.diagnostics.push(
@@ -1810,5 +1822,5 @@ fn sanitize_mangle_segment(segment: &str) -> String {
 }
 
 fn is_builtin_name(name: &str) -> bool {
-    matches!(name, "print" | "println")
+    matches!(name, "print" | "println" | "len" | "is_empty" | "push")
 }

@@ -874,6 +874,7 @@ impl Parser {
                     }))
                 }
             }
+            TokenKind::LBracket => self.parse_list_lit(token.span),
             TokenKind::LParen => {
                 let expr = self.parse_expr_allowing_struct_literal()?;
                 self.expect_simple(TokenKind::RParen, "expected `)` after expression")?;
@@ -886,6 +887,27 @@ impl Parser {
                 token.span,
             )),
         }
+    }
+
+    fn parse_list_lit(&mut self, start: Span) -> Result<Expr, Diagnostic> {
+        self.skip_newlines();
+        let mut items = Vec::new();
+        if !matches!(self.peek_kind(), TokenKind::RBracket) {
+            loop {
+                items.push(self.parse_expr_allowing_struct_literal()?);
+                self.skip_newlines();
+                if !self.matches_simple(&TokenKind::Comma) {
+                    break;
+                }
+                self.skip_newlines();
+            }
+        }
+        let end = self.expect_simple(TokenKind::RBracket, "expected `]` after list literal")?;
+        Ok(Expr::ListLit(ListLitExpr {
+            id: self.expr_id(),
+            items,
+            span: start.merge(end),
+        }))
     }
 
     fn parse_fn_expr(&mut self, start: Span) -> Result<Expr, Diagnostic> {

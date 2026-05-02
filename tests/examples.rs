@@ -520,6 +520,17 @@ fn typed_hir_generates_package_interface_summaries() {
     assert_eq!(inc_twice.params.len(), 1);
     assert_eq!(inc_twice.params[0].ty, muga::typing::TypeInfo::Int);
     assert_eq!(inc_twice.ret, muga::typing::TypeInfo::Int);
+    let singleton = interfaces
+        .function_by_name(numbers, "singleton")
+        .expect("singleton should be exported");
+    assert_eq!(
+        singleton.ret,
+        muga::typing::TypeInfo::List(Box::new(muga::typing::TypeInfo::Int))
+    );
+    let singleton_len = interfaces
+        .function_by_name(numbers, "singleton_len")
+        .expect("singleton_len should be exported");
+    assert_eq!(singleton_len.ret, muga::typing::TypeInfo::Int);
 
     let user_item = program
         .package_graph
@@ -1007,7 +1018,7 @@ fn main(): Int {
 fn parser_accepts_generic_type_expression_in_local_annotation() {
     let source = r#"
 fn main(): Int {
-  items: List[Int] = 1
+  items: List[Int] = []
   1
 }
 "#;
@@ -1090,10 +1101,10 @@ fn main(): Int {
 }
 
 #[test]
-fn generic_type_expression_is_reserved_until_collections() {
+fn unsupported_generic_type_expression_is_reserved() {
     let source = r#"
 fn main(): Int {
-  items: List[Int] = 1
+  items: Map[String, Int] = 1
   1
 }
 "#;
@@ -1102,6 +1113,194 @@ fn main(): Int {
         diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "T013"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_literal_sample_runs() {
+    let source = r#"
+fn main(): List[Int] {
+  [1, 2, 3]
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "[1, 2, 3]");
+}
+
+#[test]
+fn empty_list_literal_uses_local_annotation() {
+    let source = r#"
+fn main(): List[Int] {
+  items: List[Int] = []
+  items
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "[]");
+}
+
+#[test]
+fn typed_hir_preserves_list_type_info() {
+    let source = r#"
+fn main(): List[Int] {
+  items: List[Int] = [1]
+  items
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    assert_eq!(
+        main.return_ty,
+        muga::typing::TypeInfo::List(Box::new(muga::typing::TypeInfo::Int))
+    );
+    let assign = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected typed assignment"),
+    };
+    let binding = program
+        .bindings
+        .iter()
+        .find(|binding| binding.id == assign.binding)
+        .expect("assignment binding should exist");
+    assert_eq!(
+        binding.ty,
+        muga::typing::TypeInfo::List(Box::new(muga::typing::TypeInfo::Int))
+    );
+}
+
+#[test]
+fn empty_list_literal_requires_expected_type() {
+    let source = r#"
+fn main(): Int {
+  items = []
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T015"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn empty_list_literal_requires_list_expected_type() {
+    let source = r#"
+fn main(): Int {
+  []
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T015"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_literal_items_must_share_one_type() {
+    let source = r#"
+fn main(): Int {
+  items = [1, "two"]
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_len_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  [1, 2, 3].len()
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "3");
+}
+
+#[test]
+fn list_is_empty_sample_runs() {
+    let source = r#"
+fn main(): Bool {
+  items: List[Int] = []
+  items.is_empty()
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "true");
+}
+
+#[test]
+fn list_push_sample_runs() {
+    let source = r#"
+fn main(): List[Int] {
+  [1, 2].push(3)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "[1, 2, 3]");
+}
+
+#[test]
+fn empty_list_push_infers_element_type() {
+    let source = r#"
+fn main(): List[Int] {
+  [].push(1)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "[1]");
+}
+
+#[test]
+fn list_push_checks_value_type() {
+    let source = r#"
+fn main(): List[Int] {
+  [1].push("two")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_len_requires_list_argument() {
+    let source = r#"
+fn main(): Int {
+  1.len()
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T006"),
         "{diagnostics:#?}"
     );
 }
@@ -1861,6 +2060,11 @@ fn collect_typed_calls_in_expr<'a>(
         | muga::typed_hir::ExprKind::Bool(_)
         | muga::typed_hir::ExprKind::String(_)
         | muga::typed_hir::ExprKind::Ident(_) => {}
+        muga::typed_hir::ExprKind::ListLit(expr) => {
+            for item in &expr.items {
+                collect_typed_calls_in_expr(item, calls);
+            }
+        }
         muga::typed_hir::ExprKind::RecordLit(expr) => {
             for field in &expr.fields {
                 collect_typed_calls_in_expr(&field.value, calls);

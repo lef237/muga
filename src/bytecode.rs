@@ -37,6 +37,10 @@ pub enum Instruction {
         fields: Vec<Symbol>,
         span: Span,
     },
+    MakeList {
+        len: usize,
+        span: Span,
+    },
     LoadName {
         name: Symbol,
         span: Span,
@@ -251,6 +255,15 @@ impl Compiler {
                 chunk.instructions.push(Instruction::MakeRecord {
                     type_name: expr.type_name,
                     fields: expr.fields.iter().map(|field| field.name).collect(),
+                    span: expr.span,
+                });
+            }
+            hir::Expr::ListLit(expr) => {
+                for item in &expr.items {
+                    self.compile_expr(item, chunk);
+                }
+                chunk.instructions.push(Instruction::MakeList {
+                    len: expr.items.len(),
                     span: expr.span,
                 });
             }

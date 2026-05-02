@@ -9,6 +9,7 @@ pub enum Value {
     Int(i64),
     Bool(bool),
     String(String),
+    List(Vec<Value>),
     Record(RecordValue),
     Function(Rc<ClosureValue>),
     Builtin(BuiltinFunction),
@@ -32,6 +33,16 @@ impl fmt::Display for Value {
             Self::Int(value) => write!(f, "{value}"),
             Self::Bool(value) => write!(f, "{value}"),
             Self::String(value) => write!(f, "{value}"),
+            Self::List(items) => {
+                write!(f, "[")?;
+                for (index, item) in items.iter().enumerate() {
+                    if index > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                write!(f, "]")
+            }
             Self::Record(record) => {
                 write!(f, "{} {{ ", record.type_name)?;
                 for (index, field) in record.fields.iter().enumerate() {
@@ -121,6 +132,9 @@ impl ClosureValue {
 pub enum BuiltinFunction {
     Print,
     Println,
+    Len,
+    IsEmpty,
+    ListPush,
 }
 
 impl BuiltinFunction {
@@ -128,6 +142,9 @@ impl BuiltinFunction {
         match self {
             Self::Print => "print",
             Self::Println => "println",
+            Self::Len => "len",
+            Self::IsEmpty => "is_empty",
+            Self::ListPush => "push",
         }
     }
 }
@@ -179,6 +196,10 @@ fn execute_chunk(
             } => {
                 let values = pop_args(&mut stack, fields.len(), *span)?;
                 stack.push(make_record_value(program, *type_name, fields, values));
+            }
+            Instruction::MakeList { len, span } => {
+                let values = pop_args(&mut stack, *len, *span)?;
+                stack.push(Value::List(values));
             }
             Instruction::LoadName { name, span } => {
                 let Some(binding) = lookup_any(&current_env, *name) else {
@@ -516,7 +537,7 @@ fn call_builtin(
                         .push_str(&value.to_string());
                     Ok(value)
                 }
-                Value::Record(_) | Value::Function(_) | Value::Builtin(_) => {
+                Value::List(_) | Value::Record(_) | Value::Function(_) | Value::Builtin(_) => {
                     Err(vec![Diagnostic::new(
                         "R014",
                         "`print` accepts only Int, Bool, or String",
@@ -542,13 +563,72 @@ fn call_builtin(
                     output.push('\n');
                     Ok(value)
                 }
-                Value::Record(_) | Value::Function(_) | Value::Builtin(_) => {
+                Value::List(_) | Value::Record(_) | Value::Function(_) | Value::Builtin(_) => {
                     Err(vec![Diagnostic::new(
                         "R014",
                         "`println` accepts only Int, Bool, or String",
                         span,
                     )])
                 }
+            }
+        }
+        BuiltinFunction::Len => {
+            if args.len() != 1 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 1 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let value = args.into_iter().next().expect("checked length");
+            match value {
+                Value::List(items) => Ok(Value::Int(items.len() as i64)),
+                _ => Err(vec![Diagnostic::new(
+                    "R014",
+                    "`len` expects List[T] as its first argument",
+                    span,
+                )]),
+            }
+        }
+        BuiltinFunction::IsEmpty => {
+            if args.len() != 1 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 1 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let value = args.into_iter().next().expect("checked length");
+            match value {
+                Value::List(items) => Ok(Value::Bool(items.is_empty())),
+                _ => Err(vec![Diagnostic::new(
+                    "R014",
+                    "`is_empty` expects List[T] as its first argument",
+                    span,
+                )]),
+            }
+        }
+        BuiltinFunction::ListPush => {
+            if args.len() != 2 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 2 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let mut args = args.into_iter();
+            let list = args.next().expect("checked length");
+            let value = args.next().expect("checked length");
+            match list {
+                Value::List(mut items) => {
+                    items.push(value);
+                    Ok(Value::List(items))
+                }
+                _ => Err(vec![Diagnostic::new(
+                    "R014",
+                    "`push` expects List[T] as its first argument",
+                    span,
+                )]),
             }
         }
     }
@@ -727,6 +807,36 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             Binding {
                 mutable: false,
                 value: Value::Builtin(BuiltinFunction::Println),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(len_symbol) = program.symbols.lookup("len") {
+        env.borrow_mut().bindings.insert(
+            len_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::Len),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(is_empty_symbol) = program.symbols.lookup("is_empty") {
+        env.borrow_mut().bindings.insert(
+            is_empty_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::IsEmpty),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(push_symbol) = program.symbols.lookup("push") {
+        env.borrow_mut().bindings.insert(
+            push_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::ListPush),
                 span: Span::default(),
             },
         );

@@ -109,6 +109,12 @@ impl Resolver {
         self.insert_current(print, BindingKind::Function, Span::default());
         let println = self.symbol("println");
         self.insert_current(println, BindingKind::Function, Span::default());
+        let len = self.symbol("len");
+        self.insert_current(len, BindingKind::Function, Span::default());
+        let is_empty = self.symbol("is_empty");
+        self.insert_current(is_empty, BindingKind::Function, Span::default());
+        let push = self.symbol("push");
+        self.insert_current(push, BindingKind::Function, Span::default());
     }
 
     fn resolve_scope_statements(&mut self, statements: &[Stmt]) {
@@ -270,6 +276,11 @@ impl Resolver {
     fn resolve_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Int(_) | Expr::Bool(_) | Expr::String(_) => {}
+            Expr::ListLit(expr) => {
+                for item in &expr.items {
+                    self.resolve_expr(item);
+                }
+            }
             Expr::Ident(expr) => {
                 let name = self.symbol(&expr.name);
                 if let Some(binding) = self.any_scope_lookup(name).copied() {

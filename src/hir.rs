@@ -98,6 +98,7 @@ pub enum Expr {
     Bool(BoolExpr),
     String(StringExpr),
     Ident(IdentExpr),
+    ListLit(ListLitExpr),
     RecordLit(RecordLitExpr),
     Field(FieldExpr),
     RecordUpdate(RecordUpdateExpr),
@@ -115,6 +116,7 @@ impl Expr {
             Self::Bool(expr) => expr.span,
             Self::String(expr) => expr.span,
             Self::Ident(expr) => expr.span,
+            Self::ListLit(expr) => expr.span,
             Self::RecordLit(expr) => expr.span,
             Self::Field(expr) => expr.span,
             Self::RecordUpdate(expr) => expr.span,
@@ -148,6 +150,12 @@ pub struct StringExpr {
 #[derive(Clone, Debug)]
 pub struct IdentExpr {
     pub name: Symbol,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct ListLitExpr {
+    pub items: Vec<Expr>,
     pub span: Span,
 }
 
@@ -332,6 +340,14 @@ impl Lowerer {
             }),
             ast::Expr::Ident(expr) => Expr::Ident(IdentExpr {
                 name: self.symbol(&expr.name),
+                span: expr.span,
+            }),
+            ast::Expr::ListLit(expr) => Expr::ListLit(ListLitExpr {
+                items: expr
+                    .items
+                    .iter()
+                    .map(|item| self.lower_expr(item))
+                    .collect(),
                 span: expr.span,
             }),
             ast::Expr::RecordLit(expr) => Expr::RecordLit(RecordLitExpr {
