@@ -1413,6 +1413,199 @@ fn main(): Int {
 }
 
 #[test]
+fn i64_min_literal_is_accepted() {
+    let source = r#"
+fn main(): Int {
+  -9223372036854775808
+}
+"#;
+    let outcome = muga::run_source(source).expect("expected i64::MIN literal to evaluate");
+    let value = outcome
+        .main_result
+        .expect("expected main to return a value");
+    let muga::runtime::Value::Int(value) = value else {
+        panic!("expected Int, got {value:?}");
+    };
+    assert_eq!(value, i64::MIN);
+}
+
+#[test]
+fn negative_literal_keeps_member_access() {
+    let source = r#"
+record P { x: Int }
+fn main(): Int {
+  p = P { x: 7 }
+  -p.x
+}
+"#;
+    let outcome = muga::run_source(source).expect("expected -p.x to evaluate");
+    let value = outcome
+        .main_result
+        .expect("expected main to return a value");
+    let muga::runtime::Value::Int(value) = value else {
+        panic!("expected Int, got {value:?}");
+    };
+    assert_eq!(value, -7);
+}
+
+#[test]
+fn negative_int_literal_with_dot_is_not_combined() {
+    let source = r#"
+fn main(): Int {
+  -1.x
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected type error");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T008"),
+        "expected `-1.x` to flow through the unary path and report T008: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn negative_int_literal_with_call_is_not_combined() {
+    let source = r#"
+fn main(): Int {
+  -1(2)
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected type error");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T005"),
+        "expected `-1(2)` to flow through the unary path and report T005: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn negating_i64_min_overflows_at_runtime() {
+    let source = r#"
+fn main(): Int {
+  --9223372036854775808
+}
+"#;
+    let diagnostics = muga::run_source(source).expect_err("expected runtime overflow");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R019"),
+        "negating i64::MIN should overflow at runtime: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn ordinary_negative_literal_still_works() {
+    let source = r#"
+fn main(): Int {
+  -123
+}
+"#;
+    let outcome = muga::run_source(source).expect("ordinary negative literal should evaluate");
+    let value = outcome
+        .main_result
+        .expect("expected main to return a value");
+    let muga::runtime::Value::Int(value) = value else {
+        panic!("expected Int, got {value:?}");
+    };
+    assert_eq!(value, -123);
+}
+
+#[test]
+fn if_with_empty_body_is_not_parsed_as_record_literal() {
+    let source = r#"
+fn main(): Int {
+  flag = true
+  if flag {}
+  0
+}
+"#;
+    muga::check_source(source).expect("`if flag {}` must parse as an `if` statement");
+}
+
+#[test]
+fn while_with_empty_body_is_not_parsed_as_record_literal() {
+    let source = r#"
+fn main(): Int {
+  mut count = 0
+  while count {}
+  0
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected type error");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T001"),
+        "expected `while` body to type-check past parse: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn parenthesized_record_literal_is_allowed_in_if_condition() {
+    let source = r#"
+record P { x: Int }
+fn main(): Int {
+  if (P { x: 1 }) { 1 } else { 0 }
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected type error, not parse error");
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.code.starts_with("P")),
+        "parser must accept parenthesized record literal: {diagnostics:#?}"
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T001"),
+        "type checker must reject record value as Bool condition: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn record_literal_still_allowed_as_call_argument() {
+    let source = r#"
+record P { x: Int }
+fn get_x(p: P): Int { p.x }
+fn main(): Int {
+  get_x(P { x: 42 })
+}
+"#;
+    let outcome =
+        muga::run_source(source).expect("record literal should still parse as a call argument");
+    let value = outcome
+        .main_result
+        .expect("expected main to return a value");
+    let muga::runtime::Value::Int(value) = value else {
+        panic!("expected Int, got {value:?}");
+    };
+    assert_eq!(value, 42);
+}
+
+#[test]
+fn function_equality_reports_only_kind_diagnostic() {
+    let source = r#"
+fn f(x: Int): Int { x }
+fn main(): Bool {
+  f == f
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected type error");
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic.code == "T003"),
+        "{diagnostics:#?}"
+    );
+    assert!(
+        !diagnostics.iter().any(|diagnostic| diagnostic.code == "T002"),
+        "function equality must not report a spurious type-mismatch: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn recursive_type_inference_is_rejected() {
     let source = r#"
 fn main(): Int {

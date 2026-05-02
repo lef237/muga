@@ -181,6 +181,8 @@ The minimal v1 literal set is:
 
 Raw strings and multiline strings are not part of v1.
 
+Integer literals are 64-bit signed. The accepted value range is `-2^63 ..= 2^63 - 1`. To accommodate `-2^63`, an integer literal that immediately follows a unary `-` and is not followed by `.` or `(` is parsed as a single signed literal. In every other position a positive integer literal must fit in `i64`.
+
 ## 7. Operators and Precedence
 
 The v1 operator set is:
@@ -286,6 +288,17 @@ non_expr_stmt     := assign_like_stmt
 ```
 
 In a value block, only non-expression statements may appear before the final expression. This reserves a single trailing expression slot and keeps final-expression return syntax deterministic.
+
+### 8.1 Record literal disambiguation in conditions
+
+The grammar above lists `record_lit` as one form of `primary_expr`, but the surface forms `if expr stmt_block` and `while expr stmt_block` are syntactically ambiguous when `expr` ends with an identifier and `stmt_block` begins with `{`. v1 resolves this ambiguity by disallowing a top-level record literal in the condition position of `if` and `while`. To use a record literal there, wrap it in parentheses:
+
+```txt
+if (P { x: 1 }) { ... }
+while (P { x: 1 }) { ... }
+```
+
+Because every `if`/`while` condition must have type `Bool`, a parenthesized record literal still fails type checking. The restriction therefore costs nothing in practice and preserves stable, locally readable surface syntax.
 
 ## 9. Execution-Oriented Summary
 

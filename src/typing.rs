@@ -1050,10 +1050,15 @@ impl TypeChecker {
                 if left.params.len() != right.params.len() {
                     return Err("function arity mismatch".to_string());
                 }
+                let mut params = Vec::with_capacity(left.params.len());
                 for (left_param, right_param) in left.params.iter().zip(right.params.iter()) {
-                    self.unify(left_param.clone(), right_param.clone())?;
+                    params.push(self.unify(left_param.clone(), right_param.clone())?);
                 }
-                self.unify(*left.ret.clone(), *right.ret.clone())
+                let ret = self.unify(*left.ret.clone(), *right.ret.clone())?;
+                Ok(Type::Function(FunctionSig {
+                    params,
+                    ret: Box::new(ret),
+                }))
             }
             (left, right) => Err(format!(
                 "type mismatch: expected {}, found {}",
