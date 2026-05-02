@@ -531,6 +531,13 @@ fn typed_hir_generates_package_interface_summaries() {
         .function_by_name(numbers, "singleton_len")
         .expect("singleton_len should be exported");
     assert_eq!(singleton_len.ret, muga::typing::TypeInfo::Int);
+    let singleton_get = interfaces
+        .function_by_name(numbers, "singleton_get")
+        .expect("singleton_get should be exported");
+    assert_eq!(
+        singleton_get.ret,
+        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+    );
     let maybe_positive = interfaces
         .function_by_name(numbers, "maybe_positive")
         .expect("maybe_positive should be exported");
@@ -1309,6 +1316,100 @@ fn list_len_requires_list_argument() {
     let source = r#"
 fn main(): Int {
   1.len()
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T006"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_get_some_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  match [10, 20].get(1) {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "20");
+}
+
+#[test]
+fn list_get_none_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  match [10].get(2) {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn list_get_negative_index_returns_none() {
+    let source = r#"
+fn main(): Int {
+  match [10].get(-1) {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn empty_list_get_infers_from_expected_option() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = [].get(0)
+  match value {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn list_get_checks_index_type() {
+    let source = r#"
+fn main(): Option[Int] {
+  [1].get("bad")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_get_requires_list_argument() {
+    let source = r#"
+fn main(): Int {
+  bad = 1.get(0)
+  1
 }
 "#;
     let diagnostics = muga::check_source(source).unwrap_err();

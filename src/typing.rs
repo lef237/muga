@@ -121,6 +121,7 @@ enum BuiltinFunction {
     Len,
     IsEmpty,
     ListPush,
+    ListGet,
     OptionSome,
 }
 
@@ -277,6 +278,13 @@ impl TypeChecker {
             push,
             BindingKind::Function,
             Type::Builtin(BuiltinFunction::ListPush),
+            Span::default(),
+        );
+        let get = self.symbol("get");
+        self.insert_current(
+            get,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::ListGet),
             Span::default(),
         );
         let option_some = self.symbol("Option::Some");
@@ -665,6 +673,61 @@ impl TypeChecker {
                                     self.diagnostics.push(Diagnostic::new(
                                         "T006",
                                         "`push` expects List[T] as its first argument",
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                            }
+                        }
+                    }
+                    Type::Builtin(BuiltinFunction::ListGet) => {
+                        if expr.args.len() != 2 {
+                            self.diagnostics.push(Diagnostic::new(
+                                "T004",
+                                format!("expected 2 arguments but found {}", expr.args.len()),
+                                expr.span,
+                            ));
+                            Type::Error
+                        } else {
+                            let expected = expected.map(|ty| self.resolve_type(&ty));
+                            let expected_item = match expected.as_ref() {
+                                Some(Type::Option(item)) => Some(*item.clone()),
+                                _ => None,
+                            };
+                            let list_ty = if let Some(expected_item) = expected_item {
+                                self.check_expr_with_expected(
+                                    &expr.args[0],
+                                    Some(Type::List(Box::new(expected_item))),
+                                )
+                            } else {
+                                self.check_expr(&expr.args[0])
+                            };
+                            self.check_expr_with_expected(&expr.args[1], Some(Type::Int));
+                            match self.resolve_type(&list_ty) {
+                                Type::List(item_ty) => {
+                                    let option_ty = Type::Option(item_ty);
+                                    match expected {
+                                        Some(Type::Option(_)) | None => option_ty,
+                                        Some(expected) => self.apply_expected(
+                                            option_ty,
+                                            Some(expected),
+                                            expr.span,
+                                        ),
+                                    }
+                                }
+                                Type::Unknown(_) => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "E005",
+                                        "type annotation required because inference is not unique",
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                                Type::Error => Type::Error,
+                                _ => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "T006",
+                                        "`get` expects List[T] as its first argument",
                                         expr.span,
                                     ));
                                     Type::Error
@@ -1498,6 +1561,7 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::Len) => TypeInfo::Builtin("len"),
             Type::Builtin(BuiltinFunction::IsEmpty) => TypeInfo::Builtin("is_empty"),
             Type::Builtin(BuiltinFunction::ListPush) => TypeInfo::Builtin("push"),
+            Type::Builtin(BuiltinFunction::ListGet) => TypeInfo::Builtin("get"),
             Type::Builtin(BuiltinFunction::OptionSome) => TypeInfo::Builtin("Option::Some"),
             Type::OptionNone => TypeInfo::Builtin("Option::None"),
             Type::Unknown(_) => TypeInfo::Unknown,
@@ -1553,6 +1617,7 @@ impl TypeChecker {
             BuiltinFunction::Len => "len",
             BuiltinFunction::IsEmpty => "is_empty",
             BuiltinFunction::ListPush => "push",
+            BuiltinFunction::ListGet => "get",
             BuiltinFunction::OptionSome => "Option::Some",
         }
     }
@@ -1679,6 +1744,7 @@ impl Type {
             Self::Builtin(BuiltinFunction::Len) => "Builtin(len)",
             Self::Builtin(BuiltinFunction::IsEmpty) => "Builtin(is_empty)",
             Self::Builtin(BuiltinFunction::ListPush) => "Builtin(push)",
+            Self::Builtin(BuiltinFunction::ListGet) => "Builtin(get)",
             Self::Builtin(BuiltinFunction::OptionSome) => "Builtin(Option::Some)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",

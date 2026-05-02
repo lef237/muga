@@ -1,6 +1,6 @@
 # Collections Draft
 
-Status: design draft. The Rust compiler implements the first slices: local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, `len` / `is_empty` / `push`, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match`.
+Status: design draft. The Rust compiler implements the first slices: local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, `len` / `is_empty` / `push` / `get`, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match`.
 
 This draft defines the recommended direction for Muga collections on top of the v1 generics MVP.
 
@@ -25,8 +25,9 @@ The recommended order is:
 2. simple generic type syntax for collection types (implemented for type expressions)
 3. `List[T]` type annotations, list literals, `len`, `is_empty`, and `push` (implemented)
 4. `Option[T]` construction and exhaustive `match` (implemented)
-5. `Map[K, V]`
-6. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
+5. safe list lookup with `get(self: List[T], index: Int): Option[T]` (implemented)
+6. `Map[K, V]`
+7. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
 
 This order keeps the first implementation small.
 
@@ -119,7 +120,7 @@ Recommended initial operations:
 - `set(self: List[T], index: Int, value: T): List[T]`
 - `get(self: List[T], index: Int): Option[T]`
 
-`len`, `is_empty`, and value-returning `push` are implemented. `set`, `get`, and index syntax are not implemented yet.
+`len`, `is_empty`, value-returning `push`, and safe lookup `get` are implemented. `set` and index syntax are not implemented yet.
 
 Index syntax:
 
@@ -129,7 +130,7 @@ value = numbers[0]
 
 Direct indexing should be bounds-checked. A failed bounds check is a runtime error unless Muga later introduces a different checked-indexing policy.
 
-Safe lookup should use `get` and return `Option[T]`.
+Safe lookup uses `get` and returns `Option[T]`. A negative index or an out-of-bounds index returns `Option::None`.
 
 ## 6. Option
 
@@ -183,7 +184,7 @@ Why this matters:
 - it lets the typechecker see that a lookup may fail
 - it makes collection APIs safer without turning ordinary misses into runtime errors
 
-Safe lookup APIs such as `List.get` and `Map.get` are not implemented yet, but they can now return `Option[T]` at the source level.
+`List.get` is implemented. `Map.get` is not implemented yet, but it should use the same `Option[T]` source-level representation.
 
 ### 6.1 Optional shorthand
 

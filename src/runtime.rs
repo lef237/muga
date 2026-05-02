@@ -144,6 +144,7 @@ pub enum BuiltinFunction {
     Len,
     IsEmpty,
     ListPush,
+    ListGet,
     OptionSome,
 }
 
@@ -155,6 +156,7 @@ impl BuiltinFunction {
             Self::Len => "len",
             Self::IsEmpty => "is_empty",
             Self::ListPush => "push",
+            Self::ListGet => "get",
             Self::OptionSome => "Option::Some",
         }
     }
@@ -663,6 +665,39 @@ fn call_builtin(
                 )]),
             }
         }
+        BuiltinFunction::ListGet => {
+            if args.len() != 2 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 2 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let mut args = args.into_iter();
+            let list = args.next().expect("checked length");
+            let index = args.next().expect("checked length");
+            let Value::List(items) = list else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`get` expects List[T] as its first argument",
+                    span,
+                )]);
+            };
+            let Value::Int(index) = index else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`get` expects Int as its second argument",
+                    span,
+                )]);
+            };
+            if index < 0 {
+                return Ok(Value::Option(OptionValue::None));
+            }
+            match items.get(index as usize).cloned() {
+                Some(value) => Ok(Value::Option(OptionValue::Some(Box::new(value)))),
+                None => Ok(Value::Option(OptionValue::None)),
+            }
+        }
         BuiltinFunction::OptionSome => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
@@ -880,6 +915,16 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             Binding {
                 mutable: false,
                 value: Value::Builtin(BuiltinFunction::ListPush),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(get_symbol) = program.symbols.lookup("get") {
+        env.borrow_mut().bindings.insert(
+            get_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::ListGet),
                 span: Span::default(),
             },
         );
