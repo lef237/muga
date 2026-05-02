@@ -7,3 +7,11 @@ pub fn singleton(x: Int): List[Int] {
 pub fn singleton_len(x: Int): Int {
   singleton(x).len()
 }
+
+pub fn singleton_get(x: Int): Option[Int] {
+  singleton(x).get(0)
+}
+
+pub fn empty_get(): Option[Int] {
+  [].get(0)
+}

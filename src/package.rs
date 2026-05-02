@@ -1855,6 +1855,6 @@ fn sanitize_mangle_segment(segment: &str) -> String {
 fn is_builtin_name(name: &str) -> bool {
     matches!(
         name,
-        "print" | "println" | "len" | "is_empty" | "push" | "Option::Some" | "Option::None"
+        "print" | "println" | "len" | "is_empty" | "push" | "get" | "Option::Some" | "Option::None"
     )
 }

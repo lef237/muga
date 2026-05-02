@@ -54,7 +54,7 @@ These are no longer top-level roadmap questions:
    - current implementation still enforces fully annotated `pub fn` until package interfaces exist
 3. package qualification uses `::`
 4. package mode and script mode are distinct
-5. collection direction starts with `List[T]` and `Option[T]`, then safe lookup and `Map[K, V]`
+5. collection direction starts with `List[T]`, `Option[T]`, and safe list lookup, then `Map[K, V]`
 6. v1 generics are in scope as a small MVP
 
 Those topics may still need refinement, but they are no longer the main blockers.
@@ -71,8 +71,8 @@ Current draft decisions:
 - v1 excludes trait, interface, protocol, typeclass, and overloaded dispatch declarations
 - collection types use square-bracket type arguments such as `List[Int]` and `Map[String, Int]`
 - empty collection literals need an expected type, most likely from a local binding annotation such as `items: List[Int] = []`
-- `List[T]` type annotations, list literals, and basic list operations (`len`, `is_empty`, `push`) are implemented as the first collection slice
-- `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented before safe lookup APIs
+- `List[T]` type annotations, list literals, and basic list operations (`len`, `is_empty`, `push`, `get`) are implemented as the first collection slice
+- `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented and used by safe list lookup
 - `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
 - ordinary source code should use value semantics; the compiler/runtime may share immutable storage internally when safe
 - explicit source-level references such as `ref T`, `mut ref T`, `*T`, and `&value` are not planned for ordinary Muga code
@@ -482,8 +482,8 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. add safe list lookup, most likely `get(self: List[T], index: Int): Option[T]`
-2. decide direct indexing and bounds-error policy before `xs[i]` or `set`
+1. decide direct indexing and bounds-error policy before `xs[i]` or `set`
+2. implement the chosen direct indexing / `set` slice, or defer both explicitly and move to `Map[K, V]`
 3. return to package interface consumption for downstream checking
 4. package interfaces instead of flattening
 5. cache, MIR, and native backend work once the semantic boundary is stable
@@ -513,7 +513,7 @@ Recently completed:
 - typed package compilation validates public package references against generated interface summaries
 - typed package interface validation uses package/name lookup and detects stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup reads `PackageExportGraph` before flattening, and `PackageExportGraph` can be derived from typed interfaces
-- local binding annotations, `List[T]` type annotations, list literals, basic list operations, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented; `Map[K, V]` and broader collection APIs remain reserved
+- local binding annotations, `List[T]` type annotations, list literals, basic list operations including safe lookup, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented; `Map[K, V]` and broader collection APIs remain reserved
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

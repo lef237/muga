@@ -115,6 +115,8 @@ impl Resolver {
         self.insert_current(is_empty, BindingKind::Function, Span::default());
         let push = self.symbol("push");
         self.insert_current(push, BindingKind::Function, Span::default());
+        let get = self.symbol("get");
+        self.insert_current(get, BindingKind::Function, Span::default());
         let option_some = self.symbol("Option::Some");
         self.insert_current(option_some, BindingKind::Function, Span::default());
         let option_none = self.symbol("Option::None");

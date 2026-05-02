@@ -16,7 +16,7 @@ Muga's current direction is:
 - module/file privacy before package-only privacy
 - v1 generics as a small MVP
 - no trait, interface, protocol, typeclass, or overloaded dispatch declarations in v1
-- `List[T]` and `Option[T]` first for collections, then safe lookup and `Map[K, V]`
+- `List[T]`, `Option[T]`, and safe list lookup first for collections, then `Map[K, V]`
 - no explicit source-level references in ordinary Muga code
 - value semantics with internal sharing and copy elision
 - structured task groups before channels or async-function coloring
@@ -78,32 +78,32 @@ Recently completed:
 - local binding annotations parse and typecheck as `name: Type = expr` and `mut name: Type = expr`.
 - generic type expressions parse as `Type[Arg1, Arg2]`.
 - `List[T]` type annotations and list literals are implemented through AST, resolver, typechecker, HIR, bytecode, VM runtime, typed HIR, and in-memory package interface summaries.
-- `len`, `is_empty`, and value-returning `push` are implemented as typed prelude builtins and work through chained-call syntax.
+- `len`, `is_empty`, value-returning `push`, and safe lookup `get` are implemented as typed prelude builtins and work through chained-call syntax.
 - Empty list literals are accepted only when an expected `List[T]` type is available, such as `items: List[Int] = []`.
 - `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented through AST, resolver, typechecker, HIR, bytecode, VM runtime, typed HIR, and package interface summaries.
-- `Map[K, V]`, list indexing, `set`, and safe lookup are not implemented yet.
+- `Map[K, V]`, list indexing, and `set` are not implemented yet.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. add safe list lookup, most likely `get(self: List[T], index: Int): Option[T]`
-2. keep direct indexing and `set` out of the next slice unless the runtime bounds-error policy is finalized
+1. decide direct indexing and bounds-error policy before `xs[i]` or `set`
+2. implement the chosen direct indexing / `set` slice, or defer both explicitly and move to `Map[K, V]`
 3. keep general enum declarations deferred unless another feature requires them
 4. use the same `Option[T]` representation for future `Map[K, V]` lookup
 
 Why this comes next:
 
 - `List[T]` now has syntax, static typing, typed HIR representation, package interface representation, runtime values, and a small non-indexing operation surface
-- `get` naturally returns `Option[T]`, and optional values now have a source-level construction and consumption story
+- safe list lookup already returns `Option[T]`
 - `set` and direct indexing require a clear bounds-error policy
 - `Option[T]` also informs future `Map[K, V]` lookup semantics
 
 Expected result:
 
-- safe lookup exposes absence without introducing runtime errors for ordinary misses
-- later indexing, `set`, and `Map[K, V]` work can build on the same collection typing/runtime path
+- direct indexing and update semantics are decided before adding syntax that can fail at runtime
+- later `set` and `Map[K, V]` work can build on the same collection typing/runtime path
 
 ## 5. Decisions To Make Soon
 
@@ -119,13 +119,13 @@ Decide:
 
 Current recommendation:
 
-- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, `push`, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are now implemented
+- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, `push`, `get`, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are now implemented
 - parse generic declarations as `record Box[T]` and `fn id[T](value: T): T`
 - implement generic records and generic functions as part of v1
 - rely on local type-argument inference rather than explicit call-site type arguments in the v1 MVP
 - defer bounds, typeclasses, higher-kinded types, const generics, and specialization
 - defer trait, interface, protocol, and overloaded dispatch declarations
-- implement safe list lookup before safe map lookup
+- implement safe map lookup after the first `Map[K, V]` runtime representation exists
 - keep `T?` reserved, not implemented
 - do not implement map literals in the first collection slice
 
@@ -229,7 +229,7 @@ When resuming implementation:
 1. Run `cargo test`.
 2. Read [ROADMAP.md](../ROADMAP.md) "Recommended Immediate Next Steps".
 3. Read [docs/internal/identity-model.md](./internal/identity-model.md).
-4. Start with safe list lookup (`get`) unless a compiler-core package task is explicitly being resumed first.
+4. Start with direct indexing / bounds-error policy unless a compiler-core package task is explicitly being resumed first.
 5. After each compiler-core change, keep `check`, `run`, and existing samples behavior-compatible.
 
 Useful validation commands:
