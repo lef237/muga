@@ -531,6 +531,21 @@ fn typed_hir_generates_package_interface_summaries() {
         .function_by_name(numbers, "singleton_len")
         .expect("singleton_len should be exported");
     assert_eq!(singleton_len.ret, muga::typing::TypeInfo::Int);
+    let maybe_positive = interfaces
+        .function_by_name(numbers, "maybe_positive")
+        .expect("maybe_positive should be exported");
+    assert_eq!(
+        maybe_positive.ret,
+        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+    );
+    let value_or_zero = interfaces
+        .function_by_name(numbers, "value_or_zero")
+        .expect("value_or_zero should be exported");
+    assert_eq!(
+        value_or_zero.params[0].ty,
+        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+    );
+    assert_eq!(value_or_zero.ret, muga::typing::TypeInfo::Int);
 
     let user_item = program
         .package_graph
@@ -1302,6 +1317,142 @@ fn main(): Int {
             .iter()
             .any(|diagnostic| diagnostic.code == "T006"),
         "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn option_some_match_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = Option::Some(10)
+  match value {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "10");
+}
+
+#[test]
+fn option_none_match_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = Option::None
+  match value {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn option_none_requires_expected_type() {
+    let source = r#"
+fn main(): Int {
+  value = Option::None
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T017"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn option_some_checks_expected_type() {
+    let source = r#"
+fn main(): Option[Int] {
+  Option::Some("bad")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn option_match_requires_some_and_none_arms() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = Option::Some(1)
+  match value {
+    Option::Some(x) => x
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T018"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn option_match_arm_types_must_match() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = Option::None
+  match value {
+    Option::Some(x) => x
+    Option::None => "missing"
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_preserves_option_type_info() {
+    let source = r#"
+fn main(): Option[Int] {
+  value: Option[Int] = Option::Some(1)
+  value
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    assert_eq!(
+        main.return_ty,
+        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+    );
+    let assign = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected typed assignment"),
+    };
+    let binding = program
+        .bindings
+        .iter()
+        .find(|binding| binding.id == assign.binding)
+        .expect("assignment binding should exist");
+    assert_eq!(
+        binding.ty,
+        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
     );
 }
 
@@ -2093,6 +2244,12 @@ fn collect_typed_calls_in_expr<'a>(
             collect_typed_calls_in_expr(&expr.condition, calls);
             collect_typed_calls_in_value_block(&expr.then_branch, calls);
             collect_typed_calls_in_value_block(&expr.else_branch, calls);
+        }
+        muga::typed_hir::ExprKind::Match(expr) => {
+            collect_typed_calls_in_expr(&expr.value, calls);
+            for arm in &expr.arms {
+                collect_typed_calls_in_expr(&arm.value, calls);
+            }
         }
         muga::typed_hir::ExprKind::Fn(expr) => {
             collect_typed_calls_in_value_block(&expr.body, calls);

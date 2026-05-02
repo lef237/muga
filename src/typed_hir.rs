@@ -229,6 +229,12 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
                 self.validate_value_block(&if_expr.then_branch);
                 self.validate_value_block(&if_expr.else_branch);
             }
+            ExprKind::Match(match_expr) => {
+                self.validate_expr(&match_expr.value);
+                for arm in &match_expr.arms {
+                    self.validate_expr(&arm.value);
+                }
+            }
             ExprKind::Fn(fn_expr) => {
                 for param in &fn_expr.params {
                     self.validate_type(&param.ty, param.span);
@@ -243,6 +249,7 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
         match ty {
             TypeInfo::PackageRecord { item, .. } => self.validate_item(*item, span),
             TypeInfo::List(item) => self.validate_type(item, span),
+            TypeInfo::Option(item) => self.validate_type(item, span),
             TypeInfo::Function(function) => {
                 for param in &function.params {
                     self.validate_type(param, span);
@@ -536,6 +543,7 @@ pub enum ExprKind {
     Binary(BinaryExpr),
     Call(CallExpr),
     If(IfExpr),
+    Match(MatchExpr),
     Fn(FnExpr),
 }
 
@@ -638,6 +646,31 @@ pub struct IfExpr {
     pub condition: Box<Expr>,
     pub then_branch: ValueBlock,
     pub else_branch: ValueBlock,
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchExpr {
+    pub value: Box<Expr>,
+    pub arms: Vec<MatchArm>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchArm {
+    pub pattern: MatchPattern,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum MatchPattern {
+    OptionSome {
+        binding_name: String,
+        binding: BindingId,
+        span: Span,
+    },
+    OptionNone {
+        span: Span,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -918,6 +951,33 @@ impl<'a> Lowerer<'a> {
                 then_branch: self.lower_value_block(&expr.then_branch),
                 else_branch: self.lower_value_block(&expr.else_branch),
             }),
+            ast::Expr::Match(expr) => ExprKind::Match(MatchExpr {
+                value: Box::new(self.lower_expr(&expr.value)),
+                arms: expr
+                    .arms
+                    .iter()
+                    .map(|arm| MatchArm {
+                        pattern: match &arm.pattern {
+                            ast::MatchPattern::OptionSome { binding, span } => {
+                                MatchPattern::OptionSome {
+                                    binding_name: binding.clone(),
+                                    binding: self.binding_for_decl(
+                                        binding,
+                                        *span,
+                                        BindingKind::Immutable,
+                                    ),
+                                    span: *span,
+                                }
+                            }
+                            ast::MatchPattern::OptionNone { span } => {
+                                MatchPattern::OptionNone { span: *span }
+                            }
+                        },
+                        value: self.lower_expr(&arm.value),
+                        span: arm.span,
+                    })
+                    .collect(),
+            }),
             ast::Expr::Fn(expr) => {
                 let return_ty = match ty.clone() {
                     TypeInfo::Function(FunctionTypeInfo { ret, .. }) => *ret,
@@ -1052,6 +1112,11 @@ impl<'a> Lowerer<'a> {
             {
                 TypeInfo::List(Box::new(self.type_info_from_type_expr(&generic.args[0])))
             }
+            ast::TypeExpr::Generic(generic)
+                if generic.name == "Option" && generic.args.len() == 1 =>
+            {
+                TypeInfo::Option(Box::new(self.type_info_from_type_expr(&generic.args[0])))
+            }
             ast::TypeExpr::Generic(_) => TypeInfo::Error,
             ast::TypeExpr::Function(function) => TypeInfo::Function(FunctionTypeInfo {
                 params: function
@@ -1081,6 +1146,9 @@ impl<'a> Lowerer<'a> {
                 ret: Box::new(self.package_target_for_type(*function.ret)),
             }),
             TypeInfo::List(item) => TypeInfo::List(Box::new(self.package_target_for_type(*item))),
+            TypeInfo::Option(item) => {
+                TypeInfo::Option(Box::new(self.package_target_for_type(*item)))
+            }
             other => other,
         }
     }

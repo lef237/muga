@@ -106,6 +106,7 @@ pub enum Expr {
     Binary(BinaryExpr),
     Call(CallExpr),
     If(IfExpr),
+    Match(MatchExpr),
     Closure(ClosureExpr),
 }
 
@@ -124,6 +125,7 @@ impl Expr {
             Self::Binary(expr) => expr.span,
             Self::Call(expr) => expr.span,
             Self::If(expr) => expr.span,
+            Self::Match(expr) => expr.span,
             Self::Closure(expr) => expr.span,
         }
     }
@@ -235,6 +237,26 @@ pub struct IfExpr {
     pub then_branch: ValueBlock,
     pub else_branch: ValueBlock,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchExpr {
+    pub value: Box<Expr>,
+    pub arms: Vec<MatchArm>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchArm {
+    pub pattern: MatchPattern,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum MatchPattern {
+    OptionSome { binding: Symbol, span: Span },
+    OptionNone { span: Span },
 }
 
 #[derive(Clone, Debug)]
@@ -415,6 +437,29 @@ impl Lowerer {
                 condition: Box::new(self.lower_expr(&expr.condition)),
                 then_branch: self.lower_value_block(&expr.then_branch),
                 else_branch: self.lower_value_block(&expr.else_branch),
+                span: expr.span,
+            }),
+            ast::Expr::Match(expr) => Expr::Match(MatchExpr {
+                value: Box::new(self.lower_expr(&expr.value)),
+                arms: expr
+                    .arms
+                    .iter()
+                    .map(|arm| MatchArm {
+                        pattern: match &arm.pattern {
+                            ast::MatchPattern::OptionSome { binding, span } => {
+                                MatchPattern::OptionSome {
+                                    binding: self.symbol(binding),
+                                    span: *span,
+                                }
+                            }
+                            ast::MatchPattern::OptionNone { span } => {
+                                MatchPattern::OptionNone { span: *span }
+                            }
+                        },
+                        value: self.lower_expr(&arm.value),
+                        span: arm.span,
+                    })
+                    .collect(),
                 span: expr.span,
             }),
             ast::Expr::Fn(expr) => Expr::Closure(ClosureExpr {

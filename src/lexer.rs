@@ -97,6 +97,11 @@ impl Lexer {
                         self.advance();
                         self.advance();
                         self.push(TokenKind::EqEq, Span::new(start, self.position()));
+                    } else if self.peek_next() == Some('>') {
+                        let start = self.position();
+                        self.advance();
+                        self.advance();
+                        self.push(TokenKind::FatArrow, Span::new(start, self.position()));
                     } else {
                         self.emit_simple(TokenKind::Eq);
                     }
@@ -193,6 +198,7 @@ impl Lexer {
             "as" => TokenKind::As,
             "fn" => TokenKind::Fn,
             "record" => TokenKind::Record,
+            "match" => TokenKind::Match,
             "mut" => TokenKind::Mut,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,

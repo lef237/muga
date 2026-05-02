@@ -1101,7 +1101,35 @@ impl<'a> PackageRewriter<'a> {
                 else_branch: self.rewrite_value_block(&expr.else_branch),
                 span: expr.span,
             }),
+            Expr::Match(expr) => Expr::Match(self.rewrite_match_expr(expr)),
             Expr::Fn(expr) => Expr::Fn(self.rewrite_fn_expr(expr)),
+        }
+    }
+
+    fn rewrite_match_expr(&mut self, expr: &MatchExpr) -> MatchExpr {
+        let value = Box::new(self.rewrite_expr(&expr.value));
+        let arms = expr
+            .arms
+            .iter()
+            .map(|arm| {
+                self.push_scope();
+                if let MatchPattern::OptionSome { binding, .. } = &arm.pattern {
+                    self.insert_local(binding.clone());
+                }
+                let value = self.rewrite_expr(&arm.value);
+                self.pop_scope();
+                MatchArm {
+                    pattern: arm.pattern.clone(),
+                    value,
+                    span: arm.span,
+                }
+            })
+            .collect();
+        MatchExpr {
+            id: expr.id,
+            value,
+            arms,
+            span: expr.span,
         }
     }
 
@@ -1198,6 +1226,9 @@ impl<'a> PackageRewriter<'a> {
     }
 
     fn rewrite_value_name(&mut self, name: &str, span: Span) -> String {
+        if name.contains("::") && is_builtin_name(name) {
+            return name.to_string();
+        }
         if let Some((alias, item)) = split_qualified_name(name) {
             return self.resolve_imported_item(alias, item, ImportedItemKind::Function, span);
         }
@@ -1822,5 +1853,8 @@ fn sanitize_mangle_segment(segment: &str) -> String {
 }
 
 fn is_builtin_name(name: &str) -> bool {
-    matches!(name, "print" | "println" | "len" | "is_empty" | "push")
+    matches!(
+        name,
+        "print" | "println" | "len" | "is_empty" | "push" | "Option::Some" | "Option::None"
+    )
 }

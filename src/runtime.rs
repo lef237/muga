@@ -10,6 +10,7 @@ pub enum Value {
     Bool(bool),
     String(String),
     List(Vec<Value>),
+    Option(OptionValue),
     Record(RecordValue),
     Function(Rc<ClosureValue>),
     Builtin(BuiltinFunction),
@@ -19,6 +20,12 @@ pub enum Value {
 pub struct RecordValue {
     type_name: String,
     fields: Vec<RecordFieldValue>,
+}
+
+#[derive(Clone, Debug)]
+pub enum OptionValue {
+    Some(Box<Value>),
+    None,
 }
 
 #[derive(Clone, Debug)]
@@ -43,6 +50,8 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Self::Option(OptionValue::Some(value)) => write!(f, "Option::Some({value})"),
+            Self::Option(OptionValue::None) => write!(f, "Option::None"),
             Self::Record(record) => {
                 write!(f, "{} {{ ", record.type_name)?;
                 for (index, field) in record.fields.iter().enumerate() {
@@ -135,6 +144,7 @@ pub enum BuiltinFunction {
     Len,
     IsEmpty,
     ListPush,
+    OptionSome,
 }
 
 impl BuiltinFunction {
@@ -145,6 +155,7 @@ impl BuiltinFunction {
             Self::Len => "len",
             Self::IsEmpty => "is_empty",
             Self::ListPush => "push",
+            Self::OptionSome => "Option::Some",
         }
     }
 }
@@ -323,6 +334,23 @@ fn execute_chunk(
                         return Err(vec![Diagnostic::new(
                             "R003",
                             "`if`/`while` condition did not evaluate to Bool",
+                            *span,
+                        )]);
+                    }
+                }
+            }
+            Instruction::JumpIfOptionNone { target, span } => {
+                let value = pop_value(&mut stack, *span, "R015", "missing Option value for match")?;
+                match value {
+                    Value::Option(OptionValue::Some(value)) => stack.push(*value),
+                    Value::Option(OptionValue::None) => {
+                        pc = *target;
+                        continue;
+                    }
+                    _ => {
+                        return Err(vec![Diagnostic::new(
+                            "R019",
+                            "`match` expected an Option value",
                             *span,
                         )]);
                     }
@@ -537,13 +565,15 @@ fn call_builtin(
                         .push_str(&value.to_string());
                     Ok(value)
                 }
-                Value::List(_) | Value::Record(_) | Value::Function(_) | Value::Builtin(_) => {
-                    Err(vec![Diagnostic::new(
-                        "R014",
-                        "`print` accepts only Int, Bool, or String",
-                        span,
-                    )])
-                }
+                Value::List(_)
+                | Value::Option(_)
+                | Value::Record(_)
+                | Value::Function(_)
+                | Value::Builtin(_) => Err(vec![Diagnostic::new(
+                    "R014",
+                    "`print` accepts only Int, Bool, or String",
+                    span,
+                )]),
             }
         }
         BuiltinFunction::Println => {
@@ -563,13 +593,15 @@ fn call_builtin(
                     output.push('\n');
                     Ok(value)
                 }
-                Value::List(_) | Value::Record(_) | Value::Function(_) | Value::Builtin(_) => {
-                    Err(vec![Diagnostic::new(
-                        "R014",
-                        "`println` accepts only Int, Bool, or String",
-                        span,
-                    )])
-                }
+                Value::List(_)
+                | Value::Option(_)
+                | Value::Record(_)
+                | Value::Function(_)
+                | Value::Builtin(_) => Err(vec![Diagnostic::new(
+                    "R014",
+                    "`println` accepts only Int, Bool, or String",
+                    span,
+                )]),
             }
         }
         BuiltinFunction::Len => {
@@ -630,6 +662,17 @@ fn call_builtin(
                     span,
                 )]),
             }
+        }
+        BuiltinFunction::OptionSome => {
+            if args.len() != 1 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 1 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let value = args.into_iter().next().expect("checked length");
+            Ok(Value::Option(OptionValue::Some(Box::new(value))))
         }
     }
 }
@@ -837,6 +880,26 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             Binding {
                 mutable: false,
                 value: Value::Builtin(BuiltinFunction::ListPush),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(option_some_symbol) = program.symbols.lookup("Option::Some") {
+        env.borrow_mut().bindings.insert(
+            option_some_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::OptionSome),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(option_none_symbol) = program.symbols.lookup("Option::None") {
+        env.borrow_mut().bindings.insert(
+            option_none_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Option(OptionValue::None),
                 span: Span::default(),
             },
         );

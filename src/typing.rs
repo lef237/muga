@@ -80,6 +80,7 @@ pub enum TypeInfo {
     Record(Symbol),
     PackageRecord { symbol: Symbol, item: PackageItemId },
     List(Box<TypeInfo>),
+    Option(Box<TypeInfo>),
     Function(FunctionTypeInfo),
     Builtin(&'static str),
     Unknown,
@@ -99,6 +100,8 @@ enum Type {
     String,
     Record(Symbol),
     List(Box<Type>),
+    Option(Box<Type>),
+    OptionNone,
     Function(FunctionSig),
     Builtin(BuiltinFunction),
     Unknown(u32),
@@ -118,6 +121,7 @@ enum BuiltinFunction {
     Len,
     IsEmpty,
     ListPush,
+    OptionSome,
 }
 
 #[derive(Clone, Debug)]
@@ -273,6 +277,20 @@ impl TypeChecker {
             push,
             BindingKind::Function,
             Type::Builtin(BuiltinFunction::ListPush),
+            Span::default(),
+        );
+        let option_some = self.symbol("Option::Some");
+        self.insert_current(
+            option_some,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::OptionSome),
+            Span::default(),
+        );
+        let option_none = self.symbol("Option::None");
+        self.insert_current(
+            option_none,
+            BindingKind::Immutable,
+            Type::OptionNone,
             Span::default(),
         );
     }
@@ -451,6 +469,10 @@ impl TypeChecker {
                         span: expr.span,
                         binding: binding.id,
                     });
+                    if matches!(binding.ty, Type::OptionNone) {
+                        let ty = self.check_option_none(expected, expr.span);
+                        return self.record_expr_type(expr.id, span, ty);
+                    }
                     self.apply_expected(binding.ty, expected, expr.span)
                 } else {
                     Type::Error
@@ -650,6 +672,38 @@ impl TypeChecker {
                             }
                         }
                     }
+                    Type::Builtin(BuiltinFunction::OptionSome) => {
+                        if expr.args.len() != 1 {
+                            self.diagnostics.push(Diagnostic::new(
+                                "T004",
+                                format!("expected 1 arguments but found {}", expr.args.len()),
+                                expr.span,
+                            ));
+                            Type::Error
+                        } else {
+                            let expected = expected.map(|ty| self.resolve_type(&ty));
+                            let expected_item = match expected.as_ref() {
+                                Some(Type::Option(item)) => Some(*item.clone()),
+                                _ => None,
+                            };
+                            let item_ty = if let Some(expected_item) = expected_item {
+                                self.check_expr_with_expected(
+                                    &expr.args[0],
+                                    Some(expected_item.clone()),
+                                );
+                                expected_item
+                            } else {
+                                self.check_expr(&expr.args[0])
+                            };
+                            let option_ty = Type::Option(Box::new(self.resolve_type(&item_ty)));
+                            match expected {
+                                Some(Type::Option(_)) | None => option_ty,
+                                Some(expected) => {
+                                    self.apply_expected(option_ty, Some(expected), expr.span)
+                                }
+                            }
+                        }
+                    }
                     Type::Function(sig) => {
                         if sig.params.len() != expr.args.len() {
                             self.diagnostics.push(Diagnostic::new(
@@ -727,6 +781,7 @@ impl TypeChecker {
                     }
                 }
             }
+            Expr::Match(expr) => self.check_match_expr(expr, expected),
             Expr::Fn(expr) => {
                 let sig = self.signature_from_fn_expr(expr, expected.as_ref());
                 self.push_scope(true);
@@ -747,9 +802,13 @@ impl TypeChecker {
                 self.apply_expected(Type::Function(sig), expected, expr.span)
             }
         };
+        self.record_expr_type(expr.id(), span, ty)
+    }
+
+    fn record_expr_type(&mut self, expr_id: ExprId, span: Span, ty: Type) -> Type {
         let resolved = self.resolve_type(&ty);
         self.expr_types.push(ExprType {
-            expr_id: expr.id(),
+            expr_id,
             span,
             ty: resolved.clone(),
         });
@@ -862,6 +921,119 @@ impl TypeChecker {
         match expected {
             Some(Type::List(_)) | None => list_ty,
             Some(expected) => self.apply_expected(list_ty, Some(expected), expr.span),
+        }
+    }
+
+    fn check_option_none(&mut self, expected: Option<Type>, span: Span) -> Type {
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        match expected {
+            Some(Type::Option(item)) => Type::Option(item),
+            Some(Type::Error) => Type::Error,
+            Some(_) | None => {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "T017",
+                        "`Option::None` requires an expected Option[T] type",
+                        span,
+                    )
+                    .with_suggestion(
+                        "add a local binding annotation such as `value: Option[Int] = Option::None`",
+                    ),
+                );
+                Type::Error
+            }
+        }
+    }
+
+    fn check_match_expr(&mut self, expr: &MatchExpr, expected: Option<Type>) -> Type {
+        let value_ty = self.check_expr(&expr.value);
+        let item_ty = match self.resolve_type(&value_ty) {
+            Type::Option(item) => *item,
+            Type::Unknown(_) => {
+                let item = Type::Unknown(self.fresh_unknown());
+                let option = Type::Option(Box::new(item.clone()));
+                if let Err(message) = self.unify(value_ty.clone(), option) {
+                    self.diagnostics
+                        .push(Diagnostic::new("T018", message, expr.value.span()));
+                    Type::Error
+                } else {
+                    item
+                }
+            }
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T018",
+                    "`match` currently supports only Option[T] values",
+                    expr.value.span(),
+                ));
+                Type::Error
+            }
+        };
+
+        let mut has_some = None;
+        let mut has_none = None;
+        let mut result_ty = None;
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+
+        for arm in &expr.arms {
+            self.push_scope(false);
+            match &arm.pattern {
+                MatchPattern::OptionSome { binding, span } => {
+                    if let Some(previous) = has_some {
+                        self.diagnostics.push(
+                            Diagnostic::new("T018", "duplicate `Option::Some` match arm", *span)
+                                .with_related("previous `Option::Some` arm is here", previous),
+                        );
+                    } else {
+                        has_some = Some(*span);
+                    }
+                    let name = self.symbol(binding);
+                    self.insert_current(name, BindingKind::Immutable, item_ty.clone(), *span);
+                }
+                MatchPattern::OptionNone { span } => {
+                    if let Some(previous) = has_none {
+                        self.diagnostics.push(
+                            Diagnostic::new("T018", "duplicate `Option::None` match arm", *span)
+                                .with_related("previous `Option::None` arm is here", previous),
+                        );
+                    } else {
+                        has_none = Some(*span);
+                    }
+                }
+            }
+
+            let arm_ty = if let Some(expected_ty) = expected.clone() {
+                self.check_expr_with_expected(&arm.value, Some(expected_ty))
+            } else if let Some(result_ty) = result_ty.clone() {
+                self.check_expr_with_expected(&arm.value, Some(result_ty))
+            } else {
+                self.check_expr(&arm.value)
+            };
+            if result_ty.is_none() {
+                result_ty = Some(arm_ty);
+            }
+            self.pop_scope();
+        }
+
+        if has_some.is_none() {
+            self.diagnostics.push(Diagnostic::new(
+                "T018",
+                "`match` on Option[T] requires an `Option::Some` arm",
+                expr.span,
+            ));
+        }
+        if has_none.is_none() {
+            self.diagnostics.push(Diagnostic::new(
+                "T018",
+                "`match` on Option[T] requires an `Option::None` arm",
+                expr.span,
+            ));
+        }
+
+        match expected {
+            Some(expected) => self.resolve_type(&expected),
+            None => result_ty.unwrap_or(Type::Error),
         }
     }
 
@@ -1192,6 +1364,17 @@ impl TypeChecker {
                 }
                 Type::List(Box::new(self.type_from_expr(&generic.args[0], span)))
             }
+            TypeExpr::Generic(generic) if generic.name == "Option" => {
+                if generic.args.len() != 1 {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T017",
+                        "Option expects exactly 1 type argument",
+                        span,
+                    ));
+                    return Type::Error;
+                }
+                Type::Option(Box::new(self.type_from_expr(&generic.args[0], span)))
+            }
             TypeExpr::Generic(generic) => {
                 for arg in &generic.args {
                     let _ = self.type_from_expr(arg, span);
@@ -1252,6 +1435,10 @@ impl TypeChecker {
                 let item = self.unify(*left, *right)?;
                 Ok(Type::List(Box::new(item)))
             }
+            (Type::Option(left), Type::Option(right)) => {
+                let item = self.unify(*left, *right)?;
+                Ok(Type::Option(Box::new(item)))
+            }
             (Type::Function(left), Type::Function(right)) => {
                 if left.params.len() != right.params.len() {
                     return Err("function arity mismatch".to_string());
@@ -1288,6 +1475,7 @@ impl TypeChecker {
                 ret: Box::new(self.resolve_type(&sig.ret)),
             }),
             Type::List(item) => Type::List(Box::new(self.resolve_type(item))),
+            Type::Option(item) => Type::Option(Box::new(self.resolve_type(item))),
             Type::Builtin(builtin) => Type::Builtin(*builtin),
             other => other.clone(),
         }
@@ -1300,6 +1488,7 @@ impl TypeChecker {
             Type::String => TypeInfo::String,
             Type::Record(symbol) => TypeInfo::Record(symbol),
             Type::List(item) => TypeInfo::List(Box::new(self.type_info_for(&item))),
+            Type::Option(item) => TypeInfo::Option(Box::new(self.type_info_for(&item))),
             Type::Function(sig) => TypeInfo::Function(FunctionTypeInfo {
                 params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
                 ret: Box::new(self.type_info_for(&sig.ret)),
@@ -1309,6 +1498,8 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::Len) => TypeInfo::Builtin("len"),
             Type::Builtin(BuiltinFunction::IsEmpty) => TypeInfo::Builtin("is_empty"),
             Type::Builtin(BuiltinFunction::ListPush) => TypeInfo::Builtin("push"),
+            Type::Builtin(BuiltinFunction::OptionSome) => TypeInfo::Builtin("Option::Some"),
+            Type::OptionNone => TypeInfo::Builtin("Option::None"),
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
         }
@@ -1324,6 +1515,7 @@ impl TypeChecker {
                     || self.type_contains_unknown(&sig.ret, needle)
             }
             Type::List(item) => self.type_contains_unknown(&item, needle),
+            Type::Option(item) => self.type_contains_unknown(&item, needle),
             _ => false,
         }
     }
@@ -1361,6 +1553,7 @@ impl TypeChecker {
             BuiltinFunction::Len => "len",
             BuiltinFunction::IsEmpty => "is_empty",
             BuiltinFunction::ListPush => "push",
+            BuiltinFunction::OptionSome => "Option::Some",
         }
     }
 
@@ -1479,12 +1672,14 @@ impl Type {
             Self::String => "String",
             Self::Record(_) => "Record",
             Self::List(_) => "List",
+            Self::Option(_) | Self::OptionNone => "Option",
             Self::Function(_) => "Function",
             Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
             Self::Builtin(BuiltinFunction::Println) => "Builtin(println)",
             Self::Builtin(BuiltinFunction::Len) => "Builtin(len)",
             Self::Builtin(BuiltinFunction::IsEmpty) => "Builtin(is_empty)",
             Self::Builtin(BuiltinFunction::ListPush) => "Builtin(push)",
+            Self::Builtin(BuiltinFunction::OptionSome) => "Builtin(Option::Some)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
         }
@@ -1666,6 +1861,12 @@ fn collect_calls_in_expr(
             collect_calls_in_expr(&expr.then_branch.expr, local_names, calls, symbols);
             collect_calls_in_statements(&expr.else_branch.statements, local_names, calls, symbols);
             collect_calls_in_expr(&expr.else_branch.expr, local_names, calls, symbols);
+        }
+        Expr::Match(expr) => {
+            collect_calls_in_expr(&expr.value, local_names, calls, symbols);
+            for arm in &expr.arms {
+                collect_calls_in_expr(&arm.value, local_names, calls, symbols);
+            }
         }
         Expr::Fn(_) => {}
     }

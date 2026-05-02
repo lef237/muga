@@ -115,6 +115,10 @@ impl Resolver {
         self.insert_current(is_empty, BindingKind::Function, Span::default());
         let push = self.symbol("push");
         self.insert_current(push, BindingKind::Function, Span::default());
+        let option_some = self.symbol("Option::Some");
+        self.insert_current(option_some, BindingKind::Function, Span::default());
+        let option_none = self.symbol("Option::None");
+        self.insert_current(option_none, BindingKind::Immutable, Span::default());
     }
 
     fn resolve_scope_statements(&mut self, statements: &[Stmt]) {
@@ -326,6 +330,17 @@ impl Resolver {
                 self.resolve_value_block(&expr.then_branch);
                 self.resolve_value_block(&expr.else_branch);
             }
+            Expr::Match(expr) => {
+                self.resolve_expr(&expr.value);
+                for arm in &expr.arms {
+                    self.push_scope(false);
+                    if let MatchPattern::OptionSome { binding, span } = &arm.pattern {
+                        self.resolve_pattern_binding(binding, *span);
+                    }
+                    self.resolve_expr(&arm.value);
+                    self.pop_scope();
+                }
+            }
             Expr::Fn(expr) => {
                 self.push_scope(true);
                 for param in &expr.params {
@@ -359,6 +374,33 @@ impl Resolver {
                 self.pop_scope();
             }
         }
+    }
+
+    fn resolve_pattern_binding(&mut self, name: &str, span: Span) {
+        let symbol = self.symbol(name);
+        if let Some(binding) = self.current_scope_binding(symbol) {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "E002",
+                    format!("duplicate binding `{name}` in the current scope"),
+                    span,
+                )
+                .with_related("previous binding is here", binding.span),
+            );
+            return;
+        }
+        if let Some(binding) = self.any_enclosing_scope_lookup(symbol).copied() {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "E003",
+                    format!("shadowing is prohibited for `{name}`"),
+                    span,
+                )
+                .with_related("shadowed binding is here", binding.span),
+            );
+            return;
+        }
+        self.insert_current(symbol, BindingKind::Immutable, span);
     }
 
     fn predeclare_functions(&mut self, statements: &[Stmt]) {
