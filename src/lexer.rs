@@ -56,6 +56,8 @@ impl Lexer {
                 }
                 '(' => self.emit_simple(TokenKind::LParen),
                 ')' => self.emit_simple(TokenKind::RParen),
+                '[' => self.emit_simple(TokenKind::LBracket),
+                ']' => self.emit_simple(TokenKind::RBracket),
                 '{' => self.emit_simple(TokenKind::LBrace),
                 '}' => self.emit_simple(TokenKind::RBrace),
                 '.' => self.emit_simple(TokenKind::Dot),

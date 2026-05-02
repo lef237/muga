@@ -22,6 +22,8 @@ pub enum TokenKind {
     False,
     LParen,
     RParen,
+    LBracket,
+    RBracket,
     LBrace,
     RBrace,
     Dot,
@@ -62,6 +64,7 @@ impl TokenKind {
             TokenKind::Eq
                 | TokenKind::Comma
                 | TokenKind::Arrow
+                | TokenKind::LBracket
                 | TokenKind::Plus
                 | TokenKind::Minus
                 | TokenKind::Star

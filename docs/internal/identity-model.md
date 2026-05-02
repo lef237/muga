@@ -129,6 +129,7 @@ Done:
 - typed package interface validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup is routed through `PackageExportGraph` before whole-program flattening
 - `PackageExportGraph` can be derived from either package identity data or typed package interface summaries
+- local binding annotations and generic type expression syntax are in place before collection types add new `TypeInfo` cases
 
 Remaining:
 

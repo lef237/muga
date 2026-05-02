@@ -957,6 +957,10 @@ impl<'a> PackageRewriter<'a> {
                     id: stmt.id,
                     mutable: stmt.mutable,
                     name: stmt.name.clone(),
+                    type_name: stmt
+                        .type_name
+                        .as_ref()
+                        .map(|type_name| self.rewrite_type_expr(type_name, stmt.span)),
                     value,
                     span: stmt.span,
                 })
@@ -1126,6 +1130,14 @@ impl<'a> PackageRewriter<'a> {
             TypeExpr::Bool => TypeExpr::Bool,
             TypeExpr::String => TypeExpr::String,
             TypeExpr::Named(name) => TypeExpr::Named(self.rewrite_type_name(name, span)),
+            TypeExpr::Generic(generic) => TypeExpr::Generic(GenericTypeExpr {
+                name: self.rewrite_type_name(&generic.name, span),
+                args: generic
+                    .args
+                    .iter()
+                    .map(|arg| self.rewrite_type_expr(arg, span))
+                    .collect(),
+            }),
             TypeExpr::Function(function) => TypeExpr::Function(FunctionTypeExpr {
                 params: function
                     .params
@@ -1251,6 +1263,11 @@ impl<'a> PackageRewriter<'a> {
                             .with_related(format!("record `{name}` is declared here"), item.span),
                         );
                     }
+                }
+            }
+            TypeExpr::Generic(generic) => {
+                for arg in &generic.args {
+                    self.validate_visible_type(arg, api_visibility, span);
                 }
             }
             TypeExpr::Function(function) => {
