@@ -1,0 +1,9 @@
+package util::numbers
+
+pub fn singleton(x: Int): List[Int] {
+  [x]
+}
+
+pub fn singleton_len(x: Int): Int {
+  singleton(x).len()
+}

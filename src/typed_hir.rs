@@ -196,6 +196,11 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
                     self.validate_item(item, expr.span);
                 }
             }
+            ExprKind::ListLit(list) => {
+                for item in &list.items {
+                    self.validate_expr(item);
+                }
+            }
             ExprKind::RecordLit(record) => {
                 for field in &record.fields {
                     self.validate_expr(&field.value);
@@ -237,6 +242,7 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
     fn validate_type(&mut self, ty: &TypeInfo, span: Span) {
         match ty {
             TypeInfo::PackageRecord { item, .. } => self.validate_item(*item, span),
+            TypeInfo::List(item) => self.validate_type(item, span),
             TypeInfo::Function(function) => {
                 for param in &function.params {
                     self.validate_type(param, span);
@@ -522,6 +528,7 @@ pub enum ExprKind {
     Bool(bool),
     String(String),
     Ident(IdentExpr),
+    ListLit(ListLitExpr),
     RecordLit(RecordLitExpr),
     Field(FieldExpr),
     RecordUpdate(RecordUpdateExpr),
@@ -537,6 +544,11 @@ pub struct IdentExpr {
     pub name: String,
     pub binding: BindingId,
     pub target: IdentTarget,
+}
+
+#[derive(Clone, Debug)]
+pub struct ListLitExpr {
+    pub items: Vec<Expr>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -837,6 +849,13 @@ impl<'a> Lowerer<'a> {
                 binding: self.binding_for_expr(expr.id),
                 target: self.target_for_expr(expr.id),
             }),
+            ast::Expr::ListLit(expr) => ExprKind::ListLit(ListLitExpr {
+                items: expr
+                    .items
+                    .iter()
+                    .map(|item| self.lower_expr(item))
+                    .collect(),
+            }),
             ast::Expr::RecordLit(expr) => ExprKind::RecordLit(RecordLitExpr {
                 type_name: expr.type_name.clone(),
                 fields: expr
@@ -1028,6 +1047,11 @@ impl<'a> Lowerer<'a> {
                 .map(TypeInfo::Record)
                 .map(|ty| self.package_target_for_type(ty))
                 .unwrap_or(TypeInfo::Error),
+            ast::TypeExpr::Generic(generic)
+                if generic.name == "List" && generic.args.len() == 1 =>
+            {
+                TypeInfo::List(Box::new(self.type_info_from_type_expr(&generic.args[0])))
+            }
             ast::TypeExpr::Generic(_) => TypeInfo::Error,
             ast::TypeExpr::Function(function) => TypeInfo::Function(FunctionTypeInfo {
                 params: function
@@ -1056,6 +1080,7 @@ impl<'a> Lowerer<'a> {
                     .collect(),
                 ret: Box::new(self.package_target_for_type(*function.ret)),
             }),
+            TypeInfo::List(item) => TypeInfo::List(Box::new(self.package_target_for_type(*item))),
             other => other,
         }
     }

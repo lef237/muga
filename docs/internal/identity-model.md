@@ -129,13 +129,14 @@ Done:
 - typed package interface validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup is routed through `PackageExportGraph` before whole-program flattening
 - `PackageExportGraph` can be derived from either package identity data or typed package interface summaries
-- local binding annotations and generic type expression syntax are in place before collection types add new `TypeInfo` cases
+- local binding annotations, generic type expression syntax, the first `List[T]` `TypeInfo` case, and typed prelude list operations are in place
 
 Remaining:
 
-1. make downstream package checking consume typed package interface summaries instead of the source-level export surface
-2. add record field visibility enforcement on top of module identity
-3. continue expanding structured diagnostics as new interface errors are introduced
+1. decide `Option[T]` construction and consumption before exposing safe lookup APIs
+2. make downstream package checking consume typed package interface summaries instead of the source-level export surface
+3. add record field visibility enforcement on top of module identity
+4. continue expanding structured diagnostics as new interface errors are introduced
 
 ## Foundation Note
 
