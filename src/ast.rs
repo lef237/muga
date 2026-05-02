@@ -77,6 +77,7 @@ pub struct AssignStmt {
     pub id: StmtId,
     pub mutable: bool,
     pub name: String,
+    pub type_name: Option<TypeExpr>,
     pub value: Expr,
     pub span: Span,
 }
@@ -340,7 +341,14 @@ pub enum TypeExpr {
     Bool,
     String,
     Named(String),
+    Generic(GenericTypeExpr),
     Function(FunctionTypeExpr),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GenericTypeExpr {
+    pub name: String,
+    pub args: Vec<TypeExpr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

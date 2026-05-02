@@ -1028,6 +1028,7 @@ impl<'a> Lowerer<'a> {
                 .map(TypeInfo::Record)
                 .map(|ty| self.package_target_for_type(ty))
                 .unwrap_or(TypeInfo::Error),
+            ast::TypeExpr::Generic(_) => TypeInfo::Error,
             ast::TypeExpr::Function(function) => TypeInfo::Function(FunctionTypeInfo {
                 params: function
                     .params

@@ -513,6 +513,7 @@ Recently completed:
 - typed package compilation validates public package references against generated interface summaries
 - typed package interface validation uses package/name lookup and detects stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup reads `PackageExportGraph` before flattening, and `PackageExportGraph` can be derived from typed interfaces
+- local binding annotations are implemented, and generic type expressions such as `List[Int]` parse as reserved syntax ahead of collection semantics
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

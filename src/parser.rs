@@ -240,7 +240,9 @@ impl Parser {
                 .map(Stmt::FuncDecl),
             TokenKind::If => self.parse_if_stmt_or_expr_stmt(),
             TokenKind::While => self.parse_while_stmt().map(Stmt::While),
-            TokenKind::Ident(_) if matches!(self.peek_kind_n(1), TokenKind::Eq) => {
+            TokenKind::Ident(_)
+                if matches!(self.peek_kind_n(1), TokenKind::Eq | TokenKind::Colon) =>
+            {
                 self.parse_assign_stmt(false).map(Stmt::Assign)
             }
             _ => self.parse_expr_stmt().map(Stmt::Expr),
@@ -253,12 +255,21 @@ impl Parser {
             self.advance();
         }
         let (name, name_span) = self.expect_ident()?;
-        self.expect_simple(TokenKind::Eq, "expected `=` after binding name")?;
+        let type_name = if self.matches_simple(&TokenKind::Colon) {
+            Some(self.parse_type_expr()?.0)
+        } else {
+            None
+        };
+        self.expect_simple(
+            TokenKind::Eq,
+            "expected `=` after binding name or type annotation",
+        )?;
         let value = self.parse_expr()?;
         Ok(AssignStmt {
             id: self.stmt_id(),
             mutable,
             name,
+            type_name,
             value,
             span: start.merge(name_span).merge(self.previous_span()),
         })
@@ -410,6 +421,20 @@ impl Parser {
         match token.kind {
             TokenKind::Ident(name) => {
                 let (name, span) = self.parse_type_name_after_first(name, token.span)?;
+                if self.matches_simple(&TokenKind::LBracket) {
+                    let (args, end) = self.parse_type_args()?;
+                    if matches!(name.as_str(), "Int" | "Bool" | "String") {
+                        return Err(Diagnostic::new(
+                            "P001",
+                            format!("primitive type `{name}` may not have type arguments"),
+                            span.merge(end),
+                        ));
+                    }
+                    return Ok((
+                        TypeExpr::Generic(GenericTypeExpr { name, args }),
+                        span.merge(end),
+                    ));
+                }
                 match name.as_str() {
                     "Int" => Ok((TypeExpr::Int, span)),
                     "Bool" => Ok((TypeExpr::Bool, span)),
@@ -423,6 +448,27 @@ impl Parser {
                 token.span,
             )),
         }
+    }
+
+    fn parse_type_args(&mut self) -> Result<(Vec<TypeExpr>, Span), Diagnostic> {
+        let start = self.previous_span();
+        let mut args = Vec::new();
+        if matches!(self.peek_kind(), TokenKind::RBracket) {
+            return Err(Diagnostic::new(
+                "P001",
+                "generic type requires at least one type argument",
+                start,
+            ));
+        }
+        loop {
+            let (arg, _) = self.parse_type_expr()?;
+            args.push(arg);
+            if !self.matches_simple(&TokenKind::Comma) {
+                break;
+            }
+        }
+        let end = self.expect_simple(TokenKind::RBracket, "expected `]` after type arguments")?;
+        Ok((args, start.merge(end)))
     }
 
     fn parse_if_stmt_or_expr_stmt(&mut self) -> Result<Stmt, Diagnostic> {
@@ -641,9 +687,9 @@ impl Parser {
                         unreachable!("matched Int kind above");
                     };
                     let span = start.merge(token.span);
-                    let value = format!("-{text}").parse::<i64>().map_err(|_| {
-                        Diagnostic::new("P002", "invalid integer literal", span)
-                    })?;
+                    let value = format!("-{text}")
+                        .parse::<i64>()
+                        .map_err(|_| Diagnostic::new("P002", "invalid integer literal", span))?;
                     return Ok(Expr::Int(IntExpr {
                         id: self.expr_id(),
                         value,

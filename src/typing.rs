@@ -317,10 +317,18 @@ impl TypeChecker {
     }
 
     fn check_assign(&mut self, stmt: &AssignStmt) {
-        let value_ty = self.check_expr(&stmt.value);
+        let annotation_ty = stmt
+            .type_name
+            .as_ref()
+            .map(|type_name| self.type_from_expr(type_name, stmt.span));
+        let value_ty = match annotation_ty.clone() {
+            Some(expected) => self.check_expr_with_expected(&stmt.value, Some(expected)),
+            None => self.check_expr(&stmt.value),
+        };
+        let binding_ty = annotation_ty.unwrap_or_else(|| value_ty.clone());
         let name = self.symbol(&stmt.name);
         if stmt.mutable {
-            let binding = self.insert_current(name, BindingKind::Mutable, value_ty, stmt.span);
+            let binding = self.insert_current(name, BindingKind::Mutable, binding_ty, stmt.span);
             self.assignment_targets.push(TypedAssignmentTarget {
                 stmt_id: stmt.id,
                 name,
@@ -332,6 +340,13 @@ impl TypeChecker {
         }
 
         if let Some(binding) = self.lookup_in_current_function(name).cloned() {
+            if stmt.type_name.is_some() {
+                self.diagnostics.push(Diagnostic::new(
+                    "T014",
+                    "type annotations are allowed only on new local bindings",
+                    stmt.span,
+                ));
+            }
             if binding.kind == BindingKind::Mutable {
                 self.require_exact(&binding.ty, &value_ty, stmt.span, "T002");
             }
@@ -346,7 +361,7 @@ impl TypeChecker {
         }
 
         if self.lookup_beyond_current_function(name).is_none() {
-            let binding = self.insert_current(name, BindingKind::Immutable, value_ty, stmt.span);
+            let binding = self.insert_current(name, BindingKind::Immutable, binding_ty, stmt.span);
             self.assignment_targets.push(TypedAssignmentTarget {
                 stmt_id: stmt.id,
                 name,
@@ -1005,6 +1020,22 @@ impl TypeChecker {
                     ));
                     Type::Error
                 }
+            }
+            TypeExpr::Generic(generic) => {
+                for arg in &generic.args {
+                    let _ = self.type_from_expr(arg, span);
+                }
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "T013",
+                        format!("generic type `{}` is not implemented yet", generic.name),
+                        span,
+                    )
+                    .with_suggestion(
+                        "generic type syntax is reserved for upcoming collection types",
+                    ),
+                );
+                Type::Error
             }
             TypeExpr::Function(function) => Type::Function(FunctionSig {
                 params: function

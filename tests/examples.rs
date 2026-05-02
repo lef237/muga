@@ -1004,6 +1004,109 @@ fn main(): Int {
 }
 
 #[test]
+fn parser_accepts_generic_type_expression_in_local_annotation() {
+    let source = r#"
+fn main(): Int {
+  items: List[Int] = 1
+  1
+}
+"#;
+    let program = parse_source(source);
+    let main = match &program.statements[0] {
+        muga::ast::Stmt::FuncDecl(function) => function,
+        _ => panic!("expected function"),
+    };
+    let assign = match &main.body.statements[0] {
+        muga::ast::Stmt::Assign(assign) => assign,
+        _ => panic!("expected assignment"),
+    };
+    let generic = match assign.type_name.as_ref() {
+        Some(muga::ast::TypeExpr::Generic(generic)) => generic,
+        other => panic!("expected generic type expression, got {other:#?}"),
+    };
+    assert_eq!(generic.name, "List");
+    assert_eq!(generic.args.len(), 1);
+    assert!(matches!(generic.args[0], muga::ast::TypeExpr::Int));
+}
+
+#[test]
+fn local_binding_annotation_sets_binding_type() {
+    let source = r#"
+fn main(): Int {
+  value: Int = 1
+  value
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    let assign = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected typed assignment"),
+    };
+    let binding = program
+        .bindings
+        .iter()
+        .find(|binding| binding.id == assign.binding)
+        .expect("assignment binding should exist");
+    assert_eq!(binding.ty, muga::typing::TypeInfo::Int);
+}
+
+#[test]
+fn local_binding_annotation_rejects_mismatch() {
+    let source = r#"
+fn main(): Int {
+  value: Int = "one"
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn local_binding_annotation_on_update_is_rejected() {
+    let source = r#"
+fn main(): Int {
+  mut value: Int = 1
+  value: Int = 2
+  value
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T014"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn generic_type_expression_is_reserved_until_collections() {
+    let source = r#"
+fn main(): Int {
+  items: List[Int] = 1
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T013"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn compile_typed_source_marks_mutable_updates() {
     let source = r#"
 fn main(): Int {
@@ -1596,11 +1699,15 @@ fn main(): Bool {
 "#;
     let diagnostics = muga::check_source(source).expect_err("expected type error");
     assert!(
-        diagnostics.iter().any(|diagnostic| diagnostic.code == "T003"),
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T003"),
         "{diagnostics:#?}"
     );
     assert!(
-        !diagnostics.iter().any(|diagnostic| diagnostic.code == "T002"),
+        !diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
         "function equality must not report a spurious type-mismatch: {diagnostics:#?}"
     );
 }

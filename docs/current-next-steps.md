@@ -75,6 +75,8 @@ Recently completed:
 - interface validation uses package/name lookup and rejects stale public item identity, function signatures, and record field shapes.
 - package import lookup now reads `PackageExportGraph`, a `PackageSymbolGraph`-derived public export surface, instead of dependency item maps.
 - `PackageExportGraph` can also be derived from typed package interface summaries, giving the next pipeline step a drop-in export lookup shape.
+- local binding annotations parse and typecheck as `name: Type = expr` and `mut name: Type = expr`.
+- generic type expressions parse as `Type[Arg1, Arg2]`; generic collection semantics are still reserved for the collection implementation.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
@@ -117,8 +119,7 @@ Decide:
 
 Current recommendation:
 
-- implement local binding annotations and generic type expressions first
-- parse generic type expressions as `Type[Arg1, Arg2]`
+- local binding annotations and generic type expression parsing are now implemented
 - parse generic declarations as `record Box[T]` and `fn id[T](value: T): T`
 - implement generic records and generic functions as part of v1
 - rely on local type-argument inference rather than explicit call-site type arguments in the v1 MVP
