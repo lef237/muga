@@ -26,6 +26,7 @@ struct Parser {
     current: usize,
     next_expr_id: u32,
     next_stmt_id: u32,
+    allow_struct_literal: bool,
 }
 
 impl Parser {
@@ -35,7 +36,24 @@ impl Parser {
             current: 0,
             next_expr_id: 0,
             next_stmt_id: 0,
+            allow_struct_literal: true,
         }
+    }
+
+    fn parse_expr_without_struct_literal(&mut self) -> Result<Expr, Diagnostic> {
+        let saved = self.allow_struct_literal;
+        self.allow_struct_literal = false;
+        let result = self.parse_expr();
+        self.allow_struct_literal = saved;
+        result
+    }
+
+    fn parse_expr_allowing_struct_literal(&mut self) -> Result<Expr, Diagnostic> {
+        let saved = self.allow_struct_literal;
+        self.allow_struct_literal = true;
+        let result = self.parse_expr();
+        self.allow_struct_literal = saved;
+        result
     }
 
     fn parse_program(&mut self) -> Result<Program, Diagnostic> {
@@ -410,7 +428,7 @@ impl Parser {
     fn parse_if_stmt_or_expr_stmt(&mut self) -> Result<Stmt, Diagnostic> {
         let start = self.current_span();
         self.expect_simple(TokenKind::If, "expected `if`")?;
-        let condition = self.parse_expr()?;
+        let condition = self.parse_expr_without_struct_literal()?;
         let then_block = self.parse_block()?;
         if self.matches_simple(&TokenKind::Else) {
             let else_block = self.parse_block()?;
@@ -444,7 +462,7 @@ impl Parser {
     fn parse_while_stmt(&mut self) -> Result<WhileStmt, Diagnostic> {
         let start = self.current_span();
         self.expect_simple(TokenKind::While, "expected `while`")?;
-        let condition = self.parse_expr()?;
+        let condition = self.parse_expr_without_struct_literal()?;
         let body = self.parse_block()?;
         Ok(WhileStmt {
             id: self.stmt_id(),
@@ -465,6 +483,14 @@ impl Parser {
     }
 
     fn parse_block(&mut self) -> Result<Block, Diagnostic> {
+        let saved = self.allow_struct_literal;
+        self.allow_struct_literal = true;
+        let result = self.parse_block_inner();
+        self.allow_struct_literal = saved;
+        result
+    }
+
+    fn parse_block_inner(&mut self) -> Result<Block, Diagnostic> {
         let start = self.current_span();
         self.expect_simple(TokenKind::LBrace, "expected `{`")?;
         self.skip_newlines();
@@ -499,7 +525,7 @@ impl Parser {
     fn parse_if_expr(&mut self) -> Result<Expr, Diagnostic> {
         let start = self.current_span();
         self.expect_simple(TokenKind::If, "expected `if`")?;
-        let condition = self.parse_expr()?;
+        let condition = self.parse_expr_without_struct_literal()?;
         let then_branch = self.parse_value_block()?;
         self.expect_simple(TokenKind::Else, "expected `else` in `if` expression")?;
         let else_branch = self.parse_value_block()?;
@@ -607,6 +633,23 @@ impl Parser {
             TokenKind::Minus => {
                 let start = self.current_span();
                 self.advance();
+                if matches!(self.peek_kind(), TokenKind::Int(_))
+                    && !matches!(self.peek_kind_n(1), TokenKind::Dot | TokenKind::LParen)
+                {
+                    let token = self.advance();
+                    let TokenKind::Int(text) = token.kind else {
+                        unreachable!("matched Int kind above");
+                    };
+                    let span = start.merge(token.span);
+                    let value = format!("-{text}").parse::<i64>().map_err(|_| {
+                        Diagnostic::new("P002", "invalid integer literal", span)
+                    })?;
+                    return Ok(Expr::Int(IntExpr {
+                        id: self.expr_id(),
+                        value,
+                        span,
+                    }));
+                }
                 let expr = self.parse_unary()?;
                 Ok(Expr::Unary(UnaryExpr {
                     id: self.expr_id(),
@@ -637,7 +680,7 @@ impl Parser {
                 let mut args = Vec::new();
                 if !matches!(self.peek_kind(), TokenKind::RParen) {
                     loop {
-                        args.push(self.parse_expr()?);
+                        args.push(self.parse_expr_allowing_struct_literal()?);
                         if !self.matches_simple(&TokenKind::Comma) {
                             break;
                         }
@@ -690,7 +733,7 @@ impl Parser {
                     let mut args = Vec::new();
                     if !matches!(self.peek_kind(), TokenKind::RParen) {
                         loop {
-                            args.push(self.parse_expr()?);
+                            args.push(self.parse_expr_allowing_struct_literal()?);
                             if !self.matches_simple(&TokenKind::Comma) {
                                 break;
                             }
@@ -786,7 +829,7 @@ impl Parser {
                 }
             }
             TokenKind::LParen => {
-                let expr = self.parse_expr()?;
+                let expr = self.parse_expr_allowing_struct_literal()?;
                 self.expect_simple(TokenKind::RParen, "expected `)` after expression")?;
                 Ok(expr)
             }
@@ -848,7 +891,7 @@ impl Parser {
         let start = self.current_span();
         let (name, _) = self.expect_ident()?;
         self.expect_simple(TokenKind::Colon, "expected `:` after field name")?;
-        let value = self.parse_expr()?;
+        let value = self.parse_expr_allowing_struct_literal()?;
         Ok(RecordFieldInit {
             name,
             span: start.merge(value.span()),
@@ -909,6 +952,9 @@ impl Parser {
     }
 
     fn looks_like_record_lit(&self) -> bool {
+        if !self.allow_struct_literal {
+            return false;
+        }
         if !matches!(self.peek_kind(), TokenKind::LBrace) {
             return false;
         }
