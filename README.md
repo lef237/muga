@@ -256,6 +256,7 @@ Package layout note:
 - Muga's package draft uses `directory = package` and `file = module`.
 - Source files import logical package paths such as `my_service::users`, not filesystem paths such as `../users`.
 - In manifest project mode, `name = "my_service"` and `source = "src"` let `src/users/` map to `my_service::users` without nesting another `my_service/` directory under `src/`.
+- Without a nearby `muga.toml`, a package file must start with an explicit `package ...` declaration before it can use `import`, `pub`, or `pkg`.
 - The future distribution model is manifest-based and should use cached package interfaces for fast rebuilds.
 - See [spec/006-packages.md](./spec/006-packages.md) for the large-project layout and distribution model.
 

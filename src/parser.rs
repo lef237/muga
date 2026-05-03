@@ -140,26 +140,30 @@ impl Parser {
 
     fn parse_top_stmt(&mut self) -> Result<Stmt, Diagnostic> {
         match self.peek_kind() {
-            TokenKind::Pub | TokenKind::Pkg => Err(Diagnostic::new(
-                "P014",
+            TokenKind::Pub | TokenKind::Pkg => Err(self.package_mode_required_diagnostic(
                 "`pub` and `pkg` are only allowed in package mode",
-                self.current_span(),
             )),
-            TokenKind::Import => Err(Diagnostic::new(
-                "P014",
-                "`import` is only allowed in package mode",
-                self.current_span(),
-            )),
+            TokenKind::Import => {
+                Err(self
+                    .package_mode_required_diagnostic("`import` is only allowed in package mode"))
+            }
             TokenKind::Package => Err(Diagnostic::new(
                 "P014",
                 "`package` must appear at the start of the file",
                 self.current_span(),
-            )),
+            )
+            .with_suggestion("move the `package` declaration before imports and declarations")),
             TokenKind::Record => self
                 .parse_record_decl_with_visibility(Visibility::Private)
                 .map(Stmt::RecordDecl),
             _ => self.parse_stmt(),
         }
+    }
+
+    fn package_mode_required_diagnostic(&self, message: &'static str) -> Diagnostic {
+        Diagnostic::new("P014", message, self.current_span()).with_suggestion(
+            "add a `package path::to::name` declaration at the top of the file, or place the file under a project with `muga.toml` so the package path can be inferred",
+        )
     }
 
     fn parse_package_decl(&mut self) -> Result<PackageDecl, Diagnostic> {
@@ -234,6 +238,9 @@ impl Parser {
                 "P014",
                 "`pub` and `pkg` are only allowed for top-level declarations in package mode",
                 self.current_span(),
+            )
+            .with_suggestion(
+                "move the `pub` or `pkg` declaration to the top level of a package file",
             )),
             TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self
                 .parse_func_decl_with_visibility(Visibility::Private)
