@@ -128,6 +128,52 @@ fn diagnostic_display_includes_related_notes_and_suggestions() {
 }
 
 #[test]
+fn package_mode_syntax_suggests_package_entry() {
+    let source = r#"
+pub fn helper(): Int {
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "P014")
+        .expect("P014 diagnostic should exist");
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("muga.toml")
+                && suggestion.message.contains("package")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
+fn import_in_script_suggests_package_entry() {
+    let source = r#"
+import my_service::users
+
+fn main(): Int {
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "P014")
+        .expect("P014 diagnostic should exist");
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("muga.toml")
+                && suggestion.message.contains("package")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
 fn resolver_duplicate_binding_diagnostic_points_to_previous_binding() {
     let source = r#"
 fn main(): Int {
