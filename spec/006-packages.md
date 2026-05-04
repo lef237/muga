@@ -638,9 +638,45 @@ This keeps code portable across operating systems and keeps import names stable 
 
 ## 17. Distribution and Dependency Model
 
-The future distribution model should be manifest-based.
+The distribution model is built on two non-negotiable properties:
 
-Example future manifest:
+- every dependency is identified by a cryptographic content hash
+- no Muga-operated infrastructure is required for a project to build
+
+Every other layer (registries, short names, publishing workflow) sits on top of these two and can be replaced or removed without breaking existing projects. This keeps Muga's "no hidden behavior" rule consistent between the language and its tooling, and keeps projects buildable for the long term independent of any single host or organization.
+
+### 17.1 Layered Architecture
+
+The dependency system is organized in four layers, from most authoritative to most convenient:
+
+1. Content layer — a package version is identified by `sha256:<hex>` over its canonical archive. The hash is the primary identity. Two artifacts with the same hash are the same package version regardless of where they came from.
+2. Transport layer — packages are fetched over plain HTTPS or Git from any host. URLs are locations where the bytes can be retrieved; they are not part of package identity.
+3. Human layer — manifests use SemVer requirements and short aliases for readability. Resolution turns these into concrete `(source, hash)` pairs and records them in a lockfile.
+4. Naming layer (optional) — a registry, if one exists, maps short names to `(version, source, hash)` records. It is a convenience, not a trust root.
+
+Builds use layer 1 as the only source of identity. Layers 2 to 4 are advisory and replaceable.
+
+### 17.2 Package Identity
+
+A published package version has exactly one identity: the SHA-256 hash of its canonical archive.
+
+The canonical archive contains:
+
+- `muga.toml`
+- every `.muga` file under the declared `source` root, in sorted path order
+- the precomputed package interface file, if present
+- nothing else (no VCS metadata, no editor files, no build outputs)
+
+Hash representation: `sha256:` followed by lower-case hexadecimal. Other algorithms are reserved for future use behind the same `<algo>:<hex>` form.
+
+Two consequences:
+
+- two URLs serving the same bytes resolve to the same package and share cache entries
+- any byte change produces a different identity, so there is no ambiguity about which `json@1.2.0` was actually installed
+
+### 17.3 Manifest
+
+`muga.toml` declares dependencies in `[dependencies]`. In typical use, only the short form appears; the other forms exist for explicit cases.
 
 ```toml
 [package]
@@ -649,95 +685,234 @@ version = "0.1.0"
 source = "src"
 
 [dependencies]
-json = "muga.io/json@1.2.0"
-http = "muga.io/http@0.4.0"
+# Registry short form — the everyday case
+json = "^1.2"
+http = "^0.4"
+
+# URL form — for packages not in the registry or self-hosted archives
+metrics = { url = "https://example.org/muga/metrics-0.4.0.tar.gz", version = "0.4.0" }
+
+# Git form with version — resolves to a matching Git tag (Go-style ergonomics)
+analytics = { git = "https://github.com/example/analytics.git", version = "0.4.0" }
+
+# Git form with rev — pins to an exact commit; for unpublished branches or forks
+custom = { git = "https://github.com/example/custom.git", rev = "f1e2d3c4b5a6..." }
+
+# Path form — for monorepo and workspace use; not allowed in published packages
+shared = { path = "../shared" }
 ```
 
-The exact manifest format is deferred, but the intended roles are:
+Required fields per form:
 
-- declare the root package name
-- declare the source root
-- declare direct dependencies
-- pin dependency versions
-- define build targets such as applications, libraries, tests, and benchmarks
+| Form | Required keys | Optional keys |
+|---|---|---|
+| Registry short form | a SemVer requirement string | — |
+| URL form | `url` | `version`, `hash` |
+| Git form | `git`, and one of `rev` or `version` | the other of `rev` or `version`, `hash` |
+| Path form | `path` | — |
 
-The current implementation supports only the minimal `[package]` subset:
+URL form does not prescribe a file extension or archive format. The URL must return archive bytes when fetched over HTTPS; supported formats include `.tar.gz`, `.tar.zst`, `.zip`, the Muga-native `.pkg`, and any future addition. The format is identified by the HTTP `Content-Type` header, falling back to magic bytes in the response body. This keeps URL form host-agnostic and format-agnostic — GitHub Releases, S3, self-hosted Artifactory, or a plain static file server are all valid.
+
+Git form accepts either `rev` (a full commit SHA, for exact-commit pinning) or `version` (a SemVer-shaped string the resolver matches against the repository's Git tags, accepting both `0.4.0` and `v0.4.0` forms). Tag-based resolution gives Go-like ergonomics: pointing at a repository and a version is enough, and the resolver records the resolved commit SHA in the lockfile so the build remains reproducible even if the tag is later moved or deleted.
+
+Hashes are never typed by hand. The resolver fetches each dependency, computes the SHA-256 of the canonical archive, and records it in `muga.lock`. From the second build onward, every fetch is verified against the lockfile entry. This is the same model used by Cargo, npm, Deno, and Go.
+
+The optional `hash` field on URL form and Git form is for users who want to defend the very first install as well: when the publisher announces an expected hash through an out-of-band channel (release notes, signed announcement), the user pastes it into `muga.toml`, and the resolver refuses to accept any other bytes. Omitting the field leaves the first install in a Trust-On-First-Use posture.
+
+Source `.muga` files never reference URLs, hashes, registry names, or filesystem paths. Source code imports always use logical package paths only.
+
+### 17.3.1 Typical User Workflow
+
+Adding a dependency goes through tooling, not by hand-editing the manifest:
+
+```text
+# registry short form — looks the package up in the registry
+muga add json
+
+# URL form — downloads one archive file from any HTTPS host
+# (GitHub Releases, S3, self-hosted, anywhere; any archive format works)
+muga add --url https://github.com/example/metrics/releases/download/v0.4.0/metrics.tar.gz
+
+# Git form (tag) — clones a repository and resolves to the matching Git tag
+muga add --git https://github.com/example/analytics.git --version 0.4.0
+
+# Git form (commit) — pins to an exact commit; for unpublished branches or forks
+muga add --git https://github.com/example/custom.git --rev <full-commit-sha>
+
+# path form — local development dependency
+muga add --path ../shared
+```
+
+The distinction between `--url` and `--git` is what is being fetched, not where it lives:
+
+- `--url` retrieves a single archive file at the given URL (any HTTPS host, any archive format)
+- `--git` clones a repository and selects the tree at the given commit SHA or tag
+
+Both can target GitHub or any other host.
+
+Each command:
+
+1. resolves the source to concrete bytes
+2. computes the SHA-256 of the canonical archive
+3. writes the manifest entry in the simplest form sufficient
+4. updates `muga.lock` with the resolved version, source, hash, and transitive dependencies
+
+The user reviews the diff to `muga.toml` and `muga.lock` and commits both to version control. Day-to-day work after that does not involve hashes at all.
+
+### 17.4 Lockfile
+
+`muga.lock` is the source of truth for what actually gets built. It is generated by the resolver and should be committed to version control.
+
+The lockfile records, for every direct and transitive dependency:
+
+- the local alias used in source code
+- the resolved package path
+- the resolved version (informational)
+- the source descriptor (`url`, `git`, or `path`)
+- the content hash
+- the dependency aliases this package itself uses
+- the compiler version that produced the resolution
+
+Example:
 
 ```toml
-[package]
-name = "my_service"
-source = "src"
+# muga.lock — generated; do not edit by hand
+lockfile_version = 1
+muga_version = "0.4.0"
+
+[[package]]
+alias = "json"
+path = "json"
+version = "1.2.3"
+source = { url = "https://example.org/muga/json-1.2.3.pkg" }
+hash = "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+dependencies = []
+
+[[package]]
+alias = "http"
+path = "http"
+version = "0.4.1"
+source = { git = "https://github.com/example/http.git", rev = "f1e2d3c4..." }
+hash = "sha256:..."
+dependencies = ["json"]
 ```
 
-Muga source files should continue to use logical package paths:
+Build behavior:
+
+- if `muga.lock` exists, the build uses exactly the listed hashes and does not consult the resolver
+- if any fetched artifact's hash does not match the lockfile, the build fails with a verification error
+- if `muga.toml` adds a new dependency or a SemVer requirement no longer satisfies the lockfile, the resolver updates the lockfile and the change must be reviewed in version control
+- if `muga.lock` is absent, the resolver creates it from `muga.toml`
+
+A registry going offline does not break a project whose lockfile is already populated. The hashes are sufficient to verify any cached or mirrored copy of the bytes, regardless of where they are obtained.
+
+### 17.5 Source Code Imports
+
+Source files continue to use only logical package paths. The dependency machinery is not visible at the call site.
 
 ```txt
+package app::web
+
 import json
 import http::server as server
+
+pub fn handle(request: server::Request): String {
+  json::encode(request)
+}
 ```
 
-Dependency resolution maps those logical package paths to local source directories or downloaded package artifacts.
+The local alias (`json`, `server`) is determined by the manifest, not by the URL or hash. Renaming a dependency in the manifest changes the import name without modifying the dependency itself.
 
-The compiler should not typecheck dependency bodies on every build. Instead, dependencies should expose package interfaces.
+### 17.6 Optional Registry as a Naming Layer
 
-A package interface contains at least:
+A registry, if Muga ever operates one, is restricted to the following role:
 
-- public package path
-- public records and their visible fields
-- public functions and resolved signatures
-- public generic signatures
-- visibility metadata
-- interface hash
+- maintain a directory of `name -> (version, source, hash)` records
+- provide search and discovery
+- enforce naming policy (uniqueness, squatting prevention, organization scoping)
 
-Build artifacts can then be cached by:
+It does not:
 
-- source hash
-- interface hash
-- compiler version
-- target backend
-- dependency interface hashes
+- serve package bytes directly (those live wherever the publisher chose to host them)
+- act as a trust root (the hash in the lockfile is the trust root)
+- become required for builds (URL form and Git form work without it)
 
-This supports fast rebuilds:
+If the registry disappears, projects that have already resolved their dependencies still build, because every lockfile entry contains both a source descriptor and a hash. New projects that depend only on registry short names would need to migrate to URL or Git form, but `.muga` source code does not change.
 
-- private implementation changes should not force downstream typechecking if the public interface hash is unchanged
-- dependency packages can be loaded from cached interfaces
-- independent packages can compile in parallel
-- applications and libraries share the same package model
+Naming convention for registry entries should be scoped, not flat. `@owner/name` style is recommended over bare `name` to remove first-come-first-served conflicts and typosquatting incentives. The exact registry policy is deferred until a registry is actually established.
 
-### 17.1 Local Development
+### 17.7 Local Development
 
-During local development, a project should be able to depend on local packages by manifest configuration rather than source-level path imports.
-
-Conceptual example:
+Local path dependencies are supported in `muga.toml` for monorepo and workspace use:
 
 ```toml
 [dependencies]
 shared = { path = "../shared" }
 ```
 
-Source code still imports the logical package:
+Source code imports the logical package as usual:
 
 ```txt
 import shared::logging
 ```
 
-This prevents local directory layout from leaking into ordinary source files.
+Path dependencies:
 
-### 17.2 Publishing
+- are resolved by reading the target directory directly
+- do not contribute a content hash to the lockfile; the path entry is recorded instead
+- must not appear in a published package; publishing fails if any direct or transitive dependency uses `path`
 
-A published package should include:
+### 17.8 Publishing
 
-- source files
-- manifest
-- package metadata
-- version
-- public package interfaces, if precomputed interfaces are supported
+A published package version is a single archive containing the canonical contents listed in 17.2. Publishing produces:
 
-Consumers should write imports against package paths, not archive paths, registry URLs, or filesystem paths.
+- the archive (`<name>-<version>.pkg`)
+- the SHA-256 hash of the archive
+- optionally, a detached signature using a separately specified signing scheme
 
-### 17.3 Current Implementation Boundary
+Publishing does not require uploading to any specific host. A publisher may:
 
-The current implementation has only a minimal manifest mode. It does not yet have dependency declarations, registries, package cache, or real package interface files.
+- upload the archive to their own HTTPS server and announce the URL and hash
+- create a Git tag whose commit SHA pins the tree, alongside the archive hash
+- submit the `(name, version, source, hash)` tuple to the optional naming layer
+
+Consumers verify the hash on download. A mismatch is a hard error and aborts the build.
+
+### 17.9 Cache Integration
+
+The dependency model composes with the existing cache key design. A built artifact is keyed by:
+
+- the package's content hash (from 17.2)
+- the resolved interface hashes of every direct dependency
+- the compiler version
+- the target backend
+
+Implications:
+
+- two projects depending on the same `(content hash, dependency interface hashes, compiler version, target)` share a cache entry
+- a dependency whose private implementation changes but whose public interface hash does not change does not invalidate downstream artifacts
+- the cache is content-addressable end to end and can be safely shared across machines, CI runners, and mirrors
+
+### 17.10 Trust and Verification
+
+Default trust model:
+
+- the lockfile hash is the trust root for every dependency
+- the resolver refuses to install or run any artifact whose hash does not match
+- the compiler version recorded in the lockfile is checked against the running compiler; mismatch produces a warning, and a downgrade across a major version produces an error
+
+Optional layers, deferred to a separate specification:
+
+- detached signatures and a signature-verification policy
+- a Muga-operated append-only transparency log of `(package path, version, hash)` records, modeled on Go's `sum.golang.org`, that any client can consult to detect divergent or rewritten history
+- a default caching proxy modeled on Go's `proxy.golang.org`, providing availability when an upstream URL or repository disappears
+- reproducibility checks that re-derive the interface hash from sources
+
+These layers are additive. None of them changes the meaning of the content hash, and none of them is required for a build to succeed. Once a transparency log is operational, the optional `hash` field in 17.3 gains an additional verification path — the log can be cross-checked against the lockfile entry without any change to the manifest format.
+
+### 17.11 Current Implementation Boundary
+
+The current implementation has only a minimal manifest mode. It does not yet have dependency declarations, content hashing, lockfiles, registries, package archives, or persisted package interface files.
 
 It currently:
 
@@ -747,11 +922,11 @@ It currently:
 - infers package paths from source-root-relative directories in manifest project mode
 - infers the source root from the entry file path and declared package path in explicit file-based package mode
 - reads all `.muga` files in each loaded package directory
-- follows `import` declarations recursively
+- follows `import` declarations recursively within the local source tree
 - rejects import alias collisions
 - flattens loaded packages into one internal program before resolver/typechecker work
 
-This is sufficient for testing the surface syntax, but it is not the final compilation model.
+This is sufficient for testing the surface syntax, but it is not the final compilation model. The dependency layers in 17.1 to 17.10 are the target design, to be implemented incrementally on top of the existing manifest and resolver.
 
 ## 18. Example
 
@@ -781,7 +956,9 @@ pub fn show(user: users::User): String {
 
 This draft intentionally leaves the following topics for later:
 
-- dependency manifest syntax beyond the minimal `[package]` `name`/`source` subset
+- build-target declarations in `muga.toml` (libraries, applications, tests, benchmarks)
+- signing, transparency log, and reproducibility verification (extensions to the trust model in 17.10)
+- registry policy: scoping rules, ownership transfer, deprecation, and yank semantics
 - full source-root discovery rules
 - standard library package layout
 - selective imports
