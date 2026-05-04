@@ -82,54 +82,54 @@ Recently completed:
 - direct list indexing `xs[i]` is implemented. It returns `T`; negative and out-of-bounds indexes are runtime errors.
 - Empty list literals are accepted only when an expected `List[T]` type is available, such as `items: List[Int] = []`.
 - `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented through AST, resolver, typechecker, HIR, bytecode, VM runtime, typed HIR, and package interface summaries.
-- `Map[K, V]` is not implemented yet.
+- `Map[K, V]` is implemented for `Int` / `Bool` / `String` keys with `Map.empty`, `len`, `is_empty`, `contains`, safe lookup `get`, value-returning `insert`, and value-returning `remove`.
+- `Map.empty()` requires an expected `Map[K, V]` type, usually from a local binding annotation, function return type, parameter type, or chained operation.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. decide the first `Map[K, V]` slice: key types, construction API, and operations
-2. implement `Map[K, V]` type/runtime support and safe lookup returning `Option[V]`
-3. keep general enum declarations deferred unless another feature requires them
-4. use the existing `Option[T]` representation for `Map[K, V]` lookup
+1. design general enum/sum type declarations and decide how they relate to the compiler-known `Option[T]`
+2. decide the first `Result[T, E]` and error-propagation surface
+3. keep map literals, `Set[T]`, arbitrary map keys, and broad stdlib collection APIs deferred
+4. preserve the implemented collection path as the baseline for future generic and enum work
 
 Why this comes next:
 
-- `List[T]` now has syntax, static typing, typed HIR representation, package interface representation, runtime values, direct indexing, safe lookup, and value-returning update
+- `List[T]` and `Map[K, V]` now have syntax, static typing, typed HIR representation, package interface representation, runtime values, safe lookup, and value-returning update operations
 - direct indexing and `set` use the same bounds-error policy: negative and out-of-bounds indexes are runtime errors
-- `Option[T]` also informs future `Map[K, V]` lookup semantics
+- `Option[T]` is already a compiler-known enum-like type with exhaustive `match`, so general enum and `Result[T, E]` design can build from a working subset
 
 Expected result:
 
-- map lookup exposes absence through `Option[V]`
-- later map APIs build on the same collection typing/runtime path
+- user-defined enum syntax can eventually explain `Option[T]` and `Result[T, E]` instead of relying only on compiler-known special cases
+- error handling can be designed before adding broad IO, HTTP, process, and concurrency APIs
 
 ## 5. Decisions To Make Soon
 
 These decisions affect near-term implementation and should be made before implementing the related feature.
 
-### 5.1 Before the next collection slice
+### 5.1 Before enum and error handling
 
 Decide:
 
-- first `Map[K, V]` key support: `String` only first, or `Int` / `Bool` / `String`
-- map construction API: expected-typed empty constructor, literal syntax, or insertion from an empty map
-- first map operations: `len`, `is_empty`, `contains`, `insert`, `remove`, `get`
 - whether general enum/sum-type declarations should land before `Result[T, E]`
 - how future `Result[T, E]` and error propagation should relate to `match`
+- whether `Option[T]` remains compiler-known internally or becomes ordinary stdlib enum syntax later
+- what diagnostics and exhaustiveness rules apply to multi-variant enum `match`
 
 Current recommendation:
 
-- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, `push`, `get`, `set`, direct indexing, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are now implemented
+- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, `push`, `get`, `set`, direct indexing, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, and the first `Map[K, V]` slice are now implemented
 - parse generic declarations as `record Box[T]` and `fn id[T](value: T): T`
 - implement generic records and generic functions as part of v1
 - rely on local type-argument inference rather than explicit call-site type arguments in the v1 MVP
 - defer bounds, typeclasses, higher-kinded types, const generics, and specialization
 - defer trait, interface, protocol, and overloaded dispatch declarations
-- implement safe map lookup with the first `Map[K, V]` runtime representation
+- defer map literals, arbitrary map key types, `Set[T]`, and broad collection APIs
 - keep `T?` reserved, not implemented
-- do not implement map literals in the first collection slice
+- design enum/`Result` before widening stdlib effects
 
 ### 5.2 Before package interface implementation
 

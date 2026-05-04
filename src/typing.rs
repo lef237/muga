@@ -80,6 +80,7 @@ pub enum TypeInfo {
     Record(Symbol),
     PackageRecord { symbol: Symbol, item: PackageItemId },
     List(Box<TypeInfo>),
+    Map(Box<TypeInfo>, Box<TypeInfo>),
     Option(Box<TypeInfo>),
     Function(FunctionTypeInfo),
     Builtin(&'static str),
@@ -100,6 +101,7 @@ enum Type {
     String,
     Record(Symbol),
     List(Box<Type>),
+    Map(Box<Type>, Box<Type>),
     Option(Box<Type>),
     OptionNone,
     Function(FunctionSig),
@@ -121,8 +123,12 @@ enum BuiltinFunction {
     Len,
     IsEmpty,
     ListPush,
-    ListGet,
+    Get,
     ListSet,
+    MapEmpty,
+    Contains,
+    Insert,
+    Remove,
     OptionSome,
 }
 
@@ -285,7 +291,7 @@ impl TypeChecker {
         self.insert_current(
             get,
             BindingKind::Function,
-            Type::Builtin(BuiltinFunction::ListGet),
+            Type::Builtin(BuiltinFunction::Get),
             Span::default(),
         );
         let set = self.symbol("set");
@@ -293,6 +299,34 @@ impl TypeChecker {
             set,
             BindingKind::Function,
             Type::Builtin(BuiltinFunction::ListSet),
+            Span::default(),
+        );
+        let map_empty = self.symbol("Map.empty");
+        self.insert_current(
+            map_empty,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::MapEmpty),
+            Span::default(),
+        );
+        let contains = self.symbol("contains");
+        self.insert_current(
+            contains,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::Contains),
+            Span::default(),
+        );
+        let insert = self.symbol("insert");
+        self.insert_current(
+            insert,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::Insert),
+            Span::default(),
+        );
+        let remove = self.symbol("remove");
+        self.insert_current(
+            remove,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::Remove),
             Span::default(),
         );
         let option_some = self.symbol("Option::Some");
@@ -617,11 +651,11 @@ impl TypeChecker {
                         } else {
                             let arg_ty = self.check_expr(&expr.args[0]);
                             match self.resolve_type(&arg_ty) {
-                                Type::List(_) => {
+                                Type::List(_) | Type::Map(_, _) => {
                                     let ret = match builtin {
                                         BuiltinFunction::Len => Type::Int,
                                         BuiltinFunction::IsEmpty => Type::Bool,
-                                        _ => unreachable!("matched list query builtin"),
+                                        _ => unreachable!("matched collection query builtin"),
                                     };
                                     self.apply_expected(ret, expected, expr.span)
                                 }
@@ -638,7 +672,7 @@ impl TypeChecker {
                                     self.diagnostics.push(Diagnostic::new(
                                         "T006",
                                         format!(
-                                            "`{}` expects List[T] as its first argument",
+                                            "`{}` expects List[T] or Map[K, V] as its first argument",
                                             Self::builtin_name(builtin)
                                         ),
                                         expr.span,
@@ -689,61 +723,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                    Type::Builtin(BuiltinFunction::ListGet) => {
-                        if expr.args.len() != 2 {
-                            self.diagnostics.push(Diagnostic::new(
-                                "T004",
-                                format!("expected 2 arguments but found {}", expr.args.len()),
-                                expr.span,
-                            ));
-                            Type::Error
-                        } else {
-                            let expected = expected.map(|ty| self.resolve_type(&ty));
-                            let expected_item = match expected.as_ref() {
-                                Some(Type::Option(item)) => Some(*item.clone()),
-                                _ => None,
-                            };
-                            let list_ty = if let Some(expected_item) = expected_item {
-                                self.check_expr_with_expected(
-                                    &expr.args[0],
-                                    Some(Type::List(Box::new(expected_item))),
-                                )
-                            } else {
-                                self.check_expr(&expr.args[0])
-                            };
-                            self.check_expr_with_expected(&expr.args[1], Some(Type::Int));
-                            match self.resolve_type(&list_ty) {
-                                Type::List(item_ty) => {
-                                    let option_ty = Type::Option(item_ty);
-                                    match expected {
-                                        Some(Type::Option(_)) | None => option_ty,
-                                        Some(expected) => self.apply_expected(
-                                            option_ty,
-                                            Some(expected),
-                                            expr.span,
-                                        ),
-                                    }
-                                }
-                                Type::Unknown(_) => {
-                                    self.diagnostics.push(Diagnostic::new(
-                                        "E005",
-                                        "type annotation required because inference is not unique",
-                                        expr.span,
-                                    ));
-                                    Type::Error
-                                }
-                                Type::Error => Type::Error,
-                                _ => {
-                                    self.diagnostics.push(Diagnostic::new(
-                                        "T006",
-                                        "`get` expects List[T] as its first argument",
-                                        expr.span,
-                                    ));
-                                    Type::Error
-                                }
-                            }
-                        }
-                    }
+                    Type::Builtin(BuiltinFunction::Get) => self.check_get_builtin(expr, expected),
                     Type::Builtin(BuiltinFunction::ListSet) => {
                         if expr.args.len() != 3 {
                             self.diagnostics.push(Diagnostic::new(
@@ -800,6 +780,18 @@ impl TypeChecker {
                                 }
                             }
                         }
+                    }
+                    Type::Builtin(BuiltinFunction::MapEmpty) => {
+                        self.check_map_empty_builtin(expr, expected)
+                    }
+                    Type::Builtin(BuiltinFunction::Contains) => {
+                        self.check_contains_builtin(expr, expected)
+                    }
+                    Type::Builtin(BuiltinFunction::Insert) => {
+                        self.check_insert_builtin(expr, expected)
+                    }
+                    Type::Builtin(BuiltinFunction::Remove) => {
+                        self.check_remove_builtin(expr, expected)
                     }
                     Type::Builtin(BuiltinFunction::OptionSome) => {
                         if expr.args.len() != 1 {
@@ -1080,6 +1072,370 @@ impl TypeChecker {
                 Type::Error
             }
         }
+    }
+
+    fn check_map_empty_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 0 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 0 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        match expected {
+            Some(Type::Map(key, value)) => Type::Map(key, value),
+            Some(Type::Error) => Type::Error,
+            Some(_) | None => {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "T019",
+                        "`Map.empty()` requires an expected Map[K, V] type",
+                        expr.span,
+                    )
+                    .with_suggestion(
+                        "add a local binding annotation such as `items: Map[String, Int] = Map.empty()`",
+                    ),
+                );
+                Type::Error
+            }
+        }
+    }
+
+    fn check_get_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 2 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 2 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        let expected_item = match expected.as_ref() {
+            Some(Type::Option(item)) => Some(*item.clone()),
+            _ => None,
+        };
+
+        if Self::is_map_empty_call(&expr.args[0]) {
+            let key_ty = self.check_expr(&expr.args[1]);
+            let key_ty = self.resolve_type(&key_ty);
+            if !self.validate_map_key_type(&key_ty, expr.args[1].span()) {
+                return Type::Error;
+            }
+            let value_ty = expected_item
+                .clone()
+                .unwrap_or_else(|| Type::Unknown(self.fresh_unknown()));
+            let base_expected = Type::Map(Box::new(key_ty), Box::new(value_ty));
+            let base_ty = self.check_expr_with_expected(&expr.args[0], Some(base_expected));
+            return match self.resolve_type(&base_ty) {
+                Type::Map(_, value_ty) => {
+                    self.apply_expected_option(Type::Option(value_ty), expected, expr.span)
+                }
+                Type::Error => Type::Error,
+                _ => {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T006",
+                        "`get` expects List[T] or Map[K, V] as its first argument",
+                        expr.span,
+                    ));
+                    Type::Error
+                }
+            };
+        }
+
+        let base_expected = match expected_item {
+            Some(item) if Self::is_empty_list_literal(&expr.args[0]) => {
+                Some(Type::List(Box::new(item)))
+            }
+            _ => None,
+        };
+        let base_ty = self.check_expr_with_expected(&expr.args[0], base_expected);
+        match self.resolve_type(&base_ty) {
+            Type::List(item_ty) => {
+                self.check_expr_with_expected(&expr.args[1], Some(Type::Int));
+                self.apply_expected_option(Type::Option(item_ty), expected, expr.span)
+            }
+            Type::Map(key_ty, value_ty) => {
+                if !self.validate_map_key_type(&key_ty, expr.args[0].span()) {
+                    return Type::Error;
+                }
+                self.check_expr_with_expected(&expr.args[1], Some((*key_ty).clone()));
+                self.apply_expected_option(Type::Option(value_ty), expected, expr.span)
+            }
+            Type::Unknown(_) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "E005",
+                    "type annotation required because inference is not unique",
+                    expr.span,
+                ));
+                Type::Error
+            }
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    "`get` expects List[T] or Map[K, V] as its first argument",
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn check_contains_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 2 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 2 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        if Self::is_map_empty_call(&expr.args[0]) {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "T019",
+                    "`Map.empty().contains(...)` requires an expected Map[K, V] type",
+                    expr.span,
+                )
+                .with_suggestion(
+                    "add a local binding annotation such as `items: Map[String, Int] = Map.empty()`",
+                ),
+            );
+            return Type::Error;
+        }
+
+        let base_ty = self.check_expr(&expr.args[0]);
+        match self.resolve_type(&base_ty) {
+            Type::Map(key_ty, _) => {
+                if !self.validate_map_key_type(&key_ty, expr.args[0].span()) {
+                    return Type::Error;
+                }
+                self.check_expr_with_expected(&expr.args[1], Some((*key_ty).clone()));
+                self.apply_expected(Type::Bool, expected, expr.span)
+            }
+            Type::Unknown(_) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "E005",
+                    "type annotation required because inference is not unique",
+                    expr.span,
+                ));
+                Type::Error
+            }
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    "`contains` expects Map[K, V] as its first argument",
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn check_insert_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 3 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 3 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        let expected_map = match expected.as_ref() {
+            Some(Type::Map(key, value)) => Some((*key.clone(), *value.clone())),
+            _ => None,
+        };
+
+        if Self::is_map_empty_call(&expr.args[0]) {
+            let key_ty = if let Some((key_ty, _)) = expected_map.as_ref() {
+                self.check_expr_with_expected(&expr.args[1], Some(key_ty.clone()))
+            } else {
+                self.check_expr(&expr.args[1])
+            };
+            let key_ty = self.resolve_type(&key_ty);
+            if !self.validate_map_key_type(&key_ty, expr.args[1].span()) {
+                return Type::Error;
+            }
+
+            let value_ty = if let Some((_, value_ty)) = expected_map.as_ref() {
+                self.check_expr_with_expected(&expr.args[2], Some(value_ty.clone()))
+            } else {
+                self.check_expr(&expr.args[2])
+            };
+            let value_ty = self.resolve_type(&value_ty);
+            let map_ty = Type::Map(Box::new(key_ty), Box::new(value_ty));
+            let base_ty = self.check_expr_with_expected(&expr.args[0], Some(map_ty.clone()));
+            if matches!(self.resolve_type(&base_ty), Type::Error) {
+                return Type::Error;
+            }
+            return self.apply_expected_map(map_ty, expected, expr.span);
+        }
+
+        let base_expected = match expected.as_ref() {
+            Some(Type::Map(_, _)) => expected.clone(),
+            _ => None,
+        };
+        let base_ty = self.check_expr_with_expected(&expr.args[0], base_expected);
+        match self.resolve_type(&base_ty) {
+            Type::Map(key_ty, value_ty) => {
+                if !self.validate_map_key_type(&key_ty, expr.args[0].span()) {
+                    return Type::Error;
+                }
+                self.check_expr_with_expected(&expr.args[1], Some((*key_ty).clone()));
+                self.check_expr_with_expected(&expr.args[2], Some((*value_ty).clone()));
+                self.apply_expected_map(Type::Map(key_ty, value_ty), expected, expr.span)
+            }
+            Type::Unknown(_) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "E005",
+                    "type annotation required because inference is not unique",
+                    expr.span,
+                ));
+                Type::Error
+            }
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    "`insert` expects Map[K, V] as its first argument",
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn check_remove_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 2 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 2 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        if Self::is_map_empty_call(&expr.args[0]) {
+            return match expected.clone() {
+                Some(Type::Map(key_ty, value_ty)) => {
+                    self.check_expr_with_expected(&expr.args[1], Some((*key_ty).clone()));
+                    if !self.validate_map_key_type(&key_ty, expr.args[1].span()) {
+                        return Type::Error;
+                    }
+                    let map_ty = Type::Map(key_ty, value_ty);
+                    let base_ty =
+                        self.check_expr_with_expected(&expr.args[0], Some(map_ty.clone()));
+                    if matches!(self.resolve_type(&base_ty), Type::Error) {
+                        Type::Error
+                    } else {
+                        self.apply_expected_map(map_ty, expected, expr.span)
+                    }
+                }
+                Some(Type::Error) => Type::Error,
+                Some(_) | None => {
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "T019",
+                            "`Map.empty().remove(...)` requires an expected Map[K, V] type",
+                            expr.span,
+                        )
+                        .with_suggestion(
+                            "add a local binding annotation such as `items: Map[String, Int] = Map.empty().remove(\"missing\")`",
+                        ),
+                    );
+                    Type::Error
+                }
+            };
+        }
+
+        let base_expected = match expected.as_ref() {
+            Some(Type::Map(_, _)) => expected.clone(),
+            _ => None,
+        };
+        let base_ty = self.check_expr_with_expected(&expr.args[0], base_expected);
+        match self.resolve_type(&base_ty) {
+            Type::Map(key_ty, value_ty) => {
+                if !self.validate_map_key_type(&key_ty, expr.args[0].span()) {
+                    return Type::Error;
+                }
+                self.check_expr_with_expected(&expr.args[1], Some((*key_ty).clone()));
+                self.apply_expected_map(Type::Map(key_ty, value_ty), expected, expr.span)
+            }
+            Type::Unknown(_) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "E005",
+                    "type annotation required because inference is not unique",
+                    expr.span,
+                ));
+                Type::Error
+            }
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    "`remove` expects Map[K, V] as its first argument",
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn apply_expected_option(
+        &mut self,
+        option_ty: Type,
+        expected: Option<Type>,
+        span: Span,
+    ) -> Type {
+        match expected {
+            None => option_ty,
+            Some(expected) => self.apply_expected(option_ty, Some(expected), span),
+        }
+    }
+
+    fn apply_expected_map(&mut self, map_ty: Type, expected: Option<Type>, span: Span) -> Type {
+        match expected {
+            None => map_ty,
+            Some(expected) => self.apply_expected(map_ty, Some(expected), span),
+        }
+    }
+
+    fn validate_map_key_type(&mut self, key_ty: &Type, span: Span) -> bool {
+        match self.resolve_type(key_ty) {
+            Type::Int | Type::Bool | Type::String | Type::Unknown(_) | Type::Error => true,
+            _ => {
+                self.diagnostics.push(
+                    Diagnostic::new("T020", "Map key type must be Int, Bool, or String", span)
+                        .with_suggestion("use Int, Bool, or String as the Map key type"),
+                );
+                false
+            }
+        }
+    }
+
+    fn is_map_empty_call(expr: &Expr) -> bool {
+        matches!(
+            expr,
+            Expr::Call(call)
+                if matches!(
+                    call.callee.as_ref(),
+                    Expr::Ident(IdentExpr { name, .. }) if name == "Map.empty"
+                )
+        )
+    }
+
+    fn is_empty_list_literal(expr: &Expr) -> bool {
+        matches!(expr, Expr::ListLit(list) if list.items.is_empty())
     }
 
     fn check_option_none(&mut self, expected: Option<Type>, span: Span) -> Type {
@@ -1533,6 +1889,20 @@ impl TypeChecker {
                 }
                 Type::Option(Box::new(self.type_from_expr(&generic.args[0], span)))
             }
+            TypeExpr::Generic(generic) if generic.name == "Map" => {
+                if generic.args.len() != 2 {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T019",
+                        "Map expects exactly 2 type arguments",
+                        span,
+                    ));
+                    return Type::Error;
+                }
+                let key = self.type_from_expr(&generic.args[0], span);
+                self.validate_map_key_type(&key, span);
+                let value = self.type_from_expr(&generic.args[1], span);
+                Type::Map(Box::new(key), Box::new(value))
+            }
             TypeExpr::Generic(generic) => {
                 for arg in &generic.args {
                     let _ = self.type_from_expr(arg, span);
@@ -1593,6 +1963,11 @@ impl TypeChecker {
                 let item = self.unify(*left, *right)?;
                 Ok(Type::List(Box::new(item)))
             }
+            (Type::Map(left_key, left_value), Type::Map(right_key, right_value)) => {
+                let key = self.unify(*left_key, *right_key)?;
+                let value = self.unify(*left_value, *right_value)?;
+                Ok(Type::Map(Box::new(key), Box::new(value)))
+            }
             (Type::Option(left), Type::Option(right)) => {
                 let item = self.unify(*left, *right)?;
                 Ok(Type::Option(Box::new(item)))
@@ -1633,6 +2008,10 @@ impl TypeChecker {
                 ret: Box::new(self.resolve_type(&sig.ret)),
             }),
             Type::List(item) => Type::List(Box::new(self.resolve_type(item))),
+            Type::Map(key, value) => Type::Map(
+                Box::new(self.resolve_type(key)),
+                Box::new(self.resolve_type(value)),
+            ),
             Type::Option(item) => Type::Option(Box::new(self.resolve_type(item))),
             Type::Builtin(builtin) => Type::Builtin(*builtin),
             other => other.clone(),
@@ -1646,6 +2025,10 @@ impl TypeChecker {
             Type::String => TypeInfo::String,
             Type::Record(symbol) => TypeInfo::Record(symbol),
             Type::List(item) => TypeInfo::List(Box::new(self.type_info_for(&item))),
+            Type::Map(key, value) => TypeInfo::Map(
+                Box::new(self.type_info_for(&key)),
+                Box::new(self.type_info_for(&value)),
+            ),
             Type::Option(item) => TypeInfo::Option(Box::new(self.type_info_for(&item))),
             Type::Function(sig) => TypeInfo::Function(FunctionTypeInfo {
                 params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
@@ -1656,8 +2039,12 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::Len) => TypeInfo::Builtin("len"),
             Type::Builtin(BuiltinFunction::IsEmpty) => TypeInfo::Builtin("is_empty"),
             Type::Builtin(BuiltinFunction::ListPush) => TypeInfo::Builtin("push"),
-            Type::Builtin(BuiltinFunction::ListGet) => TypeInfo::Builtin("get"),
+            Type::Builtin(BuiltinFunction::Get) => TypeInfo::Builtin("get"),
             Type::Builtin(BuiltinFunction::ListSet) => TypeInfo::Builtin("set"),
+            Type::Builtin(BuiltinFunction::MapEmpty) => TypeInfo::Builtin("Map.empty"),
+            Type::Builtin(BuiltinFunction::Contains) => TypeInfo::Builtin("contains"),
+            Type::Builtin(BuiltinFunction::Insert) => TypeInfo::Builtin("insert"),
+            Type::Builtin(BuiltinFunction::Remove) => TypeInfo::Builtin("remove"),
             Type::Builtin(BuiltinFunction::OptionSome) => TypeInfo::Builtin("Option::Some"),
             Type::OptionNone => TypeInfo::Builtin("Option::None"),
             Type::Unknown(_) => TypeInfo::Unknown,
@@ -1675,6 +2062,10 @@ impl TypeChecker {
                     || self.type_contains_unknown(&sig.ret, needle)
             }
             Type::List(item) => self.type_contains_unknown(&item, needle),
+            Type::Map(key, value) => {
+                self.type_contains_unknown(&key, needle)
+                    || self.type_contains_unknown(&value, needle)
+            }
             Type::Option(item) => self.type_contains_unknown(&item, needle),
             _ => false,
         }
@@ -1713,8 +2104,12 @@ impl TypeChecker {
             BuiltinFunction::Len => "len",
             BuiltinFunction::IsEmpty => "is_empty",
             BuiltinFunction::ListPush => "push",
-            BuiltinFunction::ListGet => "get",
+            BuiltinFunction::Get => "get",
             BuiltinFunction::ListSet => "set",
+            BuiltinFunction::MapEmpty => "Map.empty",
+            BuiltinFunction::Contains => "contains",
+            BuiltinFunction::Insert => "insert",
+            BuiltinFunction::Remove => "remove",
             BuiltinFunction::OptionSome => "Option::Some",
         }
     }
@@ -1834,6 +2229,7 @@ impl Type {
             Self::String => "String",
             Self::Record(_) => "Record",
             Self::List(_) => "List",
+            Self::Map(_, _) => "Map",
             Self::Option(_) | Self::OptionNone => "Option",
             Self::Function(_) => "Function",
             Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
@@ -1841,8 +2237,12 @@ impl Type {
             Self::Builtin(BuiltinFunction::Len) => "Builtin(len)",
             Self::Builtin(BuiltinFunction::IsEmpty) => "Builtin(is_empty)",
             Self::Builtin(BuiltinFunction::ListPush) => "Builtin(push)",
-            Self::Builtin(BuiltinFunction::ListGet) => "Builtin(get)",
+            Self::Builtin(BuiltinFunction::Get) => "Builtin(get)",
             Self::Builtin(BuiltinFunction::ListSet) => "Builtin(set)",
+            Self::Builtin(BuiltinFunction::MapEmpty) => "Builtin(Map.empty)",
+            Self::Builtin(BuiltinFunction::Contains) => "Builtin(contains)",
+            Self::Builtin(BuiltinFunction::Insert) => "Builtin(insert)",
+            Self::Builtin(BuiltinFunction::Remove) => "Builtin(remove)",
             Self::Builtin(BuiltinFunction::OptionSome) => "Builtin(Option::Some)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",

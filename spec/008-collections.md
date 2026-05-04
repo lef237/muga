@@ -1,6 +1,6 @@
 # Collections Draft
 
-Status: design draft. The Rust compiler implements the first slices: local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, `len` / `is_empty` / `push` / `get` / `set`, direct list indexing, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match`.
+Status: design draft with implemented first slices. The Rust compiler implements local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, `len` / `is_empty` / `push` / `get` / `set`, direct list indexing, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, and the first `Map[K, V]` slice.
 
 This draft defines the recommended direction for Muga collections on top of the v1 generics MVP.
 
@@ -27,7 +27,7 @@ The recommended order is:
 4. `Option[T]` construction and exhaustive `match` (implemented)
 5. safe list lookup with `get(self: List[T], index: Int): Option[T]` (implemented)
 6. direct list indexing and value-returning `set` (implemented)
-7. `Map[K, V]`
+7. `Map[K, V]` with scalar keys and value-returning operations (implemented)
 8. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
 
 This order keeps the first implementation small.
@@ -193,7 +193,7 @@ Why this matters:
 - it lets the typechecker see that a lookup may fail
 - it makes collection APIs safer without turning ordinary misses into runtime errors
 
-`List.get` is implemented. `Map.get` is not implemented yet, but it should use the same `Option[T]` source-level representation.
+`List.get` and `Map.get` are implemented and use the same `Option[T]` source-level representation.
 
 ### 6.1 Optional shorthand
 
@@ -245,9 +245,9 @@ Initial key types should be limited to simple built-in comparable/hashable types
 
 Arbitrary record keys should be deferred until Muga has a clear equality and hashing model.
 
-Recommended initial operations:
+Implemented initial operations:
 
-- `empty(): Map[K, V]`
+- `Map.empty(): Map[K, V]`
 - `len(self: Map[K, V]): Int`
 - `is_empty(self: Map[K, V]): Bool`
 - `contains(self: Map[K, V], key: K): Bool`
@@ -255,7 +255,14 @@ Recommended initial operations:
 - `remove(self: Map[K, V], key: K): Map[K, V]`
 - `get(self: Map[K, V], key: K): Option[V]`
 
-Like `List[T]`, the default API should be non-destructive. Efficient internal representations can be optimized later.
+`Map.empty()` requires an expected `Map[K, V]` type, usually from a local binding annotation, function return type, parameter type, or surrounding call expectation:
+
+```muga
+ages: Map[String, Int] = Map.empty()
+ages = ages.insert("Ada", 20)
+```
+
+Like `List[T]`, the default API is non-destructive at the source level. `insert` and `remove` return a new `Map[K, V]` value. Efficient internal representations can be optimized later.
 
 ## 8. Map Literals
 

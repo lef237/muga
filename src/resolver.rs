@@ -119,6 +119,14 @@ impl Resolver {
         self.insert_current(get, BindingKind::Function, Span::default());
         let set = self.symbol("set");
         self.insert_current(set, BindingKind::Function, Span::default());
+        let map_empty = self.symbol("Map.empty");
+        self.insert_current(map_empty, BindingKind::Function, Span::default());
+        let contains = self.symbol("contains");
+        self.insert_current(contains, BindingKind::Function, Span::default());
+        let insert = self.symbol("insert");
+        self.insert_current(insert, BindingKind::Function, Span::default());
+        let remove = self.symbol("remove");
+        self.insert_current(remove, BindingKind::Function, Span::default());
         let option_some = self.symbol("Option::Some");
         self.insert_current(option_some, BindingKind::Function, Span::default());
         let option_none = self.symbol("Option::None");

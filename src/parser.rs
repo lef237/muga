@@ -842,6 +842,9 @@ impl Parser {
                 if matches!(self.peek_kind(), TokenKind::LParen) {
                     let start =
                         self.expect_simple(TokenKind::LParen, "expected `(` after method name")?;
+                    let is_map_empty_call = !qualified
+                        && callee_name == "empty"
+                        && matches!(&expr, Expr::Ident(IdentExpr { name, .. }) if name == "Map");
                     let mut args = Vec::new();
                     if !matches!(self.peek_kind(), TokenKind::RParen) {
                         loop {
@@ -853,25 +856,40 @@ impl Parser {
                     }
                     let end =
                         self.expect_simple(TokenKind::RParen, "expected `)` after call arguments")?;
+                    let base_span = expr.span();
+                    let (callee_name, callee_span, call_args, origin) = if is_map_empty_call {
+                        (
+                            "Map.empty".to_string(),
+                            base_span.merge(callee_span),
+                            args,
+                            CallOrigin::Ordinary,
+                        )
+                    } else {
+                        let base = expr;
+                        let mut call_args = Vec::with_capacity(args.len() + 1);
+                        call_args.push(base);
+                        call_args.extend(args);
+                        (
+                            callee_name,
+                            callee_span,
+                            call_args,
+                            if qualified {
+                                CallOrigin::QualifiedChained
+                            } else {
+                                CallOrigin::Chained
+                            },
+                        )
+                    };
                     let callee = Expr::Ident(IdentExpr {
                         id: self.expr_id(),
                         name: callee_name,
                         span: callee_span,
                     });
-                    let base = expr;
-                    let base_span = base.span();
-                    let mut call_args = Vec::with_capacity(args.len() + 1);
-                    call_args.push(base);
-                    call_args.extend(args);
                     expr = Expr::Call(CallExpr {
                         id: self.expr_id(),
                         callee: Box::new(callee),
                         args: call_args,
-                        origin: if qualified {
-                            CallOrigin::QualifiedChained
-                        } else {
-                            CallOrigin::Chained
-                        },
+                        origin,
                         span: base_span.merge(start).merge(end),
                     });
                     continue;
