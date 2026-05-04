@@ -1040,6 +1040,12 @@ impl<'a> PackageRewriter<'a> {
                     .collect(),
                 span: expr.span,
             }),
+            Expr::Index(expr) => Expr::Index(IndexExpr {
+                id: expr.id,
+                base: Box::new(self.rewrite_expr(&expr.base)),
+                index: Box::new(self.rewrite_expr(&expr.index)),
+                span: expr.span,
+            }),
             Expr::RecordLit(expr) => Expr::RecordLit(RecordLitExpr {
                 id: expr.id,
                 type_name: self.rewrite_type_name(&expr.type_name, expr.span),
@@ -1855,6 +1861,14 @@ fn sanitize_mangle_segment(segment: &str) -> String {
 fn is_builtin_name(name: &str) -> bool {
     matches!(
         name,
-        "print" | "println" | "len" | "is_empty" | "push" | "get" | "Option::Some" | "Option::None"
+        "print"
+            | "println"
+            | "len"
+            | "is_empty"
+            | "push"
+            | "get"
+            | "set"
+            | "Option::Some"
+            | "Option::None"
     )
 }

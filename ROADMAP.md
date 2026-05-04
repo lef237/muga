@@ -71,7 +71,7 @@ Current draft decisions:
 - v1 excludes trait, interface, protocol, typeclass, and overloaded dispatch declarations
 - collection types use square-bracket type arguments such as `List[Int]` and `Map[String, Int]`
 - empty collection literals need an expected type, most likely from a local binding annotation such as `items: List[Int] = []`
-- `List[T]` type annotations, list literals, and basic list operations (`len`, `is_empty`, `push`, `get`) are implemented as the first collection slice
+- `List[T]` type annotations, list literals, basic list operations (`len`, `is_empty`, `push`, `get`, `set`), and direct list indexing are implemented as the first collection slice
 - `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented and used by safe list lookup
 - `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
 - ordinary source code should use value semantics; the compiler/runtime may share immutable storage internally when safe
@@ -482,8 +482,8 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. decide direct indexing and bounds-error policy before `xs[i]` or `set`
-2. implement the chosen direct indexing / `set` slice, or defer both explicitly and move to `Map[K, V]`
+1. decide the first `Map[K, V]` slice: key types, construction API, and operations
+2. implement `Map[K, V]` type/runtime support and safe lookup returning `Option[V]`
 3. return to package interface consumption for downstream checking
 4. package interfaces instead of flattening
 5. cache, MIR, and native backend work once the semantic boundary is stable
@@ -513,7 +513,7 @@ Recently completed:
 - typed package compilation validates public package references against generated interface summaries
 - typed package interface validation uses package/name lookup and detects stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup reads `PackageExportGraph` before flattening, and `PackageExportGraph` can be derived from typed interfaces
-- local binding annotations, `List[T]` type annotations, list literals, basic list operations including safe lookup, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented; `Map[K, V]` and broader collection APIs remain reserved
+- local binding annotations, `List[T]` type annotations, list literals, list indexing, basic list operations including safe lookup and value-returning update, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented; `Map[K, V]` and broader collection APIs remain reserved
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

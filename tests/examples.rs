@@ -577,12 +577,23 @@ fn typed_hir_generates_package_interface_summaries() {
         .function_by_name(numbers, "singleton_len")
         .expect("singleton_len should be exported");
     assert_eq!(singleton_len.ret, muga::typing::TypeInfo::Int);
+    let singleton_first = interfaces
+        .function_by_name(numbers, "singleton_first")
+        .expect("singleton_first should be exported");
+    assert_eq!(singleton_first.ret, muga::typing::TypeInfo::Int);
     let singleton_get = interfaces
         .function_by_name(numbers, "singleton_get")
         .expect("singleton_get should be exported");
     assert_eq!(
         singleton_get.ret,
         muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+    );
+    let replace_singleton = interfaces
+        .function_by_name(numbers, "replace_singleton")
+        .expect("replace_singleton should be exported");
+    assert_eq!(
+        replace_singleton.ret,
+        muga::typing::TypeInfo::List(Box::new(muga::typing::TypeInfo::Int))
     );
     let maybe_positive = interfaces
         .function_by_name(numbers, "maybe_positive")
@@ -1463,6 +1474,204 @@ fn main(): Int {
         diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "T006"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_index_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  [10, 20][1]
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "20");
+}
+
+#[test]
+fn list_index_checks_index_type() {
+    let source = r#"
+fn main(): Int {
+  [1]["bad"]
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_index_requires_list_base() {
+    let source = r#"
+fn main(): Int {
+  bad = 1[0]
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T006"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_index_negative_reports_runtime_error() {
+    let source = r#"
+fn main(): Int {
+  [10][-1]
+}
+"#;
+    let diagnostics = muga::run_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R020"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_index_out_of_bounds_reports_runtime_error() {
+    let source = r#"
+fn main(): Int {
+  [10][1]
+}
+"#;
+    let diagnostics = muga::run_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R020"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn empty_list_index_infers_from_expected_type() {
+    let source = r#"
+fn main(): Int {
+  [][0]
+}
+"#;
+    let diagnostics = muga::run_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R020"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_set_sample_runs() {
+    let source = r#"
+fn main(): List[Int] {
+  [1, 2, 3].set(1, 99)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "[1, 99, 3]");
+}
+
+#[test]
+fn empty_list_set_infers_element_type() {
+    let source = r#"
+fn main(): List[Int] {
+  [].push(0).set(0, 1)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "[1]");
+}
+
+#[test]
+fn list_set_checks_index_type() {
+    let source = r#"
+fn main(): List[Int] {
+  [1].set("bad", 2)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_set_checks_value_type() {
+    let source = r#"
+fn main(): List[Int] {
+  [1].set(0, "bad")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_set_requires_list_argument() {
+    let source = r#"
+fn main(): Int {
+  bad = 1.set(0, 2)
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T006"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_set_negative_index_reports_runtime_error() {
+    let source = r#"
+fn main(): List[Int] {
+  [10].set(-1, 20)
+}
+"#;
+    let diagnostics = muga::run_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R020"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_set_out_of_bounds_reports_runtime_error() {
+    let source = r#"
+fn main(): List[Int] {
+  [10].set(1, 20)
+}
+"#;
+    let diagnostics = muga::run_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R020"),
         "{diagnostics:#?}"
     );
 }
@@ -2362,6 +2571,10 @@ fn collect_typed_calls_in_expr<'a>(
             for item in &expr.items {
                 collect_typed_calls_in_expr(item, calls);
             }
+        }
+        muga::typed_hir::ExprKind::Index(expr) => {
+            collect_typed_calls_in_expr(&expr.base, calls);
+            collect_typed_calls_in_expr(&expr.index, calls);
         }
         muga::typed_hir::ExprKind::RecordLit(expr) => {
             for field in &expr.fields {

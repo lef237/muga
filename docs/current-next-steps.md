@@ -78,32 +78,32 @@ Recently completed:
 - local binding annotations parse and typecheck as `name: Type = expr` and `mut name: Type = expr`.
 - generic type expressions parse as `Type[Arg1, Arg2]`.
 - `List[T]` type annotations and list literals are implemented through AST, resolver, typechecker, HIR, bytecode, VM runtime, typed HIR, and in-memory package interface summaries.
-- `len`, `is_empty`, value-returning `push`, and safe lookup `get` are implemented as typed prelude builtins and work through chained-call syntax.
+- `len`, `is_empty`, value-returning `push`, safe lookup `get`, and value-returning `set` are implemented as typed prelude builtins and work through chained-call syntax.
+- direct list indexing `xs[i]` is implemented. It returns `T`; negative and out-of-bounds indexes are runtime errors.
 - Empty list literals are accepted only when an expected `List[T]` type is available, such as `items: List[Int] = []`.
 - `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented through AST, resolver, typechecker, HIR, bytecode, VM runtime, typed HIR, and package interface summaries.
-- `Map[K, V]`, list indexing, and `set` are not implemented yet.
+- `Map[K, V]` is not implemented yet.
 - the existing VM bytecode path remains behavior-compatible.
 
 ## 4. Recommended Next Implementation Task
 
 The best next implementation task is:
 
-1. decide direct indexing and bounds-error policy before `xs[i]` or `set`
-2. implement the chosen direct indexing / `set` slice, or defer both explicitly and move to `Map[K, V]`
+1. decide the first `Map[K, V]` slice: key types, construction API, and operations
+2. implement `Map[K, V]` type/runtime support and safe lookup returning `Option[V]`
 3. keep general enum declarations deferred unless another feature requires them
-4. use the same `Option[T]` representation for future `Map[K, V]` lookup
+4. use the existing `Option[T]` representation for `Map[K, V]` lookup
 
 Why this comes next:
 
-- `List[T]` now has syntax, static typing, typed HIR representation, package interface representation, runtime values, and a small non-indexing operation surface
-- safe list lookup already returns `Option[T]`
-- `set` and direct indexing require a clear bounds-error policy
+- `List[T]` now has syntax, static typing, typed HIR representation, package interface representation, runtime values, direct indexing, safe lookup, and value-returning update
+- direct indexing and `set` use the same bounds-error policy: negative and out-of-bounds indexes are runtime errors
 - `Option[T]` also informs future `Map[K, V]` lookup semantics
 
 Expected result:
 
-- direct indexing and update semantics are decided before adding syntax that can fail at runtime
-- later `set` and `Map[K, V]` work can build on the same collection typing/runtime path
+- map lookup exposes absence through `Option[V]`
+- later map APIs build on the same collection typing/runtime path
 
 ## 5. Decisions To Make Soon
 
@@ -113,19 +113,21 @@ These decisions affect near-term implementation and should be made before implem
 
 Decide:
 
-- direct indexing policy: runtime bounds error for `xs[i]`, safe lookup through `xs.get(i)`
+- first `Map[K, V]` key support: `String` only first, or `Int` / `Bool` / `String`
+- map construction API: expected-typed empty constructor, literal syntax, or insertion from an empty map
+- first map operations: `len`, `is_empty`, `contains`, `insert`, `remove`, `get`
 - whether general enum/sum-type declarations should land before `Result[T, E]`
 - how future `Result[T, E]` and error propagation should relate to `match`
 
 Current recommendation:
 
-- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, `push`, `get`, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are now implemented
+- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, `push`, `get`, `set`, direct indexing, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are now implemented
 - parse generic declarations as `record Box[T]` and `fn id[T](value: T): T`
 - implement generic records and generic functions as part of v1
 - rely on local type-argument inference rather than explicit call-site type arguments in the v1 MVP
 - defer bounds, typeclasses, higher-kinded types, const generics, and specialization
 - defer trait, interface, protocol, and overloaded dispatch declarations
-- implement safe map lookup after the first `Map[K, V]` runtime representation exists
+- implement safe map lookup with the first `Map[K, V]` runtime representation
 - keep `T?` reserved, not implemented
 - do not implement map literals in the first collection slice
 
@@ -229,7 +231,7 @@ When resuming implementation:
 1. Run `cargo test`.
 2. Read [ROADMAP.md](../ROADMAP.md) "Recommended Immediate Next Steps".
 3. Read [docs/internal/identity-model.md](./internal/identity-model.md).
-4. Start with direct indexing / bounds-error policy unless a compiler-core package task is explicitly being resumed first.
+4. Start with the first `Map[K, V]` design slice unless a compiler-core package task is explicitly being resumed first.
 5. After each compiler-core change, keep `check`, `run`, and existing samples behavior-compatible.
 
 Useful validation commands:

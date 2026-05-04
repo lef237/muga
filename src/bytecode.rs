@@ -49,6 +49,9 @@ pub enum Instruction {
         field: Symbol,
         span: Span,
     },
+    LoadIndex {
+        span: Span,
+    },
     UpdateRecord {
         fields: Vec<Symbol>,
         span: Span,
@@ -281,6 +284,13 @@ impl Compiler {
                     field: expr.field,
                     span: expr.span,
                 });
+            }
+            hir::Expr::Index(expr) => {
+                self.compile_expr(&expr.base, chunk);
+                self.compile_expr(&expr.index, chunk);
+                chunk
+                    .instructions
+                    .push(Instruction::LoadIndex { span: expr.span });
             }
             hir::Expr::RecordUpdate(expr) => {
                 self.compile_expr(&expr.base, chunk);

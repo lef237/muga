@@ -8,10 +8,18 @@ pub fn singleton_len(x: Int): Int {
   singleton(x).len()
 }
 
+pub fn singleton_first(x: Int): Int {
+  singleton(x)[0]
+}
+
 pub fn singleton_get(x: Int): Option[Int] {
   singleton(x).get(0)
 }
 
 pub fn empty_get(): Option[Int] {
   [].get(0)
+}
+
+pub fn replace_singleton(x: Int, value: Int): List[Int] {
+  singleton(x).set(0, value)
 }

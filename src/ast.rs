@@ -160,6 +160,7 @@ pub enum Expr {
     String(StringExpr),
     Ident(IdentExpr),
     ListLit(ListLitExpr),
+    Index(IndexExpr),
     RecordLit(RecordLitExpr),
     Field(FieldExpr),
     RecordUpdate(RecordUpdateExpr),
@@ -179,6 +180,7 @@ impl Expr {
             Self::String(expr) => expr.id,
             Self::Ident(expr) => expr.id,
             Self::ListLit(expr) => expr.id,
+            Self::Index(expr) => expr.id,
             Self::RecordLit(expr) => expr.id,
             Self::Field(expr) => expr.id,
             Self::RecordUpdate(expr) => expr.id,
@@ -198,6 +200,7 @@ impl Expr {
             Self::String(expr) => expr.span,
             Self::Ident(expr) => expr.span,
             Self::ListLit(expr) => expr.span,
+            Self::Index(expr) => expr.span,
             Self::RecordLit(expr) => expr.span,
             Self::Field(expr) => expr.span,
             Self::RecordUpdate(expr) => expr.span,
@@ -243,6 +246,14 @@ pub struct IdentExpr {
 pub struct ListLitExpr {
     pub id: ExprId,
     pub items: Vec<Expr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct IndexExpr {
+    pub id: ExprId,
+    pub base: Box<Expr>,
+    pub index: Box<Expr>,
     pub span: Span,
 }
 
@@ -462,6 +473,11 @@ impl NodeIdAssigner {
                 for item in &mut expr.items {
                     self.assign_expr(item);
                 }
+            }
+            Expr::Index(expr) => {
+                expr.id = self.expr_id();
+                self.assign_expr(&mut expr.base);
+                self.assign_expr(&mut expr.index);
             }
             Expr::RecordLit(expr) => {
                 expr.id = self.expr_id();
