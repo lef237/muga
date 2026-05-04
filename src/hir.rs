@@ -99,6 +99,7 @@ pub enum Expr {
     String(StringExpr),
     Ident(IdentExpr),
     ListLit(ListLitExpr),
+    Index(IndexExpr),
     RecordLit(RecordLitExpr),
     Field(FieldExpr),
     RecordUpdate(RecordUpdateExpr),
@@ -118,6 +119,7 @@ impl Expr {
             Self::String(expr) => expr.span,
             Self::Ident(expr) => expr.span,
             Self::ListLit(expr) => expr.span,
+            Self::Index(expr) => expr.span,
             Self::RecordLit(expr) => expr.span,
             Self::Field(expr) => expr.span,
             Self::RecordUpdate(expr) => expr.span,
@@ -158,6 +160,13 @@ pub struct IdentExpr {
 #[derive(Clone, Debug)]
 pub struct ListLitExpr {
     pub items: Vec<Expr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct IndexExpr {
+    pub base: Box<Expr>,
+    pub index: Box<Expr>,
     pub span: Span,
 }
 
@@ -370,6 +379,11 @@ impl Lowerer {
                     .iter()
                     .map(|item| self.lower_expr(item))
                     .collect(),
+                span: expr.span,
+            }),
+            ast::Expr::Index(expr) => Expr::Index(IndexExpr {
+                base: Box::new(self.lower_expr(&expr.base)),
+                index: Box::new(self.lower_expr(&expr.index)),
                 span: expr.span,
             }),
             ast::Expr::RecordLit(expr) => Expr::RecordLit(RecordLitExpr {

@@ -1,6 +1,6 @@
 # Collections Draft
 
-Status: design draft. The Rust compiler implements the first slices: local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, `len` / `is_empty` / `push` / `get`, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match`.
+Status: design draft. The Rust compiler implements the first slices: local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, `len` / `is_empty` / `push` / `get` / `set`, direct list indexing, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match`.
 
 This draft defines the recommended direction for Muga collections on top of the v1 generics MVP.
 
@@ -26,8 +26,9 @@ The recommended order is:
 3. `List[T]` type annotations, list literals, `len`, `is_empty`, and `push` (implemented)
 4. `Option[T]` construction and exhaustive `match` (implemented)
 5. safe list lookup with `get(self: List[T], index: Int): Option[T]` (implemented)
-6. `Map[K, V]`
-7. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
+6. direct list indexing and value-returning `set` (implemented)
+7. `Map[K, V]`
+8. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
 
 This order keeps the first implementation small.
 
@@ -92,8 +93,8 @@ Typing rules:
 - `[1, 2, 3]` has type `List[Int]`
 - `["a", "b"]` has type `List[String]`
 - `[]` requires an expected type
-- future indexing should use an `Int` index
-- future indexing should return the element type
+- indexing uses an `Int` index
+- direct indexing returns the element type
 
 Examples:
 
@@ -120,7 +121,7 @@ Recommended initial operations:
 - `set(self: List[T], index: Int, value: T): List[T]`
 - `get(self: List[T], index: Int): Option[T]`
 
-`len`, `is_empty`, value-returning `push`, and safe lookup `get` are implemented. `set` and index syntax are not implemented yet.
+`len`, `is_empty`, value-returning `push`, safe lookup `get`, value-returning `set`, and index syntax are implemented.
 
 Index syntax:
 
@@ -128,9 +129,17 @@ Index syntax:
 value = numbers[0]
 ```
 
-Direct indexing should be bounds-checked. A failed bounds check is a runtime error unless Muga later introduces a different checked-indexing policy.
+Direct indexing is bounds-checked. A negative index or out-of-bounds index is a runtime error.
 
 Safe lookup uses `get` and returns `Option[T]`. A negative index or an out-of-bounds index returns `Option::None`.
+
+Value-returning update uses `set` and follows direct indexing bounds behavior:
+
+```muga
+updated = numbers.set(0, 10)
+```
+
+`set` returns a new `List[T]` value at the source level.
 
 ## 6. Option
 

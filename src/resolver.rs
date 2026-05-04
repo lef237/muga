@@ -117,6 +117,8 @@ impl Resolver {
         self.insert_current(push, BindingKind::Function, Span::default());
         let get = self.symbol("get");
         self.insert_current(get, BindingKind::Function, Span::default());
+        let set = self.symbol("set");
+        self.insert_current(set, BindingKind::Function, Span::default());
         let option_some = self.symbol("Option::Some");
         self.insert_current(option_some, BindingKind::Function, Span::default());
         let option_none = self.symbol("Option::None");
@@ -286,6 +288,10 @@ impl Resolver {
                 for item in &expr.items {
                     self.resolve_expr(item);
                 }
+            }
+            Expr::Index(expr) => {
+                self.resolve_expr(&expr.base);
+                self.resolve_expr(&expr.index);
             }
             Expr::Ident(expr) => {
                 let name = self.symbol(&expr.name);

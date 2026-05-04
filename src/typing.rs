@@ -122,6 +122,7 @@ enum BuiltinFunction {
     IsEmpty,
     ListPush,
     ListGet,
+    ListSet,
     OptionSome,
 }
 
@@ -285,6 +286,13 @@ impl TypeChecker {
             get,
             BindingKind::Function,
             Type::Builtin(BuiltinFunction::ListGet),
+            Span::default(),
+        );
+        let set = self.symbol("set");
+        self.insert_current(
+            set,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::ListSet),
             Span::default(),
         );
         let option_some = self.symbol("Option::Some");
@@ -487,6 +495,7 @@ impl TypeChecker {
                 }
             }
             Expr::ListLit(expr) => self.check_list_lit(expr, expected),
+            Expr::Index(expr) => self.check_index_expr(expr, expected),
             Expr::RecordLit(expr) => {
                 let ty = self.check_record_lit(expr);
                 self.apply_expected(ty, expected, expr.span)
@@ -728,6 +737,63 @@ impl TypeChecker {
                                     self.diagnostics.push(Diagnostic::new(
                                         "T006",
                                         "`get` expects List[T] as its first argument",
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                            }
+                        }
+                    }
+                    Type::Builtin(BuiltinFunction::ListSet) => {
+                        if expr.args.len() != 3 {
+                            self.diagnostics.push(Diagnostic::new(
+                                "T004",
+                                format!("expected 3 arguments but found {}", expr.args.len()),
+                                expr.span,
+                            ));
+                            Type::Error
+                        } else {
+                            let expected = expected.map(|ty| self.resolve_type(&ty));
+                            let expected_item = match expected.as_ref() {
+                                Some(Type::List(item)) => Some(*item.clone()),
+                                _ => None,
+                            };
+                            let list_ty = if let Some(expected_item) = expected_item {
+                                self.check_expr_with_expected(
+                                    &expr.args[0],
+                                    Some(Type::List(Box::new(expected_item))),
+                                )
+                            } else {
+                                self.check_expr(&expr.args[0])
+                            };
+                            self.check_expr_with_expected(&expr.args[1], Some(Type::Int));
+                            match self.resolve_type(&list_ty) {
+                                Type::List(item_ty) => {
+                                    self.check_expr_with_expected(
+                                        &expr.args[2],
+                                        Some((*item_ty).clone()),
+                                    );
+                                    let list_ty = Type::List(item_ty);
+                                    match expected {
+                                        Some(Type::List(_)) | None => list_ty,
+                                        Some(expected) => {
+                                            self.apply_expected(list_ty, Some(expected), expr.span)
+                                        }
+                                    }
+                                }
+                                Type::Unknown(_) => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "E005",
+                                        "type annotation required because inference is not unique",
+                                        expr.span,
+                                    ));
+                                    Type::Error
+                                }
+                                Type::Error => Type::Error,
+                                _ => {
+                                    self.diagnostics.push(Diagnostic::new(
+                                        "T006",
+                                        "`set` expects List[T] as its first argument",
                                         expr.span,
                                     ));
                                     Type::Error
@@ -984,6 +1050,35 @@ impl TypeChecker {
         match expected {
             Some(Type::List(_)) | None => list_ty,
             Some(expected) => self.apply_expected(list_ty, Some(expected), expr.span),
+        }
+    }
+
+    fn check_index_expr(&mut self, expr: &IndexExpr, expected: Option<Type>) -> Type {
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        let base_expected = expected
+            .as_ref()
+            .map(|item| Type::List(Box::new(item.clone())));
+        let base_ty = self.check_expr_with_expected(&expr.base, base_expected);
+        self.check_expr_with_expected(&expr.index, Some(Type::Int));
+        match self.resolve_type(&base_ty) {
+            Type::List(item_ty) => self.apply_expected(*item_ty, expected, expr.span),
+            Type::Unknown(_) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "E005",
+                    "type annotation required because inference is not unique",
+                    expr.span,
+                ));
+                Type::Error
+            }
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    "list indexing expects List[T] as its base",
+                    expr.span,
+                ));
+                Type::Error
+            }
         }
     }
 
@@ -1562,6 +1657,7 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::IsEmpty) => TypeInfo::Builtin("is_empty"),
             Type::Builtin(BuiltinFunction::ListPush) => TypeInfo::Builtin("push"),
             Type::Builtin(BuiltinFunction::ListGet) => TypeInfo::Builtin("get"),
+            Type::Builtin(BuiltinFunction::ListSet) => TypeInfo::Builtin("set"),
             Type::Builtin(BuiltinFunction::OptionSome) => TypeInfo::Builtin("Option::Some"),
             Type::OptionNone => TypeInfo::Builtin("Option::None"),
             Type::Unknown(_) => TypeInfo::Unknown,
@@ -1618,6 +1714,7 @@ impl TypeChecker {
             BuiltinFunction::IsEmpty => "is_empty",
             BuiltinFunction::ListPush => "push",
             BuiltinFunction::ListGet => "get",
+            BuiltinFunction::ListSet => "set",
             BuiltinFunction::OptionSome => "Option::Some",
         }
     }
@@ -1745,6 +1842,7 @@ impl Type {
             Self::Builtin(BuiltinFunction::IsEmpty) => "Builtin(is_empty)",
             Self::Builtin(BuiltinFunction::ListPush) => "Builtin(push)",
             Self::Builtin(BuiltinFunction::ListGet) => "Builtin(get)",
+            Self::Builtin(BuiltinFunction::ListSet) => "Builtin(set)",
             Self::Builtin(BuiltinFunction::OptionSome) => "Builtin(Option::Some)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
@@ -1891,6 +1989,10 @@ fn collect_calls_in_expr(
             for item in &expr.items {
                 collect_calls_in_expr(item, local_names, calls, symbols);
             }
+        }
+        Expr::Index(expr) => {
+            collect_calls_in_expr(&expr.base, local_names, calls, symbols);
+            collect_calls_in_expr(&expr.index, local_names, calls, symbols);
         }
         Expr::RecordLit(expr) => {
             for field in &expr.fields {

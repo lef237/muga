@@ -895,6 +895,21 @@ impl Parser {
                 continue;
             }
 
+            if self.matches_simple(&TokenKind::LBracket) {
+                self.skip_newlines();
+                let index = self.parse_expr_allowing_struct_literal()?;
+                self.skip_newlines();
+                let end = self.expect_simple(TokenKind::RBracket, "expected `]` after index")?;
+                let span = expr.span().merge(end);
+                expr = Expr::Index(IndexExpr {
+                    id: self.expr_id(),
+                    base: Box::new(expr),
+                    index: Box::new(index),
+                    span,
+                });
+                continue;
+            }
+
             break;
         }
         Ok(expr)

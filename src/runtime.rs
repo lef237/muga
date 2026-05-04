@@ -145,6 +145,7 @@ pub enum BuiltinFunction {
     IsEmpty,
     ListPush,
     ListGet,
+    ListSet,
     OptionSome,
 }
 
@@ -157,6 +158,7 @@ impl BuiltinFunction {
             Self::IsEmpty => "is_empty",
             Self::ListPush => "push",
             Self::ListGet => "get",
+            Self::ListSet => "set",
             Self::OptionSome => "Option::Some",
         }
     }
@@ -232,6 +234,12 @@ fn execute_chunk(
                     "missing record value for field access",
                 )?;
                 let value = load_record_field(program, base, *field, *span)?;
+                stack.push(value);
+            }
+            Instruction::LoadIndex { span } => {
+                let index = pop_value(&mut stack, *span, "R015", "missing list index")?;
+                let base = pop_value(&mut stack, *span, "R015", "missing list value")?;
+                let value = load_list_index(base, index, *span)?;
                 stack.push(value);
             }
             Instruction::UpdateRecord { fields, span } => {
@@ -698,6 +706,29 @@ fn call_builtin(
                 None => Ok(Value::Option(OptionValue::None)),
             }
         }
+        BuiltinFunction::ListSet => {
+            if args.len() != 3 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 3 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let mut args = args.into_iter();
+            let list = args.next().expect("checked length");
+            let index = args.next().expect("checked length");
+            let value = args.next().expect("checked length");
+            let Value::List(mut items) = list else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`set` expects List[T] as its first argument",
+                    span,
+                )]);
+            };
+            let index = list_index(index, items.len(), span)?;
+            items[index] = value;
+            Ok(Value::List(items))
+        }
         BuiltinFunction::OptionSome => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
@@ -842,6 +873,40 @@ fn load_record_field(
     Ok(field_value.value.clone())
 }
 
+fn load_list_index(base: Value, index: Value, span: Span) -> Result<Value, Vec<Diagnostic>> {
+    let Value::List(items) = base else {
+        return Err(vec![Diagnostic::new(
+            "R014",
+            "list indexing expects List[T] as its base",
+            span,
+        )]);
+    };
+    let index = list_index(index, items.len(), span)?;
+    Ok(items[index].clone())
+}
+
+fn list_index(index: Value, len: usize, span: Span) -> Result<usize, Vec<Diagnostic>> {
+    let Value::Int(index) = index else {
+        return Err(vec![Diagnostic::new(
+            "R014",
+            "list index must be Int",
+            span,
+        )]);
+    };
+    if index < 0 {
+        return Err(list_index_out_of_bounds(span));
+    }
+    let index = usize::try_from(index).map_err(|_| list_index_out_of_bounds(span))?;
+    if index >= len {
+        return Err(list_index_out_of_bounds(span));
+    }
+    Ok(index)
+}
+
+fn list_index_out_of_bounds(span: Span) -> Vec<Diagnostic> {
+    vec![Diagnostic::new("R020", "list index out of bounds", span)]
+}
+
 fn update_record_value(
     program: &Program,
     base: Value,
@@ -925,6 +990,16 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             Binding {
                 mutable: false,
                 value: Value::Builtin(BuiltinFunction::ListGet),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(set_symbol) = program.symbols.lookup("set") {
+        env.borrow_mut().bindings.insert(
+            set_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::ListSet),
                 span: Span::default(),
             },
         );

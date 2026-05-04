@@ -213,6 +213,10 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
                     self.validate_expr(&field.value);
                 }
             }
+            ExprKind::Index(index) => {
+                self.validate_expr(&index.base);
+                self.validate_expr(&index.index);
+            }
             ExprKind::Unary(unary) => self.validate_expr(&unary.expr),
             ExprKind::Binary(binary) => {
                 self.validate_expr(&binary.left);
@@ -536,6 +540,7 @@ pub enum ExprKind {
     String(String),
     Ident(IdentExpr),
     ListLit(ListLitExpr),
+    Index(IndexExpr),
     RecordLit(RecordLitExpr),
     Field(FieldExpr),
     RecordUpdate(RecordUpdateExpr),
@@ -557,6 +562,12 @@ pub struct IdentExpr {
 #[derive(Clone, Debug)]
 pub struct ListLitExpr {
     pub items: Vec<Expr>,
+}
+
+#[derive(Clone, Debug)]
+pub struct IndexExpr {
+    pub base: Box<Expr>,
+    pub index: Box<Expr>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -888,6 +899,10 @@ impl<'a> Lowerer<'a> {
                     .iter()
                     .map(|item| self.lower_expr(item))
                     .collect(),
+            }),
+            ast::Expr::Index(expr) => ExprKind::Index(IndexExpr {
+                base: Box::new(self.lower_expr(&expr.base)),
+                index: Box::new(self.lower_expr(&expr.index)),
             }),
             ast::Expr::RecordLit(expr) => ExprKind::RecordLit(RecordLitExpr {
                 type_name: expr.type_name.clone(),
