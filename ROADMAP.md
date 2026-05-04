@@ -73,7 +73,7 @@ Current draft decisions:
 - empty collection literals need an expected type, most likely from a local binding annotation such as `items: List[Int] = []`
 - `List[T]` type annotations, list literals, basic list operations (`len`, `is_empty`, `push`, `get`, `set`), and direct list indexing are implemented as the first collection slice
 - `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented and used by safe list lookup
-- `Map[K, V]` is needed for dictionary/hash use cases, but arbitrary key types and map literals are deferred
+- the first `Map[K, V]` slice is implemented with `Int` / `Bool` / `String` keys, `Map.empty`, `len`, `is_empty`, `contains`, `get`, `insert`, and `remove`; arbitrary key types and map literals are deferred
 - ordinary source code should use value semantics; the compiler/runtime may share immutable storage internally when safe
 - explicit source-level references such as `ref T`, `mut ref T`, `*T`, and `&value` are not planned for ordinary Muga code
 - write-oriented APIs should prefer value-returning updates, builder/buffer types, or resource handles
@@ -513,7 +513,7 @@ Recently completed:
 - typed package compilation validates public package references against generated interface summaries
 - typed package interface validation uses package/name lookup and detects stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup reads `PackageExportGraph` before flattening, and `PackageExportGraph` can be derived from typed interfaces
-- local binding annotations, `List[T]` type annotations, list literals, list indexing, basic list operations including safe lookup and value-returning update, `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented; `Map[K, V]` and broader collection APIs remain reserved
+- local binding annotations, `List[T]` type annotations, list literals, list indexing, basic list operations including safe lookup and value-returning update, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, and the first `Map[K, V]` slice are implemented; map literals, `Set[T]`, and broader collection APIs remain reserved
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

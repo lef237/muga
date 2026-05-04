@@ -1868,6 +1868,10 @@ fn is_builtin_name(name: &str) -> bool {
             | "push"
             | "get"
             | "set"
+            | "Map.empty"
+            | "contains"
+            | "insert"
+            | "remove"
             | "Option::Some"
             | "Option::None"
     )

@@ -1,0 +1,20 @@
+package util::numbers
+
+pub fn singleton_map(key: String, value: Int): Map[String, Int] {
+  Map.empty().insert(key, value)
+}
+
+pub fn map_get_or_zero(map: Map[String, Int], key: String): Int {
+  match map.get(key) {
+    Option::Some(value) => value
+    Option::None => 0
+  }
+}
+
+pub fn map_without_key(): Int {
+  map: Map[String, Int] = Map.empty()
+  match map.get("missing") {
+    Option::Some(value) => value
+    Option::None => 0
+  }
+}

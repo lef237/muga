@@ -10,6 +10,7 @@ pub enum Value {
     Bool(bool),
     String(String),
     List(Vec<Value>),
+    Map(MapValue),
     Option(OptionValue),
     Record(RecordValue),
     Function(Rc<ClosureValue>),
@@ -26,6 +27,24 @@ pub struct RecordValue {
 pub enum OptionValue {
     Some(Box<Value>),
     None,
+}
+
+#[derive(Clone, Debug)]
+pub struct MapValue {
+    entries: Vec<MapEntryValue>,
+}
+
+#[derive(Clone, Debug)]
+struct MapEntryValue {
+    key: MapKey,
+    value: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum MapKey {
+    Int(i64),
+    Bool(bool),
+    String(String),
 }
 
 #[derive(Clone, Debug)]
@@ -50,6 +69,21 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Self::Map(map) => {
+                write!(f, "Map {{")?;
+                for (index, entry) in map.entries.iter().enumerate() {
+                    if index == 0 {
+                        write!(f, " ")?;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", entry.key, entry.value)?;
+                }
+                if !map.entries.is_empty() {
+                    write!(f, " ")?;
+                }
+                write!(f, "}}")
+            }
             Self::Option(OptionValue::Some(value)) => write!(f, "Option::Some({value})"),
             Self::Option(OptionValue::None) => write!(f, "Option::None"),
             Self::Record(record) => {
@@ -64,6 +98,16 @@ impl fmt::Display for Value {
             }
             Self::Function(_) => write!(f, "<function>"),
             Self::Builtin(builtin) => write!(f, "<builtin:{}>", builtin.name()),
+        }
+    }
+}
+
+impl fmt::Display for MapKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Int(value) => write!(f, "{value}"),
+            Self::Bool(value) => write!(f, "{value}"),
+            Self::String(value) => write!(f, "\"{value}\""),
         }
     }
 }
@@ -144,8 +188,12 @@ pub enum BuiltinFunction {
     Len,
     IsEmpty,
     ListPush,
-    ListGet,
+    Get,
     ListSet,
+    MapEmpty,
+    Contains,
+    Insert,
+    Remove,
     OptionSome,
 }
 
@@ -157,8 +205,12 @@ impl BuiltinFunction {
             Self::Len => "len",
             Self::IsEmpty => "is_empty",
             Self::ListPush => "push",
-            Self::ListGet => "get",
+            Self::Get => "get",
             Self::ListSet => "set",
+            Self::MapEmpty => "Map.empty",
+            Self::Contains => "contains",
+            Self::Insert => "insert",
+            Self::Remove => "remove",
             Self::OptionSome => "Option::Some",
         }
     }
@@ -576,6 +628,7 @@ fn call_builtin(
                     Ok(value)
                 }
                 Value::List(_)
+                | Value::Map(_)
                 | Value::Option(_)
                 | Value::Record(_)
                 | Value::Function(_)
@@ -604,6 +657,7 @@ fn call_builtin(
                     Ok(value)
                 }
                 Value::List(_)
+                | Value::Map(_)
                 | Value::Option(_)
                 | Value::Record(_)
                 | Value::Function(_)
@@ -625,9 +679,10 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             match value {
                 Value::List(items) => Ok(Value::Int(items.len() as i64)),
+                Value::Map(map) => Ok(Value::Int(map.entries.len() as i64)),
                 _ => Err(vec![Diagnostic::new(
                     "R014",
-                    "`len` expects List[T] as its first argument",
+                    "`len` expects List[T] or Map[K, V] as its first argument",
                     span,
                 )]),
             }
@@ -643,9 +698,10 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             match value {
                 Value::List(items) => Ok(Value::Bool(items.is_empty())),
+                Value::Map(map) => Ok(Value::Bool(map.entries.is_empty())),
                 _ => Err(vec![Diagnostic::new(
                     "R014",
-                    "`is_empty` expects List[T] as its first argument",
+                    "`is_empty` expects List[T] or Map[K, V] as its first argument",
                     span,
                 )]),
             }
@@ -673,7 +729,7 @@ fn call_builtin(
                 )]),
             }
         }
-        BuiltinFunction::ListGet => {
+        BuiltinFunction::Get => {
             if args.len() != 2 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -682,28 +738,39 @@ fn call_builtin(
                 )]);
             }
             let mut args = args.into_iter();
-            let list = args.next().expect("checked length");
-            let index = args.next().expect("checked length");
-            let Value::List(items) = list else {
-                return Err(vec![Diagnostic::new(
+            let collection = args.next().expect("checked length");
+            let key_or_index = args.next().expect("checked length");
+            match collection {
+                Value::List(items) => {
+                    let Value::Int(index) = key_or_index else {
+                        return Err(vec![Diagnostic::new(
+                            "R014",
+                            "`get` expects Int as its second argument for List[T]",
+                            span,
+                        )]);
+                    };
+                    if index < 0 {
+                        return Ok(Value::Option(OptionValue::None));
+                    }
+                    match items.get(index as usize).cloned() {
+                        Some(value) => Ok(Value::Option(OptionValue::Some(Box::new(value)))),
+                        None => Ok(Value::Option(OptionValue::None)),
+                    }
+                }
+                Value::Map(map) => {
+                    let key = map_key(key_or_index, span, "get")?;
+                    match map.entries.iter().find(|entry| entry.key == key) {
+                        Some(entry) => Ok(Value::Option(OptionValue::Some(Box::new(
+                            entry.value.clone(),
+                        )))),
+                        None => Ok(Value::Option(OptionValue::None)),
+                    }
+                }
+                _ => Err(vec![Diagnostic::new(
                     "R014",
-                    "`get` expects List[T] as its first argument",
+                    "`get` expects List[T] or Map[K, V] as its first argument",
                     span,
-                )]);
-            };
-            let Value::Int(index) = index else {
-                return Err(vec![Diagnostic::new(
-                    "R014",
-                    "`get` expects Int as its second argument",
-                    span,
-                )]);
-            };
-            if index < 0 {
-                return Ok(Value::Option(OptionValue::None));
-            }
-            match items.get(index as usize).cloned() {
-                Some(value) => Ok(Value::Option(OptionValue::Some(Box::new(value)))),
-                None => Ok(Value::Option(OptionValue::None)),
+                )]),
             }
         }
         BuiltinFunction::ListSet => {
@@ -729,6 +796,90 @@ fn call_builtin(
             items[index] = value;
             Ok(Value::List(items))
         }
+        BuiltinFunction::MapEmpty => {
+            if args.len() != 0 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 0 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            Ok(Value::Map(MapValue {
+                entries: Vec::new(),
+            }))
+        }
+        BuiltinFunction::Contains => {
+            if args.len() != 2 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 2 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let mut args = args.into_iter();
+            let map = args.next().expect("checked length");
+            let key = args.next().expect("checked length");
+            let Value::Map(map) = map else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`contains` expects Map[K, V] as its first argument",
+                    span,
+                )]);
+            };
+            let key = map_key(key, span, "contains")?;
+            Ok(Value::Bool(
+                map.entries.iter().any(|entry| entry.key == key),
+            ))
+        }
+        BuiltinFunction::Insert => {
+            if args.len() != 3 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 3 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let mut args = args.into_iter();
+            let map = args.next().expect("checked length");
+            let key = args.next().expect("checked length");
+            let value = args.next().expect("checked length");
+            let Value::Map(mut map) = map else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`insert` expects Map[K, V] as its first argument",
+                    span,
+                )]);
+            };
+            let key = map_key(key, span, "insert")?;
+            if let Some(entry) = map.entries.iter_mut().find(|entry| entry.key == key) {
+                entry.value = value;
+            } else {
+                map.entries.push(MapEntryValue { key, value });
+            }
+            Ok(Value::Map(map))
+        }
+        BuiltinFunction::Remove => {
+            if args.len() != 2 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 2 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let mut args = args.into_iter();
+            let map = args.next().expect("checked length");
+            let key = args.next().expect("checked length");
+            let Value::Map(mut map) = map else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`remove` expects Map[K, V] as its first argument",
+                    span,
+                )]);
+            };
+            let key = map_key(key, span, "remove")?;
+            map.entries.retain(|entry| entry.key != key);
+            Ok(Value::Map(map))
+        }
         BuiltinFunction::OptionSome => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
@@ -740,6 +891,19 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             Ok(Value::Option(OptionValue::Some(Box::new(value))))
         }
+    }
+}
+
+fn map_key(value: Value, span: Span, builtin_name: &str) -> Result<MapKey, Vec<Diagnostic>> {
+    match value {
+        Value::Int(value) => Ok(MapKey::Int(value)),
+        Value::Bool(value) => Ok(MapKey::Bool(value)),
+        Value::String(value) => Ok(MapKey::String(value)),
+        _ => Err(vec![Diagnostic::new(
+            "R014",
+            format!("`{builtin_name}` expects an Int, Bool, or String Map key"),
+            span,
+        )]),
     }
 }
 
@@ -989,7 +1153,7 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             get_symbol,
             Binding {
                 mutable: false,
-                value: Value::Builtin(BuiltinFunction::ListGet),
+                value: Value::Builtin(BuiltinFunction::Get),
                 span: Span::default(),
             },
         );
@@ -1000,6 +1164,46 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             Binding {
                 mutable: false,
                 value: Value::Builtin(BuiltinFunction::ListSet),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(map_empty_symbol) = program.symbols.lookup("Map.empty") {
+        env.borrow_mut().bindings.insert(
+            map_empty_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::MapEmpty),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(contains_symbol) = program.symbols.lookup("contains") {
+        env.borrow_mut().bindings.insert(
+            contains_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::Contains),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(insert_symbol) = program.symbols.lookup("insert") {
+        env.borrow_mut().bindings.insert(
+            insert_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::Insert),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(remove_symbol) = program.symbols.lookup("remove") {
+        env.borrow_mut().bindings.insert(
+            remove_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::Remove),
                 span: Span::default(),
             },
         );

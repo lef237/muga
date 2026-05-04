@@ -610,6 +610,30 @@ fn typed_hir_generates_package_interface_summaries() {
         muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
     );
     assert_eq!(value_or_zero.ret, muga::typing::TypeInfo::Int);
+    let singleton_map = interfaces
+        .function_by_name(numbers, "singleton_map")
+        .expect("singleton_map should be exported");
+    assert_eq!(singleton_map.params[0].ty, muga::typing::TypeInfo::String);
+    assert_eq!(singleton_map.params[1].ty, muga::typing::TypeInfo::Int);
+    assert_eq!(
+        singleton_map.ret,
+        muga::typing::TypeInfo::Map(
+            Box::new(muga::typing::TypeInfo::String),
+            Box::new(muga::typing::TypeInfo::Int)
+        )
+    );
+    let map_get_or_zero = interfaces
+        .function_by_name(numbers, "map_get_or_zero")
+        .expect("map_get_or_zero should be exported");
+    assert_eq!(
+        map_get_or_zero.params[0].ty,
+        muga::typing::TypeInfo::Map(
+            Box::new(muga::typing::TypeInfo::String),
+            Box::new(muga::typing::TypeInfo::Int)
+        )
+    );
+    assert_eq!(map_get_or_zero.params[1].ty, muga::typing::TypeInfo::String);
+    assert_eq!(map_get_or_zero.ret, muga::typing::TypeInfo::Int);
 
     let user_item = program
         .package_graph
@@ -1183,7 +1207,7 @@ fn main(): Int {
 fn unsupported_generic_type_expression_is_reserved() {
     let source = r#"
 fn main(): Int {
-  items: Map[String, Int] = 1
+  items: Set[Int] = 1
   1
 }
 "#;
@@ -1450,6 +1474,22 @@ fn list_get_checks_index_type() {
     let source = r#"
 fn main(): Option[Int] {
   [1].get("bad")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn list_get_checks_expected_option_type() {
+    let source = r#"
+fn main(): Option[String] {
+  [1].get(0)
 }
 "#;
     let diagnostics = muga::check_source(source).unwrap_err();
@@ -1810,6 +1850,294 @@ fn main(): Option[Int] {
         binding.ty,
         muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
     );
+}
+
+#[test]
+fn empty_map_uses_local_annotation() {
+    let source = r#"
+fn main(): Map[String, Int] {
+  items: Map[String, Int] = Map.empty()
+  items
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Map {}");
+}
+
+#[test]
+fn map_insert_get_some_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  ages: Map[String, Int] = Map.empty().insert("Ada", 20)
+  match ages.get("Ada") {
+    Option::Some(age) => age
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "20");
+}
+
+#[test]
+fn map_get_none_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  ages: Map[String, Int] = Map.empty()
+  match ages.get("Grace") {
+    Option::Some(age) => age
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn empty_map_get_infers_from_expected_option() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = Map.empty().get("missing")
+  match value {
+    Option::Some(age) => age
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn empty_map_get_can_be_inferred_from_match_arms() {
+    let source = r#"
+fn main(): Int {
+  match Map.empty().get("missing") {
+    Option::Some(age) => age
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn map_len_is_empty_contains_and_remove_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  empty: Map[String, Int] = Map.empty()
+  ages = empty.insert("Ada", 20).insert("Grace", 30)
+  without_ada = ages.remove("Ada")
+  if empty.is_empty() {
+    if ages.len() == 2 {
+      if ages.contains("Ada") {
+        if without_ada.contains("Ada") {
+          -1
+        } else {
+          without_ada.len()
+        }
+      } else {
+        -1
+      }
+    } else {
+      -1
+    }
+  } else {
+    -1
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "1");
+}
+
+#[test]
+fn map_insert_replaces_existing_key() {
+    let source = r#"
+fn main(): Int {
+  ages: Map[String, Int] = Map.empty().insert("Ada", 20).insert("Ada", 21)
+  match ages.get("Ada") {
+    Option::Some(age) => age
+    Option::None => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "21");
+}
+
+#[test]
+fn map_empty_requires_expected_type() {
+    let source = r#"
+fn main(): Int {
+  items = Map.empty()
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T019"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn map_type_requires_two_arguments() {
+    let source = r#"
+fn main(): Int {
+  items: Map[String] = Map.empty()
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T019"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn map_key_type_must_be_scalar() {
+    let source = r#"
+fn main(): Int {
+  items: Map[List[Int], Int] = Map.empty()
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T020"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn map_insert_checks_key_type() {
+    let source = r#"
+fn main(): Map[String, Int] {
+  ages: Map[String, Int] = Map.empty()
+  ages.insert(1, 20)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn map_insert_rejects_invalid_inferred_key() {
+    let source = r#"
+fn main(): Int {
+  items = Map.empty().insert([1], 20)
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T020"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn map_get_checks_expected_option_type() {
+    let source = r#"
+fn main(): Option[String] {
+  ages: Map[String, Int] = Map.empty().insert("Ada", 20)
+  ages.get("Ada")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn map_empty_remove_requires_expected_type() {
+    let source = r#"
+fn main(): Int {
+  items = Map.empty().remove("missing")
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T019"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn map_empty_contains_requires_expected_map_type() {
+    let source = r#"
+fn main(): Bool {
+  Map.empty().contains("missing")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T019"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_preserves_map_type_info() {
+    let source = r#"
+fn main(): Map[String, Int] {
+  items: Map[String, Int] = Map.empty().insert("Ada", 20)
+  items
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    let map_ty = muga::typing::TypeInfo::Map(
+        Box::new(muga::typing::TypeInfo::String),
+        Box::new(muga::typing::TypeInfo::Int),
+    );
+    assert_eq!(main.return_ty, map_ty);
+    let assign = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected typed assignment"),
+    };
+    let binding = program
+        .bindings
+        .iter()
+        .find(|binding| binding.id == assign.binding)
+        .expect("assignment binding should exist");
+    assert_eq!(binding.ty, map_ty);
 }
 
 #[test]
