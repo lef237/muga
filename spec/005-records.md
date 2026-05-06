@@ -36,34 +36,30 @@ v1 rules:
 - field names must be unique within the record
 - field order is declaration order, but field access is by name
 - record fields must not have function type in v1
-- record fields participate in the package/module visibility model
-- a field without a visibility modifier is module-private in package mode
-- `pkg` fields are visible inside the same package
-- `pub` fields are visible from importing packages
+- v1 does not include per-field visibility modifiers
+- record visibility is controlled at the top-level record declaration
+- a visible record is transparent: its declared fields are nameable wherever the record shape is visible
 
-The current compiler implementation does not yet enforce field visibility. This section defines the target design before package interfaces harden.
+Per-field visibility is not a committed v1 feature. It is also not the preferred first answer for public type names with hidden representations; future `opaque record` or `opaque type` designs should be considered first.
 
 Example:
 
 ```txt
-package app::counter
+package app::users
 
-pub record Counter {
-  value: Int
+pub record User {
+  name: String
+  age: Int
 }
 
-pub fn new_counter(): Counter {
-  Counter {
-    value: 0
-  }
-}
-
-pub fn inc(counter: Counter): Counter {
-  counter.with(value: counter.value + 1)
+pub fn display_name(user: User): String {
+  user.name
 }
 ```
 
-Here `Counter` is public, but `value` is not. Other packages can name `Counter` and call public functions that return it, but they cannot directly read, construct, or update `value`.
+Here `User` is public and its fields are part of the public record shape. Other packages can name `User`, construct it with a record literal, read its fields, and use `record.with(...)` on those fields.
+
+If a representation should be hidden inside a module or package, the v1 recommendation is to keep the record non-public and expose functions that do not leak that non-public type across a wider visibility boundary. Passing a hidden representation across package boundaries should be handled by a future opaque representation feature, not by making transparent records more complicated in v1.
 
 ## 3. Record Literals
 
@@ -82,9 +78,9 @@ v1 rules:
 - every declared field must be provided exactly once
 - extra fields are errors
 - field initializers are checked against the declared field types
-- the current module must be allowed to name every initialized field
+- the record type and record shape must be visible at the literal site
 
-If a public record has private fields, code outside the declaring module cannot construct it directly with a record literal. The record should provide constructor-style functions instead.
+A public record is transparent in v1, so importing packages may construct it with a record literal when the public record type is visible.
 
 ## 4. Field Access
 
@@ -106,11 +102,7 @@ config.port
 
 In v1, field access is read-only syntax. Assignment through field access such as `user.name = "Ada"` is not part of v1.
 
-Field access is allowed only when the current module is allowed to see that field:
-
-- module-private fields are visible only in the declaring module/file
-- `pkg` fields are visible in the same package
-- `pub` fields are visible from importing packages
+Field access is allowed when the static type is a visible record type whose shape is available in the current context. v1 has no per-field visibility restriction beyond record-level visibility.
 
 ## 5. Record Update
 
@@ -128,7 +120,7 @@ v1 rules:
 - each mentioned field may appear at most once
 - at least one field must be updated
 - each replacement expression must match the declared field type
-- the current module must be allowed to name each updated field
+- the record type and record shape must be visible at the update site
 - unspecified fields are preserved from the original value
 - the update is non-destructive
 
@@ -342,7 +334,7 @@ box = Box[Int] {
 Generic record fields still follow the same record rules:
 
 - fields may not have function type in v1
-- field visibility follows the package/module model
+- v1 has no per-field visibility modifiers
 - field access remains `expr.name`
 - record update remains `expr.with(...)`
 
@@ -355,5 +347,88 @@ The current design leaves room for future work on:
 - protocol-like dispatch, if later justified by concrete examples
 - limited overloading keyed by receiver type
 - mutable or persistent-update record operations
+- opaque records or opaque types for public type names with hidden representations
+- per-field visibility only if concrete code shows that opaque representations and transparent records are not enough
+
+### 14.1 Opaque Representation Candidate
+
+Some values should expose a public type name without exposing their fields or construction form. Examples include `Session`, `DbConnection`, `HttpClient`, `Parser`, and `TokenStream`.
+
+These are not best modeled as "a record where a few fields are private". They are better modeled as a type with a hidden representation and public functions.
+
+Future-only `opaque record` sketch:
+
+```txt
+package app::sessions
+
+pub opaque record Session {
+  id: String
+  token: String
+  expires_at: Int
+}
+
+pub fn new_session(id: String, token: String): Session {
+  Session {
+    id: id
+    token: token
+    expires_at: 0
+  }
+}
+
+pub fn session_id(session: Session): String {
+  session.id
+}
+```
+
+Inside the declaring module, `Session` behaves like a record. From another package, only the type name and public functions are visible:
+
+```txt
+package app::ui
+
+import app::sessions
+
+pub fn label(session: sessions::Session): String {
+  sessions::session_id(session)
+}
+
+pub fn invalid_access(session: sessions::Session): String {
+  session.id
+}
+
+pub fn invalid_literal(): sessions::Session {
+  sessions::Session {
+    id: "ada"
+    token: "secret"
+    expires_at: 0
+  }
+}
+```
+
+`invalid_access` would be rejected because the representation is hidden. `invalid_literal` would be rejected because importing packages cannot construct opaque records directly.
+
+For external resources or runtime-backed values, the representation may not be a Muga record at all. A future `opaque type` is a better fit:
+
+```txt
+package std::db
+
+pub opaque type DbConnection
+
+pub fn connect(url: String): Result[DbConnection, DbError]
+pub fn execute(connection: DbConnection, sql: String): Result[Int, DbError]
+```
+
+`opaque record` is useful when the implementation is ordinary Muga data but should remain hidden. `opaque type` is useful when the implementation is a VM/runtime/native handle, or when Muga should not commit to a source-level field layout.
+
+### 14.2 Per-Field Visibility Candidate
+
+Per-field visibility should not be the next representation-hiding feature. It may be reconsidered only if concrete code needs a partially transparent public record: a type whose name and some fields are public, while other fields remain hidden.
+
+If per-field visibility is ever added, the recommended constraints are:
+
+- field visibility must not exceed the record's own visibility
+- writing `pub` fields inside a `pkg` or module-private record should be a compile-time error
+- writing `pkg` fields inside a module-private record should be a compile-time error
+- a public record with non-public fields could not be constructed, read, or updated through those fields outside their visibility boundary
+- constructor-style functions should be used when non-public fields are present
 
 The policy for protocol-like abstractions is defined in [012-protocols-deferred.md](./012-protocols-deferred.md).

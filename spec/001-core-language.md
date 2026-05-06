@@ -233,9 +233,7 @@ assign_like_stmt  := "mut" IDENT "=" expr
                    | IDENT "=" expr
 
 record_decl       := "record" IDENT "{" record_field_decl* "}"
-record_field_decl := field_visibility? IDENT ":" type_expr
-field_visibility   := "pub"
-                   | "pkg"
+record_field_decl := IDENT ":" type_expr
 
 func_decl         := "fn" IDENT "(" params? ")" return_annot? value_block
 return_annot      := ":" type_expr

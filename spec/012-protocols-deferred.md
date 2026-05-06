@@ -140,8 +140,10 @@ Package interfaces should initially store:
 
 - public type names
 - public function signatures
-- public record shapes and field visibility
+- public record shapes
 - generic signatures
+
+If opaque representations are added later, package interfaces should store public opaque type names without exposing their hidden field layout or runtime representation.
 
 Protocol-like abstractions would add more interface data:
 

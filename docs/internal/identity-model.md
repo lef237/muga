@@ -74,7 +74,7 @@ Current implementation:
 - item records keep source name, kind, visibility, declaring module, source span, and current mangled name
 - the existing VM path still consumes the flattened program
 
-Module-private visibility is now enforced for top-level package items during package rewriting. Unmodified top-level items are visible only inside their declaring source file, `pkg` items are visible to sibling files in the same package, and imports expose only `pub` items. Record field visibility is still a later slice.
+Module-private visibility is now enforced for top-level package items during package rewriting. Unmodified top-level items are visible only inside their declaring source file, `pkg` items are visible to sibling files in the same package, and imports expose only `pub` items. Per-field record visibility is not a required v1 slice; if public hidden representations become necessary, opaque records or opaque types should be evaluated first.
 
 This lets the compiler distinguish:
 
@@ -135,8 +135,7 @@ Remaining:
 
 1. decide and implement the first `Map[K, V]` slice
 2. make downstream package checking consume typed package interface summaries instead of the source-level export surface
-3. add record field visibility enforcement on top of module identity
-4. continue expanding structured diagnostics as new interface errors are introduced
+3. continue expanding structured diagnostics as new interface errors are introduced
 
 ## Foundation Note
 
