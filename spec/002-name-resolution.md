@@ -32,7 +32,7 @@ Package mode adds a visibility check after candidate lookup:
 - `pub` names are visible from importing packages
 - importing packages see only `pub` names through `alias::Name`
 
-The current compiler implementation enforces this model for top-level package records and functions before package flattening. Record field visibility is defined separately and remains a later implementation slice.
+The current compiler implementation enforces this model for top-level package records and functions before package flattening. Per-field record visibility is not part of the committed v1 model; visible records are transparent at the field level. If public hidden representations become necessary, opaque records or opaque types should be evaluated before field-level visibility.
 
 ## 1.1 Type Namespace
 

@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, and a minimal `muga.toml` project mode that infers package paths from `name` and `source`. Dependency manifests, registries, selective imports, record-field visibility, and package-level caching are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, and a minimal `muga.toml` project mode that infers package paths from `name` and `source`. Dependency manifests, registries, selective imports, package-level caching, and any future per-field record visibility are still deferred.
 
 ## 1. Design Goals
 
@@ -119,13 +119,12 @@ This applies to:
 
 - top-level `record` declarations
 - top-level `fn` declarations
-- record fields
 
 Current implementation note:
 
 - the compiler currently implements top-level module-private, `pkg`, and `pub` visibility before flattening
 - imports expose only `pub` items
-- record-field visibility is still deferred
+- per-field record visibility is not part of the committed v1 package model
 - package-level flattening still exists and should be replaced after typed HIR package references use stable package item identity
 
 Example:
@@ -400,7 +399,16 @@ These are invalid without more annotations because the exported signature is amb
 
 `record` fields already require explicit types, so `pub record` introduces no additional annotation burden there.
 
-However, a `pub record` may still contain non-public fields. Such fields are part of the record's representation but are not directly nameable outside their visibility boundary.
+In the committed v1 model, a `pub record` is transparent: its field names and field types are part of the public record shape. Importing packages can use record literals, field access, and `record.with(...)` for those public fields.
+
+If a representation should be hidden inside a module or package, keep the record itself non-public and expose functions that do not leak that non-public type across a wider visibility boundary.
+
+If a package later needs to expose a public type name while hiding its representation, the preferred future direction is an opaque representation feature:
+
+- `pub opaque record` for ordinary Muga data whose fields are visible only to the defining module
+- `pub opaque type` for runtime/native handles or values whose representation should not be source-level fields
+
+Per-field visibility is a weaker candidate and should be reconsidered only if concrete code needs partially transparent public records.
 
 ### 11.3 Why this rule exists
 

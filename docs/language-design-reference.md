@@ -242,6 +242,22 @@ Reason:
 - package-only privacy makes small abstractions leak across unrelated files
 - Muga should support fine-grained encapsulation without forcing many tiny directories
 
+### 3.6.1 Transparent records and opaque representations
+
+Muga should keep public records simple: a `pub record` is a transparent public data shape.
+
+Preferred direction:
+
+- use `pub record` for DTO-like values whose fields are part of the public API
+- keep implementation records non-public when the representation should stay local
+- consider future `pub opaque record` or `pub opaque type` before per-field visibility
+
+Reason:
+
+- field-level visibility adds rules for literals, field access, updates, destructuring, and package interfaces
+- many hidden-representation types want all construction and access to go through functions
+- runtime-backed resources such as files, sockets, database connections, and HTTP clients are better modeled as opaque handles than records with private fields
+
 ### 3.7 No raw-string internal state by default
 
 Muga should not use raw strings as the default representation for closed internal states.
