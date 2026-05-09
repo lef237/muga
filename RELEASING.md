@@ -2,9 +2,21 @@
 
 Muga is published to crates.io as `muga`.
 
-## Current Manual Checks
+## Choosing the Next Version
 
-Run these before cutting a release:
+Follow semantic versioning (`MAJOR.MINOR.PATCH`):
+
+| Change type | Field to bump | Example |
+|---|---|---|
+| Bug fixes or internal refactoring | PATCH | `0.1.3` → `0.1.4` |
+| Backwards-compatible new features | MINOR | `0.1.3` → `0.2.0` |
+| Breaking changes | MAJOR | `0.1.3` → `1.0.0` |
+
+The current version is in the `version` field of `Cargo.toml`.
+
+## Release Flow
+
+### 1. Run pre-release checks
 
 ```bash
 cargo fmt --check
@@ -12,19 +24,55 @@ cargo test --locked
 cargo publish --dry-run --locked
 ```
 
-## Release Flow
+Fix any errors before proceeding.
 
-1. Update `version` in `Cargo.toml`.
-2. Commit the release changes.
-3. Create and push an annotated tag:
+### 2. Bump the version
+
+Edit the `version` field in `Cargo.toml`:
+
+```toml
+version = "X.Y.Z"
+```
+
+Then update `Cargo.lock` to match:
+
+```bash
+cargo check
+```
+
+### 3. Commit
+
+```bash
+git add Cargo.toml Cargo.lock
+git commit -m "chore: bump version to vX.Y.Z"
+```
+
+### 4. Create an annotated tag
 
 ```bash
 git tag -a vX.Y.Z -m "muga vX.Y.Z"
+```
+
+Verify the tag was created correctly:
+
+```bash
+git tag -n | tail -5
+```
+
+### 5. Push
+
+```bash
 git push origin main
 git push origin vX.Y.Z
 ```
 
-The release workflow runs when a `v*` tag is pushed. It tests the crate, verifies the package, publishes it to crates.io, and creates a GitHub Release.
+Pushing a `v*` tag triggers the `release.yml` GitHub Actions workflow, which tests the crate, verifies the package, publishes it to crates.io, and creates a GitHub Release.
+
+### 6. Verify the release
+
+1. Check the Actions tab on GitHub and confirm the workflow succeeded.
+2. Confirm the new version appears on [crates.io/crates/muga](https://crates.io/crates/muga).
+3. Confirm a new release was created on the GitHub Releases page.
 
 ## Trusted Publishing Setup
 
