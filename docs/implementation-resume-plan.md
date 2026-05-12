@@ -2,7 +2,7 @@
 
 Status: current implementation ledger for 2026-05-12.
 
-Purpose: if prior conversation context is lost, read this file first. It records what the repository currently implements, what was verified, and what should be implemented next.
+Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
 ## Verification Snapshot
 
@@ -249,7 +249,7 @@ When resuming implementation:
 
 1. [ ] Run `cargo test`.
 2. [ ] Read this file.
-3. [ ] Read [docs/current-next-steps.md](./current-next-steps.md).
+3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
 5. [ ] Confirm whether the intended next code slice is user-defined enum declaration MVP or a package-interface task.
 6. [ ] Keep package flattening unchanged unless the task is explicitly package-interface persistence.
@@ -257,6 +257,7 @@ When resuming implementation:
 
 ```bash
 cargo test
+target/debug/muga check samples/println_sum.muga
 target/debug/muga samples/println_sum.muga
 target/debug/muga samples/packages/app/main/main.muga
 target/debug/muga samples/projects/my_service/src/main/main.muga
