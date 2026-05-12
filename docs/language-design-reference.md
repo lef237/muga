@@ -202,6 +202,10 @@ Muga should not make the following ordinary default mechanisms:
 - user-defined operator overloading in v1
 - hidden async suspension
 
+For recoverable errors, the current direction is `Result[T, E]` plus explicit `match`.
+If propagation sugar is added later, prefer a visible prefix form such as `try expr`
+over postfix `?`, because the expression may return early from the current function.
+
 Reason:
 
 - Muga should be easy to read locally

@@ -99,7 +99,7 @@ The best next implementation task is:
 
 1. implement user-defined `enum` declarations with zero-payload and one-payload variants
 2. route user-defined enum construction and `match` through the same metadata/runtime path as `Option` and `Result`
-3. keep `?` propagation sugar deferred until user-defined enum identity and public signatures are stable
+3. keep `try expr` propagation sugar deferred until user-defined enum identity and public signatures are stable
 4. keep map literals, `Set[T]`, arbitrary map keys, and broad stdlib collection APIs deferred
 
 Why this comes next:
@@ -123,7 +123,7 @@ These decisions affect near-term implementation and should be made before implem
 Decide:
 
 - the exact first user-defined enum declaration syntax
-- how future error propagation should relate to explicit `Result` `match`
+- how future `try expr` propagation should relate to explicit `Result` `match`
 - whether `Option[T]` remains compiler-known internally or becomes ordinary stdlib enum syntax later
 - what diagnostics and exhaustiveness rules apply to multi-variant enum `match`
 
@@ -137,6 +137,7 @@ Current recommendation:
 - defer trait, interface, protocol, and overloaded dispatch declarations
 - defer map literals, arbitrary map key types, `Set[T]`, and broad collection APIs
 - keep `T?` reserved, not implemented
+- prefer `try expr` over postfix `?` if Result propagation sugar is added
 - implement user-defined enums before widening stdlib effects
 
 ### 5.2 Before package interface implementation
@@ -179,16 +180,18 @@ Decide:
 
 - enum or sum-type syntax
 - pattern matching syntax
-- whether future `Result[T, E]` is an ordinary enum or a compiler-known standard type
+- whether compiler-known `Result[T, E]` should later be replaced by ordinary enum declarations without changing source syntax
 - whether the current compiler-known `Option[T]` should later be replaced by ordinary enum declarations without changing source syntax
-- whether `?` is reserved for optional shorthand, error propagation, optional chaining, or some combination
+- whether `try expr` is added for Result propagation before or after persisted package interfaces
+- whether `T?` remains reserved only for optional shorthand
 
 Current recommendation:
 
 - keep `Option[T]` canonical
 - keep `Option::Some` / `Option::None` qualified
 - reserve `T?` only as possible future shorthand
-- do not spend `?` on multiple meanings until error handling is designed
+- do not use postfix `?` for Result propagation in the current design direction
+- prefer visible `try expr` if explicit Result propagation proves too verbose
 
 ### 5.5 Before write-oriented API implementation
 

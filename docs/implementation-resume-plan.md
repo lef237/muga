@@ -145,7 +145,7 @@ Decide these before coding the next feature:
 - [ ] Whether match patterns must be exhaustive with no wildcard in the MVP.
 - [ ] How enum identities are represented across local declarations and packages.
 - [ ] How enum declarations appear in package interface summaries.
-- [ ] Whether `?` is reserved only for future error propagation, only for future `Option[T]` shorthand, or both with carefully separated grammar.
+- [x] Prefer `try expr` over postfix `?` if Result propagation sugar is added.
 
 Current recommendation:
 
@@ -154,7 +154,8 @@ Current recommendation:
 - MVP variants should support zero or one unnamed payload. This covers `Option[T]` and `Result[T, E]`.
 - Keep wildcard patterns deferred until basic exhaustiveness diagnostics are solid.
 - Keep `Option[T]` canonical; keep `T?` reserved and unimplemented.
-- Keep explicit `Result[T, E]` construction and `match` as the baseline before `?` propagation sugar.
+- Keep explicit `Result[T, E]` construction and `match` as the baseline before propagation sugar.
+- If propagation sugar is added, prefer `try expr` because it is visible and avoids overloading `?`.
 - Avoid adding broad stdlib effects until `Result` behavior is stable.
 
 Recommended source shape:
@@ -180,10 +181,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | Slice | Scope | Main files | Estimate | Risk |
 |---|---|---|---:|---|
 | 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. AST/HIR/typed HIR pattern shape, runtime enum value shape, compiler-known enum metadata, and generic two-variant bytecode/runtime branching are in place. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | Done | Low |
-| 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No `?` yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
+| 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
 | 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | 3-5 days | High |
 | 4. Generic enum declarations | Type parameters on enum declarations and variant constructors. This may share work with generic records/functions. | parser/AST/typechecker/package/typed HIR/tests | 3-6 days | High |
-| 5. Error propagation design | Specify `?` or an alternative propagation surface for `Result`. Implement only after Result match is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 5. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 | 6. Package interface persistence | Serialize public records/functions/enums, type identities, and hashes. Start consuming stored summaries for downstream checking. | `src/package.rs`, `src/typed_hir.rs`, new interface/cache modules, tests | 5-10 days | High |
 
 The safest immediate code slice is now Slice 3: add user-defined enum declaration syntax for zero-payload and one-payload variants, then route those declarations into the same match/type/runtime representation currently used by compiler-known `Option` and `Result`.
