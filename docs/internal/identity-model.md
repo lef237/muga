@@ -107,6 +107,7 @@ Current typed HIR status:
 - call expressions carry explicit resolved callee shape and call origin
 - package call targets and package record types carry `PackageItemId`-backed identity
 - package item identity is still partly recovered from flattened mangled names during typed HIR lowering; remove that transitional dependency before replacing package flattening
+- `Option` match patterns are represented as enum variant patterns with enum name, variant name, and optional payload binding
 
 ## Current Migration Status
 
@@ -130,7 +131,7 @@ Done:
 - typed package interface validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup is routed through `PackageExportGraph` before whole-program flattening
 - `PackageExportGraph` can be derived from either package identity data or typed package interface summaries
-- local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` / `Map[K, V]` `TypeInfo` cases, typed prelude list and map operations, direct list indexing, typed Option construction, and typed Option `match` are in place
+- local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` / `Map[K, V]` `TypeInfo` cases, typed prelude list and map operations, direct list indexing, typed Option construction, typed Option `match`, and enum-variant-shaped Option match patterns are in place
 
 Remaining:
 

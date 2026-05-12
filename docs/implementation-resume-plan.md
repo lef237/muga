@@ -7,7 +7,7 @@ Purpose: if prior conversation context is lost, read this file first. It records
 ## Verification Snapshot
 
 - [x] `git status --short --branch` showed a clean worktree on `main...origin/main` before this documentation update.
-- [x] `cargo test` passed: 144 tests, 0 failures.
+- [x] `cargo test` passed after the enum/ADT foundation refactor: 147 tests, 0 failures.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -57,6 +57,7 @@ Ada
 - [x] chained UFCS-style calls with `expr.name(...)`.
 - [x] package-qualified chained calls with `expr.alias::name(...)`.
 - [x] typed HIR preserves direct, chained, qualified chained, builtin, value, and package-item call targets.
+- [x] AST, HIR, and typed HIR preserve `Option` match arms as enum-variant-shaped patterns: enum name, variant name, and optional payload binding.
 
 ### Packages, Modules, And Interfaces
 
@@ -96,6 +97,7 @@ Important transition detail:
 - [x] direct list indexing returns `T`; negative or out-of-bounds indexes are runtime errors.
 - [x] safe list `get` returns `Option[T]`; negative or out-of-bounds indexes return `Option::None`.
 - [x] compiler-known `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match`.
+- [x] runtime `Option` values now use a generic `EnumValue` shape while preserving the existing `Option::Some(...)` / `Option::None` display and behavior.
 - [x] `Map[K, V]` with `Int`, `Bool`, and `String` keys.
 - [x] `Map.empty`, `len`, `is_empty`, `contains`, safe `get`, value-returning `insert`, and value-returning `remove`.
 - [ ] map literals are deferred.
@@ -110,13 +112,14 @@ Important transition detail:
 - typed HIR is the intended semantic boundary for future MIR, package interfaces, and native backend work.
 - The current bytecode backend still lowers from the older untyped HIR, not typed HIR.
 - `Option[T]` is implemented as a compiler-known enum-like type rather than as a user-defined enum.
-- `match` currently supports only `Option[T]`.
+- `match` currently supports only `Option[T]`, but match patterns are now represented internally as enum variant patterns.
+- Runtime `Option` values use a generic enum-value representation; typechecking and bytecode branching are still Option-specific.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
 - The public package interface model is in memory only; there is no serialized format, cache key, or incremental invalidation yet.
 
 ## Recommended Next Implementation
 
-The next implementation theme should be enum/sum-type and `Result[T, E]` foundations, before broad stdlib or persisted package-interface work.
+The next implementation theme remains enum/sum-type and `Result[T, E]` foundations, before broad stdlib or persisted package-interface work.
 
 Reasoning:
 
@@ -170,14 +173,14 @@ Estimates are in focused engineering days for someone already familiar with this
 
 | Slice | Scope | Main files | Estimate | Risk |
 |---|---|---|---:|---|
-| 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. Preserve all existing Option tests. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | 1-2 days | Medium |
+| 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. Preserve all existing Option tests. AST/HIR/typed HIR pattern shape and runtime enum value shape are done; typechecker enum metadata and bytecode branching still need the next cleanup. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | 0.5-1 day remaining | Medium |
 | 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No `?` yet. | `src/token.rs`, `src/parser.rs`, `src/ast.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | 1.5-3 days | Medium |
 | 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | 3-5 days | High |
 | 4. Generic enum declarations | Type parameters on enum declarations and variant constructors. This may share work with generic records/functions. | parser/AST/typechecker/package/typed HIR/tests | 3-6 days | High |
 | 5. Error propagation design | Specify `?` or an alternative propagation surface for `Result`. Implement only after Result match is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 | 6. Package interface persistence | Serialize public records/functions/enums, type identities, and hashes. Start consuming stored summaries for downstream checking. | `src/package.rs`, `src/typed_hir.rs`, new interface/cache modules, tests | 5-10 days | High |
 
-The safest immediate code slice is Slice 1. It reduces the amount of `Option`-only special casing before adding either `Result` or user-defined enums.
+The safest immediate code slice is to finish the remaining part of Slice 1: introduce a small enum metadata table for compiler-known `Option`, then make match checking and bytecode lowering consume that table instead of hard-coded `Some` / `None` searches. After that, add compiler-known `Result[T, E]`.
 
 ## Definition Of Done For The Next Code Slice
 

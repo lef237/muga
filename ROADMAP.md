@@ -518,6 +518,7 @@ Recently completed:
 - typed package interface validation uses package/name lookup and detects stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup reads `PackageExportGraph` before flattening, and `PackageExportGraph` can be derived from typed interfaces
 - local binding annotations, `List[T]` type annotations, list literals, list indexing, basic list operations including safe lookup and value-returning update, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, and the first `Map[K, V]` slice are implemented; map literals, `Set[T]`, and broader collection APIs remain reserved
+- AST/HIR/typed HIR now represent current `Option` match arms as enum variant patterns, and runtime `Option` values use a generic enum value shape as the first enum/ADT foundation slice
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

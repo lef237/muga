@@ -367,14 +367,21 @@ pub struct MatchArm {
 
 #[derive(Clone, Debug)]
 pub enum MatchPattern {
-    OptionSome { binding: String, span: Span },
-    OptionNone { span: Span },
+    Variant(EnumVariantPattern),
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumVariantPattern {
+    pub enum_name: String,
+    pub variant_name: String,
+    pub binding: Option<String>,
+    pub span: Span,
 }
 
 impl MatchPattern {
     pub fn span(&self) -> Span {
         match self {
-            Self::OptionSome { span, .. } | Self::OptionNone { span } => *span,
+            Self::Variant(pattern) => pattern.span,
         }
     }
 }

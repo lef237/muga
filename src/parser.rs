@@ -636,12 +636,19 @@ impl Parser {
                 let (binding, binding_span) = self.expect_ident()?;
                 let end =
                     self.expect_simple(TokenKind::RParen, "expected `)` after match binding")?;
-                Ok(MatchPattern::OptionSome {
-                    binding,
+                Ok(MatchPattern::Variant(EnumVariantPattern {
+                    enum_name: "Option".to_string(),
+                    variant_name: "Some".to_string(),
+                    binding: Some(binding),
                     span: name_span.merge(binding_span).merge(end),
-                })
+                }))
             }
-            "Option::None" => Ok(MatchPattern::OptionNone { span: name_span }),
+            "Option::None" => Ok(MatchPattern::Variant(EnumVariantPattern {
+                enum_name: "Option".to_string(),
+                variant_name: "None".to_string(),
+                binding: None,
+                span: name_span,
+            })),
             _ => Err(Diagnostic::new(
                 "P016",
                 "expected `Option::Some(name)` or `Option::None` pattern",

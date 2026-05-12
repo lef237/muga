@@ -85,6 +85,8 @@ Recently completed:
 - direct list indexing `xs[i]` is implemented. It returns `T`; negative and out-of-bounds indexes are runtime errors.
 - Empty list literals are accepted only when an expected `List[T]` type is available, such as `items: List[Int] = []`.
 - `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented through AST, resolver, typechecker, HIR, bytecode, VM runtime, typed HIR, and package interface summaries.
+- `Option` match arms are now represented internally as enum variant patterns in AST, HIR, and typed HIR.
+- runtime `Option` values now use a generic enum value shape while preserving source behavior and display.
 - `Map[K, V]` is implemented for `Int` / `Bool` / `String` keys with `Map.empty`, `len`, `is_empty`, `contains`, safe lookup `get`, value-returning `insert`, and value-returning `remove`.
 - `Map.empty()` requires an expected `Map[K, V]` type, usually from a local binding annotation, function return type, parameter type, or chained operation.
 - the existing VM bytecode path remains behavior-compatible.

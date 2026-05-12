@@ -264,8 +264,15 @@ pub struct MatchArm {
 
 #[derive(Clone, Debug)]
 pub enum MatchPattern {
-    OptionSome { binding: Symbol, span: Span },
-    OptionNone { span: Span },
+    Variant(EnumVariantPattern),
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumVariantPattern {
+    pub enum_name: Symbol,
+    pub variant_name: Symbol,
+    pub binding: Option<Symbol>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -460,14 +467,16 @@ impl Lowerer {
                     .iter()
                     .map(|arm| MatchArm {
                         pattern: match &arm.pattern {
-                            ast::MatchPattern::OptionSome { binding, span } => {
-                                MatchPattern::OptionSome {
-                                    binding: self.symbol(binding),
-                                    span: *span,
-                                }
-                            }
-                            ast::MatchPattern::OptionNone { span } => {
-                                MatchPattern::OptionNone { span: *span }
+                            ast::MatchPattern::Variant(pattern) => {
+                                MatchPattern::Variant(EnumVariantPattern {
+                                    enum_name: self.symbol(&pattern.enum_name),
+                                    variant_name: self.symbol(&pattern.variant_name),
+                                    binding: pattern
+                                        .binding
+                                        .as_ref()
+                                        .map(|binding| self.symbol(binding)),
+                                    span: pattern.span,
+                                })
                             }
                         },
                         value: self.lower_expr(&arm.value),

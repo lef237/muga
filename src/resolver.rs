@@ -350,8 +350,9 @@ impl Resolver {
                 self.resolve_expr(&expr.value);
                 for arm in &expr.arms {
                     self.push_scope(false);
-                    if let MatchPattern::OptionSome { binding, span } = &arm.pattern {
-                        self.resolve_pattern_binding(binding, *span);
+                    let MatchPattern::Variant(pattern) = &arm.pattern;
+                    if let Some(binding) = &pattern.binding {
+                        self.resolve_pattern_binding(binding, pattern.span);
                     }
                     self.resolve_expr(&arm.value);
                     self.pop_scope();
