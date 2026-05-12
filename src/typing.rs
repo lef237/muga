@@ -1933,7 +1933,7 @@ impl TypeChecker {
                 }
                 Type::List(Box::new(self.type_from_expr(&generic.args[0], span)))
             }
-            TypeExpr::Generic(generic) if generic.name == "Option" => {
+            TypeExpr::Generic(generic) if generic.name == known_enum::OPTION_NAME => {
                 if generic.args.len() != 1 {
                     self.diagnostics.push(Diagnostic::new(
                         "T017",
@@ -1944,7 +1944,7 @@ impl TypeChecker {
                 }
                 Type::Option(Box::new(self.type_from_expr(&generic.args[0], span)))
             }
-            TypeExpr::Generic(generic) if generic.name == "Result" => {
+            TypeExpr::Generic(generic) if generic.name == known_enum::RESULT_NAME => {
                 if generic.args.len() != 2 {
                     self.diagnostics.push(Diagnostic::new(
                         "T021",
@@ -2116,8 +2116,8 @@ impl TypeChecker {
                 params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
                 ret: Box::new(self.type_info_for(&sig.ret)),
             }),
-            Type::Builtin(builtin) => TypeInfo::Builtin(prelude::builtin_name(builtin)),
-            Type::OptionNone => TypeInfo::Builtin(known_enum::OPTION_NONE_QUALIFIED),
+            Type::Builtin(builtin) => TypeInfo::Builtin(builtin),
+            Type::OptionNone => TypeInfo::Builtin(BuiltinId::OptionNone),
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
         }

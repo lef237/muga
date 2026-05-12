@@ -2656,6 +2656,39 @@ fn main(): Int {
 }
 
 #[test]
+fn typechecker_builtin_type_info_uses_builtin_ids() {
+    let program = parse_source(
+        r#"
+fn main(): Option[Int] {
+  Option::None
+}
+"#,
+    );
+    let output = muga::typing::typecheck_program(&program);
+    assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+
+    let none = output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == "Option::None")
+        .expect("Option::None prelude binding should be exposed");
+    assert_eq!(
+        none.ty,
+        muga::types::TypeInfo::Builtin(muga::prelude::BuiltinId::OptionNone)
+    );
+
+    let some = output
+        .bindings
+        .iter()
+        .find(|binding| output.symbols.resolve(binding.symbol) == "Option::Some")
+        .expect("Option::Some prelude binding should be exposed");
+    assert_eq!(
+        some.ty,
+        muga::types::TypeInfo::Builtin(muga::prelude::BuiltinId::OptionSome)
+    );
+}
+
+#[test]
 fn parser_assigns_stable_expression_and_statement_ids() {
     let source = r#"
 fn main(): Int {

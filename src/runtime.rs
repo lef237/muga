@@ -616,15 +616,11 @@ fn call_function(
 ) -> Result<Value, Vec<Diagnostic>> {
     let definition = function.definition(program);
     if definition.params.len() != args.len() {
-        return Err(vec![Diagnostic::new(
-            "R012",
-            format!(
-                "expected {} arguments but found {}",
-                definition.params.len(),
-                args.len()
-            ),
+        return Err(arg_count_error(
+            definition.params.len(),
+            args.len(),
             definition.span,
-        )]);
+        ));
     }
 
     let env = Rc::new(RefCell::new(Env::new(
@@ -652,6 +648,52 @@ fn call_function(
     })
 }
 
+fn arg_count_error(expected: usize, actual: usize, span: Span) -> Vec<Diagnostic> {
+    vec![Diagnostic::new(
+        "R012",
+        format!("expected {expected} arguments but found {actual}"),
+        span,
+    )]
+}
+
+fn expect_no_args(args: Vec<Value>, span: Span) -> Result<(), Vec<Diagnostic>> {
+    if args.is_empty() {
+        Ok(())
+    } else {
+        Err(arg_count_error(0, args.len(), span))
+    }
+}
+
+fn expect_one_arg(args: Vec<Value>, span: Span) -> Result<Value, Vec<Diagnostic>> {
+    let actual = args.len();
+    let mut args = args.into_iter();
+    match (args.next(), args.next()) {
+        (Some(value), None) => Ok(value),
+        _ => Err(arg_count_error(1, actual, span)),
+    }
+}
+
+fn expect_two_args(args: Vec<Value>, span: Span) -> Result<(Value, Value), Vec<Diagnostic>> {
+    let actual = args.len();
+    let mut args = args.into_iter();
+    match (args.next(), args.next(), args.next()) {
+        (Some(first), Some(second), None) => Ok((first, second)),
+        _ => Err(arg_count_error(2, actual, span)),
+    }
+}
+
+fn expect_three_args(
+    args: Vec<Value>,
+    span: Span,
+) -> Result<(Value, Value, Value), Vec<Diagnostic>> {
+    let actual = args.len();
+    let mut args = args.into_iter();
+    match (args.next(), args.next(), args.next(), args.next()) {
+        (Some(first), Some(second), Some(third), None) => Ok((first, second, third)),
+        _ => Err(arg_count_error(3, actual, span)),
+    }
+}
+
 fn call_builtin(
     builtin: BuiltinId,
     args: Vec<Value>,
@@ -660,14 +702,7 @@ fn call_builtin(
 ) -> Result<Value, Vec<Diagnostic>> {
     match builtin {
         BuiltinId::Print => {
-            if args.len() != 1 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 1 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let value = args.into_iter().next().expect("checked length");
+            let value = expect_one_arg(args, span)?;
             match &value {
                 Value::Int(_) | Value::Bool(_) | Value::String(_) => {
                     env.borrow()
@@ -689,14 +724,7 @@ fn call_builtin(
             }
         }
         BuiltinId::Println => {
-            if args.len() != 1 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 1 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let value = args.into_iter().next().expect("checked length");
+            let value = expect_one_arg(args, span)?;
             match &value {
                 Value::Int(_) | Value::Bool(_) | Value::String(_) => {
                     let borrowed_env = env.borrow();
@@ -718,14 +746,7 @@ fn call_builtin(
             }
         }
         BuiltinId::Len => {
-            if args.len() != 1 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 1 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let value = args.into_iter().next().expect("checked length");
+            let value = expect_one_arg(args, span)?;
             match value {
                 Value::List(items) => Ok(Value::Int(items.len() as i64)),
                 Value::Map(map) => Ok(Value::Int(map.entries.len() as i64)),
@@ -737,14 +758,7 @@ fn call_builtin(
             }
         }
         BuiltinId::IsEmpty => {
-            if args.len() != 1 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 1 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let value = args.into_iter().next().expect("checked length");
+            let value = expect_one_arg(args, span)?;
             match value {
                 Value::List(items) => Ok(Value::Bool(items.is_empty())),
                 Value::Map(map) => Ok(Value::Bool(map.entries.is_empty())),
@@ -756,16 +770,7 @@ fn call_builtin(
             }
         }
         BuiltinId::Push => {
-            if args.len() != 2 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 2 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let mut args = args.into_iter();
-            let list = args.next().expect("checked length");
-            let value = args.next().expect("checked length");
+            let (list, value) = expect_two_args(args, span)?;
             match list {
                 Value::List(mut items) => {
                     items.push(value);
@@ -779,16 +784,7 @@ fn call_builtin(
             }
         }
         BuiltinId::Get => {
-            if args.len() != 2 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 2 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let mut args = args.into_iter();
-            let collection = args.next().expect("checked length");
-            let key_or_index = args.next().expect("checked length");
+            let (collection, key_or_index) = expect_two_args(args, span)?;
             match collection {
                 Value::List(items) => {
                     let Value::Int(index) = key_or_index else {
@@ -821,17 +817,7 @@ fn call_builtin(
             }
         }
         BuiltinId::Set => {
-            if args.len() != 3 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 3 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let mut args = args.into_iter();
-            let list = args.next().expect("checked length");
-            let index = args.next().expect("checked length");
-            let value = args.next().expect("checked length");
+            let (list, index, value) = expect_three_args(args, span)?;
             let Value::List(mut items) = list else {
                 return Err(vec![Diagnostic::new(
                     "R014",
@@ -844,28 +830,13 @@ fn call_builtin(
             Ok(Value::List(items))
         }
         BuiltinId::MapEmpty => {
-            if !args.is_empty() {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 0 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
+            expect_no_args(args, span)?;
             Ok(Value::Map(MapValue {
                 entries: Vec::new(),
             }))
         }
         BuiltinId::Contains => {
-            if args.len() != 2 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 2 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let mut args = args.into_iter();
-            let map = args.next().expect("checked length");
-            let key = args.next().expect("checked length");
+            let (map, key) = expect_two_args(args, span)?;
             let Value::Map(map) = map else {
                 return Err(vec![Diagnostic::new(
                     "R014",
@@ -879,17 +850,7 @@ fn call_builtin(
             ))
         }
         BuiltinId::Insert => {
-            if args.len() != 3 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 3 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let mut args = args.into_iter();
-            let map = args.next().expect("checked length");
-            let key = args.next().expect("checked length");
-            let value = args.next().expect("checked length");
+            let (map, key, value) = expect_three_args(args, span)?;
             let Value::Map(mut map) = map else {
                 return Err(vec![Diagnostic::new(
                     "R014",
@@ -906,16 +867,7 @@ fn call_builtin(
             Ok(Value::Map(map))
         }
         BuiltinId::Remove => {
-            if args.len() != 2 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 2 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let mut args = args.into_iter();
-            let map = args.next().expect("checked length");
-            let key = args.next().expect("checked length");
+            let (map, key) = expect_two_args(args, span)?;
             let Value::Map(mut map) = map else {
                 return Err(vec![Diagnostic::new(
                     "R014",
@@ -928,36 +880,15 @@ fn call_builtin(
             Ok(Value::Map(map))
         }
         BuiltinId::OptionSome => {
-            if args.len() != 1 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 1 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let value = args.into_iter().next().expect("checked length");
+            let value = expect_one_arg(args, span)?;
             Ok(option_some(value))
         }
         BuiltinId::ResultOk => {
-            if args.len() != 1 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 1 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let value = args.into_iter().next().expect("checked length");
+            let value = expect_one_arg(args, span)?;
             Ok(result_ok(value))
         }
         BuiltinId::ResultErr => {
-            if args.len() != 1 {
-                return Err(vec![Diagnostic::new(
-                    "R012",
-                    format!("expected 1 arguments but found {}", args.len()),
-                    span,
-                )]);
-            }
-            let value = args.into_iter().next().expect("checked length");
+            let value = expect_one_arg(args, span)?;
             Ok(result_err(value))
         }
         BuiltinId::OptionNone => Err(vec![Diagnostic::new(

@@ -1,6 +1,6 @@
 # Current Next Steps
 
-Status: working resume note. The implementation ledger and last verification snapshot live in [implementation-resume-plan.md](./implementation-resume-plan.md).
+Status: current implementation guide. The implementation ledger and last verification snapshot live in [implementation-resume-plan.md](./implementation-resume-plan.md).
 
 ## Baseline
 
@@ -29,7 +29,7 @@ Implemented:
 - `interface` owns in-memory package interface summaries for public records/functions
 - `types` owns shared public `TypeInfo` data used by typechecker output, typed HIR, and interfaces
 - package rewriting attaches item identity to flattened AST declarations; typed HIR and `interface` use those IDs instead of recovering them from mangled names
-- shared prelude/builtin identity catalog; resolver, typechecker, runtime, and package builtin lookup all use `BuiltinId`
+- shared prelude/builtin identity catalog; resolver, typechecker output, runtime, and package builtin lookup all use `BuiltinId`
 - local binding annotations and generic type expressions
 - `List[T]` literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - compiler-known `Option[T]` and `Result[T, E]` with qualified constructors and exhaustive `match`
