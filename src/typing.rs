@@ -4,6 +4,7 @@ use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId};
 use crate::known_enum::{self, KnownEnum, KnownEnumVariant};
+use crate::prelude::{self, BuiltinId, BuiltinKind};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
@@ -135,6 +136,51 @@ enum BuiltinFunction {
     OptionSome,
     ResultOk,
     ResultErr,
+}
+
+impl BuiltinFunction {
+    fn from_prelude_id(id: BuiltinId) -> Option<Self> {
+        match id {
+            BuiltinId::Print => Some(Self::Print),
+            BuiltinId::Println => Some(Self::Println),
+            BuiltinId::Len => Some(Self::Len),
+            BuiltinId::IsEmpty => Some(Self::IsEmpty),
+            BuiltinId::Push => Some(Self::ListPush),
+            BuiltinId::Get => Some(Self::Get),
+            BuiltinId::Set => Some(Self::ListSet),
+            BuiltinId::MapEmpty => Some(Self::MapEmpty),
+            BuiltinId::Contains => Some(Self::Contains),
+            BuiltinId::Insert => Some(Self::Insert),
+            BuiltinId::Remove => Some(Self::Remove),
+            BuiltinId::OptionSome => Some(Self::OptionSome),
+            BuiltinId::OptionNone => None,
+            BuiltinId::ResultOk => Some(Self::ResultOk),
+            BuiltinId::ResultErr => Some(Self::ResultErr),
+        }
+    }
+
+    fn prelude_id(self) -> BuiltinId {
+        match self {
+            Self::Print => BuiltinId::Print,
+            Self::Println => BuiltinId::Println,
+            Self::Len => BuiltinId::Len,
+            Self::IsEmpty => BuiltinId::IsEmpty,
+            Self::ListPush => BuiltinId::Push,
+            Self::Get => BuiltinId::Get,
+            Self::ListSet => BuiltinId::Set,
+            Self::MapEmpty => BuiltinId::MapEmpty,
+            Self::Contains => BuiltinId::Contains,
+            Self::Insert => BuiltinId::Insert,
+            Self::Remove => BuiltinId::Remove,
+            Self::OptionSome => BuiltinId::OptionSome,
+            Self::ResultOk => BuiltinId::ResultOk,
+            Self::ResultErr => BuiltinId::ResultErr,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        prelude::builtin_name(self.prelude_id())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -277,111 +323,22 @@ impl TypeChecker {
     }
 
     fn install_prelude(&mut self) {
-        let print = self.symbol("print");
-        self.insert_current(
-            print,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::Print),
-            Span::default(),
-        );
-        let println = self.symbol("println");
-        self.insert_current(
-            println,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::Println),
-            Span::default(),
-        );
-        let len = self.symbol("len");
-        self.insert_current(
-            len,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::Len),
-            Span::default(),
-        );
-        let is_empty = self.symbol("is_empty");
-        self.insert_current(
-            is_empty,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::IsEmpty),
-            Span::default(),
-        );
-        let push = self.symbol("push");
-        self.insert_current(
-            push,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::ListPush),
-            Span::default(),
-        );
-        let get = self.symbol("get");
-        self.insert_current(
-            get,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::Get),
-            Span::default(),
-        );
-        let set = self.symbol("set");
-        self.insert_current(
-            set,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::ListSet),
-            Span::default(),
-        );
-        let map_empty = self.symbol("Map.empty");
-        self.insert_current(
-            map_empty,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::MapEmpty),
-            Span::default(),
-        );
-        let contains = self.symbol("contains");
-        self.insert_current(
-            contains,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::Contains),
-            Span::default(),
-        );
-        let insert = self.symbol("insert");
-        self.insert_current(
-            insert,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::Insert),
-            Span::default(),
-        );
-        let remove = self.symbol("remove");
-        self.insert_current(
-            remove,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::Remove),
-            Span::default(),
-        );
-        let option_some = self.symbol(known_enum::OPTION_SOME_QUALIFIED);
-        self.insert_current(
-            option_some,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::OptionSome),
-            Span::default(),
-        );
-        let option_none = self.symbol(known_enum::OPTION_NONE_QUALIFIED);
-        self.insert_current(
-            option_none,
-            BindingKind::Immutable,
-            Type::OptionNone,
-            Span::default(),
-        );
-        let result_ok = self.symbol(known_enum::RESULT_OK_QUALIFIED);
-        self.insert_current(
-            result_ok,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::ResultOk),
-            Span::default(),
-        );
-        let result_err = self.symbol(known_enum::RESULT_ERR_QUALIFIED);
-        self.insert_current(
-            result_err,
-            BindingKind::Function,
-            Type::Builtin(BuiltinFunction::ResultErr),
-            Span::default(),
-        );
+        for builtin in prelude::builtins() {
+            let kind = match builtin.kind {
+                BuiltinKind::Function => BindingKind::Function,
+                BuiltinKind::Value => BindingKind::Immutable,
+            };
+            let ty = if builtin.id == BuiltinId::OptionNone {
+                Type::OptionNone
+            } else {
+                Type::Builtin(
+                    BuiltinFunction::from_prelude_id(builtin.id)
+                        .expect("prelude function must map to a typing builtin"),
+                )
+            };
+            let symbol = self.symbol(builtin.name);
+            self.insert_current(symbol, kind, ty, Span::default());
+        }
     }
 
     fn check_scope_statements(&mut self, statements: &[Stmt]) {
@@ -2254,26 +2211,7 @@ impl TypeChecker {
                 params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
                 ret: Box::new(self.type_info_for(&sig.ret)),
             }),
-            Type::Builtin(BuiltinFunction::Print) => TypeInfo::Builtin("print"),
-            Type::Builtin(BuiltinFunction::Println) => TypeInfo::Builtin("println"),
-            Type::Builtin(BuiltinFunction::Len) => TypeInfo::Builtin("len"),
-            Type::Builtin(BuiltinFunction::IsEmpty) => TypeInfo::Builtin("is_empty"),
-            Type::Builtin(BuiltinFunction::ListPush) => TypeInfo::Builtin("push"),
-            Type::Builtin(BuiltinFunction::Get) => TypeInfo::Builtin("get"),
-            Type::Builtin(BuiltinFunction::ListSet) => TypeInfo::Builtin("set"),
-            Type::Builtin(BuiltinFunction::MapEmpty) => TypeInfo::Builtin("Map.empty"),
-            Type::Builtin(BuiltinFunction::Contains) => TypeInfo::Builtin("contains"),
-            Type::Builtin(BuiltinFunction::Insert) => TypeInfo::Builtin("insert"),
-            Type::Builtin(BuiltinFunction::Remove) => TypeInfo::Builtin("remove"),
-            Type::Builtin(BuiltinFunction::OptionSome) => {
-                TypeInfo::Builtin(known_enum::OPTION_SOME_QUALIFIED)
-            }
-            Type::Builtin(BuiltinFunction::ResultOk) => {
-                TypeInfo::Builtin(known_enum::RESULT_OK_QUALIFIED)
-            }
-            Type::Builtin(BuiltinFunction::ResultErr) => {
-                TypeInfo::Builtin(known_enum::RESULT_ERR_QUALIFIED)
-            }
+            Type::Builtin(builtin) => TypeInfo::Builtin(builtin.name()),
             Type::OptionNone => TypeInfo::Builtin(known_enum::OPTION_NONE_QUALIFIED),
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
@@ -2329,22 +2267,7 @@ impl TypeChecker {
     }
 
     fn builtin_name(builtin: BuiltinFunction) -> &'static str {
-        match builtin {
-            BuiltinFunction::Print => "print",
-            BuiltinFunction::Println => "println",
-            BuiltinFunction::Len => "len",
-            BuiltinFunction::IsEmpty => "is_empty",
-            BuiltinFunction::ListPush => "push",
-            BuiltinFunction::Get => "get",
-            BuiltinFunction::ListSet => "set",
-            BuiltinFunction::MapEmpty => "Map.empty",
-            BuiltinFunction::Contains => "contains",
-            BuiltinFunction::Insert => "insert",
-            BuiltinFunction::Remove => "remove",
-            BuiltinFunction::OptionSome => known_enum::OPTION_SOME_QUALIFIED,
-            BuiltinFunction::ResultOk => known_enum::RESULT_OK_QUALIFIED,
-            BuiltinFunction::ResultErr => known_enum::RESULT_ERR_QUALIFIED,
-        }
+        builtin.name()
     }
 
     fn apply_expected(

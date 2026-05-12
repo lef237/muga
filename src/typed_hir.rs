@@ -1,14 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::{
     ast,
-    diagnostic::Diagnostic,
     identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId},
-    package::{
-        PackageInterface, PackageInterfaceField, PackageInterfaceFunction, PackageInterfaceGraph,
-        PackageInterfaceParam, PackageInterfaceRecord, PackageItemInfo, PackageItemKind,
-        PackageSymbolGraph,
-    },
+    package::PackageSymbolGraph,
     span::Span,
     symbol::{Symbol, SymbolTable},
     typing::{
@@ -23,409 +18,6 @@ pub struct Program {
     pub bindings: Vec<TypedBindingInfo>,
     pub package_graph: PackageSymbolGraph,
     pub symbols: SymbolTable,
-}
-
-impl Program {
-    pub fn package_interfaces(&self) -> PackageInterfaceGraph {
-        let records_by_mangled_name: HashMap<&str, &RecordStmt> = self
-            .statements
-            .iter()
-            .filter_map(|statement| match statement {
-                Stmt::Record(record) => Some((record.name.as_str(), record)),
-                _ => None,
-            })
-            .collect();
-        let functions_by_mangled_name: HashMap<&str, &FunctionStmt> = self
-            .statements
-            .iter()
-            .filter_map(|statement| match statement {
-                Stmt::Function(function) => Some((function.name.as_str(), function)),
-                _ => None,
-            })
-            .collect();
-
-        let packages = self
-            .package_graph
-            .packages
-            .iter()
-            .map(|package| {
-                let mut records = Vec::new();
-                let mut functions = Vec::new();
-
-                for item in self.package_graph.items.iter().filter(|item| {
-                    item.package == package.id && item.visibility == ast::Visibility::Public
-                }) {
-                    match item.kind {
-                        PackageItemKind::Record => {
-                            if let Some(record) =
-                                records_by_mangled_name.get(item.mangled_name.as_str())
-                            {
-                                records.push(PackageInterfaceRecord {
-                                    item: item.id,
-                                    name: item.name.clone(),
-                                    fields: record
-                                        .fields
-                                        .iter()
-                                        .map(|field| PackageInterfaceField {
-                                            name: field.name.clone(),
-                                            ty: field.ty.clone(),
-                                            span: field.span,
-                                        })
-                                        .collect(),
-                                    span: item.span,
-                                });
-                            }
-                        }
-                        PackageItemKind::Function => {
-                            if let Some(function) =
-                                functions_by_mangled_name.get(item.mangled_name.as_str())
-                            {
-                                functions.push(PackageInterfaceFunction {
-                                    item: item.id,
-                                    name: item.name.clone(),
-                                    params: function
-                                        .params
-                                        .iter()
-                                        .map(|param| PackageInterfaceParam {
-                                            name: param.name.clone(),
-                                            ty: param.ty.clone(),
-                                            span: param.span,
-                                        })
-                                        .collect(),
-                                    ret: function.return_ty.clone(),
-                                    span: item.span,
-                                });
-                            }
-                        }
-                    }
-                }
-
-                PackageInterface {
-                    package: package.id,
-                    path: package.path.clone(),
-                    records,
-                    functions,
-                }
-            })
-            .collect();
-
-        PackageInterfaceGraph { packages }
-    }
-
-    pub fn validate_package_references_against_interfaces(
-        &self,
-        interfaces: &PackageInterfaceGraph,
-    ) -> Vec<Diagnostic> {
-        let mut validator = PackageInterfaceReferenceValidator {
-            program: self,
-            interfaces,
-            checked_items: HashSet::new(),
-            diagnostics: Vec::new(),
-        };
-        validator.validate();
-        validator.diagnostics
-    }
-}
-
-struct PackageInterfaceReferenceValidator<'a> {
-    program: &'a Program,
-    interfaces: &'a PackageInterfaceGraph,
-    checked_items: HashSet<PackageItemId>,
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl<'a> PackageInterfaceReferenceValidator<'a> {
-    fn validate(&mut self) {
-        for binding in &self.program.bindings {
-            self.validate_type(&binding.ty, binding.span);
-        }
-        for statement in &self.program.statements {
-            self.validate_stmt(statement);
-        }
-    }
-
-    fn validate_stmt(&mut self, statement: &Stmt) {
-        match statement {
-            Stmt::Assign(stmt) => self.validate_expr(&stmt.value),
-            Stmt::Record(record) => {
-                for field in &record.fields {
-                    self.validate_type(&field.ty, field.span);
-                }
-            }
-            Stmt::Function(function) => {
-                for param in &function.params {
-                    self.validate_type(&param.ty, param.span);
-                }
-                self.validate_type(&function.return_ty, function.span);
-                self.validate_value_block(&function.body);
-            }
-            Stmt::If(stmt) => {
-                self.validate_expr(&stmt.condition);
-                self.validate_block(&stmt.then_branch);
-                if let Some(else_branch) = &stmt.else_branch {
-                    self.validate_block(else_branch);
-                }
-            }
-            Stmt::While(stmt) => {
-                self.validate_expr(&stmt.condition);
-                self.validate_block(&stmt.body);
-            }
-            Stmt::Expr(stmt) => self.validate_expr(&stmt.expr),
-        }
-    }
-
-    fn validate_block(&mut self, block: &Block) {
-        for statement in &block.statements {
-            self.validate_stmt(statement);
-        }
-    }
-
-    fn validate_value_block(&mut self, block: &ValueBlock) {
-        for statement in &block.statements {
-            self.validate_stmt(statement);
-        }
-        self.validate_expr(&block.expr);
-    }
-
-    fn validate_expr(&mut self, expr: &Expr) {
-        self.validate_type(&expr.ty, expr.span);
-        match &expr.kind {
-            ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) => {}
-            ExprKind::Ident(ident) => {
-                if let IdentTarget::PackageItem { item, .. } = ident.target {
-                    self.validate_item(item, expr.span);
-                }
-            }
-            ExprKind::ListLit(list) => {
-                for item in &list.items {
-                    self.validate_expr(item);
-                }
-            }
-            ExprKind::RecordLit(record) => {
-                for field in &record.fields {
-                    self.validate_expr(&field.value);
-                }
-            }
-            ExprKind::Field(field) => self.validate_expr(&field.base),
-            ExprKind::RecordUpdate(update) => {
-                self.validate_expr(&update.base);
-                for field in &update.fields {
-                    self.validate_expr(&field.value);
-                }
-            }
-            ExprKind::Index(index) => {
-                self.validate_expr(&index.base);
-                self.validate_expr(&index.index);
-            }
-            ExprKind::Unary(unary) => self.validate_expr(&unary.expr),
-            ExprKind::Binary(binary) => {
-                self.validate_expr(&binary.left);
-                self.validate_expr(&binary.right);
-            }
-            ExprKind::Call(call) => {
-                self.validate_expr(&call.callee);
-                for arg in &call.args {
-                    self.validate_expr(arg);
-                }
-            }
-            ExprKind::If(if_expr) => {
-                self.validate_expr(&if_expr.condition);
-                self.validate_value_block(&if_expr.then_branch);
-                self.validate_value_block(&if_expr.else_branch);
-            }
-            ExprKind::Match(match_expr) => {
-                self.validate_expr(&match_expr.value);
-                for arm in &match_expr.arms {
-                    self.validate_expr(&arm.value);
-                }
-            }
-            ExprKind::Fn(fn_expr) => {
-                for param in &fn_expr.params {
-                    self.validate_type(&param.ty, param.span);
-                }
-                self.validate_type(&fn_expr.return_ty, expr.span);
-                self.validate_value_block(&fn_expr.body);
-            }
-        }
-    }
-
-    fn validate_type(&mut self, ty: &TypeInfo, span: Span) {
-        match ty {
-            TypeInfo::PackageRecord { item, .. } => self.validate_item(*item, span),
-            TypeInfo::List(item) => self.validate_type(item, span),
-            TypeInfo::Map(key, value) => {
-                self.validate_type(key, span);
-                self.validate_type(value, span);
-            }
-            TypeInfo::Option(item) => self.validate_type(item, span),
-            TypeInfo::Result(ok, err) => {
-                self.validate_type(ok, span);
-                self.validate_type(err, span);
-            }
-            TypeInfo::Function(function) => {
-                for param in &function.params {
-                    self.validate_type(param, span);
-                }
-                self.validate_type(&function.ret, span);
-            }
-            _ => {}
-        }
-    }
-
-    fn validate_item(&mut self, item: PackageItemId, span: Span) {
-        if !self.checked_items.insert(item) {
-            return;
-        }
-
-        let Some(info) = self.program.package_graph.item(item).cloned() else {
-            self.diagnostics.push(Diagnostic::new(
-                "PK016",
-                format!(
-                    "package interface reference points at unknown item {:?}",
-                    item
-                ),
-                span,
-            ));
-            return;
-        };
-        if info.visibility != ast::Visibility::Public {
-            return;
-        }
-
-        match info.kind {
-            PackageItemKind::Record => {
-                let Some(interface) = self.interfaces.record_by_name(info.package, &info.name)
-                else {
-                    self.push_missing_interface_export(&info, "record", span);
-                    return;
-                };
-                if interface.item != item {
-                    self.push_stale_interface_diagnostic(&info, "record identity", span);
-                    return;
-                }
-                self.validate_record_shape(&info, interface, span);
-            }
-            PackageItemKind::Function => {
-                let Some(interface) = self.interfaces.function_by_name(info.package, &info.name)
-                else {
-                    self.push_missing_interface_export(&info, "function", span);
-                    return;
-                };
-                if interface.item != item {
-                    self.push_stale_interface_diagnostic(&info, "function identity", span);
-                    return;
-                }
-                self.validate_function_signature(&info, interface, span);
-            }
-        }
-    }
-
-    fn validate_record_shape(
-        &mut self,
-        info: &PackageItemInfo,
-        interface: &PackageInterfaceRecord,
-        span: Span,
-    ) {
-        let Some(record) = self.record_stmt_for(info) else {
-            self.push_stale_interface_diagnostic(info, "record shape", span);
-            return;
-        };
-        let matches = record.fields.len() == interface.fields.len()
-            && record
-                .fields
-                .iter()
-                .zip(interface.fields.iter())
-                .all(|(field, expected)| field.name == expected.name && field.ty == expected.ty);
-        if !matches {
-            self.push_stale_interface_diagnostic(info, "record shape", span);
-        }
-    }
-
-    fn validate_function_signature(
-        &mut self,
-        info: &PackageItemInfo,
-        interface: &PackageInterfaceFunction,
-        span: Span,
-    ) {
-        let Some(function) = self.function_stmt_for(info) else {
-            self.push_stale_interface_diagnostic(info, "function signature", span);
-            return;
-        };
-        let matches = function.params.len() == interface.params.len()
-            && function
-                .params
-                .iter()
-                .zip(interface.params.iter())
-                .all(|(param, expected)| param.name == expected.name && param.ty == expected.ty)
-            && function.return_ty == interface.ret;
-        if !matches {
-            self.push_stale_interface_diagnostic(info, "function signature", span);
-        }
-    }
-
-    fn record_stmt_for(&self, info: &PackageItemInfo) -> Option<&RecordStmt> {
-        self.program
-            .statements
-            .iter()
-            .find_map(|statement| match statement {
-                Stmt::Record(record) if record.name == info.mangled_name => Some(record),
-                _ => None,
-            })
-    }
-
-    fn function_stmt_for(&self, info: &PackageItemInfo) -> Option<&FunctionStmt> {
-        self.program
-            .statements
-            .iter()
-            .find_map(|statement| match statement {
-                Stmt::Function(function) if function.name == info.mangled_name => Some(function),
-                _ => None,
-            })
-    }
-
-    fn push_missing_interface_export(&mut self, info: &PackageItemInfo, kind: &str, span: Span) {
-        self.diagnostics.push(
-            Diagnostic::new(
-                "PK016",
-                format!(
-                    "package interface for `{}` does not export {kind} `{}`",
-                    self.package_path(info),
-                    info.name
-                ),
-                span,
-            )
-            .with_related("package item is declared here", info.span),
-        );
-    }
-
-    fn push_stale_interface_diagnostic(
-        &mut self,
-        info: &PackageItemInfo,
-        interface_part: &str,
-        span: Span,
-    ) {
-        self.diagnostics.push(
-            Diagnostic::new(
-                "PK017",
-                format!(
-                    "package interface for `{}` has stale {interface_part} for `{}`",
-                    self.package_path(info),
-                    info.name
-                ),
-                span,
-            )
-            .with_related("package item is declared here", info.span)
-            .with_suggestion("regenerate the package interface"),
-        );
-    }
-
-    fn package_path(&self, info: &PackageItemInfo) -> &str {
-        self.program
-            .package_graph
-            .package(info.package)
-            .map(|package| package.path.as_str())
-            .unwrap_or("<unknown>")
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -466,6 +58,7 @@ pub struct AssignStmt {
 pub struct RecordStmt {
     pub id: StmtId,
     pub name: String,
+    pub package_item: Option<PackageItemId>,
     pub fields: Vec<RecordField>,
     pub span: Span,
 }
@@ -482,6 +75,7 @@ pub struct FunctionStmt {
     pub id: StmtId,
     pub name: String,
     pub binding: BindingId,
+    pub package_item: Option<PackageItemId>,
     pub params: Vec<Param>,
     pub return_ty: TypeInfo,
     pub body: ValueBlock,
@@ -816,6 +410,7 @@ impl<'a> Lowerer<'a> {
             ast::Stmt::RecordDecl(stmt) => Stmt::Record(RecordStmt {
                 id: stmt.id,
                 name: stmt.name.clone(),
+                package_item: self.package_item_for_symbol_name(&stmt.name),
                 fields: stmt
                     .fields
                     .iter()
@@ -834,6 +429,7 @@ impl<'a> Lowerer<'a> {
                     id: stmt.id,
                     name: stmt.name.clone(),
                     binding,
+                    package_item: self.package_items_by_binding.get(&binding).copied(),
                     params: stmt
                         .params
                         .iter()
@@ -1088,6 +684,14 @@ impl<'a> Lowerer<'a> {
                 .unwrap_or(TypedCalleeInfo::Binding(binding)),
             other => other,
         }
+    }
+
+    fn package_item_for_symbol_name(&self, name: &str) -> Option<PackageItemId> {
+        self.analysis
+            .symbols
+            .lookup(name)
+            .and_then(|symbol| self.package_items_by_symbol.get(&symbol))
+            .copied()
     }
 
     fn binding_for_decl(&self, name: &str, span: Span, kind: BindingKind) -> BindingId {

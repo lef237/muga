@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{BindingId, BindingKind, ExprId};
-use crate::known_enum;
+use crate::prelude::{self, BuiltinKind};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
@@ -106,36 +106,14 @@ impl Resolver {
     }
 
     fn install_prelude(&mut self) {
-        let print = self.symbol("print");
-        self.insert_current(print, BindingKind::Function, Span::default());
-        let println = self.symbol("println");
-        self.insert_current(println, BindingKind::Function, Span::default());
-        let len = self.symbol("len");
-        self.insert_current(len, BindingKind::Function, Span::default());
-        let is_empty = self.symbol("is_empty");
-        self.insert_current(is_empty, BindingKind::Function, Span::default());
-        let push = self.symbol("push");
-        self.insert_current(push, BindingKind::Function, Span::default());
-        let get = self.symbol("get");
-        self.insert_current(get, BindingKind::Function, Span::default());
-        let set = self.symbol("set");
-        self.insert_current(set, BindingKind::Function, Span::default());
-        let map_empty = self.symbol("Map.empty");
-        self.insert_current(map_empty, BindingKind::Function, Span::default());
-        let contains = self.symbol("contains");
-        self.insert_current(contains, BindingKind::Function, Span::default());
-        let insert = self.symbol("insert");
-        self.insert_current(insert, BindingKind::Function, Span::default());
-        let remove = self.symbol("remove");
-        self.insert_current(remove, BindingKind::Function, Span::default());
-        let option_some = self.symbol(known_enum::OPTION_SOME_QUALIFIED);
-        self.insert_current(option_some, BindingKind::Function, Span::default());
-        let option_none = self.symbol(known_enum::OPTION_NONE_QUALIFIED);
-        self.insert_current(option_none, BindingKind::Immutable, Span::default());
-        let result_ok = self.symbol(known_enum::RESULT_OK_QUALIFIED);
-        self.insert_current(result_ok, BindingKind::Function, Span::default());
-        let result_err = self.symbol(known_enum::RESULT_ERR_QUALIFIED);
-        self.insert_current(result_err, BindingKind::Function, Span::default());
+        for builtin in prelude::builtins() {
+            let kind = match builtin.kind {
+                BuiltinKind::Function => BindingKind::Function,
+                BuiltinKind::Value => BindingKind::Immutable,
+            };
+            let symbol = self.symbol(builtin.name);
+            self.insert_current(symbol, kind, Span::default());
+        }
     }
 
     fn resolve_scope_statements(&mut self, statements: &[Stmt]) {

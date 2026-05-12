@@ -67,10 +67,12 @@ Ada
 - [x] module/file-private top-level items by default.
 - [x] `pkg` visibility for sibling files in the same package.
 - [x] `pub` visibility for importable items.
-- [x] public export lookup through `PackageExportGraph`.
-- [x] in-memory package interface summaries for public records and functions.
+- [x] public export lookup through `interface::PackageExportGraph`.
+- [x] typed HIR public record/function statements carry package item identity.
+- [x] `interface` owns in-memory package interface summaries for public records and functions.
 - [x] interface summaries preserve public `TypeInfo`, package record identity, collection types, and compiler-known `Result` signatures.
-- [x] typed package compilation validates references against generated in-memory interfaces.
+- [x] `interface` validates typed package compilation references against generated in-memory interfaces.
+- [x] resolver, typechecker, runtime, and package builtin filtering share one prelude builtin catalog.
 - [ ] persisted package interface files are not implemented.
 - [ ] downstream package checking does not yet consume stored interface artifacts.
 - [ ] package flattening is still the execution/checking pipeline.

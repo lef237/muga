@@ -4,6 +4,7 @@ use crate::{
     bytecode::*,
     diagnostic::Diagnostic,
     known_enum::{self, KnownEnum, KnownEnumVariant},
+    prelude::{self, BuiltinId},
     span::Span,
     symbol::Symbol,
 };
@@ -252,23 +253,47 @@ pub enum BuiltinFunction {
 }
 
 impl BuiltinFunction {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Print => "print",
-            Self::Println => "println",
-            Self::Len => "len",
-            Self::IsEmpty => "is_empty",
-            Self::ListPush => "push",
-            Self::Get => "get",
-            Self::ListSet => "set",
-            Self::MapEmpty => "Map.empty",
-            Self::Contains => "contains",
-            Self::Insert => "insert",
-            Self::Remove => "remove",
-            Self::OptionSome => known_enum::OPTION_SOME_QUALIFIED,
-            Self::ResultOk => known_enum::RESULT_OK_QUALIFIED,
-            Self::ResultErr => known_enum::RESULT_ERR_QUALIFIED,
+    fn from_prelude_id(id: BuiltinId) -> Option<Self> {
+        match id {
+            BuiltinId::Print => Some(Self::Print),
+            BuiltinId::Println => Some(Self::Println),
+            BuiltinId::Len => Some(Self::Len),
+            BuiltinId::IsEmpty => Some(Self::IsEmpty),
+            BuiltinId::Push => Some(Self::ListPush),
+            BuiltinId::Get => Some(Self::Get),
+            BuiltinId::Set => Some(Self::ListSet),
+            BuiltinId::MapEmpty => Some(Self::MapEmpty),
+            BuiltinId::Contains => Some(Self::Contains),
+            BuiltinId::Insert => Some(Self::Insert),
+            BuiltinId::Remove => Some(Self::Remove),
+            BuiltinId::OptionSome => Some(Self::OptionSome),
+            BuiltinId::OptionNone => None,
+            BuiltinId::ResultOk => Some(Self::ResultOk),
+            BuiltinId::ResultErr => Some(Self::ResultErr),
         }
+    }
+
+    fn prelude_id(self) -> BuiltinId {
+        match self {
+            Self::Print => BuiltinId::Print,
+            Self::Println => BuiltinId::Println,
+            Self::Len => BuiltinId::Len,
+            Self::IsEmpty => BuiltinId::IsEmpty,
+            Self::ListPush => BuiltinId::Push,
+            Self::Get => BuiltinId::Get,
+            Self::ListSet => BuiltinId::Set,
+            Self::MapEmpty => BuiltinId::MapEmpty,
+            Self::Contains => BuiltinId::Contains,
+            Self::Insert => BuiltinId::Insert,
+            Self::Remove => BuiltinId::Remove,
+            Self::OptionSome => BuiltinId::OptionSome,
+            Self::ResultOk => BuiltinId::ResultOk,
+            Self::ResultErr => BuiltinId::ResultErr,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        prelude::builtin_name(self.prelude_id())
     }
 }
 
@@ -1205,152 +1230,23 @@ fn update_record_value(
 }
 
 fn install_prelude(program: &Program, env: &EnvRef) {
-    if let Some(print_symbol) = program.symbols.lookup("print") {
+    for builtin in prelude::builtins() {
+        let Some(symbol) = program.symbols.lookup(builtin.name) else {
+            continue;
+        };
+        let value = if builtin.id == BuiltinId::OptionNone {
+            option_none()
+        } else {
+            Value::Builtin(
+                BuiltinFunction::from_prelude_id(builtin.id)
+                    .expect("prelude function must map to a runtime builtin"),
+            )
+        };
         env.borrow_mut().bindings.insert(
-            print_symbol,
+            symbol,
             Binding {
                 mutable: false,
-                value: Value::Builtin(BuiltinFunction::Print),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(print_symbol) = program.symbols.lookup("println") {
-        env.borrow_mut().bindings.insert(
-            print_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::Println),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(len_symbol) = program.symbols.lookup("len") {
-        env.borrow_mut().bindings.insert(
-            len_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::Len),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(is_empty_symbol) = program.symbols.lookup("is_empty") {
-        env.borrow_mut().bindings.insert(
-            is_empty_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::IsEmpty),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(push_symbol) = program.symbols.lookup("push") {
-        env.borrow_mut().bindings.insert(
-            push_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::ListPush),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(get_symbol) = program.symbols.lookup("get") {
-        env.borrow_mut().bindings.insert(
-            get_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::Get),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(set_symbol) = program.symbols.lookup("set") {
-        env.borrow_mut().bindings.insert(
-            set_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::ListSet),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(map_empty_symbol) = program.symbols.lookup("Map.empty") {
-        env.borrow_mut().bindings.insert(
-            map_empty_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::MapEmpty),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(contains_symbol) = program.symbols.lookup("contains") {
-        env.borrow_mut().bindings.insert(
-            contains_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::Contains),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(insert_symbol) = program.symbols.lookup("insert") {
-        env.borrow_mut().bindings.insert(
-            insert_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::Insert),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(remove_symbol) = program.symbols.lookup("remove") {
-        env.borrow_mut().bindings.insert(
-            remove_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::Remove),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(option_some_symbol) = program.symbols.lookup(known_enum::OPTION_SOME_QUALIFIED) {
-        env.borrow_mut().bindings.insert(
-            option_some_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::OptionSome),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(option_none_symbol) = program.symbols.lookup(known_enum::OPTION_NONE_QUALIFIED) {
-        env.borrow_mut().bindings.insert(
-            option_none_symbol,
-            Binding {
-                mutable: false,
-                value: option_none(),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(result_ok_symbol) = program.symbols.lookup(known_enum::RESULT_OK_QUALIFIED) {
-        env.borrow_mut().bindings.insert(
-            result_ok_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::ResultOk),
-                span: Span::default(),
-            },
-        );
-    }
-    if let Some(result_err_symbol) = program.symbols.lookup(known_enum::RESULT_ERR_QUALIFIED) {
-        env.borrow_mut().bindings.insert(
-            result_err_symbol,
-            Binding {
-                mutable: false,
-                value: Value::Builtin(BuiltinFunction::ResultErr),
+                value,
                 span: Span::default(),
             },
         );
