@@ -106,6 +106,7 @@ Current typed HIR status:
 - package symbol graph is preserved on typed HIR programs
 - call expressions carry explicit resolved callee shape and call origin
 - package call targets and package record types carry `PackageItemId`-backed identity
+- package item identity is still partly recovered from flattened mangled names during typed HIR lowering; remove that transitional dependency before replacing package flattening
 
 ## Current Migration Status
 
@@ -129,13 +130,14 @@ Done:
 - typed package interface validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup is routed through `PackageExportGraph` before whole-program flattening
 - `PackageExportGraph` can be derived from either package identity data or typed package interface summaries
-- local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` `TypeInfo` cases, typed prelude list operations including safe lookup and value-returning update, direct list indexing, and typed Option `match` are in place
+- local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` / `Map[K, V]` `TypeInfo` cases, typed prelude list and map operations, direct list indexing, typed Option construction, and typed Option `match` are in place
 
 Remaining:
 
-1. decide and implement the first `Map[K, V]` slice
-2. make downstream package checking consume typed package interface summaries instead of the source-level export surface
-3. continue expanding structured diagnostics as new interface errors are introduced
+1. introduce enum/variant identity for the general enum and `Result[T, E]` work
+2. remove remaining typed HIR package item recovery from flattened mangled names before package flattening is replaced
+3. make downstream package checking consume typed package interface summaries instead of the source-level export surface
+4. continue expanding structured diagnostics as new enum and interface errors are introduced
 
 ## Foundation Note
 

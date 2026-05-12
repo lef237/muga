@@ -125,7 +125,7 @@ Current implementation note:
 - the compiler currently implements top-level module-private, `pkg`, and `pub` visibility before flattening
 - imports expose only `pub` items
 - per-field record visibility is not part of the committed v1 package model
-- package-level flattening still exists and should be replaced after typed HIR package references use stable package item identity
+- package-level flattening still exists; typed HIR package references now carry package item identity, but interface consumption, persisted interface format, and the remaining mangled-name transition should be handled before flattening is removed
 
 Example:
 

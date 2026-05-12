@@ -89,7 +89,11 @@ The value semantics and internal sharing draft lives in [spec/011-value-semantic
 
 The protocol-like abstractions decision note lives in [spec/012-protocols-deferred.md](./spec/012-protocols-deferred.md).
 
+The enum, result, and error propagation draft lives in [spec/013-enums-results.md](./spec/013-enums-results.md).
+
 The current resume guide and decision queue live in [docs/current-next-steps.md](./docs/current-next-steps.md).
+
+The implementation resume snapshot lives in [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md).
 
 ## Execution Strategy
 
@@ -482,11 +486,11 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. decide the first `Map[K, V]` slice: key types, construction API, and operations
-2. implement `Map[K, V]` type/runtime support and safe lookup returning `Option[V]`
-3. return to package interface consumption for downstream checking
-4. package interfaces instead of flattening
-5. cache, MIR, and native backend work once the semantic boundary is stable
+1. implement the enum/ADT foundation by generalizing the current `Option[T]`-only internals without changing existing source behavior
+2. add `Result[T, E]`, `Result::Ok`, `Result::Err`, and exhaustive `Result` `match` before any propagation sugar
+3. implement user-defined enum declarations after the enum/result data model is stable
+4. return to package interface consumption and persisted package interfaces once enum/result public signatures are representable
+5. cache, MIR, and native backend work once the semantic boundary and package interface format are stable
 
 This order best matches the current state of the codebase.
 
