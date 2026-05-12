@@ -624,24 +624,27 @@ The current codebase should move toward the ideal in this order:
 2. Introduce stable `ItemRef` / `InterfaceTypeRef` for interface design, without persisting current session-local IDs.
 3. Introduce stable `VariantRef` and include variants in the interface model.
 4. Define public API hash vs recheck fingerprint before writing persisted interfaces.
-5. Introduce a single prelude/builtin catalog with stable builtin IDs, signatures, visibility, and lowering hooks.
-6. Replace compiler-known `Option` / `Result` special cases with prelude enum metadata where possible.
-7. Stop recovering package identity from mangled names in typed HIR lowering.
-8. Move package interface data out of `typed_hir.rs` into an interface module.
-9. Add a package-aware driver/session so `check_path` can check packages in dependency order without consuming a flattened AST.
-10. Generate interfaces from per-package typed HIR, not from flattened statements.
-11. Make package import lookup consume interfaces as its primary input.
-12. Introduce MIR and lower VM bytecode from MIR.
-13. Remove the old untyped HIR path once VM execution no longer needs it.
-14. Split large files by responsibility before splitting into workspace crates.
+5. Replace compiler-known `Option` / `Result` special cases with prelude enum metadata where possible.
+6. Add a package-aware driver/session so `check_path` can check packages in dependency order without consuming a flattened AST.
+7. Generate interfaces from per-package typed HIR, not from flattened statements.
+8. Make package import lookup consume interfaces as its primary input.
+9. Introduce MIR and lower VM bytecode from MIR.
+10. Remove the old untyped HIR path once VM execution no longer needs it.
+11. Split large files by responsibility before splitting into workspace crates.
+
+Completed structural steps:
+
+- package interface data now lives in `interface`, not `typed_hir`
+- shared public type summaries now live in `types`, not only inside `typing`
+- resolver, typechecker, runtime, and package builtin lookup share `prelude::BuiltinId`
+- typed HIR lowering reads package item identity from AST declarations instead of recovering it from mangled names
 
 Critical current risks to eliminate:
 
-- resolver and typechecker both build scopes and prelude state independently
+- resolver and typechecker still build scopes independently
 - `run` compiles through old untyped HIR while `compile_typed_*` produces a separate typed HIR product
-- typed HIR and interface generation still use mangled names as identity glue
 - package interfaces currently contain session-local IDs and compiler-owned type structs
-- builtin behavior is duplicated across resolver, typechecker, bytecode, and runtime
+- builtin type rules and runtime behavior are still implemented separately
 - bytecode match lowering still assumes compiler-known enum shapes
 
 ## Design Rules

@@ -7,6 +7,7 @@ use crate::known_enum::{self, KnownEnum, KnownEnumVariant};
 use crate::prelude::{self, BuiltinId, BuiltinKind};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
+pub use crate::types::{FunctionTypeInfo, TypeInfo};
 
 #[derive(Clone, Debug)]
 pub struct TypeCheckOutput {
@@ -72,29 +73,6 @@ pub struct ExprTypeInfo {
     pub expr_id: ExprId,
     pub span: Span,
     pub ty: TypeInfo,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TypeInfo {
-    Int,
-    Bool,
-    String,
-    Record(Symbol),
-    PackageRecord { symbol: Symbol, item: PackageItemId },
-    List(Box<TypeInfo>),
-    Map(Box<TypeInfo>, Box<TypeInfo>),
-    Option(Box<TypeInfo>),
-    Result(Box<TypeInfo>, Box<TypeInfo>),
-    Function(FunctionTypeInfo),
-    Builtin(&'static str),
-    Unknown,
-    Error,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FunctionTypeInfo {
-    pub params: Vec<TypeInfo>,
-    pub ret: Box<TypeInfo>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1010,7 +988,7 @@ impl TypeChecker {
     }
 
     fn check_map_empty_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
-        if expr.args.len() != 0 {
+        if !expr.args.is_empty() {
             self.diagnostics.push(Diagnostic::new(
                 "T004",
                 format!("expected 0 arguments but found {}", expr.args.len()),

@@ -313,6 +313,7 @@ impl Parser {
         Ok(RecordDecl {
             id: self.stmt_id(),
             name,
+            package_item: None,
             visibility,
             fields,
             span: start.merge(end),
@@ -335,6 +336,7 @@ impl Parser {
         Ok(FuncDecl {
             id: self.stmt_id(),
             name,
+            package_item: None,
             visibility,
             params,
             return_type,

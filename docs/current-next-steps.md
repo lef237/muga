@@ -27,7 +27,8 @@ Implemented:
 - module-private, `pkg`, and `pub` package visibility before flattening
 - `interface::PackageExportGraph` for public import lookup
 - `interface` owns in-memory package interface summaries for public records/functions
-- typed HIR public records/functions keep package item identity, so `interface` generates and validates summaries by ID instead of flattened names
+- `types` owns shared public `TypeInfo` data used by typechecker output, typed HIR, and interfaces
+- package rewriting attaches item identity to flattened AST declarations; typed HIR and `interface` use those IDs instead of recovering them from mangled names
 - shared prelude/builtin identity catalog; resolver, typechecker, runtime, and package builtin lookup all use `BuiltinId`
 - local binding annotations and generic type expressions
 - `List[T]` literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`

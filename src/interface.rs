@@ -9,7 +9,7 @@ use crate::{
     typed_hir::{
         Block, Expr, ExprKind, FunctionStmt, IdentTarget, Program, RecordStmt, Stmt, ValueBlock,
     },
-    typing::TypeInfo,
+    types::TypeInfo,
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

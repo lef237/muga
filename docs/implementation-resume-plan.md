@@ -69,17 +69,15 @@ Ada
 - [x] `pub` visibility for importable items.
 - [x] public export lookup through `interface::PackageExportGraph`.
 - [x] typed HIR public record/function statements carry package item identity.
+- [x] shared public `TypeInfo` data lives in `types`, with `typing` retaining a compatibility re-export.
 - [x] `interface` owns in-memory package interface summaries for public records and functions.
 - [x] interface summaries preserve public `TypeInfo`, package record identity, collection types, and compiler-known `Result` signatures.
 - [x] `interface` validates typed package compilation references against generated in-memory interfaces.
 - [x] resolver, typechecker, runtime, and package builtin filtering share `prelude::BuiltinId`.
+- [x] package rewriting attaches `PackageItemId` to flattened AST record/function declarations so typed HIR no longer recovers item identity from mangled names.
 - [ ] persisted package interface files are not implemented.
 - [ ] downstream package checking does not yet consume stored interface artifacts.
 - [ ] package flattening is still the execution/checking pipeline.
-
-Important transition detail:
-
-- typed HIR carries `PackageItemId` for package identifiers, calls, and package record types, but part of the lowering path still recovers this identity from flattened mangled names. This is acceptable for the current flattened backend, but it should be removed before package flattening is replaced.
 
 ### Diagnostics
 

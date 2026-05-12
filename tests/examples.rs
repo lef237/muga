@@ -599,62 +599,62 @@ fn typed_hir_generates_package_interface_summaries() {
         .function_by_name(numbers, "inc_twice")
         .expect("inc_twice should be exported");
     assert_eq!(inc_twice.params.len(), 1);
-    assert_eq!(inc_twice.params[0].ty, muga::typing::TypeInfo::Int);
-    assert_eq!(inc_twice.ret, muga::typing::TypeInfo::Int);
+    assert_eq!(inc_twice.params[0].ty, muga::types::TypeInfo::Int);
+    assert_eq!(inc_twice.ret, muga::types::TypeInfo::Int);
     let singleton = interfaces
         .function_by_name(numbers, "singleton")
         .expect("singleton should be exported");
     assert_eq!(
         singleton.ret,
-        muga::typing::TypeInfo::List(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::List(Box::new(muga::types::TypeInfo::Int))
     );
     let singleton_len = interfaces
         .function_by_name(numbers, "singleton_len")
         .expect("singleton_len should be exported");
-    assert_eq!(singleton_len.ret, muga::typing::TypeInfo::Int);
+    assert_eq!(singleton_len.ret, muga::types::TypeInfo::Int);
     let singleton_first = interfaces
         .function_by_name(numbers, "singleton_first")
         .expect("singleton_first should be exported");
-    assert_eq!(singleton_first.ret, muga::typing::TypeInfo::Int);
+    assert_eq!(singleton_first.ret, muga::types::TypeInfo::Int);
     let singleton_get = interfaces
         .function_by_name(numbers, "singleton_get")
         .expect("singleton_get should be exported");
     assert_eq!(
         singleton_get.ret,
-        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::Option(Box::new(muga::types::TypeInfo::Int))
     );
     let replace_singleton = interfaces
         .function_by_name(numbers, "replace_singleton")
         .expect("replace_singleton should be exported");
     assert_eq!(
         replace_singleton.ret,
-        muga::typing::TypeInfo::List(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::List(Box::new(muga::types::TypeInfo::Int))
     );
     let maybe_positive = interfaces
         .function_by_name(numbers, "maybe_positive")
         .expect("maybe_positive should be exported");
     assert_eq!(
         maybe_positive.ret,
-        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::Option(Box::new(muga::types::TypeInfo::Int))
     );
     let value_or_zero = interfaces
         .function_by_name(numbers, "value_or_zero")
         .expect("value_or_zero should be exported");
     assert_eq!(
         value_or_zero.params[0].ty,
-        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::Option(Box::new(muga::types::TypeInfo::Int))
     );
-    assert_eq!(value_or_zero.ret, muga::typing::TypeInfo::Int);
+    assert_eq!(value_or_zero.ret, muga::types::TypeInfo::Int);
     let singleton_map = interfaces
         .function_by_name(numbers, "singleton_map")
         .expect("singleton_map should be exported");
-    assert_eq!(singleton_map.params[0].ty, muga::typing::TypeInfo::String);
-    assert_eq!(singleton_map.params[1].ty, muga::typing::TypeInfo::Int);
+    assert_eq!(singleton_map.params[0].ty, muga::types::TypeInfo::String);
+    assert_eq!(singleton_map.params[1].ty, muga::types::TypeInfo::Int);
     assert_eq!(
         singleton_map.ret,
-        muga::typing::TypeInfo::Map(
-            Box::new(muga::typing::TypeInfo::String),
-            Box::new(muga::typing::TypeInfo::Int)
+        muga::types::TypeInfo::Map(
+            Box::new(muga::types::TypeInfo::String),
+            Box::new(muga::types::TypeInfo::Int)
         )
     );
     let map_get_or_zero = interfaces
@@ -662,21 +662,21 @@ fn typed_hir_generates_package_interface_summaries() {
         .expect("map_get_or_zero should be exported");
     assert_eq!(
         map_get_or_zero.params[0].ty,
-        muga::typing::TypeInfo::Map(
-            Box::new(muga::typing::TypeInfo::String),
-            Box::new(muga::typing::TypeInfo::Int)
+        muga::types::TypeInfo::Map(
+            Box::new(muga::types::TypeInfo::String),
+            Box::new(muga::types::TypeInfo::Int)
         )
     );
-    assert_eq!(map_get_or_zero.params[1].ty, muga::typing::TypeInfo::String);
-    assert_eq!(map_get_or_zero.ret, muga::typing::TypeInfo::Int);
+    assert_eq!(map_get_or_zero.params[1].ty, muga::types::TypeInfo::String);
+    assert_eq!(map_get_or_zero.ret, muga::types::TypeInfo::Int);
     let positive_result = interfaces
         .function_by_name(numbers, "positive_result")
         .expect("positive_result should be exported");
     assert_eq!(
         positive_result.ret,
-        muga::typing::TypeInfo::Result(
-            Box::new(muga::typing::TypeInfo::Int),
-            Box::new(muga::typing::TypeInfo::String)
+        muga::types::TypeInfo::Result(
+            Box::new(muga::types::TypeInfo::Int),
+            Box::new(muga::types::TypeInfo::String)
         )
     );
     let result_or_zero = interfaces
@@ -684,12 +684,12 @@ fn typed_hir_generates_package_interface_summaries() {
         .expect("result_or_zero should be exported");
     assert_eq!(
         result_or_zero.params[0].ty,
-        muga::typing::TypeInfo::Result(
-            Box::new(muga::typing::TypeInfo::Int),
-            Box::new(muga::typing::TypeInfo::String)
+        muga::types::TypeInfo::Result(
+            Box::new(muga::types::TypeInfo::Int),
+            Box::new(muga::types::TypeInfo::String)
         )
     );
-    assert_eq!(result_or_zero.ret, muga::typing::TypeInfo::Int);
+    assert_eq!(result_or_zero.ret, muga::types::TypeInfo::Int);
 
     let user_item = program
         .package_graph
@@ -703,7 +703,7 @@ fn typed_hir_generates_package_interface_summaries() {
         user_record
             .fields
             .iter()
-            .any(|field| field.name == "age" && field.ty == muga::typing::TypeInfo::Int),
+            .any(|field| field.name == "age" && field.ty == muga::types::TypeInfo::Int),
         "{user_record:#?}"
     );
 
@@ -714,14 +714,14 @@ fn typed_hir_generates_package_interface_summaries() {
     assert!(
         matches!(
             &birthday.params[0].ty,
-            muga::typing::TypeInfo::PackageRecord { item, .. } if *item == user_item
+            muga::types::TypeInfo::PackageRecord { item, .. } if *item == user_item
         ),
         "{birthday:#?}"
     );
     assert!(
         matches!(
             &birthday.ret,
-            muga::typing::TypeInfo::PackageRecord { item, .. } if *item == user_item
+            muga::types::TypeInfo::PackageRecord { item, .. } if *item == user_item
         ),
         "{birthday:#?}"
     );
@@ -913,7 +913,7 @@ fn typed_hir_rejects_stale_package_interface_signatures() {
         .iter_mut()
         .find(|function| function.name == "inc_twice")
         .expect("inc_twice should be exported")
-        .ret = muga::typing::TypeInfo::String;
+        .ret = muga::types::TypeInfo::String;
 
     let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
     let diagnostic = diagnostics
@@ -955,7 +955,7 @@ fn typed_hir_rejects_stale_package_interface_record_shapes() {
         .iter_mut()
         .find(|field| field.name == "age")
         .expect("age field should exist")
-        .ty = muga::typing::TypeInfo::String;
+        .ty = muga::types::TypeInfo::String;
 
     let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
     let diagnostic = diagnostics
@@ -1191,21 +1191,21 @@ fn main(): Int {
         muga::typed_hir::Stmt::Function(function) => function,
         _ => panic!("expected typed function"),
     };
-    assert_eq!(main.return_ty, muga::typing::TypeInfo::Int);
+    assert_eq!(main.return_ty, muga::types::TypeInfo::Int);
 
     let assign = match &main.body.statements[0] {
         muga::typed_hir::Stmt::Assign(assign) => assign,
         _ => panic!("expected typed assignment"),
     };
     assert!(!assign.is_update);
-    assert_eq!(assign.value.ty, muga::typing::TypeInfo::Int);
+    assert_eq!(assign.value.ty, muga::types::TypeInfo::Int);
 
     let final_ident = match &main.body.expr.kind {
         muga::typed_hir::ExprKind::Ident(ident) => ident,
         _ => panic!("expected typed identifier"),
     };
     assert_eq!(final_ident.binding, assign.binding);
-    assert_eq!(main.body.expr.ty, muga::typing::TypeInfo::Int);
+    assert_eq!(main.body.expr.ty, muga::types::TypeInfo::Int);
 }
 
 #[test]
@@ -1254,16 +1254,12 @@ fn main(): Int {
         muga::ast::Expr::Match(expr) => expr,
         other => panic!("expected match expression, got {other:#?}"),
     };
-    let some = match &match_expr.arms[0].pattern {
-        muga::ast::MatchPattern::Variant(pattern) => pattern,
-    };
+    let muga::ast::MatchPattern::Variant(some) = &match_expr.arms[0].pattern;
     assert_eq!(some.enum_name, "Option");
     assert_eq!(some.variant_name, "Some");
     assert_eq!(some.binding.as_deref(), Some("x"));
 
-    let none = match &match_expr.arms[1].pattern {
-        muga::ast::MatchPattern::Variant(pattern) => pattern,
-    };
+    let muga::ast::MatchPattern::Variant(none) = &match_expr.arms[1].pattern;
     assert_eq!(none.enum_name, "Option");
     assert_eq!(none.variant_name, "None");
     assert_eq!(none.binding, None);
@@ -1289,16 +1285,12 @@ fn main(): Int {
         muga::ast::Expr::Match(expr) => expr,
         other => panic!("expected match expression, got {other:#?}"),
     };
-    let ok = match &match_expr.arms[0].pattern {
-        muga::ast::MatchPattern::Variant(pattern) => pattern,
-    };
+    let muga::ast::MatchPattern::Variant(ok) = &match_expr.arms[0].pattern;
     assert_eq!(ok.enum_name, "Result");
     assert_eq!(ok.variant_name, "Ok");
     assert_eq!(ok.binding.as_deref(), Some("x"));
 
-    let err = match &match_expr.arms[1].pattern {
-        muga::ast::MatchPattern::Variant(pattern) => pattern,
-    };
+    let muga::ast::MatchPattern::Variant(err) = &match_expr.arms[1].pattern;
     assert_eq!(err.enum_name, "Result");
     assert_eq!(err.variant_name, "Err");
     assert_eq!(err.binding.as_deref(), Some("message"));
@@ -1360,7 +1352,7 @@ fn main(): Int {
         .iter()
         .find(|binding| binding.id == assign.binding)
         .expect("assignment binding should exist");
-    assert_eq!(binding.ty, muga::typing::TypeInfo::Int);
+    assert_eq!(binding.ty, muga::types::TypeInfo::Int);
 }
 
 #[test]
@@ -1455,7 +1447,7 @@ fn main(): List[Int] {
     };
     assert_eq!(
         main.return_ty,
-        muga::typing::TypeInfo::List(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::List(Box::new(muga::types::TypeInfo::Int))
     );
     let assign = match &main.body.statements[0] {
         muga::typed_hir::Stmt::Assign(assign) => assign,
@@ -1468,7 +1460,7 @@ fn main(): List[Int] {
         .expect("assignment binding should exist");
     assert_eq!(
         binding.ty,
-        muga::typing::TypeInfo::List(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::List(Box::new(muga::types::TypeInfo::Int))
     );
 }
 
@@ -2146,7 +2138,7 @@ fn main(): Option[Int] {
     };
     assert_eq!(
         main.return_ty,
-        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::Option(Box::new(muga::types::TypeInfo::Int))
     );
     let assign = match &main.body.statements[0] {
         muga::typed_hir::Stmt::Assign(assign) => assign,
@@ -2159,7 +2151,7 @@ fn main(): Option[Int] {
         .expect("assignment binding should exist");
     assert_eq!(
         binding.ty,
-        muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+        muga::types::TypeInfo::Option(Box::new(muga::types::TypeInfo::Int))
     );
 }
 
@@ -2176,9 +2168,9 @@ fn main(): Result[Int, String] {
         muga::typed_hir::Stmt::Function(function) => function,
         _ => panic!("expected typed function"),
     };
-    let result_ty = muga::typing::TypeInfo::Result(
-        Box::new(muga::typing::TypeInfo::Int),
-        Box::new(muga::typing::TypeInfo::String),
+    let result_ty = muga::types::TypeInfo::Result(
+        Box::new(muga::types::TypeInfo::Int),
+        Box::new(muga::types::TypeInfo::String),
     );
     assert_eq!(main.return_ty, result_ty);
     let assign = match &main.body.statements[0] {
@@ -2192,9 +2184,9 @@ fn main(): Result[Int, String] {
         .expect("assignment binding should exist");
     assert_eq!(
         binding.ty,
-        muga::typing::TypeInfo::Result(
-            Box::new(muga::typing::TypeInfo::Int),
-            Box::new(muga::typing::TypeInfo::String)
+        muga::types::TypeInfo::Result(
+            Box::new(muga::types::TypeInfo::Int),
+            Box::new(muga::types::TypeInfo::String)
         )
     );
 }
@@ -2219,17 +2211,13 @@ fn main(): Int {
         muga::typed_hir::ExprKind::Match(expr) => expr,
         other => panic!("expected typed match expression, got {other:#?}"),
     };
-    let some = match &match_expr.arms[0].pattern {
-        muga::typed_hir::MatchPattern::Variant(pattern) => pattern,
-    };
+    let muga::typed_hir::MatchPattern::Variant(some) = &match_expr.arms[0].pattern;
     assert_eq!(some.enum_name, "Option");
     assert_eq!(some.variant_name, "Some");
     assert_eq!(some.binding_name.as_deref(), Some("x"));
     assert!(some.binding.is_some());
 
-    let none = match &match_expr.arms[1].pattern {
-        muga::typed_hir::MatchPattern::Variant(pattern) => pattern,
-    };
+    let muga::typed_hir::MatchPattern::Variant(none) = &match_expr.arms[1].pattern;
     assert_eq!(none.enum_name, "Option");
     assert_eq!(none.variant_name, "None");
     assert_eq!(none.binding_name, None);
@@ -2256,17 +2244,13 @@ fn main(): Int {
         muga::typed_hir::ExprKind::Match(expr) => expr,
         other => panic!("expected typed match expression, got {other:#?}"),
     };
-    let ok = match &match_expr.arms[0].pattern {
-        muga::typed_hir::MatchPattern::Variant(pattern) => pattern,
-    };
+    let muga::typed_hir::MatchPattern::Variant(ok) = &match_expr.arms[0].pattern;
     assert_eq!(ok.enum_name, "Result");
     assert_eq!(ok.variant_name, "Ok");
     assert_eq!(ok.binding_name.as_deref(), Some("x"));
     assert!(ok.binding.is_some());
 
-    let err = match &match_expr.arms[1].pattern {
-        muga::typed_hir::MatchPattern::Variant(pattern) => pattern,
-    };
+    let muga::typed_hir::MatchPattern::Variant(err) = &match_expr.arms[1].pattern;
     assert_eq!(err.enum_name, "Result");
     assert_eq!(err.variant_name, "Err");
     assert_eq!(err.binding_name.as_deref(), Some("message"));
@@ -2556,9 +2540,9 @@ fn main(): Map[String, Int] {
         muga::typed_hir::Stmt::Function(function) => function,
         _ => panic!("expected typed function"),
     };
-    let map_ty = muga::typing::TypeInfo::Map(
-        Box::new(muga::typing::TypeInfo::String),
-        Box::new(muga::typing::TypeInfo::Int),
+    let map_ty = muga::types::TypeInfo::Map(
+        Box::new(muga::types::TypeInfo::String),
+        Box::new(muga::types::TypeInfo::Int),
     );
     assert_eq!(main.return_ty, map_ty);
     let assign = match &main.body.statements[0] {
@@ -2654,7 +2638,7 @@ fn main(): Int {
         .iter()
         .find(|binding| output.symbols.resolve(binding.symbol) == "value")
         .expect("value binding should be exposed");
-    assert_eq!(value_binding.ty, muga::typing::TypeInfo::Int);
+    assert_eq!(value_binding.ty, muga::types::TypeInfo::Int);
 
     let value_ref = output
         .identifier_refs
@@ -2668,7 +2652,7 @@ fn main(): Int {
         .iter()
         .find(|expr_type| expr_type.expr_id == value_ref.expr_id)
         .expect("value expression type should be exposed");
-    assert_eq!(value_expr_type.ty, muga::typing::TypeInfo::Int);
+    assert_eq!(value_expr_type.ty, muga::types::TypeInfo::Int);
 }
 
 #[test]
@@ -2723,9 +2707,9 @@ fn main(): Int {
 
     assert_eq!(
         f_binding.ty,
-        muga::typing::TypeInfo::Function(muga::typing::FunctionTypeInfo {
-            params: vec![muga::typing::TypeInfo::Int],
-            ret: Box::new(muga::typing::TypeInfo::Int),
+        muga::types::TypeInfo::Function(muga::types::FunctionTypeInfo {
+            params: vec![muga::types::TypeInfo::Int],
+            ret: Box::new(muga::types::TypeInfo::Int),
         })
     );
 }
@@ -2901,7 +2885,7 @@ fn typed_hir_preserves_package_qualified_call_callee() {
     assert!(
         matches!(
             &user_binding.ty,
-            muga::typing::TypeInfo::PackageRecord { item, .. } if *item == user_item
+            muga::types::TypeInfo::PackageRecord { item, .. } if *item == user_item
         ),
         "{user_binding:#?}"
     );
