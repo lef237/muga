@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast,
     identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId},
+    known_enum,
     package::PackageSymbolGraph,
     span::Span,
     symbol::{Symbol, SymbolTable},
@@ -746,12 +747,12 @@ impl<'a> Lowerer<'a> {
                 TypeInfo::List(Box::new(self.type_info_from_type_expr(&generic.args[0])))
             }
             ast::TypeExpr::Generic(generic)
-                if generic.name == "Option" && generic.args.len() == 1 =>
+                if generic.name == known_enum::OPTION_NAME && generic.args.len() == 1 =>
             {
                 TypeInfo::Option(Box::new(self.type_info_from_type_expr(&generic.args[0])))
             }
             ast::TypeExpr::Generic(generic)
-                if generic.name == "Result" && generic.args.len() == 2 =>
+                if generic.name == known_enum::RESULT_NAME && generic.args.len() == 2 =>
             {
                 TypeInfo::Result(
                     Box::new(self.type_info_from_type_expr(&generic.args[0])),

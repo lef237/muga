@@ -1,4 +1,4 @@
-use crate::{identity::PackageItemId, symbol::Symbol};
+use crate::{identity::PackageItemId, prelude::BuiltinId, symbol::Symbol};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeInfo {
@@ -12,7 +12,7 @@ pub enum TypeInfo {
     Option(Box<TypeInfo>),
     Result(Box<TypeInfo>, Box<TypeInfo>),
     Function(FunctionTypeInfo),
-    Builtin(&'static str),
+    Builtin(BuiltinId),
     Unknown,
     Error,
 }

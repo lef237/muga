@@ -636,7 +636,7 @@ Completed structural steps:
 
 - package interface data now lives in `interface`, not `typed_hir`
 - shared public type summaries now live in `types`, not only inside `typing`
-- resolver, typechecker, runtime, and package builtin lookup share `prelude::BuiltinId`
+- resolver, typechecker output, runtime, and package builtin lookup share `prelude::BuiltinId`
 - typed HIR lowering reads package item identity from AST declarations instead of recovering it from mangled names
 
 Critical current risks to eliminate:

@@ -1,13 +1,13 @@
 # Implementation Resume Plan
 
-Status: verified resume snapshot for 2026-05-12.
+Status: current implementation ledger for 2026-05-12.
 
 Purpose: if prior conversation context is lost, read this file first. It records what the repository currently implements, what was verified, and what should be implemented next.
 
 ## Verification Snapshot
 
-- [x] `git status --short --branch` showed a clean worktree on `main...origin/main` before the enum metadata implementation.
-- [x] `cargo test` passed after compiler-known `Result[T, E]` support: 159 tests, 0 failures.
+- [x] `cargo test` passed after compiler-known `Result[T, E]` support and the builtin identity cleanup: 163 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after the same cleanup.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -73,7 +73,7 @@ Ada
 - [x] `interface` owns in-memory package interface summaries for public records and functions.
 - [x] interface summaries preserve public `TypeInfo`, package record identity, collection types, and compiler-known `Result` signatures.
 - [x] `interface` validates typed package compilation references against generated in-memory interfaces.
-- [x] resolver, typechecker, runtime, and package builtin filtering share `prelude::BuiltinId`.
+- [x] resolver, typechecker output, runtime, and package builtin filtering share `prelude::BuiltinId`.
 - [x] package rewriting attaches `PackageItemId` to flattened AST record/function declarations so typed HIR no longer recovers item identity from mangled names.
 - [ ] persisted package interface files are not implemented.
 - [ ] downstream package checking does not yet consume stored interface artifacts.
