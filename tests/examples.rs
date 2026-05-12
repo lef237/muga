@@ -128,6 +128,32 @@ fn diagnostic_display_includes_related_notes_and_suggestions() {
 }
 
 #[test]
+fn prelude_catalog_names_are_unique_and_classified() {
+    let mut names = HashSet::new();
+    let mut function_count = 0;
+    let mut value_count = 0;
+
+    for builtin in muga::prelude::builtins() {
+        assert!(names.insert(builtin.name), "duplicate builtin: {builtin:?}");
+        match builtin.kind {
+            muga::prelude::BuiltinKind::Function => function_count += 1,
+            muga::prelude::BuiltinKind::Value => value_count += 1,
+        }
+        assert!(muga::prelude::is_builtin_name(builtin.name));
+    }
+
+    assert_eq!(
+        muga::prelude::builtin_by_name("Option::None").map(|builtin| builtin.kind),
+        Some(muga::prelude::BuiltinKind::Value)
+    );
+    assert_eq!(value_count, 1);
+    assert_eq!(
+        function_count + value_count,
+        muga::prelude::builtins().len()
+    );
+}
+
+#[test]
 fn package_mode_syntax_suggests_package_entry() {
     let source = r#"
 pub fn helper(): Int {
@@ -318,6 +344,11 @@ fn no_main_sample_runs() {
 #[test]
 fn print_and_println_can_be_mixed() {
     assert_sample_runs("samples/print_then_println.muga", "10", "value = 10 done\n");
+}
+
+#[test]
+fn prelude_catalog_sample_runs() {
+    assert_sample_runs("samples/prelude_catalog.muga", "22", "");
 }
 
 #[test]
@@ -693,14 +724,49 @@ fn typed_hir_generates_package_interface_summaries() {
 }
 
 #[test]
+fn typed_hir_package_items_are_attached_to_public_statements() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let users = program
+        .package_graph
+        .package_id("util::users")
+        .expect("users package should exist");
+    let user_item = program
+        .package_graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User item should exist");
+    let birthday_item = program
+        .package_graph
+        .item_id(users, "birthday", muga::package::PackageItemKind::Function)
+        .expect("birthday item should exist");
+
+    assert!(
+        program.statements.iter().any(|statement| {
+            matches!(statement, muga::typed_hir::Stmt::Record(record)
+                if record.package_item == Some(user_item))
+        }),
+        "{:#?}",
+        program.statements
+    );
+    assert!(
+        program.statements.iter().any(|statement| {
+            matches!(statement, muga::typed_hir::Stmt::Function(function)
+                if function.package_item == Some(birthday_item))
+        }),
+        "{:#?}",
+        program.statements
+    );
+}
+
+#[test]
 fn package_export_graph_can_be_derived_from_typed_interfaces() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
         .expect("typed package compilation should pass");
     let interfaces = program.package_interfaces();
     let symbol_exports =
-        muga::package::PackageExportGraph::from_symbol_graph(&program.package_graph);
+        muga::interface::PackageExportGraph::from_symbol_graph(&program.package_graph);
     let interface_exports =
-        muga::package::PackageExportGraph::from_interfaces(&interfaces, &program.package_graph);
+        muga::interface::PackageExportGraph::from_interfaces(&interfaces, &program.package_graph);
 
     assert_eq!(interface_exports, symbol_exports);
 }

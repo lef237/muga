@@ -1,0 +1,21 @@
+fn main(): Int {
+  empty: Map[String, Int] = Map.empty()
+  ages = empty.insert("Ada", 20).insert("Grace", 30)
+  trimmed = ages.remove("Grace")
+  result: Result[Int, String] = if empty.is_empty() {
+    if ages.contains("Ada") {
+      match trimmed.get("Ada") {
+        Option::Some(age) => Result::Ok(age + ages.len())
+        Option::None => Result::Err("missing")
+      }
+    } else {
+      Result::Err("missing Ada")
+    }
+  } else {
+    Result::Err("expected empty map")
+  }
+  match result {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}

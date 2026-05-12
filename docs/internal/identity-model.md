@@ -126,14 +126,15 @@ Done:
 - initial typed HIR exists
 - typed HIR calls carry resolved callee shape and call origin
 - package loading exposes `ModuleId` data and enforces top-level module-private / `pkg` / `pub` visibility
-- typed HIR package identifiers, call targets, and record types point to package item identities
+- typed HIR package identifiers, public item statements, call targets, and record types point to package item identities
 - diagnostics support related notes and suggestions for selected resolver, typechecker, and package errors
-- typed HIR can generate in-memory package interface summaries for public records and functions
-- typed package compilation validates public package references against generated interface summaries
-- typed package interface validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
-- import/package-qualified lookup is routed through `PackageExportGraph` before whole-program flattening
-- `PackageExportGraph` can be derived from either package identity data or typed package interface summaries
+- `interface` can generate in-memory package interface summaries for public records and functions from typed HIR item identities
+- `interface` validates public package references against generated interface summaries
+- `interface` validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
+- import/package-qualified lookup is routed through `interface::PackageExportGraph` before whole-program flattening
+- `interface::PackageExportGraph` can be derived from either package identity data or typed package interface summaries
 - local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` / `Result[T, E]` / `Map[K, V]` `TypeInfo` cases, typed prelude list and map operations, direct list indexing, typed Option/Result construction, typed Option/Result `match`, enum-variant-shaped match patterns, and compiler-known enum metadata for Option/Result variants are in place
+- resolver, typechecker, runtime, and package builtin filtering share a single prelude builtin catalog
 
 Remaining:
 
@@ -144,6 +145,6 @@ Remaining:
 
 ## Foundation Note
 
-Typed HIR, package symbol graph, `PackageExportGraph`, and in-memory package summaries are now the foundation for the remaining interface work.
+Typed HIR, package symbol graph, `interface::PackageExportGraph`, and in-memory package summaries are now the foundation for the remaining interface work.
 
 They add reusable compiler data without replacing the current VM execution path. The remaining tasks should build on that foundation instead of reintroducing string-based lookup or package flattening as long-term architecture.

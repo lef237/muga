@@ -25,9 +25,10 @@ Implemented:
 - resolver/typechecker identity data and typed HIR call targets
 - package graph identity with `PackageId`, `ModuleId`, and `PackageItemId`
 - module-private, `pkg`, and `pub` package visibility before flattening
-- `PackageExportGraph` for public import lookup
-- in-memory package interface summaries for public records/functions
-- validation of typed package references against generated interface summaries
+- `interface::PackageExportGraph` for public import lookup
+- `interface` owns in-memory package interface summaries for public records/functions
+- typed HIR public records/functions keep package item identity, so `interface` generates and validates summaries by ID instead of flattened names
+- shared prelude/builtin catalog used by resolver, typechecker, runtime, and package builtin lookup
 - local binding annotations and generic type expressions
 - `List[T]` literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - compiler-known `Option[T]` and `Result[T, E]` with qualified constructors and exhaustive `match`
