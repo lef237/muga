@@ -73,6 +73,7 @@ Current implementation:
 - `PackageSymbolGraph` stores package nodes, top-level item nodes, and import edges
 - module records keep package membership and source file/module path
 - item records keep source name, kind, visibility, declaring module, source span, and current mangled name
+- package rewriting attaches `PackageItemId` to flattened top-level AST record/function declarations
 - the existing VM path still consumes the flattened program
 
 Module-private visibility is now enforced for top-level package items during package rewriting. Unmodified top-level items are visible only inside their declaring source file, `pkg` items are visible to sibling files in the same package, and imports expose only `pub` items. Per-field record visibility is not a required v1 slice; if public hidden representations become necessary, opaque records or opaque types should be evaluated first.
@@ -106,8 +107,8 @@ Current typed HIR status:
 - assignment statements carry target `BindingId`
 - package symbol graph is preserved on typed HIR programs
 - call expressions carry explicit resolved callee shape and call origin
-- package call targets and package record types carry `PackageItemId`-backed identity
-- package item identity is still partly recovered from flattened mangled names during typed HIR lowering; remove that transitional dependency before replacing package flattening
+- package item statements, call targets, and package record types carry `PackageItemId`-backed identity
+- typed HIR lowering reads package item identity from the AST instead of recovering it from flattened mangled names
 - `Option` and `Result` match patterns are represented as enum variant patterns with enum name, variant name, and optional payload binding
 - compiler-known enum metadata currently describes `Option` and `Result` and feeds current match validation plus runtime construction/branching
 
@@ -127,6 +128,7 @@ Done:
 - typed HIR calls carry resolved callee shape and call origin
 - package loading exposes `ModuleId` data and enforces top-level module-private / `pkg` / `pub` visibility
 - typed HIR package identifiers, public item statements, call targets, and record types point to package item identities
+- shared public `TypeInfo` data lives in `types` instead of being owned by typechecker internals
 - diagnostics support related notes and suggestions for selected resolver, typechecker, and package errors
 - `interface` can generate in-memory package interface summaries for public records and functions from typed HIR item identities
 - `interface` validates public package references against generated interface summaries
@@ -139,9 +141,8 @@ Done:
 Remaining:
 
 1. extend enum/variant identity from compiler-known `Option` / `Result` metadata to user-defined enums
-2. remove remaining typed HIR package item recovery from flattened mangled names before package flattening is replaced
-3. make downstream package checking consume typed package interface summaries instead of the source-level export surface
-4. continue expanding structured diagnostics as new enum and interface errors are introduced
+2. make downstream package checking consume typed package interface summaries instead of the source-level export surface
+3. continue expanding structured diagnostics as new enum and interface errors are introduced
 
 ## Foundation Note
 

@@ -1,4 +1,4 @@
-use crate::identity::{ExprId, StmtId};
+use crate::identity::{ExprId, PackageItemId, StmtId};
 use crate::span::Span;
 
 #[derive(Clone, Debug)]
@@ -86,6 +86,7 @@ pub struct AssignStmt {
 pub struct RecordDecl {
     pub id: StmtId,
     pub name: String,
+    pub package_item: Option<PackageItemId>,
     pub visibility: Visibility,
     pub fields: Vec<RecordFieldDecl>,
     pub span: Span,
@@ -102,6 +103,7 @@ pub struct RecordFieldDecl {
 pub struct FuncDecl {
     pub id: StmtId,
     pub name: String,
+    pub package_item: Option<PackageItemId>,
     pub visibility: Visibility,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,

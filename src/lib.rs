@@ -15,6 +15,7 @@ pub mod span;
 pub mod symbol;
 pub mod token;
 pub mod typed_hir;
+pub mod types;
 pub mod typing;
 
 use ast::Program;

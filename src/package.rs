@@ -629,6 +629,7 @@ impl<'a> PackageRewriter<'a> {
 
         RecordDecl {
             id: record.id,
+            package_item: self.package_item_id(&record.name, PackageItemKind::Record),
             name: mangle_record_name_for_visibility(
                 &self.current_package,
                 &self.current_module,
@@ -701,6 +702,11 @@ impl<'a> PackageRewriter<'a> {
 
         FuncDecl {
             id: func.id,
+            package_item: if top_level {
+                self.package_item_id(&func.name, PackageItemKind::Function)
+            } else {
+                None
+            },
             name: if top_level {
                 mangle_function_name_for_visibility(
                     &self.current_package,
@@ -721,6 +727,14 @@ impl<'a> PackageRewriter<'a> {
             body,
             span: func.span,
         }
+    }
+
+    fn package_item_id(&self, name: &str, kind: PackageItemKind) -> Option<PackageItemId> {
+        let package = self.package_graph.package_id(&self.current_package)?;
+        let module = self
+            .package_graph
+            .module_id(package, &self.current_module)?;
+        self.package_graph.item_id_in_module(module, name, kind)
     }
 
     fn rewrite_stmt(&mut self, statement: &Stmt) -> Stmt {

@@ -6,10 +6,8 @@ use crate::{
     package::PackageSymbolGraph,
     span::Span,
     symbol::{Symbol, SymbolTable},
-    typing::{
-        FunctionTypeInfo, TypeCheckOutput, TypeInfo, TypedAssignmentTarget, TypedBindingInfo,
-        TypedCalleeInfo,
-    },
+    types::{FunctionTypeInfo, TypeInfo},
+    typing::{TypeCheckOutput, TypedAssignmentTarget, TypedBindingInfo, TypedCalleeInfo},
 };
 
 #[derive(Clone, Debug)]
@@ -300,7 +298,7 @@ pub fn lower(
     analysis: &TypeCheckOutput,
     package_graph: PackageSymbolGraph,
 ) -> Program {
-    let lowerer = Lowerer::new(analysis, &package_graph);
+    let lowerer = Lowerer::new(program, analysis);
     let bindings = lowerer.lower_bindings();
     let statements = program
         .statements
@@ -326,30 +324,34 @@ struct Lowerer<'a> {
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(analysis: &'a TypeCheckOutput, package_graph: &PackageSymbolGraph) -> Self {
-        let package_items_by_mangled_name: HashMap<&str, PackageItemId> = package_graph
-            .items
+    fn new(program: &ast::Program, analysis: &'a TypeCheckOutput) -> Self {
+        let package_items_by_binding = program
+            .statements
             .iter()
-            .map(|item| (item.mangled_name.as_str(), item.id))
-            .collect();
-        let package_items_by_binding = analysis
-            .bindings
-            .iter()
-            .filter_map(|binding| {
-                package_items_by_mangled_name
-                    .get(analysis.symbols.resolve(binding.symbol))
-                    .copied()
-                    .map(|item| (binding.id, item))
+            .filter_map(|statement| match statement {
+                ast::Stmt::FuncDecl(func) => {
+                    let item = func.package_item?;
+                    let binding = Self::binding_for_decl_in_analysis(
+                        analysis,
+                        &func.name,
+                        func.span,
+                        BindingKind::Function,
+                    )?;
+                    Some((binding, item))
+                }
+                _ => None,
             })
             .collect();
-        let package_items_by_symbol = package_graph
-            .items
+        let package_items_by_symbol = program
+            .statements
             .iter()
-            .filter_map(|item| {
-                analysis
-                    .symbols
-                    .lookup(&item.mangled_name)
-                    .map(|symbol| (symbol, item.id))
+            .filter_map(|statement| match statement {
+                ast::Stmt::RecordDecl(record) => {
+                    let item = record.package_item?;
+                    let symbol = analysis.symbols.lookup(&record.name)?;
+                    Some((symbol, item))
+                }
+                _ => None,
             })
             .collect();
         Self {
@@ -410,7 +412,7 @@ impl<'a> Lowerer<'a> {
             ast::Stmt::RecordDecl(stmt) => Stmt::Record(RecordStmt {
                 id: stmt.id,
                 name: stmt.name.clone(),
-                package_item: self.package_item_for_symbol_name(&stmt.name),
+                package_item: stmt.package_item,
                 fields: stmt
                     .fields
                     .iter()
@@ -686,25 +688,26 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn package_item_for_symbol_name(&self, name: &str) -> Option<PackageItemId> {
-        self.analysis
-            .symbols
-            .lookup(name)
-            .and_then(|symbol| self.package_items_by_symbol.get(&symbol))
-            .copied()
+    fn binding_for_decl(&self, name: &str, span: Span, kind: BindingKind) -> BindingId {
+        Self::binding_for_decl_in_analysis(self.analysis, name, span, kind)
+            .expect("checked declaration should have a binding")
     }
 
-    fn binding_for_decl(&self, name: &str, span: Span, kind: BindingKind) -> BindingId {
-        self.analysis
+    fn binding_for_decl_in_analysis(
+        analysis: &TypeCheckOutput,
+        name: &str,
+        span: Span,
+        kind: BindingKind,
+    ) -> Option<BindingId> {
+        analysis
             .bindings
             .iter()
             .find(|binding| {
                 binding.kind == kind
                     && binding.span == span
-                    && self.analysis.symbols.resolve(binding.symbol) == name
+                    && analysis.symbols.resolve(binding.symbol) == name
             })
             .map(|binding| binding.id)
-            .expect("checked declaration should have a binding")
     }
 
     fn type_for_binding(&self, id: BindingId) -> TypeInfo {

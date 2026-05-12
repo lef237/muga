@@ -844,7 +844,7 @@ fn call_builtin(
             Ok(Value::List(items))
         }
         BuiltinId::MapEmpty => {
-            if args.len() != 0 {
+            if !args.is_empty() {
                 return Err(vec![Diagnostic::new(
                     "R012",
                     format!("expected 0 arguments but found {}", args.len()),
