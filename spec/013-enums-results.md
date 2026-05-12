@@ -1,6 +1,6 @@
 # Enums, Result, And Error Propagation Draft
 
-Status: design draft. The current Rust compiler implements `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` as compiler-known enum-like behavior. General user-defined enum declarations, `Result[T, E]`, and error propagation are not implemented yet.
+Status: design draft. The current Rust compiler implements `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` as compiler-known enum-like behavior. AST/HIR/typed HIR match patterns now use enum-variant-shaped internal data, and runtime Option values use a generic enum-value representation. General user-defined enum declarations, `Result[T, E]`, and error propagation are not implemented yet.
 
 ## 1. Goals
 
@@ -117,7 +117,7 @@ Match typing:
 
 `Option[T]` is currently compiler-known. That can remain true internally during migration, but its source semantics should match ordinary enum behavior.
 
-The implementation should move toward one internal ADT model so that `Option[T]`, `Result[T, E]`, and user-defined enums do not permanently require separate parser, typechecker, HIR, bytecode, runtime, and typed HIR code paths.
+The implementation has started moving toward one internal ADT model: match patterns are represented as enum variant patterns, and runtime values use a generic enum value shape. The remaining work is to make typechecker match validation, bytecode branching, package interface summaries, and later source enum declarations consume one enum metadata model so that `Option[T]`, `Result[T, E]`, and user-defined enums do not permanently require separate code paths.
 
 Compatibility requirements:
 
@@ -184,7 +184,7 @@ Before persisted interfaces are introduced, in-memory summaries should be extend
 
 ## 9. Runtime Representation
 
-The runtime can initially use a simple representation:
+The runtime now uses a simple representation for current enum-like values:
 
 ```text
 Enum {
@@ -194,12 +194,14 @@ Enum {
 }
 ```
 
-The current dedicated `OptionValue` representation can remain temporarily, but the long-term direction should be one enum-value representation that supports `Option`, `Result`, and user-defined enums.
+This currently preserves existing `Option::Some(...)` and `Option::None` behavior. `Result` and user-defined enums should reuse the same value shape.
 
 Performance-specific representations can be handled later in MIR/native lowering.
 
 ## 10. Implementation Checklist
 
+- [x] Represent current `Option` match patterns in AST/HIR/typed HIR as enum variant patterns.
+- [x] Represent current runtime `Option` values with a generic enum value shape.
 - [ ] Add parser support for `enum` declarations, type parameters, and variant declarations.
 - [ ] Add AST nodes for enum declarations and enum variants.
 - [ ] Add resolver/typechecker identity for enum declarations and variants.

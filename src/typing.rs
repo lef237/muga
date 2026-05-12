@@ -1493,27 +1493,53 @@ impl TypeChecker {
         for arm in &expr.arms {
             self.push_scope(false);
             match &arm.pattern {
-                MatchPattern::OptionSome { binding, span } => {
+                MatchPattern::Variant(pattern)
+                    if pattern.enum_name == "Option" && pattern.variant_name == "Some" =>
+                {
                     if let Some(previous) = has_some {
                         self.diagnostics.push(
-                            Diagnostic::new("T018", "duplicate `Option::Some` match arm", *span)
-                                .with_related("previous `Option::Some` arm is here", previous),
+                            Diagnostic::new(
+                                "T018",
+                                "duplicate `Option::Some` match arm",
+                                pattern.span,
+                            )
+                            .with_related("previous `Option::Some` arm is here", previous),
                         );
                     } else {
-                        has_some = Some(*span);
+                        has_some = Some(pattern.span);
                     }
-                    let name = self.symbol(binding);
-                    self.insert_current(name, BindingKind::Immutable, item_ty.clone(), *span);
+                    if let Some(binding) = &pattern.binding {
+                        let name = self.symbol(binding);
+                        self.insert_current(
+                            name,
+                            BindingKind::Immutable,
+                            item_ty.clone(),
+                            pattern.span,
+                        );
+                    }
                 }
-                MatchPattern::OptionNone { span } => {
+                MatchPattern::Variant(pattern)
+                    if pattern.enum_name == "Option" && pattern.variant_name == "None" =>
+                {
                     if let Some(previous) = has_none {
                         self.diagnostics.push(
-                            Diagnostic::new("T018", "duplicate `Option::None` match arm", *span)
-                                .with_related("previous `Option::None` arm is here", previous),
+                            Diagnostic::new(
+                                "T018",
+                                "duplicate `Option::None` match arm",
+                                pattern.span,
+                            )
+                            .with_related("previous `Option::None` arm is here", previous),
                         );
                     } else {
-                        has_none = Some(*span);
+                        has_none = Some(pattern.span);
                     }
+                }
+                MatchPattern::Variant(pattern) => {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T018",
+                        "`match` currently supports only Option[T] values",
+                        pattern.span,
+                    ));
                 }
             }
 

@@ -362,20 +362,20 @@ impl Compiler {
         let some_arm = expr
             .arms
             .iter()
-            .find(|arm| matches!(arm.pattern, hir::MatchPattern::OptionSome { .. }))
+            .find(|arm| self.pattern_is_variant(&arm.pattern, "Option", "Some"))
             .expect("typechecked Option match should have Some arm");
         let none_arm = expr
             .arms
             .iter()
-            .find(|arm| matches!(arm.pattern, hir::MatchPattern::OptionNone { .. }))
+            .find(|arm| self.pattern_is_variant(&arm.pattern, "Option", "None"))
             .expect("typechecked Option match should have None arm");
 
         self.compile_expr(&expr.value, chunk);
         let none_jump = self.emit_jump_if_option_none(chunk, expr.value.span());
 
-        let hir::MatchPattern::OptionSome { binding, span } = some_arm.pattern else {
-            unreachable!("selected Some arm");
-        };
+        let (binding, span) = self
+            .pattern_binding(&some_arm.pattern)
+            .expect("typechecked Option::Some arm should bind payload");
         chunk.instructions.push(Instruction::PushScope);
         chunk.instructions.push(Instruction::Assign {
             name: binding,
@@ -394,6 +394,22 @@ impl Compiler {
 
         let end_target = chunk.instructions.len();
         self.patch_jump(chunk, end_jump, end_target);
+    }
+
+    fn pattern_is_variant(
+        &self,
+        pattern: &hir::MatchPattern,
+        enum_name: &str,
+        variant_name: &str,
+    ) -> bool {
+        let hir::MatchPattern::Variant(pattern) = pattern;
+        self.symbols.resolve(pattern.enum_name) == enum_name
+            && self.symbols.resolve(pattern.variant_name) == variant_name
+    }
+
+    fn pattern_binding(&self, pattern: &hir::MatchPattern) -> Option<(Symbol, Span)> {
+        let hir::MatchPattern::Variant(pattern) = pattern;
+        pattern.binding.map(|binding| (binding, pattern.span))
     }
 
     fn emit_jump_if_false(&self, chunk: &mut Chunk, span: Span) -> usize {

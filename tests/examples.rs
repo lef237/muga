@@ -1144,6 +1144,41 @@ fn main(): Int {
 }
 
 #[test]
+fn parser_preserves_option_match_patterns_as_enum_variants() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = Option::Some(1)
+  match value {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let program = parse_source(source);
+    let main = match &program.statements[0] {
+        muga::ast::Stmt::FuncDecl(function) => function,
+        _ => panic!("expected function"),
+    };
+    let match_expr = match main.body.expr.as_ref() {
+        muga::ast::Expr::Match(expr) => expr,
+        other => panic!("expected match expression, got {other:#?}"),
+    };
+    let some = match &match_expr.arms[0].pattern {
+        muga::ast::MatchPattern::Variant(pattern) => pattern,
+    };
+    assert_eq!(some.enum_name, "Option");
+    assert_eq!(some.variant_name, "Some");
+    assert_eq!(some.binding.as_deref(), Some("x"));
+
+    let none = match &match_expr.arms[1].pattern {
+        muga::ast::MatchPattern::Variant(pattern) => pattern,
+    };
+    assert_eq!(none.enum_name, "Option");
+    assert_eq!(none.variant_name, "None");
+    assert_eq!(none.binding, None);
+}
+
+#[test]
 fn local_binding_annotation_sets_binding_type() {
     let source = r#"
 fn main(): Int {
@@ -1850,6 +1885,55 @@ fn main(): Option[Int] {
         binding.ty,
         muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
     );
+}
+
+#[test]
+fn typed_hir_preserves_option_match_patterns_as_enum_variants() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = Option::Some(1)
+  match value {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    let match_expr = match &main.body.expr.kind {
+        muga::typed_hir::ExprKind::Match(expr) => expr,
+        other => panic!("expected typed match expression, got {other:#?}"),
+    };
+    let some = match &match_expr.arms[0].pattern {
+        muga::typed_hir::MatchPattern::Variant(pattern) => pattern,
+    };
+    assert_eq!(some.enum_name, "Option");
+    assert_eq!(some.variant_name, "Some");
+    assert_eq!(some.binding_name.as_deref(), Some("x"));
+    assert!(some.binding.is_some());
+
+    let none = match &match_expr.arms[1].pattern {
+        muga::typed_hir::MatchPattern::Variant(pattern) => pattern,
+    };
+    assert_eq!(none.enum_name, "Option");
+    assert_eq!(none.variant_name, "None");
+    assert_eq!(none.binding_name, None);
+    assert_eq!(none.binding, None);
+}
+
+#[test]
+fn option_runtime_display_uses_enum_value_shape() {
+    let source = r#"
+fn main(): Option[Int] {
+  Option::Some(1)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Option::Some(1)");
 }
 
 #[test]

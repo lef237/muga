@@ -1119,7 +1119,8 @@ impl<'a> PackageRewriter<'a> {
             .iter()
             .map(|arm| {
                 self.push_scope();
-                if let MatchPattern::OptionSome { binding, .. } = &arm.pattern {
+                let MatchPattern::Variant(pattern) = &arm.pattern;
+                if let Some(binding) = &pattern.binding {
                     self.insert_local(binding.clone());
                 }
                 let value = self.rewrite_expr(&arm.value);

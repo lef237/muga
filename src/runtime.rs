@@ -11,7 +11,7 @@ pub enum Value {
     String(String),
     List(Vec<Value>),
     Map(MapValue),
-    Option(OptionValue),
+    Enum(EnumValue),
     Record(RecordValue),
     Function(Rc<ClosureValue>),
     Builtin(BuiltinFunction),
@@ -24,14 +24,15 @@ pub struct RecordValue {
 }
 
 #[derive(Clone, Debug)]
-pub enum OptionValue {
-    Some(Box<Value>),
-    None,
+pub struct MapValue {
+    entries: Vec<MapEntryValue>,
 }
 
 #[derive(Clone, Debug)]
-pub struct MapValue {
-    entries: Vec<MapEntryValue>,
+pub struct EnumValue {
+    type_name: String,
+    variant_name: String,
+    payload: Option<Box<Value>>,
 }
 
 #[derive(Clone, Debug)]
@@ -51,6 +52,22 @@ enum MapKey {
 struct RecordFieldValue {
     name: String,
     value: Value,
+}
+
+fn option_some(value: Value) -> Value {
+    Value::Enum(EnumValue {
+        type_name: "Option".to_string(),
+        variant_name: "Some".to_string(),
+        payload: Some(Box::new(value)),
+    })
+}
+
+fn option_none() -> Value {
+    Value::Enum(EnumValue {
+        type_name: "Option".to_string(),
+        variant_name: "None".to_string(),
+        payload: None,
+    })
 }
 
 impl fmt::Display for Value {
@@ -84,8 +101,13 @@ impl fmt::Display for Value {
                 }
                 write!(f, "}}")
             }
-            Self::Option(OptionValue::Some(value)) => write!(f, "Option::Some({value})"),
-            Self::Option(OptionValue::None) => write!(f, "Option::None"),
+            Self::Enum(value) => {
+                write!(f, "{}::{}", value.type_name, value.variant_name)?;
+                if let Some(payload) = &value.payload {
+                    write!(f, "({payload})")?;
+                }
+                Ok(())
+            }
             Self::Record(record) => {
                 write!(f, "{} {{ ", record.type_name)?;
                 for (index, field) in record.fields.iter().enumerate() {
@@ -404,8 +426,21 @@ fn execute_chunk(
             Instruction::JumpIfOptionNone { target, span } => {
                 let value = pop_value(&mut stack, *span, "R015", "missing Option value for match")?;
                 match value {
-                    Value::Option(OptionValue::Some(value)) => stack.push(*value),
-                    Value::Option(OptionValue::None) => {
+                    Value::Enum(value)
+                        if value.type_name == "Option" && value.variant_name == "Some" =>
+                    {
+                        let Some(payload) = value.payload else {
+                            return Err(vec![Diagnostic::new(
+                                "R019",
+                                "`match` expected Option::Some to carry a value",
+                                *span,
+                            )]);
+                        };
+                        stack.push(*payload);
+                    }
+                    Value::Enum(value)
+                        if value.type_name == "Option" && value.variant_name == "None" =>
+                    {
                         pc = *target;
                         continue;
                     }
@@ -629,7 +664,7 @@ fn call_builtin(
                 }
                 Value::List(_)
                 | Value::Map(_)
-                | Value::Option(_)
+                | Value::Enum(_)
                 | Value::Record(_)
                 | Value::Function(_)
                 | Value::Builtin(_) => Err(vec![Diagnostic::new(
@@ -658,7 +693,7 @@ fn call_builtin(
                 }
                 Value::List(_)
                 | Value::Map(_)
-                | Value::Option(_)
+                | Value::Enum(_)
                 | Value::Record(_)
                 | Value::Function(_)
                 | Value::Builtin(_) => Err(vec![Diagnostic::new(
@@ -750,20 +785,18 @@ fn call_builtin(
                         )]);
                     };
                     if index < 0 {
-                        return Ok(Value::Option(OptionValue::None));
+                        return Ok(option_none());
                     }
                     match items.get(index as usize).cloned() {
-                        Some(value) => Ok(Value::Option(OptionValue::Some(Box::new(value)))),
-                        None => Ok(Value::Option(OptionValue::None)),
+                        Some(value) => Ok(option_some(value)),
+                        None => Ok(option_none()),
                     }
                 }
                 Value::Map(map) => {
                     let key = map_key(key_or_index, span, "get")?;
                     match map.entries.iter().find(|entry| entry.key == key) {
-                        Some(entry) => Ok(Value::Option(OptionValue::Some(Box::new(
-                            entry.value.clone(),
-                        )))),
-                        None => Ok(Value::Option(OptionValue::None)),
+                        Some(entry) => Ok(option_some(entry.value.clone())),
+                        None => Ok(option_none()),
                     }
                 }
                 _ => Err(vec![Diagnostic::new(
@@ -889,7 +922,7 @@ fn call_builtin(
                 )]);
             }
             let value = args.into_iter().next().expect("checked length");
-            Ok(Value::Option(OptionValue::Some(Box::new(value))))
+            Ok(option_some(value))
         }
     }
 }
@@ -1223,7 +1256,7 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             option_none_symbol,
             Binding {
                 mutable: false,
-                value: Value::Option(OptionValue::None),
+                value: option_none(),
                 span: Span::default(),
             },
         );

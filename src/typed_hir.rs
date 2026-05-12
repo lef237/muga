@@ -678,14 +678,16 @@ pub struct MatchArm {
 
 #[derive(Clone, Debug)]
 pub enum MatchPattern {
-    OptionSome {
-        binding_name: String,
-        binding: BindingId,
-        span: Span,
-    },
-    OptionNone {
-        span: Span,
-    },
+    Variant(EnumVariantPattern),
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumVariantPattern {
+    pub enum_name: String,
+    pub variant_name: String,
+    pub binding_name: Option<String>,
+    pub binding: Option<BindingId>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -977,19 +979,20 @@ impl<'a> Lowerer<'a> {
                     .iter()
                     .map(|arm| MatchArm {
                         pattern: match &arm.pattern {
-                            ast::MatchPattern::OptionSome { binding, span } => {
-                                MatchPattern::OptionSome {
-                                    binding_name: binding.clone(),
-                                    binding: self.binding_for_decl(
-                                        binding,
-                                        *span,
-                                        BindingKind::Immutable,
-                                    ),
-                                    span: *span,
-                                }
-                            }
-                            ast::MatchPattern::OptionNone { span } => {
-                                MatchPattern::OptionNone { span: *span }
+                            ast::MatchPattern::Variant(pattern) => {
+                                MatchPattern::Variant(EnumVariantPattern {
+                                    enum_name: pattern.enum_name.clone(),
+                                    variant_name: pattern.variant_name.clone(),
+                                    binding_name: pattern.binding.clone(),
+                                    binding: pattern.binding.as_ref().map(|binding| {
+                                        self.binding_for_decl(
+                                            binding,
+                                            pattern.span,
+                                            BindingKind::Immutable,
+                                        )
+                                    }),
+                                    span: pattern.span,
+                                })
                             }
                         },
                         value: self.lower_expr(&arm.value),
