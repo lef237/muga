@@ -26,9 +26,9 @@ The first slice should not include:
 - broad stdlib effect APIs
 - overloading or protocol-based variant dispatch
 
-## 3. Source Syntax Direction
+## 3. MVP Source Syntax
 
-Recommended enum syntax:
+The first user-defined enum slice uses this declaration shape:
 
 ```muga
 enum Option[T] {
@@ -42,7 +42,18 @@ enum Result[T, E] {
 }
 ```
 
-Variant construction should use qualified names:
+Grammar sketch:
+
+```text
+enum-decl    = visibility? "enum" Ident type-params? "{" enum-variant* "}"
+type-params  = "[" Ident ("," Ident)* "]"
+enum-variant = Ident | Ident "(" type-expr ")"
+visibility   = "pub" | "pkg"
+```
+
+Variant declarations use the same boundary rule as record fields: newline or comma separates entries, and a trailing separator is accepted.
+
+Variant construction uses qualified names:
 
 ```muga
 present: Option[Int] = Option::Some(1)
@@ -52,7 +63,7 @@ ok: Result[Int, String] = Result::Ok(1)
 err: Result[Int, String] = Result::Err("missing")
 ```
 
-Pattern matching should use the same qualified form:
+Pattern matching uses the same qualified form:
 
 ```muga
 match result {
@@ -65,10 +76,11 @@ This matches the source shape already implemented for compiler-known `Option[T]`
 
 ## 4. MVP Variant Shape
 
-Recommended MVP:
+The MVP supports:
 
 - zero-payload variants, such as `None`
 - one-payload variants, such as `Some(T)` or `Err(E)`
+- generic enum declarations with unconstrained type parameters
 - variants are namespaced under their enum type
 - variant constructors are not imported into the local namespace unqualified
 - enum values are nominal, not structural
@@ -77,9 +89,12 @@ Deferred:
 
 - multi-payload tuple-like variants
 - named-field variants
+- per-variant visibility
+- unqualified variant imports
 - wildcard patterns
 - nested patterns
 - pattern guards
+- recursive enum layout optimization
 - derived equality/hash behavior
 
 This MVP is enough to model `Option[T]` and `Result[T, E]`.
@@ -112,6 +127,14 @@ Match typing:
 - missing variant arms are errors
 - payload bindings are immutable local bindings inside the arm expression
 - all arm result expressions must have the same type, or must match the surrounding expected type
+
+Identity rules for the MVP:
+
+- enum declarations are top-level items
+- package-mode enum declarations receive `PackageItemId`, the same as public records and functions
+- imported enum types and variants resolve through package interfaces, not through string reconstruction from flattened names
+- a public enum exposes its name, type parameters, variants, and payload types in the package interface
+- module-private and `pkg` enum visibility follows the same package visibility rules as records/functions
 
 ## 6. Relationship To Current Option
 
@@ -284,7 +307,7 @@ Performance-specific representations can be handled later in MIR/native lowering
 
 ## 11. Recommended Phasing
 
-1. Add user-defined enum declarations with zero/one-payload variants.
-2. Add generic enum declarations if they are not covered by the previous step.
+1. Add user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants.
+2. Harden enum diagnostics, package visibility, and in-memory interface validation.
 3. Revisit `try expr` propagation syntax.
 4. Extend persisted package interfaces and cache formats once enum/result signatures are stable.

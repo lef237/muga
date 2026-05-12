@@ -52,11 +52,13 @@ Implement user-defined `enum` declarations before broad stdlib or persisted pack
 
 Scope:
 
-1. Parse zero-payload and one-payload enum variants.
-2. Add enum/variant identity to resolver, typechecker, HIR, typed HIR, and package summaries.
-3. Reuse the current `Option` / `Result` enum metadata and runtime value path.
-4. Keep exhaustive `match`; defer wildcard patterns and nested destructuring.
-5. Keep `try expr` deferred until enum identity and public enum signatures are stable.
+1. Parse top-level `enum` declarations with optional unconstrained type parameters.
+2. Support zero-payload and one-payload variants separated by newline or comma.
+3. Require qualified construction and patterns: `Enum::Variant`.
+4. Add enum/variant identity to resolver, typechecker, HIR, typed HIR, and package summaries.
+5. Reuse the current `Option` / `Result` enum metadata and runtime value path.
+6. Keep exhaustive `match`; reject missing, duplicate, and foreign variant arms.
+7. Keep wildcard patterns, nested destructuring, named-field variants, multi-payload variants, and `try expr` deferred.
 
 Why this is next:
 
@@ -66,14 +68,16 @@ Why this is next:
 
 ## Decisions Before Coding
 
-Resolve these before or during the enum slice:
+Closed for the enum MVP:
 
-- exact `enum` declaration grammar
-- whether MVP variants are limited to zero or one unnamed payload
-- whether all variant construction and patterns remain qualified as `Enum::Variant`
-- exhaustiveness diagnostics for missing and duplicate variants
-- enum identity across local declarations, packages, and package interfaces
-- whether compiler-known `Option` / `Result` later become ordinary stdlib enum declarations without changing source syntax
+- declaration grammar is `enum Name[T, E] { Variant | Variant(Type) }`
+- variant declarations use newline or comma boundaries, matching record fields
+- MVP variants are limited to zero or one unnamed payload
+- construction and patterns remain qualified as `Enum::Variant`
+- match checking must reject missing, duplicate, and foreign variant arms
+- package-mode enum declarations use `PackageItemId`
+- public enum declarations appear in in-memory package interface summaries
+- compiler-known `Option` / `Result` stay source-compatible and may later become ordinary stdlib enum declarations without source syntax changes
 
 Keep these decisions closed for the next slice:
 

@@ -136,20 +136,22 @@ Reasoning:
 
 ## Requirement Decisions For The Next Slice
 
-Decide these before coding the next feature:
+Closed before coding the next feature:
 
 - [x] `Result[T, E]` lands first as a compiler-known enum-like standard type.
-- [ ] The exact enum declaration syntax.
-- [ ] Whether the MVP supports only zero-payload and one-payload variants, or also multi-field/named-field variants.
-- [ ] Whether variant constructors are always qualified as `Enum::Variant`.
-- [ ] Whether match patterns must be exhaustive with no wildcard in the MVP.
-- [ ] How enum identities are represented across local declarations and packages.
-- [ ] How enum declarations appear in package interface summaries.
+- [x] The enum declaration syntax is `enum Name[T, E] { Variant | Variant(Type) }`.
+- [x] Variant declarations use newline or comma boundaries, matching record fields.
+- [x] The MVP supports zero-payload and one-payload variants only.
+- [x] Multi-field variants and named-field variants are deferred.
+- [x] Variant constructors and patterns are always qualified as `Enum::Variant`.
+- [x] Match patterns must be exhaustive with no wildcard in the MVP.
+- [x] Package-mode enum declarations use `PackageItemId`.
+- [x] Public enum declarations appear in in-memory package interface summaries.
 - [x] Prefer `try expr` over postfix `?` if Result propagation sugar is added.
 
 Current recommendation:
 
-- Use `enum` as the declaration keyword.
+- Use `enum` as the declaration keyword with optional unconstrained type parameters.
 - Keep variant names qualified in expressions and patterns, matching current `Option::Some` and `Option::None`.
 - MVP variants should support zero or one unnamed payload. This covers `Option[T]` and `Result[T, E]`.
 - Keep wildcard patterns deferred until basic exhaustiveness diagnostics are solid.
@@ -182,12 +184,55 @@ Estimates are in focused engineering days for someone already familiar with this
 |---|---|---|---:|---|
 | 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. AST/HIR/typed HIR pattern shape, runtime enum value shape, compiler-known enum metadata, and generic two-variant bytecode/runtime branching are in place. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | Done | Low |
 | 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
-| 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | 3-5 days | High |
-| 4. Generic enum declarations | Type parameters on enum declarations and variant constructors. This may share work with generic records/functions. | parser/AST/typechecker/package/typed HIR/tests | 3-6 days | High |
+| 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | 4-6 days | High |
+| 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | 2-4 days | Medium |
 | 5. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 | 6. Package interface persistence | Serialize public records/functions/enums, type identities, and hashes. Start consuming stored summaries for downstream checking. | `src/package.rs`, `src/typed_hir.rs`, new interface/cache modules, tests | 5-10 days | High |
 
-The safest immediate code slice is now Slice 3: add user-defined enum declaration syntax for zero-payload and one-payload variants, then route those declarations into the same match/type/runtime representation currently used by compiler-known `Option` and `Result`.
+The safest immediate code slice is now Slice 3: add user-defined enum declarations with optional type parameters and zero-payload or one-payload variants, then route those declarations into the same match/type/runtime representation currently used by compiler-known `Option` and `Result`.
+
+## Test Plan For The Next Code Slice
+
+Add or rename tests around these behavioral anchors before filling in the implementation.
+
+Parser and AST:
+
+- `parser_preserves_user_enum_declarations`
+- `parser_accepts_generic_user_enum_declarations`
+- `parser_rejects_multi_payload_enum_variants`
+- `parser_rejects_named_field_enum_variants`
+
+Typechecking and diagnostics:
+
+- `user_enum_constructors_typecheck_with_expected_type`
+- `user_enum_zero_payload_constructor_requires_expected_type`
+- `user_enum_constructor_payload_type_must_match`
+- `user_enum_match_requires_all_variants`
+- `user_enum_match_rejects_duplicate_variant_arm`
+- `user_enum_match_rejects_foreign_variant`
+- `user_enum_payload_binding_is_arm_local`
+
+Runtime and lowering:
+
+- `user_enum_zero_payload_sample_runs`
+- `user_enum_payload_match_sample_runs`
+- `user_enum_runtime_display_uses_enum_value_shape`
+
+Typed HIR and package interfaces:
+
+- `typed_hir_preserves_user_enum_declarations`
+- `typed_hir_preserves_user_enum_variant_call_callee`
+- `typed_hir_preserves_user_enum_match_patterns`
+- `package_public_enum_is_exported`
+- `package_private_enum_from_import_is_rejected`
+- `typed_hir_generates_package_interface_enum_summaries`
+- `typed_hir_rejects_stale_package_interface_enum_variants`
+- `public_function_signature_can_use_public_enum`
+
+Compatibility:
+
+- `option_and_result_samples_remain_source_compatible`
+- `prelude_catalog_still_uses_builtin_ids_for_compiler_known_variants`
 
 ## Definition Of Done For The Next Code Slice
 

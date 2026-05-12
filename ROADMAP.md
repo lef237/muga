@@ -63,11 +63,13 @@ Related design notes:
 
 The next code slice is user-defined enum declarations:
 
-1. Parse `enum` declarations with zero-payload and one-payload variants.
-2. Represent enum and variant identities in AST, resolver/typechecker data, HIR, typed HIR, and package summaries.
-3. Route enum construction and `match` through the same metadata/runtime path currently used by compiler-known `Option` and `Result`.
-4. Keep exhaustive `match` as the first pattern-matching surface.
-5. Keep `try expr` propagation sugar deferred until user-defined enum identity and public signatures are stable.
+1. Parse top-level `enum` declarations with optional unconstrained type parameters.
+2. Support zero-payload and one-payload variants only, separated by newline or comma.
+3. Require qualified construction and patterns: `Enum::Variant`.
+4. Represent enum and variant identities in AST, resolver/typechecker data, HIR, typed HIR, and package summaries.
+5. Route enum construction and `match` through the same metadata/runtime path currently used by compiler-known `Option` and `Result`.
+6. Keep exhaustive `match` as the first pattern-matching surface.
+7. Keep wildcard patterns, nested destructuring, multi-payload variants, named-field variants, and `try expr` deferred.
 
 This comes before broad stdlib effects because IO, HTTP, process, time, and concurrency APIs need stable `Result` and enum behavior.
 
