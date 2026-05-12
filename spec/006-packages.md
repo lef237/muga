@@ -358,6 +358,8 @@ That signature may come from:
 - local inference inside the defining package
 - a mix of both
 
+Current implementation note: `pub fn` declarations still require explicit parameter and return annotations. Inferred public signatures are the target package-interface policy, not current behavior.
+
 ```txt
 pub fn display_name(user: User) {
   user.name
@@ -920,7 +922,7 @@ These layers are additive. None of them changes the meaning of the content hash,
 
 ### 17.11 Current Implementation Boundary
 
-The current implementation has only a minimal manifest mode. It does not yet have dependency declarations, content hashing, lockfiles, registries, package archives, or persisted package interface files.
+The current implementation has a local package loader, minimal manifest mode, package identity data, and in-memory package interface summaries. It does not yet have dependency declarations, content hashing, lockfiles, registries, package archives, persisted package interface files, or cache artifacts.
 
 It currently:
 
@@ -932,9 +934,14 @@ It currently:
 - reads all `.muga` files in each loaded package directory
 - follows `import` declarations recursively within the local source tree
 - rejects import alias collisions
-- flattens loaded packages into one internal program before resolver/typechecker work
+- enforces module-private, `pkg`, and `pub` top-level visibility before flattening
+- records package, module, and item identity in `PackageSymbolGraph`
+- routes public import lookup through `PackageExportGraph`
+- generates in-memory package interface summaries for public records and functions
+- validates typed package references against generated summaries
+- still flattens loaded packages into one internal program before the main resolver/typechecker/runtime path
 
-This is sufficient for testing the surface syntax, but it is not the final compilation model. The dependency layers in 17.1 to 17.10 are the target design, to be implemented incrementally on top of the existing manifest and resolver.
+This is enough to validate the package surface and the next interface boundary. It is not the final compilation model. The dependency layers in 17.1 to 17.10 are target design, to be implemented incrementally on top of the existing manifest, package graph, typed HIR, and interface-summary work.
 
 ## 18. Example
 

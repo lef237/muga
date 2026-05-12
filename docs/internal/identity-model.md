@@ -1,8 +1,8 @@
 # Compiler Identity Model
 
-Status: implementation planning note.
+Status: current implementation note with remaining migration tasks.
 
-This note defines the identity model Muga should use before typed HIR and real package interfaces are introduced.
+This note defines the identity model Muga uses across resolver/typechecker outputs, typed HIR, package identity, and in-memory package interface summaries.
 
 ## Goals
 
@@ -43,14 +43,15 @@ Each `BindingId` records at least:
 - binding kind
 - declaration span
 
-Typed HIR should later store resolved identifier uses as `BindingId` instead of looking names up again.
+Typed HIR stores resolved identifier uses with `BindingId` and package targets instead of rerunning name lookup.
 
-The first migration step is intentionally smaller than full typed HIR:
+The completed migration foundation includes:
 
-- expose the accepted binding table from resolver/typechecker
-- expose identifier references as analysis records that carry `ExprId`, source spans, and `BindingId`
-- expose expression type results from typechecking
-- keep the current runtime and bytecode behavior unchanged
+- accepted binding tables from resolver/typechecker
+- identifier-reference analysis records with `ExprId`, source spans, and `BindingId`
+- expression type results from typechecking
+- typed HIR nodes that preserve resolved local/package targets
+- current runtime and bytecode behavior kept unchanged during the transition
 
 Source spans are still kept for diagnostics, but analysis consumers should prefer explicit node identity. The current AST carries `ExprId` and `StmtId`, and resolver/typechecker outputs use `ExprId` for identifier references and expression types. Package flattening renumbers node IDs after combining files so IDs remain unique inside the final checked program.
 
@@ -143,6 +144,6 @@ Remaining:
 
 ## Foundation Note
 
-The typed HIR and package symbol graph land as a foundation ahead of the remaining items above.
+Typed HIR, package symbol graph, `PackageExportGraph`, and in-memory package summaries are now the foundation for the remaining interface work.
 
-The reason is that they add reusable compiler data without replacing the existing VM execution path. The remaining items are handled as follow-up compiler-core work on top of this foundation.
+They add reusable compiler data without replacing the current VM execution path. The remaining tasks should build on that foundation instead of reintroducing string-based lookup or package flattening as long-term architecture.

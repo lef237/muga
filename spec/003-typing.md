@@ -318,9 +318,9 @@ inc = fn(x: Int): Int {
 }
 ```
 
-Collection literals introduce one important planned extension: local binding type annotations.
+Collection literals and enum-like constructors sometimes need an expected type. Local binding annotations provide that type without introducing `let`.
 
-Target syntax:
+Syntax:
 
 ```txt
 items: List[Int] = []

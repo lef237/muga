@@ -94,7 +94,7 @@ The compiler would need to decide whether `value.len()` means:
 - a default protocol implementation
 - a dynamically dispatched operation
 
-Muga should not add that ambiguity before typed HIR, package interfaces, and MIR are stable.
+Muga should not add that ambiguity before the typed HIR boundary, persisted package interfaces, and MIR are stable.
 
 ### 3.2 Keep Dot Calls Stable
 
