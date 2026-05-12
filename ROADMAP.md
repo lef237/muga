@@ -489,7 +489,7 @@ Likely topics:
 If work resumes right now, the best order is:
 
 1. implement user-defined enum declarations with zero-payload and one-payload variants
-2. keep `?` propagation sugar deferred until explicit `Result` behavior and enum identity are stable
+2. keep `try expr` propagation sugar deferred until explicit `Result` behavior and enum identity are stable
 3. route user-defined enum construction and matching through the existing enum metadata/runtime path
 4. return to package interface consumption and persisted package interfaces once enum/result public signatures are representable
 5. cache, MIR, and native backend work once the semantic boundary and package interface format are stable

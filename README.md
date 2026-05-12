@@ -105,6 +105,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - v1 generics are drafted for generic type expressions, generic records, and generic functions
 - v1 does not introduce trait, interface, protocol, typeclass, or overloaded dispatch declarations
 - collection design is drafted around `List[T]`, `Option[T]`, and safe list lookup first, then `Map[K, V]`
+- recoverable errors use explicit `Result[T, E]`; if propagation sugar is added later, `try expr` is preferred over postfix `?`
 - source-level values use value semantics; the implementation may share immutable storage internally when that is not observable
 - explicit source-level references such as `ref T`, `mut ref T`, and `&value` are not planned for ordinary Muga code
 - write-oriented APIs should prefer value-returning updates, builder/buffer types, or resource handles

@@ -148,20 +148,82 @@ fn main(): Int {
 }
 ```
 
-This explicit form is now implemented for compiler-known `Result[T, E]`. Only after it stays stable should Muga decide whether to add `?`.
-
-Open `?` decisions:
-
-- whether `?` is only for `Result` propagation
-- whether `T?` is future shorthand for `Option[T]`
-- whether optional chaining ever uses `?`
-- how to avoid grammar and readability conflicts between those uses
+This explicit form is now implemented for compiler-known `Result[T, E]`. Only after it stays stable should Muga add propagation sugar.
 
 Current recommendation:
 
-- keep `T?` reserved only as possible future `Option[T]` shorthand
-- do not implement `?` propagation in the first `Result` slice
-- revisit propagation after explicit `Result` match works across packages
+- prefer prefix `try expr` for `Result` propagation if sugar is added
+- do not use postfix `?` for `Result` propagation in the current design direction
+- keep `T?` reserved only as possible future shorthand for `Option[T]`
+- do not introduce optional chaining in the first error-propagation design
+
+Rationale:
+
+- `try` is a word, so the possible early return is visible at the expression site
+- postfix `?` is compact, but it is less readable for beginners and conflicts with future `T?` shorthand
+- Muga's simplicity goal is local readability, not only the fewest characters
+- explicit `match` remains the recovery mechanism when the caller wants to handle the error locally
+
+Candidate `try` shape:
+
+```muga
+fn load_age(path: String): Result[Int, String] {
+  text = try read_file(path)
+  parse_int(text)
+}
+```
+
+This should desugar approximately to:
+
+```muga
+fn load_age(path: String): Result[Int, String] {
+  read = read_file(path)
+  match read {
+    Result::Ok(text) => parse_int(text)
+    Result::Err(error) => Result::Err(error)
+  }
+}
+```
+
+For multiple fallible steps:
+
+```muga
+fn load_user(path: String): Result[User, String] {
+  text = try read_file(path)
+  data = try parse_json(text)
+  user_from_json(data)
+}
+```
+
+Without `try`, the same flow remains expressible with explicit `match`, but gets nested quickly. That is the reason to consider a propagation form at all.
+
+When the caller wants to recover instead of propagate, use `match`:
+
+```muga
+fn load_or_guest(path: String): User {
+  result = load_user(path)
+  match result {
+    Result::Ok(user) => user
+    Result::Err(message) => User {
+      name: "Guest"
+      age: 0
+    }
+  }
+}
+```
+
+Open `try` decisions:
+
+- whether `try expr` is allowed only inside functions returning `Result[_, E]`
+- whether propagated error types must match exactly or whether conversion is ever allowed
+- whether `try` should also work with `Option[T]`; current recommendation is no for v1
+- whether `try` is an expression in all expression positions or only in assignment/final-expression positions
+
+Deferred alternatives:
+
+- postfix `expr?`: rejected for now as less readable and too close to future `T?`
+- checked `throws`: deferred because it adds a separate effect system to function types and package interfaces
+- implicit exceptions: rejected as a default because failure would be hidden from ordinary signatures
 
 ## 8. Package Interfaces
 
@@ -224,5 +286,5 @@ Performance-specific representations can be handled later in MIR/native lowering
 
 1. Add user-defined enum declarations with zero/one-payload variants.
 2. Add generic enum declarations if they are not covered by the previous step.
-3. Revisit `?` propagation syntax.
+3. Revisit `try expr` propagation syntax.
 4. Extend persisted package interfaces and cache formats once enum/result signatures are stable.
