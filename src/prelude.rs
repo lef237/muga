@@ -118,6 +118,26 @@ pub fn builtin_name(id: BuiltinId) -> &'static str {
     builtin_by_id(id).name
 }
 
+pub fn builtin_debug_label(id: BuiltinId) -> &'static str {
+    match id {
+        BuiltinId::Print => "Builtin(print)",
+        BuiltinId::Println => "Builtin(println)",
+        BuiltinId::Len => "Builtin(len)",
+        BuiltinId::IsEmpty => "Builtin(is_empty)",
+        BuiltinId::Push => "Builtin(push)",
+        BuiltinId::Get => "Builtin(get)",
+        BuiltinId::Set => "Builtin(set)",
+        BuiltinId::MapEmpty => "Builtin(Map.empty)",
+        BuiltinId::Contains => "Builtin(contains)",
+        BuiltinId::Insert => "Builtin(insert)",
+        BuiltinId::Remove => "Builtin(remove)",
+        BuiltinId::OptionSome => "Builtin(Option::Some)",
+        BuiltinId::OptionNone => "Builtin(Option::None)",
+        BuiltinId::ResultOk => "Builtin(Result::Ok)",
+        BuiltinId::ResultErr => "Builtin(Result::Err)",
+    }
+}
+
 pub fn builtin_by_id(id: BuiltinId) -> Builtin {
     BUILTINS
         .iter()

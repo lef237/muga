@@ -140,6 +140,10 @@ fn prelude_catalog_names_are_unique_and_classified() {
             muga::prelude::BuiltinKind::Value => value_count += 1,
         }
         assert!(muga::prelude::is_builtin_name(builtin.name));
+        assert!(
+            muga::prelude::builtin_debug_label(builtin.id).contains(builtin.name),
+            "{builtin:?}"
+        );
     }
 
     assert_eq!(
@@ -2834,7 +2838,7 @@ fn main(): Int {
             call.resolved_callee
                 == muga::typing::TypedCalleeInfo::Builtin {
                     binding: println,
-                    name: "println",
+                    name: muga::prelude::builtin_name(muga::prelude::BuiltinId::Println),
                 }
         }),
         "{calls:#?}"

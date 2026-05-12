@@ -109,7 +109,7 @@ enum Type {
     Result(Box<Type>, Box<Type>),
     OptionNone,
     Function(FunctionSig),
-    Builtin(BuiltinFunction),
+    Builtin(BuiltinId),
     Unknown(u32),
     Error,
 }
@@ -118,69 +118,6 @@ enum Type {
 struct FunctionSig {
     params: Vec<Type>,
     ret: Box<Type>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum BuiltinFunction {
-    Print,
-    Println,
-    Len,
-    IsEmpty,
-    ListPush,
-    Get,
-    ListSet,
-    MapEmpty,
-    Contains,
-    Insert,
-    Remove,
-    OptionSome,
-    ResultOk,
-    ResultErr,
-}
-
-impl BuiltinFunction {
-    fn from_prelude_id(id: BuiltinId) -> Option<Self> {
-        match id {
-            BuiltinId::Print => Some(Self::Print),
-            BuiltinId::Println => Some(Self::Println),
-            BuiltinId::Len => Some(Self::Len),
-            BuiltinId::IsEmpty => Some(Self::IsEmpty),
-            BuiltinId::Push => Some(Self::ListPush),
-            BuiltinId::Get => Some(Self::Get),
-            BuiltinId::Set => Some(Self::ListSet),
-            BuiltinId::MapEmpty => Some(Self::MapEmpty),
-            BuiltinId::Contains => Some(Self::Contains),
-            BuiltinId::Insert => Some(Self::Insert),
-            BuiltinId::Remove => Some(Self::Remove),
-            BuiltinId::OptionSome => Some(Self::OptionSome),
-            BuiltinId::OptionNone => None,
-            BuiltinId::ResultOk => Some(Self::ResultOk),
-            BuiltinId::ResultErr => Some(Self::ResultErr),
-        }
-    }
-
-    fn prelude_id(self) -> BuiltinId {
-        match self {
-            Self::Print => BuiltinId::Print,
-            Self::Println => BuiltinId::Println,
-            Self::Len => BuiltinId::Len,
-            Self::IsEmpty => BuiltinId::IsEmpty,
-            Self::ListPush => BuiltinId::Push,
-            Self::Get => BuiltinId::Get,
-            Self::ListSet => BuiltinId::Set,
-            Self::MapEmpty => BuiltinId::MapEmpty,
-            Self::Contains => BuiltinId::Contains,
-            Self::Insert => BuiltinId::Insert,
-            Self::Remove => BuiltinId::Remove,
-            Self::OptionSome => BuiltinId::OptionSome,
-            Self::ResultOk => BuiltinId::ResultOk,
-            Self::ResultErr => BuiltinId::ResultErr,
-        }
-    }
-
-    fn name(self) -> &'static str {
-        prelude::builtin_name(self.prelude_id())
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -331,10 +268,7 @@ impl TypeChecker {
             let ty = if builtin.id == BuiltinId::OptionNone {
                 Type::OptionNone
             } else {
-                Type::Builtin(
-                    BuiltinFunction::from_prelude_id(builtin.id)
-                        .expect("prelude function must map to a typing builtin"),
-                )
+                Type::Builtin(builtin.id)
             };
             let symbol = self.symbol(builtin.name);
             self.insert_current(symbol, kind, ty, Span::default());
@@ -590,7 +524,7 @@ impl TypeChecker {
             Expr::Call(expr) => {
                 let callee_ty = self.check_expr(&expr.callee);
                 let ty = match self.resolve_type(&callee_ty) {
-                    Type::Builtin(BuiltinFunction::Print | BuiltinFunction::Println) => {
+                    Type::Builtin(BuiltinId::Print | BuiltinId::Println) => {
                         if expr.args.len() != 1 {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
@@ -616,8 +550,7 @@ impl TypeChecker {
                                 }
                                 _ => {
                                     let builtin_name = match self.resolve_type(&callee_ty) {
-                                        Type::Builtin(BuiltinFunction::Print) => "print",
-                                        Type::Builtin(BuiltinFunction::Println) => "println",
+                                        Type::Builtin(builtin) => Self::builtin_name(builtin),
                                         _ => unreachable!("matched builtin branch"),
                                     };
                                     self.diagnostics.push(Diagnostic::new(
@@ -632,7 +565,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                    Type::Builtin(BuiltinFunction::Len | BuiltinFunction::IsEmpty) => {
+                    Type::Builtin(BuiltinId::Len | BuiltinId::IsEmpty) => {
                         let builtin = match self.resolve_type(&callee_ty) {
                             Type::Builtin(builtin) => builtin,
                             _ => unreachable!("matched builtin branch"),
@@ -649,8 +582,8 @@ impl TypeChecker {
                             match self.resolve_type(&arg_ty) {
                                 Type::List(_) | Type::Map(_, _) => {
                                     let ret = match builtin {
-                                        BuiltinFunction::Len => Type::Int,
-                                        BuiltinFunction::IsEmpty => Type::Bool,
+                                        BuiltinId::Len => Type::Int,
+                                        BuiltinId::IsEmpty => Type::Bool,
                                         _ => unreachable!("matched collection query builtin"),
                                     };
                                     self.apply_expected(ret, expected, expr.span)
@@ -678,7 +611,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                    Type::Builtin(BuiltinFunction::ListPush) => {
+                    Type::Builtin(BuiltinId::Push) => {
                         if expr.args.len() != 2 {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
@@ -719,8 +652,8 @@ impl TypeChecker {
                             }
                         }
                     }
-                    Type::Builtin(BuiltinFunction::Get) => self.check_get_builtin(expr, expected),
-                    Type::Builtin(BuiltinFunction::ListSet) => {
+                    Type::Builtin(BuiltinId::Get) => self.check_get_builtin(expr, expected),
+                    Type::Builtin(BuiltinId::Set) => {
                         if expr.args.len() != 3 {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
@@ -777,19 +710,15 @@ impl TypeChecker {
                             }
                         }
                     }
-                    Type::Builtin(BuiltinFunction::MapEmpty) => {
+                    Type::Builtin(BuiltinId::MapEmpty) => {
                         self.check_map_empty_builtin(expr, expected)
                     }
-                    Type::Builtin(BuiltinFunction::Contains) => {
+                    Type::Builtin(BuiltinId::Contains) => {
                         self.check_contains_builtin(expr, expected)
                     }
-                    Type::Builtin(BuiltinFunction::Insert) => {
-                        self.check_insert_builtin(expr, expected)
-                    }
-                    Type::Builtin(BuiltinFunction::Remove) => {
-                        self.check_remove_builtin(expr, expected)
-                    }
-                    Type::Builtin(BuiltinFunction::OptionSome) => {
+                    Type::Builtin(BuiltinId::Insert) => self.check_insert_builtin(expr, expected),
+                    Type::Builtin(BuiltinId::Remove) => self.check_remove_builtin(expr, expected),
+                    Type::Builtin(BuiltinId::OptionSome) => {
                         if expr.args.len() != 1 {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
@@ -821,18 +750,16 @@ impl TypeChecker {
                             }
                         }
                     }
-                    Type::Builtin(BuiltinFunction::ResultOk) => self
-                        .check_result_constructor_builtin(
-                            expr,
-                            expected,
-                            known_enum::RESULT_OK_NAME,
-                        ),
-                    Type::Builtin(BuiltinFunction::ResultErr) => self
-                        .check_result_constructor_builtin(
-                            expr,
-                            expected,
-                            known_enum::RESULT_ERR_NAME,
-                        ),
+                    Type::Builtin(BuiltinId::ResultOk) => self.check_result_constructor_builtin(
+                        expr,
+                        expected,
+                        known_enum::RESULT_OK_NAME,
+                    ),
+                    Type::Builtin(BuiltinId::ResultErr) => self.check_result_constructor_builtin(
+                        expr,
+                        expected,
+                        known_enum::RESULT_ERR_NAME,
+                    ),
                     Type::Function(sig) => {
                         if sig.params.len() != expr.args.len() {
                             self.diagnostics.push(Diagnostic::new(
@@ -2211,7 +2138,7 @@ impl TypeChecker {
                 params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
                 ret: Box::new(self.type_info_for(&sig.ret)),
             }),
-            Type::Builtin(builtin) => TypeInfo::Builtin(builtin.name()),
+            Type::Builtin(builtin) => TypeInfo::Builtin(prelude::builtin_name(builtin)),
             Type::OptionNone => TypeInfo::Builtin(known_enum::OPTION_NONE_QUALIFIED),
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
@@ -2266,8 +2193,8 @@ impl TypeChecker {
             .map(|identifier| identifier.binding)
     }
 
-    fn builtin_name(builtin: BuiltinFunction) -> &'static str {
-        builtin.name()
+    fn builtin_name(builtin: BuiltinId) -> &'static str {
+        prelude::builtin_name(builtin)
     }
 
     fn apply_expected(
@@ -2389,20 +2316,7 @@ impl Type {
             Self::Option(_) | Self::OptionNone => "Option",
             Self::Result(_, _) => "Result",
             Self::Function(_) => "Function",
-            Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
-            Self::Builtin(BuiltinFunction::Println) => "Builtin(println)",
-            Self::Builtin(BuiltinFunction::Len) => "Builtin(len)",
-            Self::Builtin(BuiltinFunction::IsEmpty) => "Builtin(is_empty)",
-            Self::Builtin(BuiltinFunction::ListPush) => "Builtin(push)",
-            Self::Builtin(BuiltinFunction::Get) => "Builtin(get)",
-            Self::Builtin(BuiltinFunction::ListSet) => "Builtin(set)",
-            Self::Builtin(BuiltinFunction::MapEmpty) => "Builtin(Map.empty)",
-            Self::Builtin(BuiltinFunction::Contains) => "Builtin(contains)",
-            Self::Builtin(BuiltinFunction::Insert) => "Builtin(insert)",
-            Self::Builtin(BuiltinFunction::Remove) => "Builtin(remove)",
-            Self::Builtin(BuiltinFunction::OptionSome) => "Builtin(Option::Some)",
-            Self::Builtin(BuiltinFunction::ResultOk) => "Builtin(Result::Ok)",
-            Self::Builtin(BuiltinFunction::ResultErr) => "Builtin(Result::Err)",
+            Self::Builtin(builtin) => prelude::builtin_debug_label(*builtin),
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
         }
