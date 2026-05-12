@@ -2,6 +2,8 @@
 
 Status: working note. This is a resume guide for continuing Muga design and implementation.
 
+Latest verification snapshot and implementation resume details live in [implementation-resume-plan.md](./implementation-resume-plan.md).
+
 ## 1. Current Direction
 
 Muga's current direction is:
@@ -17,6 +19,7 @@ Muga's current direction is:
 - v1 generics as a small MVP
 - no trait, interface, protocol, typeclass, or overloaded dispatch declarations in v1
 - `List[T]`, `Option[T]`, and safe list lookup first for collections, then `Map[K, V]`
+- general enum/sum types and `Result[T, E]` before broad effectful stdlib APIs
 - no explicit source-level references in ordinary Muga code
 - value semantics with internal sharing and copy elision
 - structured task groups before channels or async-function coloring
@@ -229,10 +232,11 @@ These decisions are settled enough to avoid re-litigating during the next implem
 When resuming implementation:
 
 1. Run `cargo test`.
-2. Read [ROADMAP.md](../ROADMAP.md) "Recommended Immediate Next Steps".
-3. Read [docs/internal/identity-model.md](./internal/identity-model.md).
-4. Start with the first `Map[K, V]` design slice unless a compiler-core package task is explicitly being resumed first.
-5. After each compiler-core change, keep `check`, `run`, and existing samples behavior-compatible.
+2. Read [implementation-resume-plan.md](./implementation-resume-plan.md).
+3. Read [ROADMAP.md](../ROADMAP.md) "Recommended Immediate Next Steps".
+4. Read [spec/013-enums-results.md](../spec/013-enums-results.md).
+5. Start with the enum/ADT foundation or `Result[T, E]` slice unless a package-interface task is explicitly being resumed first.
+6. After each compiler-core change, keep `check`, `run`, and existing samples behavior-compatible.
 
 Useful validation commands:
 
