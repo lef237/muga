@@ -258,6 +258,10 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
                 self.validate_type(value, span);
             }
             TypeInfo::Option(item) => self.validate_type(item, span),
+            TypeInfo::Result(ok, err) => {
+                self.validate_type(ok, span);
+                self.validate_type(err, span);
+            }
             TypeInfo::Function(function) => {
                 for param in &function.params {
                     self.validate_type(param, span);
@@ -1139,6 +1143,14 @@ impl<'a> Lowerer<'a> {
             {
                 TypeInfo::Option(Box::new(self.type_info_from_type_expr(&generic.args[0])))
             }
+            ast::TypeExpr::Generic(generic)
+                if generic.name == "Result" && generic.args.len() == 2 =>
+            {
+                TypeInfo::Result(
+                    Box::new(self.type_info_from_type_expr(&generic.args[0])),
+                    Box::new(self.type_info_from_type_expr(&generic.args[1])),
+                )
+            }
             ast::TypeExpr::Generic(generic) if generic.name == "Map" && generic.args.len() == 2 => {
                 TypeInfo::Map(
                     Box::new(self.type_info_from_type_expr(&generic.args[0])),
@@ -1181,6 +1193,10 @@ impl<'a> Lowerer<'a> {
             TypeInfo::Option(item) => {
                 TypeInfo::Option(Box::new(self.package_target_for_type(*item)))
             }
+            TypeInfo::Result(ok, err) => TypeInfo::Result(
+                Box::new(self.package_target_for_type(*ok)),
+                Box::new(self.package_target_for_type(*err)),
+            ),
             other => other,
         }
     }

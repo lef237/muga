@@ -1,0 +1,16 @@
+package util::numbers
+
+pub fn positive_result(x: Int): Result[Int, String] {
+  if x > 0 {
+    Result::Ok(x)
+  } else {
+    Result::Err("not positive")
+  }
+}
+
+pub fn result_or_zero(value: Result[Int, String]): Int {
+  match value {
+    Result::Ok(x) => x
+    Result::Err(message) => 0
+  }
+}

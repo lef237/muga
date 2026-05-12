@@ -132,6 +132,10 @@ impl Resolver {
         self.insert_current(option_some, BindingKind::Function, Span::default());
         let option_none = self.symbol(known_enum::OPTION_NONE_QUALIFIED);
         self.insert_current(option_none, BindingKind::Immutable, Span::default());
+        let result_ok = self.symbol(known_enum::RESULT_OK_QUALIFIED);
+        self.insert_current(result_ok, BindingKind::Function, Span::default());
+        let result_err = self.symbol(known_enum::RESULT_ERR_QUALIFIED);
+        self.insert_current(result_err, BindingKind::Function, Span::default());
     }
 
     fn resolve_scope_statements(&mut self, statements: &[Stmt]) {

@@ -1,6 +1,12 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-use crate::{bytecode::*, diagnostic::Diagnostic, known_enum, span::Span, symbol::Symbol};
+use crate::{
+    bytecode::*,
+    diagnostic::Diagnostic,
+    known_enum::{self, KnownEnum, KnownEnumVariant},
+    span::Span,
+    symbol::Symbol,
+};
 
 type EnvRef = Rc<RefCell<Env>>;
 
@@ -54,16 +60,20 @@ struct RecordFieldValue {
     value: Value,
 }
 
+fn enum_value(known: &KnownEnum, variant: KnownEnumVariant, payload: Option<Value>) -> Value {
+    Value::Enum(EnumValue {
+        type_name: known.name.to_string(),
+        variant_name: variant.name.to_string(),
+        payload: payload.map(Box::new),
+    })
+}
+
 fn option_some(value: Value) -> Value {
     let option = known_enum::option_enum();
     let some = option
         .variant(known_enum::OPTION_SOME_NAME)
         .expect("known Option enum should define Some");
-    Value::Enum(EnumValue {
-        type_name: option.name.to_string(),
-        variant_name: some.name.to_string(),
-        payload: Some(Box::new(value)),
-    })
+    enum_value(option, some, Some(value))
 }
 
 fn option_none() -> Value {
@@ -71,11 +81,23 @@ fn option_none() -> Value {
     let none = option
         .variant(known_enum::OPTION_NONE_NAME)
         .expect("known Option enum should define None");
-    Value::Enum(EnumValue {
-        type_name: option.name.to_string(),
-        variant_name: none.name.to_string(),
-        payload: None,
-    })
+    enum_value(option, none, None)
+}
+
+fn result_ok(value: Value) -> Value {
+    let result = known_enum::result_enum();
+    let ok = result
+        .variant(known_enum::RESULT_OK_NAME)
+        .expect("known Result enum should define Ok");
+    enum_value(result, ok, Some(value))
+}
+
+fn result_err(value: Value) -> Value {
+    let result = known_enum::result_enum();
+    let err = result
+        .variant(known_enum::RESULT_ERR_NAME)
+        .expect("known Result enum should define Err");
+    enum_value(result, err, Some(value))
 }
 
 impl fmt::Display for Value {
@@ -225,6 +247,8 @@ pub enum BuiltinFunction {
     Insert,
     Remove,
     OptionSome,
+    ResultOk,
+    ResultErr,
 }
 
 impl BuiltinFunction {
@@ -242,6 +266,8 @@ impl BuiltinFunction {
             Self::Insert => "insert",
             Self::Remove => "remove",
             Self::OptionSome => known_enum::OPTION_SOME_QUALIFIED,
+            Self::ResultOk => known_enum::RESULT_OK_QUALIFIED,
+            Self::ResultErr => known_enum::RESULT_ERR_QUALIFIED,
         }
     }
 }
@@ -431,38 +457,49 @@ fn execute_chunk(
                     }
                 }
             }
-            Instruction::JumpIfOptionNone { target, span } => {
-                let value = pop_value(&mut stack, *span, "R015", "missing Option value for match")?;
-                let option = known_enum::option_enum();
-                let some = option
-                    .variant(known_enum::OPTION_SOME_NAME)
-                    .expect("known Option enum should define Some");
-                let none = option
-                    .variant(known_enum::OPTION_NONE_NAME)
-                    .expect("known Option enum should define None");
+            Instruction::JumpIfEnumVariant {
+                enum_name,
+                continue_variant,
+                jump_variant,
+                target,
+                span,
+            } => {
+                let value = pop_value(&mut stack, *span, "R015", "missing enum value for match")?;
+                let enum_name = program.symbols.resolve(*enum_name);
+                let continue_variant = program.symbols.resolve(*continue_variant);
+                let jump_variant = program.symbols.resolve(*jump_variant);
                 match value {
                     Value::Enum(value)
-                        if value.type_name == option.name && value.variant_name == some.name =>
+                        if value.type_name == enum_name
+                            && value.variant_name == continue_variant =>
                     {
-                        let Some(payload) = value.payload else {
-                            return Err(vec![Diagnostic::new(
-                                "R019",
-                                "`match` expected Option::Some to carry a value",
-                                *span,
-                            )]);
-                        };
-                        stack.push(*payload);
+                        if let Some(payload) = value.payload {
+                            stack.push(*payload);
+                        }
                     }
                     Value::Enum(value)
-                        if value.type_name == option.name && value.variant_name == none.name =>
+                        if value.type_name == enum_name && value.variant_name == jump_variant =>
                     {
+                        if let Some(payload) = value.payload {
+                            stack.push(*payload);
+                        }
                         pc = *target;
                         continue;
+                    }
+                    Value::Enum(value) if value.type_name == enum_name => {
+                        return Err(vec![Diagnostic::new(
+                            "R019",
+                            format!(
+                                "`match` did not expect enum variant `{}::{}`",
+                                value.type_name, value.variant_name
+                            ),
+                            *span,
+                        )]);
                     }
                     _ => {
                         return Err(vec![Diagnostic::new(
                             "R019",
-                            "`match` expected an Option value",
+                            format!("`match` expected a {enum_name} value"),
                             *span,
                         )]);
                     }
@@ -939,6 +976,28 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             Ok(option_some(value))
         }
+        BuiltinFunction::ResultOk => {
+            if args.len() != 1 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 1 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let value = args.into_iter().next().expect("checked length");
+            Ok(result_ok(value))
+        }
+        BuiltinFunction::ResultErr => {
+            if args.len() != 1 {
+                return Err(vec![Diagnostic::new(
+                    "R012",
+                    format!("expected 1 arguments but found {}", args.len()),
+                    span,
+                )]);
+            }
+            let value = args.into_iter().next().expect("checked length");
+            Ok(result_err(value))
+        }
     }
 }
 
@@ -1272,6 +1331,26 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             Binding {
                 mutable: false,
                 value: option_none(),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(result_ok_symbol) = program.symbols.lookup(known_enum::RESULT_OK_QUALIFIED) {
+        env.borrow_mut().bindings.insert(
+            result_ok_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::ResultOk),
+                span: Span::default(),
+            },
+        );
+    }
+    if let Some(result_err_symbol) = program.symbols.lookup(known_enum::RESULT_ERR_QUALIFIED) {
+        env.borrow_mut().bindings.insert(
+            result_err_symbol,
+            Binding {
+                mutable: false,
+                value: Value::Builtin(BuiltinFunction::ResultErr),
                 span: Span::default(),
             },
         );

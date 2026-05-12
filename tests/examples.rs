@@ -634,6 +634,27 @@ fn typed_hir_generates_package_interface_summaries() {
     );
     assert_eq!(map_get_or_zero.params[1].ty, muga::typing::TypeInfo::String);
     assert_eq!(map_get_or_zero.ret, muga::typing::TypeInfo::Int);
+    let positive_result = interfaces
+        .function_by_name(numbers, "positive_result")
+        .expect("positive_result should be exported");
+    assert_eq!(
+        positive_result.ret,
+        muga::typing::TypeInfo::Result(
+            Box::new(muga::typing::TypeInfo::Int),
+            Box::new(muga::typing::TypeInfo::String)
+        )
+    );
+    let result_or_zero = interfaces
+        .function_by_name(numbers, "result_or_zero")
+        .expect("result_or_zero should be exported");
+    assert_eq!(
+        result_or_zero.params[0].ty,
+        muga::typing::TypeInfo::Result(
+            Box::new(muga::typing::TypeInfo::Int),
+            Box::new(muga::typing::TypeInfo::String)
+        )
+    );
+    assert_eq!(result_or_zero.ret, muga::typing::TypeInfo::Int);
 
     let user_item = program
         .package_graph
@@ -1179,6 +1200,41 @@ fn main(): Int {
 }
 
 #[test]
+fn parser_preserves_result_match_patterns_as_enum_variants() {
+    let source = r#"
+fn main(): Int {
+  value: Result[Int, String] = Result::Ok(1)
+  match value {
+    Result::Ok(x) => x
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let program = parse_source(source);
+    let main = match &program.statements[0] {
+        muga::ast::Stmt::FuncDecl(function) => function,
+        _ => panic!("expected function"),
+    };
+    let match_expr = match main.body.expr.as_ref() {
+        muga::ast::Expr::Match(expr) => expr,
+        other => panic!("expected match expression, got {other:#?}"),
+    };
+    let ok = match &match_expr.arms[0].pattern {
+        muga::ast::MatchPattern::Variant(pattern) => pattern,
+    };
+    assert_eq!(ok.enum_name, "Result");
+    assert_eq!(ok.variant_name, "Ok");
+    assert_eq!(ok.binding.as_deref(), Some("x"));
+
+    let err = match &match_expr.arms[1].pattern {
+        muga::ast::MatchPattern::Variant(pattern) => pattern,
+    };
+    assert_eq!(err.enum_name, "Result");
+    assert_eq!(err.variant_name, "Err");
+    assert_eq!(err.binding.as_deref(), Some("message"));
+}
+
+#[test]
 fn known_enum_metadata_describes_option_variants() {
     let option = muga::known_enum::option_enum();
     let some = option
@@ -1193,6 +1249,23 @@ fn known_enum_metadata_describes_option_variants() {
     assert!(!none.has_payload);
     assert_eq!(option.qualified_variant(some), "Option::Some");
     assert_eq!(option.qualified_variant(none), "Option::None");
+}
+
+#[test]
+fn known_enum_metadata_describes_result_variants() {
+    let result = muga::known_enum::result_enum();
+    let ok = result
+        .variant(muga::known_enum::RESULT_OK_NAME)
+        .expect("Result should define Ok");
+    let err = result
+        .variant(muga::known_enum::RESULT_ERR_NAME)
+        .expect("Result should define Err");
+
+    assert_eq!(result.name, "Result");
+    assert!(ok.has_payload);
+    assert!(err.has_payload);
+    assert_eq!(result.qualified_variant(ok), "Result::Ok");
+    assert_eq!(result.qualified_variant(err), "Result::Err");
 }
 
 #[test]
@@ -1873,6 +1946,122 @@ fn main(): Int {
 }
 
 #[test]
+fn result_ok_match_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  value: Result[Int, String] = Result::Ok(10)
+  match value {
+    Result::Ok(x) => x
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "10");
+}
+
+#[test]
+fn result_err_match_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  value: Result[Int, String] = Result::Err("missing")
+  match value {
+    Result::Ok(x) => x
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn result_runtime_display_uses_enum_value_shape() {
+    let source = r#"
+fn main(): Result[Int, String] {
+  Result::Ok(1)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(1)");
+}
+
+#[test]
+fn result_constructor_requires_expected_type() {
+    let source = r#"
+fn main(): Int {
+  value = Result::Ok(1)
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T021"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn result_constructor_checks_expected_type() {
+    let source = r#"
+fn main(): Result[Int, String] {
+  Result::Ok("bad")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn result_match_requires_ok_and_err_arms() {
+    let source = r#"
+fn main(): Int {
+  value: Result[Int, String] = Result::Ok(1)
+  match value {
+    Result::Ok(x) => x
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T018"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn result_match_arm_types_must_match() {
+    let source = r#"
+fn main(): Int {
+  value: Result[Int, String] = Result::Err("missing")
+  match value {
+    Result::Ok(x) => x
+    Result::Err(message) => message
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn typed_hir_preserves_option_type_info() {
     let source = r#"
 fn main(): Option[Int] {
@@ -1901,6 +2090,42 @@ fn main(): Option[Int] {
     assert_eq!(
         binding.ty,
         muga::typing::TypeInfo::Option(Box::new(muga::typing::TypeInfo::Int))
+    );
+}
+
+#[test]
+fn typed_hir_preserves_result_type_info() {
+    let source = r#"
+fn main(): Result[Int, String] {
+  value: Result[Int, String] = Result::Ok(1)
+  value
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    let result_ty = muga::typing::TypeInfo::Result(
+        Box::new(muga::typing::TypeInfo::Int),
+        Box::new(muga::typing::TypeInfo::String),
+    );
+    assert_eq!(main.return_ty, result_ty);
+    let assign = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected typed assignment"),
+    };
+    let binding = program
+        .bindings
+        .iter()
+        .find(|binding| binding.id == assign.binding)
+        .expect("assignment binding should exist");
+    assert_eq!(
+        binding.ty,
+        muga::typing::TypeInfo::Result(
+            Box::new(muga::typing::TypeInfo::Int),
+            Box::new(muga::typing::TypeInfo::String)
+        )
     );
 }
 
@@ -1939,6 +2164,43 @@ fn main(): Int {
     assert_eq!(none.variant_name, "None");
     assert_eq!(none.binding_name, None);
     assert_eq!(none.binding, None);
+}
+
+#[test]
+fn typed_hir_preserves_result_match_patterns_as_enum_variants() {
+    let source = r#"
+fn main(): Int {
+  value: Result[Int, String] = Result::Ok(1)
+  match value {
+    Result::Ok(x) => x
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let main = match &program.statements[0] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    let match_expr = match &main.body.expr.kind {
+        muga::typed_hir::ExprKind::Match(expr) => expr,
+        other => panic!("expected typed match expression, got {other:#?}"),
+    };
+    let ok = match &match_expr.arms[0].pattern {
+        muga::typed_hir::MatchPattern::Variant(pattern) => pattern,
+    };
+    assert_eq!(ok.enum_name, "Result");
+    assert_eq!(ok.variant_name, "Ok");
+    assert_eq!(ok.binding_name.as_deref(), Some("x"));
+    assert!(ok.binding.is_some());
+
+    let err = match &match_expr.arms[1].pattern {
+        muga::typed_hir::MatchPattern::Variant(pattern) => pattern,
+    };
+    assert_eq!(err.enum_name, "Result");
+    assert_eq!(err.variant_name, "Err");
+    assert_eq!(err.binding_name.as_deref(), Some("message"));
+    assert!(err.binding.is_some());
 }
 
 #[test]
