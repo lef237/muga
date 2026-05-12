@@ -1,10 +1,8 @@
 # Muga
 
-"Muga" is a Japanese term meaning "selflessness" or "transcendence of self," referring to a state of being beyond personal limitations or free from self-centered thinking.
+Muga is a small programming language focused on simple rules, readable code, and low syntactic overhead.
 
-This programming language borrows that idea for a small language focused on simple rules, readable code, and low syntactic overhead.
-
-This repository currently contains a v1 specification draft and an early Rust implementation.
+This repository contains the v1 language drafts and the current Rust implementation.
 
 ## Installation
 
@@ -68,7 +66,7 @@ cargo run -- run path/to/file.muga
 cargo run -- path/to/file.muga
 ```
 
-A minimal program needs a zero-argument `main()` — its return value is printed after execution:
+A program may either define a zero-argument `main()` or run top-level statements directly. When `main()` exists, its return value is printed after execution:
 
 ```muga
 fn main(): Int {
@@ -78,41 +76,22 @@ fn main(): Int {
 
 For more entry points, browse the [Samples](#samples) section below.
 
-## Current Direction
+## Language Shape
 
-- no `let`
-- immutable by default
-- `mut` introduces mutable bindings
-- `x = e` creates a new immutable binding when `x` is undefined in the current scope
-- `x = e` updates an existing mutable binding when `x` already resolves to a mutable name in the current scope
-- `x = e` is an error when `x` already resolves to an immutable name in the current scope
-- shadowing is prohibited
-- an inner block in the same function may update an enclosing mutable binding
-- updating an outer-scope binding across a function boundary is prohibited
-- type annotations are omitted by default and only required when inference is not possible
-- statements are separated by newlines and comments use `//`
-- source-level type annotations may use `Int`, `Bool`, `String`, nominal record types, and function types such as `A -> B`
-- type inference is local-only
-- type inference is locally bidirectional inside one function body, including some higher-order parameters
-- Muga does not introduce classes; data uses `record`, behavior uses functions, and method-like calls are surface syntax
-- receiver-style functions use a record type as the first parameter, and `self` is only a conventional parameter name
-- `expr.name` is field access, while `expr.name(...)` and `expr.alias::name(...)` are chained calls
-- `record.with(field: expr, ...)` is a record-only non-destructive update
-- records use nominal data declarations together with record literals
-- record fields may not have function type
-- higher-order functions are allowed
-- function types use `->`
-- v1 generics are drafted for generic type expressions, generic records, and generic functions
-- v1 does not introduce trait, interface, protocol, typeclass, or overloaded dispatch declarations
-- collection design is drafted around `List[T]`, `Option[T]`, and safe list lookup first, then `Map[K, V]`
-- recoverable errors use explicit `Result[T, E]`; if propagation sugar is added later, `try expr` is preferred over postfix `?`
-- source-level values use value semantics; the implementation may share immutable storage internally when that is not observable
-- explicit source-level references such as `ref T`, `mut ref T`, and `&value` are not planned for ordinary Muga code
-- write-oriented APIs should prefer value-returning updates, builder/buffer types, or resource handles
+- no `let`; bindings are immutable by default and `mut` opts into mutation
+- `x = e` is resolved statically as either a new immutable binding or an update to an existing mutable binding
+- shadowing and mutation across function boundaries are rejected
+- type inference is local-first; annotations are required only when inference is ambiguous or intentionally bounded by the current implementation
+- comments use `//`; statements are newline-separated
+- data uses nominal `record` declarations; behavior uses functions
+- `expr.name` is field access, `expr.name(...)` is chained-call syntax, and `expr.with(...)` is record update
+- classes, inheritance, function-valued record fields, traits, protocols, typeclasses, overloaded dispatch, and ordinary source-level references are out of scope for v1
+- source values use value semantics; the implementation may share immutable storage internally when that is not observable
+- recoverable failures use explicit `Result[T, E]`; possible future propagation sugar is documented as `try expr`, not postfix `?`
 
 ## Documentation
 
-- Canonical draft: [mini-language-spec-v1.md](./mini-language-spec-v1.md)
+- Language overview: [mini-language-spec-v1.md](./mini-language-spec-v1.md)
 - Split specification:
   - [spec/001-core-language.md](./spec/001-core-language.md)
   - [spec/002-name-resolution.md](./spec/002-name-resolution.md)
@@ -164,49 +143,36 @@ For more entry points, browse the [Samples](#samples) section below.
 
 ## Rust Implementation
 
-- parsing, name resolution, type checking, HIR lowering, bytecode compilation, and the VM runtime are being implemented
-- HIR and bytecode names are managed through symbol interning
-- `check` only validates the front end
-- `run` passes through the front end, lowers to HIR, compiles to bytecode, and executes the result
-- `run` prints the return value when a zero-argument `main()` exists
-- `print` and `println` are available as prelude builtins
-- `print(x)` writes `Int`, `Bool`, or `String` without a trailing newline and returns the same value
-- `println(x)` writes `Int`, `Bool`, or `String` with a trailing newline and returns the same value
-- `record`, field access, `record.with` update, chained UFCS-style calls, local binding annotations, `List[T]` / `Option[T]` / `Result[T, E]` / `Map[K, V]` type annotations, list literals, list indexing, value-returning list update, safe list lookup, map lookup/update operations, `Option::Some` / `Option::None`, exhaustive Option `match`, `Result::Ok` / `Result::Err`, exhaustive Result `match`, and arrow function type annotations are implemented
-- local bidirectional inference for some higher-order parameters and anonymous functions is implemented
-- file-based package mode with `package`, `import`, `pkg`, `pub`, module-private top-level items, and `alias::Name` is implemented
-- minimal `muga.toml` project mode with `[package] name/source` and inferred package paths is implemented
-- current package implementation still requires fully annotated `pub fn`; the design direction is to allow inferred public signatures once package interfaces can store them
-- typed HIR can generate in-memory package interface summaries for public records and functions, and typed package compilation validates public package references, export names, item identity, and stale public signatures against those summaries
-- package import lookup is separated behind `PackageExportGraph`, a public export surface that can be derived from package identity data or typed package interfaces
-- diagnostics support related notes and suggestions, with package visibility, duplicate declaration, record field, and import-alias diagnostics using declaration-site notes where useful
-- generic type expression syntax such as `List[Int]`, `Option[Int]`, `Result[Int, String]`, and `Map[String, Int]` is parsed; `List[T]`, list literals, basic list operations (`len`, `is_empty`, `push`, `get`, `set`), direct list indexing, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, `Result[T, E]`, `Result::Ok`, `Result::Err`, exhaustive Result `match`, and the first `Map[K, V]` slice (`Map.empty`, `len`, `is_empty`, `contains`, `get`, `insert`, `remove`) are implemented, while general enum declarations, map literals, and arbitrary map key types are not implemented yet
-- explicit source-level references, mutable references, and explicit dereference syntax are not planned for ordinary Muga code
-- typed HIR preserves resolved call shape, ordinary/chained/package-qualified call origin, and package item identity for package calls and record types
-- dependency declarations, registries, persisted package interfaces, and package caching are not implemented yet
+Implemented:
+
+- lexer, parser, resolver, typechecker, HIR lowering, bytecode compilation, and VM runtime
+- `check` for front-end validation and `run` for VM execution
+- `print` / `println` prelude builtins for `Int`, `Bool`, and `String`
+- records, field access, `record.with(...)`, chained calls, package-qualified chained calls, arrow function types, local binding annotations, and local bidirectional inference for selected higher-order cases
+- `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
+- list literals, direct list indexing, `len`, `is_empty`, `push`, `get`, and `set`
+- `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for `Option` and `Result`
+- `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
+- file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
+- minimal `muga.toml` project mode with `[package] name/source`
+- typed HIR with resolved call shape, call origin, expression types, local binding identity, and package item identity
+- in-memory package interface summaries for public records/functions plus validation of public package references against those summaries
+- structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
+
+Not implemented yet:
+
+- user-defined enum declarations
+- user-defined generic records and generic functions
+- map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
+- public-signature inference for `pub fn`; public functions currently need explicit signatures
+- persisted package interface files, dependency declarations, registries, package caching, MIR, and native code generation
+- error propagation syntax such as `try expr`
 
 ## Planned Priority
 
-The current recommended implementation order is:
+The next implementation slice is user-defined `enum` declarations with zero-payload and one-payload variants, reusing the enum-like path already used by compiler-known `Option[T]` and `Result[T, E]`.
 
-1. start measuring compile-time costs and keep benchmarking throughout the compiler work
-2. expose resolver/typechecker identity data for typed HIR
-3. fix package-aware symbol identity, then introduce typed HIR
-4. replace package flattening with real package interfaces and caching
-5. split compiler MIR from the VM path, then add a fast native backend
-
-The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
-
-```bash
-cargo run -- check path/to/file.muga
-cargo run -- run path/to/file.muga
-```
-
-`run` can be omitted:
-
-```bash
-cargo run -- path/to/file.muga
-```
+After that, the priority returns to persisted package interfaces, package-interface consumption, caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
 ## Samples
 
@@ -246,7 +212,7 @@ Higher-order annotation guide:
 
 - Omit an arrow annotation when the callback type is uniquely determined inside the same function body, as in [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) and [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga).
 - Keep an arrow annotation when local inference is still ambiguous, or when you want the callback contract to be obvious at the declaration site, as in [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga).
-- In the package design, `pub fn` should also be inference-first when its public signature is uniquely inferable. The generated package interface stores the resolved signature so downstream packages can stay fast without rechecking dependency bodies.
+- Current `pub fn` declarations require explicit signatures. The design direction is to infer public signatures in the defining package and store resolved signatures in package interfaces.
 
 Package alias note:
 
@@ -260,7 +226,7 @@ Package layout note:
 - Source files import logical package paths such as `my_service::users`, not filesystem paths such as `../users`.
 - In manifest project mode, `name = "my_service"` and `source = "src"` let `src/users/` map to `my_service::users` without nesting another `my_service/` directory under `src/`.
 - Without a nearby `muga.toml`, a package file must start with an explicit `package ...` declaration before it can use `import`, `pub`, or `pkg`.
-- The future distribution model is manifest-based and should use cached package interfaces for fast rebuilds.
+- The target distribution model is manifest-based and should use cached package interfaces for fast rebuilds.
 - See [spec/006-packages.md](./spec/006-packages.md) for the large-project layout and distribution model.
 
 ## License
