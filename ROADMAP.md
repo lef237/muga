@@ -1,6 +1,6 @@
 # Muga Roadmap
 
-This roadmap separates current implementation facts from the design direction. For a resume checklist, see [docs/current-next-steps.md](./docs/current-next-steps.md). For the detailed implementation ledger, see [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md).
+This roadmap is the source of truth for the next implementation priority and the longer design path. For the detailed implementation ledger, resume checklist, and next-slice test plan, see [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md).
 
 ## Current Snapshot
 
@@ -118,6 +118,30 @@ Benchmarking and profiling should continue through every compiler step:
 - bytecode/native codegen
 
 Diagnostics remain part of the architecture, not a late polish layer. New enum, package-interface, cache, MIR, and backend work should keep stable spans, declaration-site notes, and actionable suggestions where they materially improve debugging.
+
+## Queued Decisions
+
+Package-interface queue:
+
+- persisted package interface format
+- interface hashes and cache keys
+- downstream checking from interface artifacts
+- source-root and manifest conventions
+- serialization of inferred public signatures once supported
+
+Concurrency queue:
+
+- whether task handles are source-nameable as `Task[T]`
+- `group` return behavior
+- failure and cancellation representation
+- capture rules across task boundaries
+- channels as a later phase after `group` / `spawn` / `join`
+
+Write-oriented API queue:
+
+- builder/buffer types for repeated construction
+- resource/handle types for files, sockets, processes, timers, and OS-backed effects
+- MIR/native lowering for copy elision and internal destructive update
 
 ## Deferred Surface Work
 
