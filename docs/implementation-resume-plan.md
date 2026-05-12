@@ -72,7 +72,7 @@ Ada
 - [x] `interface` owns in-memory package interface summaries for public records and functions.
 - [x] interface summaries preserve public `TypeInfo`, package record identity, collection types, and compiler-known `Result` signatures.
 - [x] `interface` validates typed package compilation references against generated in-memory interfaces.
-- [x] resolver, typechecker, runtime, and package builtin filtering share one prelude builtin catalog.
+- [x] resolver, typechecker, runtime, and package builtin filtering share `prelude::BuiltinId`.
 - [ ] persisted package interface files are not implemented.
 - [ ] downstream package checking does not yet consume stored interface artifacts.
 - [ ] package flattening is still the execution/checking pipeline.

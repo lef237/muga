@@ -21,7 +21,7 @@ pub enum Value {
     Enum(EnumValue),
     Record(RecordValue),
     Function(Rc<ClosureValue>),
-    Builtin(BuiltinFunction),
+    Builtin(BuiltinId),
 }
 
 #[derive(Clone, Debug)]
@@ -150,7 +150,7 @@ impl fmt::Display for Value {
                 write!(f, " }}")
             }
             Self::Function(_) => write!(f, "<function>"),
-            Self::Builtin(builtin) => write!(f, "<builtin:{}>", builtin.name()),
+            Self::Builtin(builtin) => write!(f, "<builtin:{}>", prelude::builtin_name(*builtin)),
         }
     }
 }
@@ -231,69 +231,6 @@ pub struct ClosureValue {
 impl ClosureValue {
     fn definition<'a>(&self, program: &'a Program) -> &'a Function {
         &program.functions[self.function]
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum BuiltinFunction {
-    Print,
-    Println,
-    Len,
-    IsEmpty,
-    ListPush,
-    Get,
-    ListSet,
-    MapEmpty,
-    Contains,
-    Insert,
-    Remove,
-    OptionSome,
-    ResultOk,
-    ResultErr,
-}
-
-impl BuiltinFunction {
-    fn from_prelude_id(id: BuiltinId) -> Option<Self> {
-        match id {
-            BuiltinId::Print => Some(Self::Print),
-            BuiltinId::Println => Some(Self::Println),
-            BuiltinId::Len => Some(Self::Len),
-            BuiltinId::IsEmpty => Some(Self::IsEmpty),
-            BuiltinId::Push => Some(Self::ListPush),
-            BuiltinId::Get => Some(Self::Get),
-            BuiltinId::Set => Some(Self::ListSet),
-            BuiltinId::MapEmpty => Some(Self::MapEmpty),
-            BuiltinId::Contains => Some(Self::Contains),
-            BuiltinId::Insert => Some(Self::Insert),
-            BuiltinId::Remove => Some(Self::Remove),
-            BuiltinId::OptionSome => Some(Self::OptionSome),
-            BuiltinId::OptionNone => None,
-            BuiltinId::ResultOk => Some(Self::ResultOk),
-            BuiltinId::ResultErr => Some(Self::ResultErr),
-        }
-    }
-
-    fn prelude_id(self) -> BuiltinId {
-        match self {
-            Self::Print => BuiltinId::Print,
-            Self::Println => BuiltinId::Println,
-            Self::Len => BuiltinId::Len,
-            Self::IsEmpty => BuiltinId::IsEmpty,
-            Self::ListPush => BuiltinId::Push,
-            Self::Get => BuiltinId::Get,
-            Self::ListSet => BuiltinId::Set,
-            Self::MapEmpty => BuiltinId::MapEmpty,
-            Self::Contains => BuiltinId::Contains,
-            Self::Insert => BuiltinId::Insert,
-            Self::Remove => BuiltinId::Remove,
-            Self::OptionSome => BuiltinId::OptionSome,
-            Self::ResultOk => BuiltinId::ResultOk,
-            Self::ResultErr => BuiltinId::ResultErr,
-        }
-    }
-
-    fn name(self) -> &'static str {
-        prelude::builtin_name(self.prelude_id())
     }
 }
 
@@ -716,13 +653,13 @@ fn call_function(
 }
 
 fn call_builtin(
-    builtin: BuiltinFunction,
+    builtin: BuiltinId,
     args: Vec<Value>,
     env: &EnvRef,
     span: Span,
 ) -> Result<Value, Vec<Diagnostic>> {
     match builtin {
-        BuiltinFunction::Print => {
+        BuiltinId::Print => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -751,7 +688,7 @@ fn call_builtin(
                 )]),
             }
         }
-        BuiltinFunction::Println => {
+        BuiltinId::Println => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -780,7 +717,7 @@ fn call_builtin(
                 )]),
             }
         }
-        BuiltinFunction::Len => {
+        BuiltinId::Len => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -799,7 +736,7 @@ fn call_builtin(
                 )]),
             }
         }
-        BuiltinFunction::IsEmpty => {
+        BuiltinId::IsEmpty => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -818,7 +755,7 @@ fn call_builtin(
                 )]),
             }
         }
-        BuiltinFunction::ListPush => {
+        BuiltinId::Push => {
             if args.len() != 2 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -841,7 +778,7 @@ fn call_builtin(
                 )]),
             }
         }
-        BuiltinFunction::Get => {
+        BuiltinId::Get => {
             if args.len() != 2 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -883,7 +820,7 @@ fn call_builtin(
                 )]),
             }
         }
-        BuiltinFunction::ListSet => {
+        BuiltinId::Set => {
             if args.len() != 3 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -906,7 +843,7 @@ fn call_builtin(
             items[index] = value;
             Ok(Value::List(items))
         }
-        BuiltinFunction::MapEmpty => {
+        BuiltinId::MapEmpty => {
             if args.len() != 0 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -918,7 +855,7 @@ fn call_builtin(
                 entries: Vec::new(),
             }))
         }
-        BuiltinFunction::Contains => {
+        BuiltinId::Contains => {
             if args.len() != 2 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -941,7 +878,7 @@ fn call_builtin(
                 map.entries.iter().any(|entry| entry.key == key),
             ))
         }
-        BuiltinFunction::Insert => {
+        BuiltinId::Insert => {
             if args.len() != 3 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -968,7 +905,7 @@ fn call_builtin(
             }
             Ok(Value::Map(map))
         }
-        BuiltinFunction::Remove => {
+        BuiltinId::Remove => {
             if args.len() != 2 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -990,7 +927,7 @@ fn call_builtin(
             map.entries.retain(|entry| entry.key != key);
             Ok(Value::Map(map))
         }
-        BuiltinFunction::OptionSome => {
+        BuiltinId::OptionSome => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -1001,7 +938,7 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             Ok(option_some(value))
         }
-        BuiltinFunction::ResultOk => {
+        BuiltinId::ResultOk => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -1012,7 +949,7 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             Ok(result_ok(value))
         }
-        BuiltinFunction::ResultErr => {
+        BuiltinId::ResultErr => {
             if args.len() != 1 {
                 return Err(vec![Diagnostic::new(
                     "R012",
@@ -1023,6 +960,11 @@ fn call_builtin(
             let value = args.into_iter().next().expect("checked length");
             Ok(result_err(value))
         }
+        BuiltinId::OptionNone => Err(vec![Diagnostic::new(
+            "R010",
+            "attempted to call a non-function value",
+            span,
+        )]),
     }
 }
 
@@ -1237,10 +1179,7 @@ fn install_prelude(program: &Program, env: &EnvRef) {
         let value = if builtin.id == BuiltinId::OptionNone {
             option_none()
         } else {
-            Value::Builtin(
-                BuiltinFunction::from_prelude_id(builtin.id)
-                    .expect("prelude function must map to a runtime builtin"),
-            )
+            Value::Builtin(builtin.id)
         };
         env.borrow_mut().bindings.insert(
             symbol,

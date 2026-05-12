@@ -134,7 +134,7 @@ Done:
 - import/package-qualified lookup is routed through `interface::PackageExportGraph` before whole-program flattening
 - `interface::PackageExportGraph` can be derived from either package identity data or typed package interface summaries
 - local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` / `Result[T, E]` / `Map[K, V]` `TypeInfo` cases, typed prelude list and map operations, direct list indexing, typed Option/Result construction, typed Option/Result `match`, enum-variant-shaped match patterns, and compiler-known enum metadata for Option/Result variants are in place
-- resolver, typechecker, runtime, and package builtin filtering share a single prelude builtin catalog
+- resolver, typechecker, runtime, and package builtin filtering share `prelude::BuiltinId` as the single builtin identity
 
 Remaining:
 
