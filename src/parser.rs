@@ -1,9 +1,7 @@
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{ExprId, StmtId};
-use crate::known_enum::{
-    OPTION_NAME, OPTION_NONE_NAME, OPTION_NONE_QUALIFIED, OPTION_SOME_NAME, OPTION_SOME_QUALIFIED,
-};
+use crate::known_enum;
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
@@ -633,31 +631,45 @@ impl Parser {
     fn parse_match_pattern(&mut self) -> Result<MatchPattern, Diagnostic> {
         let (first, first_span) = self.expect_ident()?;
         let (name, name_span) = self.parse_value_name_after_first(first, first_span)?;
-        match name.as_str() {
-            OPTION_SOME_QUALIFIED => {
-                self.expect_simple(TokenKind::LParen, "expected `(` after `Option::Some`")?;
+        if let Some((known, variant)) = known_enum::known_variant_qualified(&name) {
+            if variant.has_payload {
+                let message = format!("expected `(` after `{}`", known.qualified_variant(variant));
+                self.expect_simple(TokenKind::LParen, &message)?;
                 let (binding, binding_span) = self.expect_ident()?;
                 let end =
                     self.expect_simple(TokenKind::RParen, "expected `)` after match binding")?;
-                Ok(MatchPattern::Variant(EnumVariantPattern {
-                    enum_name: OPTION_NAME.to_string(),
-                    variant_name: OPTION_SOME_NAME.to_string(),
+                return Ok(MatchPattern::Variant(EnumVariantPattern {
+                    enum_name: known.name.to_string(),
+                    variant_name: variant.name.to_string(),
                     binding: Some(binding),
                     span: name_span.merge(binding_span).merge(end),
-                }))
+                }));
             }
-            OPTION_NONE_QUALIFIED => Ok(MatchPattern::Variant(EnumVariantPattern {
-                enum_name: OPTION_NAME.to_string(),
-                variant_name: OPTION_NONE_NAME.to_string(),
+
+            if matches!(self.peek_kind(), TokenKind::LParen) {
+                return Err(Diagnostic::new(
+                    "P016",
+                    format!(
+                        "`{}` pattern does not carry a payload",
+                        known.qualified_variant(variant)
+                    ),
+                    name_span,
+                ));
+            }
+
+            return Ok(MatchPattern::Variant(EnumVariantPattern {
+                enum_name: known.name.to_string(),
+                variant_name: variant.name.to_string(),
                 binding: None,
                 span: name_span,
-            })),
-            _ => Err(Diagnostic::new(
-                "P016",
-                "expected `Option::Some(name)` or `Option::None` pattern",
-                name_span,
-            )),
+            }));
         }
+
+        Err(Diagnostic::new(
+            "P016",
+            "expected a compiler-known enum variant pattern such as `Option::Some(name)`, `Option::None`, `Result::Ok(value)`, or `Result::Err(error)`",
+            name_span,
+        ))
     }
 
     fn parse_equality(&mut self) -> Result<Expr, Diagnostic> {

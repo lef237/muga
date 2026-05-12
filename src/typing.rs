@@ -83,6 +83,7 @@ pub enum TypeInfo {
     List(Box<TypeInfo>),
     Map(Box<TypeInfo>, Box<TypeInfo>),
     Option(Box<TypeInfo>),
+    Result(Box<TypeInfo>, Box<TypeInfo>),
     Function(FunctionTypeInfo),
     Builtin(&'static str),
     Unknown,
@@ -104,6 +105,7 @@ enum Type {
     List(Box<Type>),
     Map(Box<Type>, Box<Type>),
     Option(Box<Type>),
+    Result(Box<Type>, Box<Type>),
     OptionNone,
     Function(FunctionSig),
     Builtin(BuiltinFunction),
@@ -131,6 +133,8 @@ enum BuiltinFunction {
     Insert,
     Remove,
     OptionSome,
+    ResultOk,
+    ResultErr,
 }
 
 #[derive(Clone, Debug)]
@@ -362,6 +366,20 @@ impl TypeChecker {
             option_none,
             BindingKind::Immutable,
             Type::OptionNone,
+            Span::default(),
+        );
+        let result_ok = self.symbol(known_enum::RESULT_OK_QUALIFIED);
+        self.insert_current(
+            result_ok,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::ResultOk),
+            Span::default(),
+        );
+        let result_err = self.symbol(known_enum::RESULT_ERR_QUALIFIED);
+        self.insert_current(
+            result_err,
+            BindingKind::Function,
+            Type::Builtin(BuiltinFunction::ResultErr),
             Span::default(),
         );
     }
@@ -846,6 +864,18 @@ impl TypeChecker {
                             }
                         }
                     }
+                    Type::Builtin(BuiltinFunction::ResultOk) => self
+                        .check_result_constructor_builtin(
+                            expr,
+                            expected,
+                            known_enum::RESULT_OK_NAME,
+                        ),
+                    Type::Builtin(BuiltinFunction::ResultErr) => self
+                        .check_result_constructor_builtin(
+                            expr,
+                            expected,
+                            known_enum::RESULT_ERR_NAME,
+                        ),
                     Type::Function(sig) => {
                         if sig.params.len() != expr.args.len() {
                             self.diagnostics.push(Diagnostic::new(
@@ -1480,6 +1510,55 @@ impl TypeChecker {
         }
     }
 
+    fn check_result_constructor_builtin(
+        &mut self,
+        expr: &CallExpr,
+        expected: Option<Type>,
+        variant_name: &'static str,
+    ) -> Type {
+        if expr.args.len() != 1 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 1 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        let (ok_ty, err_ty) = match expected {
+            Some(Type::Result(ok_ty, err_ty)) => (ok_ty, err_ty),
+            Some(Type::Error) => {
+                self.check_expr(&expr.args[0]);
+                return Type::Error;
+            }
+            Some(_) | None => {
+                self.check_expr(&expr.args[0]);
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "T021",
+                        format!(
+                            "`Result::{variant_name}` requires an expected Result[T, E] type"
+                        ),
+                        expr.span,
+                    )
+                    .with_suggestion(
+                        "add a local binding annotation such as `value: Result[Int, String] = Result::Ok(1)`",
+                    ),
+                );
+                return Type::Error;
+            }
+        };
+
+        let payload_ty = if variant_name == known_enum::RESULT_OK_NAME {
+            (*ok_ty).clone()
+        } else {
+            (*err_ty).clone()
+        };
+        self.check_expr_with_expected(&expr.args[0], Some(payload_ty));
+        Type::Result(ok_ty, err_ty)
+    }
+
     fn check_match_expr(&mut self, expr: &MatchExpr, expected: Option<Type>) -> Type {
         let value_ty = self.check_expr(&expr.value);
         let spec = self.enum_match_spec_for_value(&value_ty, expr.value.span());
@@ -1493,7 +1572,12 @@ impl TypeChecker {
             if pattern.enum_name != spec.known.name {
                 self.diagnostics.push(Diagnostic::new(
                     "T018",
-                    "`match` currently supports only Option[T] values",
+                    format!(
+                        "`{}::{}` does not belong to {}",
+                        pattern.enum_name,
+                        pattern.variant_name,
+                        Self::known_enum_type_name(spec.known)
+                    ),
                     pattern.span,
                 ));
             } else if let Some(variant) = spec.variant(&pattern.variant_name) {
@@ -1583,6 +1667,7 @@ impl TypeChecker {
     fn enum_match_spec_for_value(&mut self, value_ty: &Type, value_span: Span) -> EnumMatchSpec {
         match self.resolve_type(value_ty) {
             Type::Option(item) => self.option_match_spec(*item),
+            Type::Result(ok, err) => self.result_match_spec(*ok, *err),
             Type::Unknown(_) => {
                 let item = Type::Unknown(self.fresh_unknown());
                 let option = Type::Option(Box::new(item.clone()));
@@ -1598,7 +1683,7 @@ impl TypeChecker {
             _ => {
                 self.diagnostics.push(Diagnostic::new(
                     "T018",
-                    "`match` currently supports only Option[T] values",
+                    "`match` currently supports only Option[T] or Result[T, E] values",
                     value_span,
                 ));
                 self.option_match_spec(Type::Error)
@@ -1626,9 +1711,34 @@ impl TypeChecker {
         }
     }
 
+    fn result_match_spec(&self, ok_ty: Type, err_ty: Type) -> EnumMatchSpec {
+        let known = known_enum::result_enum();
+        EnumMatchSpec {
+            known,
+            variants: known
+                .variants
+                .iter()
+                .copied()
+                .map(|variant| {
+                    let payload = match variant.name {
+                        known_enum::RESULT_OK_NAME => Some(ok_ty.clone()),
+                        known_enum::RESULT_ERR_NAME => Some(err_ty.clone()),
+                        _ => None,
+                    };
+                    EnumMatchVariant {
+                        known: variant,
+                        payload,
+                    }
+                })
+                .collect(),
+        }
+    }
+
     fn known_enum_type_name(known: &KnownEnum) -> &'static str {
         if known.name == known_enum::OPTION_NAME {
             "Option[T]"
+        } else if known.name == known_enum::RESULT_NAME {
+            "Result[T, E]"
         } else {
             known.name
         }
@@ -1972,6 +2082,20 @@ impl TypeChecker {
                 }
                 Type::Option(Box::new(self.type_from_expr(&generic.args[0], span)))
             }
+            TypeExpr::Generic(generic) if generic.name == "Result" => {
+                if generic.args.len() != 2 {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T021",
+                        "Result expects exactly 2 type arguments",
+                        span,
+                    ));
+                    return Type::Error;
+                }
+                Type::Result(
+                    Box::new(self.type_from_expr(&generic.args[0], span)),
+                    Box::new(self.type_from_expr(&generic.args[1], span)),
+                )
+            }
             TypeExpr::Generic(generic) if generic.name == "Map" => {
                 if generic.args.len() != 2 {
                     self.diagnostics.push(Diagnostic::new(
@@ -2055,6 +2179,11 @@ impl TypeChecker {
                 let item = self.unify(*left, *right)?;
                 Ok(Type::Option(Box::new(item)))
             }
+            (Type::Result(left_ok, left_err), Type::Result(right_ok, right_err)) => {
+                let ok = self.unify(*left_ok, *right_ok)?;
+                let err = self.unify(*left_err, *right_err)?;
+                Ok(Type::Result(Box::new(ok), Box::new(err)))
+            }
             (Type::Function(left), Type::Function(right)) => {
                 if left.params.len() != right.params.len() {
                     return Err("function arity mismatch".to_string());
@@ -2096,6 +2225,10 @@ impl TypeChecker {
                 Box::new(self.resolve_type(value)),
             ),
             Type::Option(item) => Type::Option(Box::new(self.resolve_type(item))),
+            Type::Result(ok, err) => Type::Result(
+                Box::new(self.resolve_type(ok)),
+                Box::new(self.resolve_type(err)),
+            ),
             Type::Builtin(builtin) => Type::Builtin(*builtin),
             other => other.clone(),
         }
@@ -2113,6 +2246,10 @@ impl TypeChecker {
                 Box::new(self.type_info_for(&value)),
             ),
             Type::Option(item) => TypeInfo::Option(Box::new(self.type_info_for(&item))),
+            Type::Result(ok, err) => TypeInfo::Result(
+                Box::new(self.type_info_for(&ok)),
+                Box::new(self.type_info_for(&err)),
+            ),
             Type::Function(sig) => TypeInfo::Function(FunctionTypeInfo {
                 params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
                 ret: Box::new(self.type_info_for(&sig.ret)),
@@ -2130,6 +2267,12 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::Remove) => TypeInfo::Builtin("remove"),
             Type::Builtin(BuiltinFunction::OptionSome) => {
                 TypeInfo::Builtin(known_enum::OPTION_SOME_QUALIFIED)
+            }
+            Type::Builtin(BuiltinFunction::ResultOk) => {
+                TypeInfo::Builtin(known_enum::RESULT_OK_QUALIFIED)
+            }
+            Type::Builtin(BuiltinFunction::ResultErr) => {
+                TypeInfo::Builtin(known_enum::RESULT_ERR_QUALIFIED)
             }
             Type::OptionNone => TypeInfo::Builtin(known_enum::OPTION_NONE_QUALIFIED),
             Type::Unknown(_) => TypeInfo::Unknown,
@@ -2152,6 +2295,9 @@ impl TypeChecker {
                     || self.type_contains_unknown(&value, needle)
             }
             Type::Option(item) => self.type_contains_unknown(&item, needle),
+            Type::Result(ok, err) => {
+                self.type_contains_unknown(&ok, needle) || self.type_contains_unknown(&err, needle)
+            }
             _ => false,
         }
     }
@@ -2196,6 +2342,8 @@ impl TypeChecker {
             BuiltinFunction::Insert => "insert",
             BuiltinFunction::Remove => "remove",
             BuiltinFunction::OptionSome => known_enum::OPTION_SOME_QUALIFIED,
+            BuiltinFunction::ResultOk => known_enum::RESULT_OK_QUALIFIED,
+            BuiltinFunction::ResultErr => known_enum::RESULT_ERR_QUALIFIED,
         }
     }
 
@@ -2316,6 +2464,7 @@ impl Type {
             Self::List(_) => "List",
             Self::Map(_, _) => "Map",
             Self::Option(_) | Self::OptionNone => "Option",
+            Self::Result(_, _) => "Result",
             Self::Function(_) => "Function",
             Self::Builtin(BuiltinFunction::Print) => "Builtin(print)",
             Self::Builtin(BuiltinFunction::Println) => "Builtin(println)",
@@ -2329,6 +2478,8 @@ impl Type {
             Self::Builtin(BuiltinFunction::Insert) => "Builtin(insert)",
             Self::Builtin(BuiltinFunction::Remove) => "Builtin(remove)",
             Self::Builtin(BuiltinFunction::OptionSome) => "Builtin(Option::Some)",
+            Self::Builtin(BuiltinFunction::ResultOk) => "Builtin(Result::Ok)",
+            Self::Builtin(BuiltinFunction::ResultErr) => "Builtin(Result::Err)",
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
         }

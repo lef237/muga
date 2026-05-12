@@ -1,8 +1,8 @@
 # Generics Specification v1
 
-Status: v1 design draft. The current Rust compiler implements generic type expressions for builtin collection-like types `List[T]`, `Option[T]`, and `Map[K, V]`; user-defined generic records, generic functions, and generic package interface persistence are still deferred.
+Status: v1 design draft. The current Rust compiler implements generic type expressions for builtin collection-like types `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`; user-defined generic records, generic functions, and generic package interface persistence are still deferred.
 
-Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing a trait, interface, protocol, typeclass, or overloaded dispatch system in the first version.
+Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing a trait, interface, protocol, typeclass, or overloaded dispatch system in the first version.
 
 The protocol-like abstractions decision note is [012-protocols-deferred.md](./012-protocols-deferred.md).
 
@@ -25,7 +25,7 @@ Generics should not turn v1 into a whole-program inference language.
 Muga v1 includes:
 
 - generic type expressions: `Name[T]`, `Name[K, V]`
-- builtin generic types: `List[T]`, `Option[T]`, `Map[K, V]` (implemented for these names)
+- builtin generic types: `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]` (implemented for these names)
 - generic record declarations
 - generic function declarations
 - local type-argument inference at function call sites
@@ -269,6 +269,7 @@ Initial generic builtin types:
 
 - `List[T]`
 - `Option[T]`
+- `Result[T, E]`
 - `Map[K, V]`
 
 Examples:
@@ -277,9 +278,10 @@ Examples:
 numbers: List[Int] = []
 users: Map[String, User] = Map.empty()
 maybe_user: Option[User] = users.get("ada")
+parsed: Result[Int, String] = Result::Ok(1)
 ```
 
-`Option[T]` construction and consumption are implemented as `Option::Some(value)`, `Option::None`, and exhaustive Option `match`. General user-defined enum declarations are still deferred.
+`Option[T]` construction and consumption are implemented as `Option::Some(value)`, `Option::None`, and exhaustive Option `match`. `Result[T, E]` construction and consumption are implemented as `Result::Ok(value)`, `Result::Err(error)`, and exhaustive Result `match`. General user-defined enum declarations are still deferred.
 
 `T?` is reserved as possible future shorthand for `Option[T]`, but `Option[T]` is the canonical v1 spelling.
 

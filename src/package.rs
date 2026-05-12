@@ -1876,5 +1876,7 @@ fn is_builtin_name(name: &str) -> bool {
             | "remove"
             | known_enum::OPTION_SOME_QUALIFIED
             | known_enum::OPTION_NONE_QUALIFIED
+            | known_enum::RESULT_OK_QUALIFIED
+            | known_enum::RESULT_ERR_QUALIFIED
     )
 }

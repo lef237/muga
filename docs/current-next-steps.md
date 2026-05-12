@@ -87,7 +87,8 @@ Recently completed:
 - `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented through AST, resolver, typechecker, HIR, bytecode, VM runtime, typed HIR, and package interface summaries.
 - `Option` match arms are now represented internally as enum variant patterns in AST, HIR, and typed HIR.
 - runtime `Option` values now use a generic enum value shape while preserving source behavior and display.
-- compiler-known enum metadata now describes the current `Option` variants, and parser/resolver/package builtin filtering/typechecker/bytecode/runtime code consumes that shared metadata.
+- compiler-known enum metadata now describes the current `Option` and `Result` variants, and parser/resolver/package builtin filtering/typechecker/bytecode/runtime code consumes that shared metadata.
+- `Result[T, E]`, `Result::Ok`, `Result::Err`, and exhaustive Result `match` are implemented through the same compiler-known enum metadata, generic runtime enum value, typed HIR, and package-interface summary path.
 - `Map[K, V]` is implemented for `Int` / `Bool` / `String` keys with `Map.empty`, `len`, `is_empty`, `contains`, safe lookup `get`, value-returning `insert`, and value-returning `remove`.
 - `Map.empty()` requires an expected `Map[K, V]` type, usually from a local binding annotation, function return type, parameter type, or chained operation.
 - the existing VM bytecode path remains behavior-compatible.
@@ -96,20 +97,20 @@ Recently completed:
 
 The best next implementation task is:
 
-1. add compiler-known `Result[T, E]`, `Result::Ok`, `Result::Err`, and exhaustive `Result` `match`
-2. keep `?` propagation sugar deferred until explicit `Result` construction and matching are stable
-3. design user-defined enum declarations after `Result` proves the shared enum metadata path
+1. implement user-defined `enum` declarations with zero-payload and one-payload variants
+2. route user-defined enum construction and `match` through the same metadata/runtime path as `Option` and `Result`
+3. keep `?` propagation sugar deferred until user-defined enum identity and public signatures are stable
 4. keep map literals, `Set[T]`, arbitrary map keys, and broad stdlib collection APIs deferred
 
 Why this comes next:
 
 - `List[T]` and `Map[K, V]` now have syntax, static typing, typed HIR representation, package interface representation, runtime values, safe lookup, and value-returning update operations
 - direct indexing and `set` use the same bounds-error policy: negative and out-of-bounds indexes are runtime errors
-- `Option[T]` is already a compiler-known enum-like type with exhaustive `match`, and current Option implementation now has a reusable known-enum metadata table
+- `Option[T]` and `Result[T, E]` are already compiler-known enum-like types with exhaustive `match`, and the implementation now has a reusable known-enum metadata table
 
 Expected result:
 
-- `Result[T, E]` can validate that the known-enum path supports a second generic enum before user-defined enum syntax is added
+- user-defined enum declarations reuse the known-enum path already validated by `Option[T]` and `Result[T, E]`
 - user-defined enum syntax can eventually explain `Option[T]` and `Result[T, E]` instead of relying only on compiler-known special cases
 - error handling can be designed before adding broad IO, HTTP, process, and concurrency APIs
 
@@ -121,14 +122,14 @@ These decisions affect near-term implementation and should be made before implem
 
 Decide:
 
-- whether general enum/sum-type declarations should land before `Result[T, E]`
-- how future `Result[T, E]` and error propagation should relate to `match`
+- the exact first user-defined enum declaration syntax
+- how future error propagation should relate to explicit `Result` `match`
 - whether `Option[T]` remains compiler-known internally or becomes ordinary stdlib enum syntax later
 - what diagnostics and exhaustiveness rules apply to multi-variant enum `match`
 
 Current recommendation:
 
-- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, `push`, `get`, `set`, direct indexing, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, and the first `Map[K, V]` slice are now implemented
+- local binding annotations, generic type expression parsing, `List[T]`, list literals, `len`, `is_empty`, `push`, `get`, `set`, direct indexing, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, compiler-known `Result[T, E]`, `Result::Ok`, `Result::Err`, exhaustive Result `match`, and the first `Map[K, V]` slice are now implemented
 - parse generic declarations as `record Box[T]` and `fn id[T](value: T): T`
 - implement generic records and generic functions as part of v1
 - rely on local type-argument inference rather than explicit call-site type arguments in the v1 MVP
@@ -136,7 +137,7 @@ Current recommendation:
 - defer trait, interface, protocol, and overloaded dispatch declarations
 - defer map literals, arbitrary map key types, `Set[T]`, and broad collection APIs
 - keep `T?` reserved, not implemented
-- design enum/`Result` before widening stdlib effects
+- implement user-defined enums before widening stdlib effects
 
 ### 5.2 Before package interface implementation
 
@@ -239,7 +240,7 @@ When resuming implementation:
 2. Read [implementation-resume-plan.md](./implementation-resume-plan.md).
 3. Read [ROADMAP.md](../ROADMAP.md) "Recommended Immediate Next Steps".
 4. Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. Start with compiler-known `Result[T, E]` support unless a package-interface task is explicitly being resumed first.
+5. Start with user-defined enum declaration MVP unless a package-interface task is explicitly being resumed first.
 6. After each compiler-core change, keep `check`, `run`, and existing samples behavior-compatible.
 
 Useful validation commands:

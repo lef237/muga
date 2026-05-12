@@ -28,6 +28,11 @@ pub const OPTION_SOME_NAME: &str = "Some";
 pub const OPTION_NONE_NAME: &str = "None";
 pub const OPTION_SOME_QUALIFIED: &str = "Option::Some";
 pub const OPTION_NONE_QUALIFIED: &str = "Option::None";
+pub const RESULT_NAME: &str = "Result";
+pub const RESULT_OK_NAME: &str = "Ok";
+pub const RESULT_ERR_NAME: &str = "Err";
+pub const RESULT_OK_QUALIFIED: &str = "Result::Ok";
+pub const RESULT_ERR_QUALIFIED: &str = "Result::Err";
 
 static OPTION_VARIANTS: [KnownEnumVariant; 2] = [
     KnownEnumVariant {
@@ -45,14 +50,41 @@ static OPTION_ENUM: KnownEnum = KnownEnum {
     variants: &OPTION_VARIANTS,
 };
 
+static RESULT_VARIANTS: [KnownEnumVariant; 2] = [
+    KnownEnumVariant {
+        name: RESULT_OK_NAME,
+        has_payload: true,
+    },
+    KnownEnumVariant {
+        name: RESULT_ERR_NAME,
+        has_payload: true,
+    },
+];
+
+static RESULT_ENUM: KnownEnum = KnownEnum {
+    name: RESULT_NAME,
+    variants: &RESULT_VARIANTS,
+};
+
 pub fn option_enum() -> &'static KnownEnum {
     &OPTION_ENUM
 }
 
+pub fn result_enum() -> &'static KnownEnum {
+    &RESULT_ENUM
+}
+
 pub fn known_enum(name: &str) -> Option<&'static KnownEnum> {
-    if name == OPTION_ENUM.name {
-        Some(&OPTION_ENUM)
-    } else {
-        None
+    match name {
+        OPTION_NAME => Some(&OPTION_ENUM),
+        RESULT_NAME => Some(&RESULT_ENUM),
+        _ => None,
     }
+}
+
+pub fn known_variant_qualified(name: &str) -> Option<(&'static KnownEnum, KnownEnumVariant)> {
+    let (enum_name, variant_name) = name.split_once("::")?;
+    let known = known_enum(enum_name)?;
+    let variant = known.variant(variant_name)?;
+    Some((known, variant))
 }
