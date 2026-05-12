@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file first. It records
 
 ## Verification Snapshot
 
-- [x] `git status --short --branch` showed a clean worktree on `main...origin/main` before this documentation update.
-- [x] `cargo test` passed after the enum/ADT foundation refactor: 147 tests, 0 failures.
+- [x] `git status --short --branch` showed a clean worktree on `main...origin/main` before the enum metadata implementation.
+- [x] `cargo test` passed after the compiler-known enum metadata refactor: 148 tests, 0 failures.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -98,6 +98,8 @@ Important transition detail:
 - [x] safe list `get` returns `Option[T]`; negative or out-of-bounds indexes return `Option::None`.
 - [x] compiler-known `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match`.
 - [x] runtime `Option` values now use a generic `EnumValue` shape while preserving the existing `Option::Some(...)` / `Option::None` display and behavior.
+- [x] compiler-known enum metadata now describes `Option` and its `Some` / `None` variants.
+- [x] parser, resolver, package builtin filtering, typechecker match validation, bytecode lowering, and VM runtime Option branching consume that enum metadata instead of scattering variant strings.
 - [x] `Map[K, V]` with `Int`, `Bool`, and `String` keys.
 - [x] `Map.empty`, `len`, `is_empty`, `contains`, safe `get`, value-returning `insert`, and value-returning `remove`.
 - [ ] map literals are deferred.
@@ -113,7 +115,7 @@ Important transition detail:
 - The current bytecode backend still lowers from the older untyped HIR, not typed HIR.
 - `Option[T]` is implemented as a compiler-known enum-like type rather than as a user-defined enum.
 - `match` currently supports only `Option[T]`, but match patterns are now represented internally as enum variant patterns.
-- Runtime `Option` values use a generic enum-value representation; typechecking and bytecode branching are still Option-specific.
+- Runtime `Option` values use a generic enum-value representation; typechecking and bytecode branching consume compiler-known enum metadata, but the only metadata entry today is still `Option`.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
 - The public package interface model is in memory only; there is no serialized format, cache key, or incremental invalidation yet.
 
@@ -173,14 +175,14 @@ Estimates are in focused engineering days for someone already familiar with this
 
 | Slice | Scope | Main files | Estimate | Risk |
 |---|---|---|---:|---|
-| 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. Preserve all existing Option tests. AST/HIR/typed HIR pattern shape and runtime enum value shape are done; typechecker enum metadata and bytecode branching still need the next cleanup. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | 0.5-1 day remaining | Medium |
-| 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No `?` yet. | `src/token.rs`, `src/parser.rs`, `src/ast.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | 1.5-3 days | Medium |
+| 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. AST/HIR/typed HIR pattern shape, runtime enum value shape, and compiler-known enum metadata for `Option` are in place. Remaining cleanup is to rename/generalize Option-specific bytecode instruction names while preserving behavior. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | 0.25-0.5 day remaining | Low |
+| 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No `?` yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/token.rs`, `src/parser.rs`, `src/ast.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | 1.5-3 days | Medium |
 | 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | 3-5 days | High |
 | 4. Generic enum declarations | Type parameters on enum declarations and variant constructors. This may share work with generic records/functions. | parser/AST/typechecker/package/typed HIR/tests | 3-6 days | High |
 | 5. Error propagation design | Specify `?` or an alternative propagation surface for `Result`. Implement only after Result match is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 | 6. Package interface persistence | Serialize public records/functions/enums, type identities, and hashes. Start consuming stored summaries for downstream checking. | `src/package.rs`, `src/typed_hir.rs`, new interface/cache modules, tests | 5-10 days | High |
 
-The safest immediate code slice is to finish the remaining part of Slice 1: introduce a small enum metadata table for compiler-known `Option`, then make match checking and bytecode lowering consume that table instead of hard-coded `Some` / `None` searches. After that, add compiler-known `Result[T, E]`.
+The safest immediate code slice is now Slice 2: add compiler-known `Result[T, E]`, `Result::Ok`, `Result::Err`, and exhaustive `Result` `match` on top of the known enum metadata table. During that slice, generalize any remaining Option-named bytecode/runtime helper names only when the Result path actually needs it.
 
 ## Definition Of Done For The Next Code Slice
 
@@ -199,7 +201,7 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [docs/current-next-steps.md](./current-next-steps.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is the internal ADT refactor or direct `Result[T, E]` support.
+5. [ ] Confirm whether the intended next code slice is compiler-known `Result[T, E]` support or the remaining bytecode naming cleanup.
 6. [ ] Keep package flattening unchanged unless the task is explicitly package-interface persistence.
 7. [ ] After every compiler-core change, verify at least:
 

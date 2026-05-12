@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId};
+use crate::known_enum::{self, KnownEnum, KnownEnumVariant};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
@@ -159,6 +160,26 @@ struct RecordField {
     name: Symbol,
     type_name: TypeExpr,
     span: Span,
+}
+
+#[derive(Clone, Debug)]
+struct EnumMatchSpec {
+    known: &'static KnownEnum,
+    variants: Vec<EnumMatchVariant>,
+}
+
+impl EnumMatchSpec {
+    fn variant(&self, name: &str) -> Option<&EnumMatchVariant> {
+        self.variants
+            .iter()
+            .find(|variant| variant.known.name == name)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct EnumMatchVariant {
+    known: KnownEnumVariant,
+    payload: Option<Type>,
 }
 
 struct ScopeFrame {
@@ -329,14 +350,14 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::Remove),
             Span::default(),
         );
-        let option_some = self.symbol("Option::Some");
+        let option_some = self.symbol(known_enum::OPTION_SOME_QUALIFIED);
         self.insert_current(
             option_some,
             BindingKind::Function,
             Type::Builtin(BuiltinFunction::OptionSome),
             Span::default(),
         );
-        let option_none = self.symbol("Option::None");
+        let option_none = self.symbol(known_enum::OPTION_NONE_QUALIFIED);
         self.insert_current(
             option_none,
             BindingKind::Immutable,
@@ -1461,86 +1482,69 @@ impl TypeChecker {
 
     fn check_match_expr(&mut self, expr: &MatchExpr, expected: Option<Type>) -> Type {
         let value_ty = self.check_expr(&expr.value);
-        let item_ty = match self.resolve_type(&value_ty) {
-            Type::Option(item) => *item,
-            Type::Unknown(_) => {
-                let item = Type::Unknown(self.fresh_unknown());
-                let option = Type::Option(Box::new(item.clone()));
-                if let Err(message) = self.unify(value_ty.clone(), option) {
-                    self.diagnostics
-                        .push(Diagnostic::new("T018", message, expr.value.span()));
-                    Type::Error
-                } else {
-                    item
-                }
-            }
-            Type::Error => Type::Error,
-            _ => {
-                self.diagnostics.push(Diagnostic::new(
-                    "T018",
-                    "`match` currently supports only Option[T] values",
-                    expr.value.span(),
-                ));
-                Type::Error
-            }
-        };
-
-        let mut has_some = None;
-        let mut has_none = None;
+        let spec = self.enum_match_spec_for_value(&value_ty, expr.value.span());
+        let mut seen_variants = HashMap::new();
         let mut result_ty = None;
         let expected = expected.map(|ty| self.resolve_type(&ty));
 
         for arm in &expr.arms {
             self.push_scope(false);
-            match &arm.pattern {
-                MatchPattern::Variant(pattern)
-                    if pattern.enum_name == "Option" && pattern.variant_name == "Some" =>
-                {
-                    if let Some(previous) = has_some {
-                        self.diagnostics.push(
-                            Diagnostic::new(
-                                "T018",
-                                "duplicate `Option::Some` match arm",
-                                pattern.span,
-                            )
-                            .with_related("previous `Option::Some` arm is here", previous),
-                        );
-                    } else {
-                        has_some = Some(pattern.span);
-                    }
-                    if let Some(binding) = &pattern.binding {
+            let MatchPattern::Variant(pattern) = &arm.pattern;
+            if pattern.enum_name != spec.known.name {
+                self.diagnostics.push(Diagnostic::new(
+                    "T018",
+                    "`match` currently supports only Option[T] values",
+                    pattern.span,
+                ));
+            } else if let Some(variant) = spec.variant(&pattern.variant_name) {
+                if let Some(previous) = seen_variants.insert(variant.known.name, pattern.span) {
+                    let qualified = spec.known.qualified_variant(variant.known);
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "T018",
+                            format!("duplicate `{qualified}` match arm"),
+                            pattern.span,
+                        )
+                        .with_related(format!("previous `{qualified}` arm is here"), previous),
+                    );
+                }
+                match (&variant.payload, &pattern.binding) {
+                    (Some(payload_ty), Some(binding)) => {
                         let name = self.symbol(binding);
                         self.insert_current(
                             name,
                             BindingKind::Immutable,
-                            item_ty.clone(),
+                            payload_ty.clone(),
                             pattern.span,
                         );
                     }
-                }
-                MatchPattern::Variant(pattern)
-                    if pattern.enum_name == "Option" && pattern.variant_name == "None" =>
-                {
-                    if let Some(previous) = has_none {
-                        self.diagnostics.push(
-                            Diagnostic::new(
-                                "T018",
-                                "duplicate `Option::None` match arm",
-                                pattern.span,
-                            )
-                            .with_related("previous `Option::None` arm is here", previous),
-                        );
-                    } else {
-                        has_none = Some(pattern.span);
+                    (Some(_), None) => {
+                        let qualified = spec.known.qualified_variant(variant.known);
+                        self.diagnostics.push(Diagnostic::new(
+                            "T018",
+                            format!("`{qualified}` match arm must bind its payload"),
+                            pattern.span,
+                        ));
                     }
+                    (None, Some(_)) => {
+                        let qualified = spec.known.qualified_variant(variant.known);
+                        self.diagnostics.push(Diagnostic::new(
+                            "T018",
+                            format!("`{qualified}` match arm does not carry a payload"),
+                            pattern.span,
+                        ));
+                    }
+                    (None, None) => {}
                 }
-                MatchPattern::Variant(pattern) => {
-                    self.diagnostics.push(Diagnostic::new(
-                        "T018",
-                        "`match` currently supports only Option[T] values",
-                        pattern.span,
-                    ));
-                }
+            } else {
+                self.diagnostics.push(Diagnostic::new(
+                    "T018",
+                    format!(
+                        "unknown variant `{}` in match for {}",
+                        pattern.variant_name, spec.known.name
+                    ),
+                    pattern.span,
+                ));
             }
 
             let arm_ty = if let Some(expected_ty) = expected.clone() {
@@ -1556,24 +1560,77 @@ impl TypeChecker {
             self.pop_scope();
         }
 
-        if has_some.is_none() {
-            self.diagnostics.push(Diagnostic::new(
-                "T018",
-                "`match` on Option[T] requires an `Option::Some` arm",
-                expr.span,
-            ));
-        }
-        if has_none.is_none() {
-            self.diagnostics.push(Diagnostic::new(
-                "T018",
-                "`match` on Option[T] requires an `Option::None` arm",
-                expr.span,
-            ));
+        for variant in &spec.variants {
+            if !seen_variants.contains_key(variant.known.name) {
+                let qualified = spec.known.qualified_variant(variant.known);
+                self.diagnostics.push(Diagnostic::new(
+                    "T018",
+                    format!(
+                        "`match` on {} requires an `{qualified}` arm",
+                        Self::known_enum_type_name(spec.known)
+                    ),
+                    expr.span,
+                ));
+            }
         }
 
         match expected {
             Some(expected) => self.resolve_type(&expected),
             None => result_ty.unwrap_or(Type::Error),
+        }
+    }
+
+    fn enum_match_spec_for_value(&mut self, value_ty: &Type, value_span: Span) -> EnumMatchSpec {
+        match self.resolve_type(value_ty) {
+            Type::Option(item) => self.option_match_spec(*item),
+            Type::Unknown(_) => {
+                let item = Type::Unknown(self.fresh_unknown());
+                let option = Type::Option(Box::new(item.clone()));
+                if let Err(message) = self.unify(value_ty.clone(), option) {
+                    self.diagnostics
+                        .push(Diagnostic::new("T018", message, value_span));
+                    self.option_match_spec(Type::Error)
+                } else {
+                    self.option_match_spec(item)
+                }
+            }
+            Type::Error => self.option_match_spec(Type::Error),
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T018",
+                    "`match` currently supports only Option[T] values",
+                    value_span,
+                ));
+                self.option_match_spec(Type::Error)
+            }
+        }
+    }
+
+    fn option_match_spec(&self, item_ty: Type) -> EnumMatchSpec {
+        let known = known_enum::option_enum();
+        EnumMatchSpec {
+            known,
+            variants: known
+                .variants
+                .iter()
+                .copied()
+                .map(|variant| EnumMatchVariant {
+                    known: variant,
+                    payload: if variant.has_payload {
+                        Some(item_ty.clone())
+                    } else {
+                        None
+                    },
+                })
+                .collect(),
+        }
+    }
+
+    fn known_enum_type_name(known: &KnownEnum) -> &'static str {
+        if known.name == known_enum::OPTION_NAME {
+            "Option[T]"
+        } else {
+            known.name
         }
     }
 
@@ -2071,8 +2128,10 @@ impl TypeChecker {
             Type::Builtin(BuiltinFunction::Contains) => TypeInfo::Builtin("contains"),
             Type::Builtin(BuiltinFunction::Insert) => TypeInfo::Builtin("insert"),
             Type::Builtin(BuiltinFunction::Remove) => TypeInfo::Builtin("remove"),
-            Type::Builtin(BuiltinFunction::OptionSome) => TypeInfo::Builtin("Option::Some"),
-            Type::OptionNone => TypeInfo::Builtin("Option::None"),
+            Type::Builtin(BuiltinFunction::OptionSome) => {
+                TypeInfo::Builtin(known_enum::OPTION_SOME_QUALIFIED)
+            }
+            Type::OptionNone => TypeInfo::Builtin(known_enum::OPTION_NONE_QUALIFIED),
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
         }
@@ -2136,7 +2195,7 @@ impl TypeChecker {
             BuiltinFunction::Contains => "contains",
             BuiltinFunction::Insert => "insert",
             BuiltinFunction::Remove => "remove",
-            BuiltinFunction::OptionSome => "Option::Some",
+            BuiltinFunction::OptionSome => known_enum::OPTION_SOME_QUALIFIED,
         }
     }
 

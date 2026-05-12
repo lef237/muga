@@ -1179,6 +1179,23 @@ fn main(): Int {
 }
 
 #[test]
+fn known_enum_metadata_describes_option_variants() {
+    let option = muga::known_enum::option_enum();
+    let some = option
+        .variant(muga::known_enum::OPTION_SOME_NAME)
+        .expect("Option should define Some");
+    let none = option
+        .variant(muga::known_enum::OPTION_NONE_NAME)
+        .expect("Option should define None");
+
+    assert_eq!(option.name, "Option");
+    assert!(some.has_payload);
+    assert!(!none.has_payload);
+    assert_eq!(option.qualified_variant(some), "Option::Some");
+    assert_eq!(option.qualified_variant(none), "Option::None");
+}
+
+#[test]
 fn local_binding_annotation_sets_binding_type() {
     let source = r#"
 fn main(): Int {

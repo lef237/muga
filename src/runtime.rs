@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-use crate::{bytecode::*, diagnostic::Diagnostic, span::Span, symbol::Symbol};
+use crate::{bytecode::*, diagnostic::Diagnostic, known_enum, span::Span, symbol::Symbol};
 
 type EnvRef = Rc<RefCell<Env>>;
 
@@ -55,17 +55,25 @@ struct RecordFieldValue {
 }
 
 fn option_some(value: Value) -> Value {
+    let option = known_enum::option_enum();
+    let some = option
+        .variant(known_enum::OPTION_SOME_NAME)
+        .expect("known Option enum should define Some");
     Value::Enum(EnumValue {
-        type_name: "Option".to_string(),
-        variant_name: "Some".to_string(),
+        type_name: option.name.to_string(),
+        variant_name: some.name.to_string(),
         payload: Some(Box::new(value)),
     })
 }
 
 fn option_none() -> Value {
+    let option = known_enum::option_enum();
+    let none = option
+        .variant(known_enum::OPTION_NONE_NAME)
+        .expect("known Option enum should define None");
     Value::Enum(EnumValue {
-        type_name: "Option".to_string(),
-        variant_name: "None".to_string(),
+        type_name: option.name.to_string(),
+        variant_name: none.name.to_string(),
         payload: None,
     })
 }
@@ -233,7 +241,7 @@ impl BuiltinFunction {
             Self::Contains => "contains",
             Self::Insert => "insert",
             Self::Remove => "remove",
-            Self::OptionSome => "Option::Some",
+            Self::OptionSome => known_enum::OPTION_SOME_QUALIFIED,
         }
     }
 }
@@ -425,9 +433,16 @@ fn execute_chunk(
             }
             Instruction::JumpIfOptionNone { target, span } => {
                 let value = pop_value(&mut stack, *span, "R015", "missing Option value for match")?;
+                let option = known_enum::option_enum();
+                let some = option
+                    .variant(known_enum::OPTION_SOME_NAME)
+                    .expect("known Option enum should define Some");
+                let none = option
+                    .variant(known_enum::OPTION_NONE_NAME)
+                    .expect("known Option enum should define None");
                 match value {
                     Value::Enum(value)
-                        if value.type_name == "Option" && value.variant_name == "Some" =>
+                        if value.type_name == option.name && value.variant_name == some.name =>
                     {
                         let Some(payload) = value.payload else {
                             return Err(vec![Diagnostic::new(
@@ -439,7 +454,7 @@ fn execute_chunk(
                         stack.push(*payload);
                     }
                     Value::Enum(value)
-                        if value.type_name == "Option" && value.variant_name == "None" =>
+                        if value.type_name == option.name && value.variant_name == none.name =>
                     {
                         pc = *target;
                         continue;
@@ -1241,7 +1256,7 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             },
         );
     }
-    if let Some(option_some_symbol) = program.symbols.lookup("Option::Some") {
+    if let Some(option_some_symbol) = program.symbols.lookup(known_enum::OPTION_SOME_QUALIFIED) {
         env.borrow_mut().bindings.insert(
             option_some_symbol,
             Binding {
@@ -1251,7 +1266,7 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             },
         );
     }
-    if let Some(option_none_symbol) = program.symbols.lookup("Option::None") {
+    if let Some(option_none_symbol) = program.symbols.lookup(known_enum::OPTION_NONE_QUALIFIED) {
         env.borrow_mut().bindings.insert(
             option_none_symbol,
             Binding {

@@ -73,6 +73,7 @@ Current draft decisions:
 - empty collection literals need an expected type, most likely from a local binding annotation such as `items: List[Int] = []`
 - `List[T]` type annotations, list literals, basic list operations (`len`, `is_empty`, `push`, `get`, `set`), and direct list indexing are implemented as the first collection slice
 - `Option[T]`, `Option::Some`, `Option::None`, and exhaustive Option `match` are implemented and used by safe list lookup
+- current `Option` implementation uses enum-variant-shaped match patterns, a generic runtime enum value shape, and compiler-known enum metadata for variant facts
 - the first `Map[K, V]` slice is implemented with `Int` / `Bool` / `String` keys, `Map.empty`, `len`, `is_empty`, `contains`, `get`, `insert`, and `remove`; arbitrary key types and map literals are deferred
 - ordinary source code should use value semantics; the compiler/runtime may share immutable storage internally when safe
 - explicit source-level references such as `ref T`, `mut ref T`, `*T`, and `&value` are not planned for ordinary Muga code
@@ -486,8 +487,8 @@ Likely topics:
 
 If work resumes right now, the best order is:
 
-1. implement the enum/ADT foundation by generalizing the current `Option[T]`-only internals without changing existing source behavior
-2. add `Result[T, E]`, `Result::Ok`, `Result::Err`, and exhaustive `Result` `match` before any propagation sugar
+1. add `Result[T, E]`, `Result::Ok`, `Result::Err`, and exhaustive `Result` `match` on top of the known-enum metadata foundation
+2. keep `?` propagation sugar deferred until explicit `Result` behavior is stable
 3. implement user-defined enum declarations after the enum/result data model is stable
 4. return to package interface consumption and persisted package interfaces once enum/result public signatures are representable
 5. cache, MIR, and native backend work once the semantic boundary and package interface format are stable
@@ -518,7 +519,7 @@ Recently completed:
 - typed package interface validation uses package/name lookup and detects stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup reads `PackageExportGraph` before flattening, and `PackageExportGraph` can be derived from typed interfaces
 - local binding annotations, `List[T]` type annotations, list literals, list indexing, basic list operations including safe lookup and value-returning update, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, and the first `Map[K, V]` slice are implemented; map literals, `Set[T]`, and broader collection APIs remain reserved
-- AST/HIR/typed HIR now represent current `Option` match arms as enum variant patterns, and runtime `Option` values use a generic enum value shape as the first enum/ADT foundation slice
+- AST/HIR/typed HIR now represent current `Option` match arms as enum variant patterns, runtime `Option` values use a generic enum value shape, and current Option variant facts live in a compiler-known enum metadata table consumed by match checking, bytecode lowering, and runtime branching
 
 These are follow-up compiler-core tasks layered on top of the typed HIR foundation, not prerequisites for it.
 

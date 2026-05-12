@@ -1,6 +1,9 @@
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{ExprId, StmtId};
+use crate::known_enum::{
+    OPTION_NAME, OPTION_NONE_NAME, OPTION_NONE_QUALIFIED, OPTION_SOME_NAME, OPTION_SOME_QUALIFIED,
+};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
@@ -631,21 +634,21 @@ impl Parser {
         let (first, first_span) = self.expect_ident()?;
         let (name, name_span) = self.parse_value_name_after_first(first, first_span)?;
         match name.as_str() {
-            "Option::Some" => {
+            OPTION_SOME_QUALIFIED => {
                 self.expect_simple(TokenKind::LParen, "expected `(` after `Option::Some`")?;
                 let (binding, binding_span) = self.expect_ident()?;
                 let end =
                     self.expect_simple(TokenKind::RParen, "expected `)` after match binding")?;
                 Ok(MatchPattern::Variant(EnumVariantPattern {
-                    enum_name: "Option".to_string(),
-                    variant_name: "Some".to_string(),
+                    enum_name: OPTION_NAME.to_string(),
+                    variant_name: OPTION_SOME_NAME.to_string(),
                     binding: Some(binding),
                     span: name_span.merge(binding_span).merge(end),
                 }))
             }
-            "Option::None" => Ok(MatchPattern::Variant(EnumVariantPattern {
-                enum_name: "Option".to_string(),
-                variant_name: "None".to_string(),
+            OPTION_NONE_QUALIFIED => Ok(MatchPattern::Variant(EnumVariantPattern {
+                enum_name: OPTION_NAME.to_string(),
+                variant_name: OPTION_NONE_NAME.to_string(),
                 binding: None,
                 span: name_span,
             })),

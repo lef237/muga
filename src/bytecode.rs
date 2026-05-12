@@ -1,5 +1,6 @@
 use crate::{
     hir,
+    known_enum::{self, KnownEnum, KnownEnumVariant},
     span::Span,
     symbol::{Symbol, SymbolTable},
 };
@@ -359,15 +360,22 @@ impl Compiler {
     }
 
     fn compile_match_expr(&mut self, expr: &hir::MatchExpr, chunk: &mut Chunk) {
+        let option = known_enum::option_enum();
+        let some = option
+            .variant(known_enum::OPTION_SOME_NAME)
+            .expect("known Option enum should define Some");
+        let none = option
+            .variant(known_enum::OPTION_NONE_NAME)
+            .expect("known Option enum should define None");
         let some_arm = expr
             .arms
             .iter()
-            .find(|arm| self.pattern_is_variant(&arm.pattern, "Option", "Some"))
+            .find(|arm| self.pattern_is_variant(&arm.pattern, option, some))
             .expect("typechecked Option match should have Some arm");
         let none_arm = expr
             .arms
             .iter()
-            .find(|arm| self.pattern_is_variant(&arm.pattern, "Option", "None"))
+            .find(|arm| self.pattern_is_variant(&arm.pattern, option, none))
             .expect("typechecked Option match should have None arm");
 
         self.compile_expr(&expr.value, chunk);
@@ -399,12 +407,12 @@ impl Compiler {
     fn pattern_is_variant(
         &self,
         pattern: &hir::MatchPattern,
-        enum_name: &str,
-        variant_name: &str,
+        known: &KnownEnum,
+        variant: KnownEnumVariant,
     ) -> bool {
         let hir::MatchPattern::Variant(pattern) = pattern;
-        self.symbols.resolve(pattern.enum_name) == enum_name
-            && self.symbols.resolve(pattern.variant_name) == variant_name
+        self.symbols.resolve(pattern.enum_name) == known.name
+            && self.symbols.resolve(pattern.variant_name) == variant.name
     }
 
     fn pattern_binding(&self, pattern: &hir::MatchPattern) -> Option<(Symbol, Span)> {
