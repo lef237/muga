@@ -171,7 +171,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is user-defined `enum` declarations with zero-payload and one-payload variants, reusing the enum-like path already used by compiler-known `Option[T]` and `Result[T, E]`.
+The next implementation slice is user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified `Enum::Variant` construction/patterns, and exhaustive `match`. It should reuse the enum-like path already used by compiler-known `Option[T]` and `Result[T, E]`.
 
 After that, the priority returns to persisted package interfaces, package-interface consumption, caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
