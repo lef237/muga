@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{ModuleId, PackageId, PackageItemId};
+use crate::known_enum;
 use crate::span::Span;
 use crate::typing::TypeInfo;
 
@@ -1873,7 +1874,7 @@ fn is_builtin_name(name: &str) -> bool {
             | "contains"
             | "insert"
             | "remove"
-            | "Option::Some"
-            | "Option::None"
+            | known_enum::OPTION_SOME_QUALIFIED
+            | known_enum::OPTION_NONE_QUALIFIED
     )
 }

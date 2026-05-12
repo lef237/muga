@@ -3,6 +3,7 @@ pub mod bytecode;
 pub mod diagnostic;
 pub mod hir;
 pub mod identity;
+pub mod known_enum;
 pub mod lexer;
 pub mod package;
 pub mod parser;

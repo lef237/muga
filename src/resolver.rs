@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{BindingId, BindingKind, ExprId};
+use crate::known_enum;
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 
@@ -127,9 +128,9 @@ impl Resolver {
         self.insert_current(insert, BindingKind::Function, Span::default());
         let remove = self.symbol("remove");
         self.insert_current(remove, BindingKind::Function, Span::default());
-        let option_some = self.symbol("Option::Some");
+        let option_some = self.symbol(known_enum::OPTION_SOME_QUALIFIED);
         self.insert_current(option_some, BindingKind::Function, Span::default());
-        let option_none = self.symbol("Option::None");
+        let option_none = self.symbol(known_enum::OPTION_NONE_QUALIFIED);
         self.insert_current(option_none, BindingKind::Immutable, Span::default());
     }
 
