@@ -1,8 +1,8 @@
 # Muga
 
-Muga is a small programming language focused on simple rules, readable code, and low syntactic overhead.
+Muga is a compiler-first programming language project named after the Japanese idea of muga, often translated as selflessness. Its current design emphasizes readable local reasoning through immutable-by-default bindings, local type inference, value semantics, records plus functions, and predictable package boundaries.
 
-This repository contains the v1 language drafts and the current Rust implementation.
+This repository tracks the language design, examples, and the current Rust compiler/runtime implementation as Muga moves toward v1.
 
 ## Installation
 
