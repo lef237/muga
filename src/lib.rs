@@ -88,6 +88,10 @@ pub fn compile_source(source: &str) -> Result<HirProgram, Vec<Diagnostic>> {
 }
 
 pub fn compile_path(path: &Path) -> Result<HirProgram, Vec<Diagnostic>> {
+    if package::entry_package_path_from_entry(path)?.is_some() {
+        let check = check_package_aware_path(path)?;
+        return Ok(hir::lower_typed(&check.typed_program));
+    }
     let program = check_path(path)?;
     Ok(hir::lower(&program))
 }
