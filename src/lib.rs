@@ -2,7 +2,6 @@ pub mod ast;
 pub mod bytecode;
 pub mod cache;
 pub mod diagnostic;
-pub mod hir;
 pub mod identity;
 pub mod interface;
 pub mod known_enum;

@@ -3,7 +3,7 @@
 //! This is the current backend boundary between typed HIR and bytecode. The
 //! representation is still expression-shaped, but it is owned by the MIR module
 //! so future control-flow-oriented MIR work can evolve without keeping bytecode
-//! tied to the compatibility `hir` module.
+//! tied to legacy AST lowering.
 
 use crate::{
     identity::PackageItemId,

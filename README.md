@@ -156,7 +156,7 @@ For more entry points, browse the [Samples](#samples) section below.
 
 Implemented:
 
-- lexer, parser, resolver, typechecker, HIR lowering, bytecode compilation, and VM runtime
+- lexer, parser, resolver, typechecker, typed HIR lowering, MIR lowering, bytecode compilation, and VM runtime
 - `check` for front-end validation and `run` for VM execution
 - `print` / `println` prelude builtins for `Int`, `Bool`, and `String`
 - records, field access, `record.with(...)`, chained calls, package-qualified chained calls, arrow function types, local binding annotations, and local bidirectional inference for selected higher-order cases
@@ -183,20 +183,20 @@ Implemented:
 - package-aware checks aggregate per-module typed HIR from the unflattened module check outputs instead of the legacy flattened typed path
 - package-aware checking and loaded/interface-artifact typed compilation collect dependency signatures directly from in-memory or persisted package interfaces without reading dependency source bodies
 - loaded-interface package-aware checks build dependency package graph metadata directly from package interfaces instead of loading dependency AST stubs
-- package-aware typed HIR can lower through the existing HIR/bytecode VM path, including imported package records/enums/functions
-- default package `run` lowers package-aware typed HIR through the existing HIR/bytecode VM path, while `check_path` still returns a flattened compatibility AST
+- package-aware typed HIR can lower through the MIR/bytecode VM path, including imported package records/enums/functions
+- default package `run` lowers package-aware typed HIR through MIR before bytecode generation
 
 Not implemented yet:
 
 - user-defined generic records and generic functions
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
-- package-aware execution, project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, MIR, and native code generation
+- dependency-body-free package execution, project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, control-flow-oriented MIR, and native code generation
 - error propagation syntax such as `try expr`
 
 ## Planned Priority
 
-The next implementation slice is continuing the package-aware checking migration: broaden package-aware module body typechecking and continue toward explicit artifact storage/reuse without making artifact roots implicit.
+The next implementation slice is continuing MIR maturation while keeping package artifact roots explicit.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 

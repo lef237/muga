@@ -639,8 +639,8 @@ Completed structural steps:
 - resolver, typechecker output, runtime, and package builtin lookup share `prelude::BuiltinId`
 - typed HIR lowering reads package item identity from AST declarations instead of recovering it from mangled names
 - loaded-interface typed compilation no longer synthesizes dependency interface AST stubs or routes them through the legacy flattened typed path
-- VM bytecode now consumes `mir::Program`; `hir` remains a compatibility module for legacy AST lowering and re-exports
-- default compile APIs lower typed HIR into MIR; legacy AST lowering requires explicitly using the `hir` compatibility module
+- VM bytecode now consumes `mir::Program`
+- default compile APIs lower typed HIR into MIR; the legacy untyped AST-to-HIR compatibility module has been removed
 
 Critical current risks to eliminate:
 
