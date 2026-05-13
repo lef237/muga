@@ -1154,6 +1154,15 @@ fn package_aware_checking_exposes_module_type_outputs() {
             muga::package::PackageItemKind::Function,
         )
         .expect("helper item should exist");
+    let package_value_item = result
+        .packages
+        .package_graph
+        .item_id_in_module(
+            helper_module,
+            "PackageValue",
+            muga::package::PackageItemKind::Record,
+        )
+        .expect("PackageValue item should exist");
     let main_check = result
         .module_checks
         .iter()
@@ -1166,6 +1175,13 @@ fn package_aware_checking_exposes_module_type_outputs() {
             call.callee,
             muga::typing::TypedCalleeInfo::PackageItem { item, .. } if item == helper_item
         )
+    }));
+    assert!(main_check.type_output.bindings.iter().any(|binding| {
+        main_check.type_output.symbols.resolve(binding.symbol) == "value"
+            && matches!(
+                binding.ty,
+                muga::types::TypeInfo::PackageRecord { item, .. } if item == package_value_item
+            )
     }));
 }
 
