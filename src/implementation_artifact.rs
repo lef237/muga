@@ -131,7 +131,13 @@ impl PackageImplementationArtifact {
             ]);
         }
 
-        Self::from_body_lines(&lines[2..])
+        let artifact = Self::from_body_lines(&lines[2..])?;
+        let diagnostics = validate_artifact_structure(&artifact);
+        if diagnostics.is_empty() {
+            Ok(artifact)
+        } else {
+            Err(diagnostics)
+        }
     }
 
     pub fn write_persisted_artifact(&self, root: &Path) -> Result<PathBuf, Diagnostic> {
@@ -963,6 +969,424 @@ fn remap_package_item(
     }
 }
 
+fn validate_artifact_structure(artifact: &PackageImplementationArtifact) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let program = &artifact.program;
+    let symbol_count = program.symbols.len();
+    let mut binding_ids = HashSet::new();
+    let mut local_ids = HashSet::new();
+    let mut function_ids = HashSet::new();
+    let mut item_ids = HashSet::new();
+
+    for item_ref in &artifact.item_refs {
+        if !item_ids.insert(item_ref.local_item) {
+            diagnostics.push(invalid_bytecode_diagnostic(format!(
+                "duplicate package item reference {} for `{}`",
+                item_ref.local_item.as_u32(),
+                artifact.package_path
+            )));
+        }
+    }
+
+    for binding in &program.bindings {
+        if !binding_ids.insert(binding.id) {
+            diagnostics.push(invalid_bytecode_diagnostic(format!(
+                "duplicate binding id {} in `{}`",
+                binding.id.as_u32(),
+                artifact.package_path
+            )));
+        }
+    }
+    for local in &program.locals {
+        if !local_ids.insert(local.id) {
+            diagnostics.push(invalid_bytecode_diagnostic(format!(
+                "duplicate local id {} in `{}`",
+                local.id.as_u32(),
+                artifact.package_path
+            )));
+        }
+    }
+    for function in &program.functions {
+        if !function_ids.insert(function.id) {
+            diagnostics.push(invalid_bytecode_diagnostic(format!(
+                "duplicate function id {} in `{}`",
+                function.id, artifact.package_path
+            )));
+        }
+    }
+
+    let validation_context = BytecodeValidationContext {
+        symbol_count,
+        binding_ids: &binding_ids,
+        local_ids: &local_ids,
+        function_ids: &function_ids,
+        local_count: program.local_count,
+    };
+
+    for binding in &program.bindings {
+        let label = format!("binding {}", binding.id.as_u32());
+        validate_local_id(
+            binding.local,
+            &format!("{label} local"),
+            &local_ids,
+            program.local_count,
+            &mut diagnostics,
+        );
+        validate_symbol(
+            binding.name,
+            &format!("{label} name"),
+            symbol_count,
+            &mut diagnostics,
+        );
+        validate_package_item_ref(
+            binding.package_item,
+            &format!("{label} package item"),
+            &item_ids,
+            &mut diagnostics,
+        );
+    }
+
+    for local in &program.locals {
+        let label = format!("local {}", local.id.as_u32());
+        validate_local_id(
+            local.id,
+            &label,
+            &local_ids,
+            program.local_count,
+            &mut diagnostics,
+        );
+        if let Some(binding) = local.binding {
+            validate_binding_id(
+                binding,
+                &format!("{label} binding"),
+                &binding_ids,
+                &mut diagnostics,
+            );
+        }
+        validate_symbol(
+            local.name,
+            &format!("{label} name"),
+            symbol_count,
+            &mut diagnostics,
+        );
+        validate_package_item_ref(
+            local.package_item,
+            &format!("{label} package item"),
+            &item_ids,
+            &mut diagnostics,
+        );
+    }
+
+    if let Some(main) = program.main {
+        validate_name_ref(
+            main,
+            "main reference",
+            &validation_context,
+            &mut diagnostics,
+        );
+    }
+
+    validate_chunk_structure(
+        "entry chunk",
+        &program.entry,
+        &validation_context,
+        &mut diagnostics,
+    );
+
+    for function in &program.functions {
+        let label = format!("function {}", function.id);
+        if let Some(name) = function.name {
+            validate_symbol(
+                name,
+                &format!("{label} name"),
+                symbol_count,
+                &mut diagnostics,
+            );
+        }
+        for (index, param) in function.params.iter().enumerate() {
+            validate_name_ref(
+                *param,
+                &format!("{label} parameter {index}"),
+                &validation_context,
+                &mut diagnostics,
+            );
+        }
+        validate_chunk_structure(
+            &format!("{label} chunk"),
+            &function.chunk,
+            &validation_context,
+            &mut diagnostics,
+        );
+    }
+
+    diagnostics
+}
+
+struct BytecodeValidationContext<'a> {
+    symbol_count: usize,
+    binding_ids: &'a HashSet<BindingId>,
+    local_ids: &'a HashSet<LocalId>,
+    function_ids: &'a HashSet<usize>,
+    local_count: usize,
+}
+
+fn validate_chunk_structure(
+    label: &str,
+    chunk: &Chunk,
+    validation: &BytecodeValidationContext<'_>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let instruction_count = chunk.instructions.len();
+    for (index, instruction) in chunk.instructions.iter().enumerate() {
+        let context = format!("{label} instruction {index}");
+        match instruction {
+            Instruction::LoadInt(_)
+            | Instruction::LoadBool(_)
+            | Instruction::LoadString(_)
+            | Instruction::LoadIndex { .. }
+            | Instruction::UnaryNeg { .. }
+            | Instruction::UnaryNot { .. }
+            | Instruction::Binary { .. }
+            | Instruction::Call { .. }
+            | Instruction::PushScope
+            | Instruction::PopScope
+            | Instruction::Pop
+            | Instruction::Return
+            | Instruction::MakeList { .. } => {}
+            Instruction::MakeRecord {
+                type_name, fields, ..
+            } => {
+                validate_symbol(
+                    *type_name,
+                    &format!("{context} record type symbol"),
+                    validation.symbol_count,
+                    diagnostics,
+                );
+                for (field_index, field) in fields.iter().enumerate() {
+                    validate_symbol(
+                        *field,
+                        &format!("{context} record field symbol {field_index}"),
+                        validation.symbol_count,
+                        diagnostics,
+                    );
+                }
+            }
+            Instruction::MakeEnum {
+                enum_name,
+                variant_name,
+                ..
+            } => {
+                validate_symbol(
+                    *enum_name,
+                    &format!("{context} enum symbol"),
+                    validation.symbol_count,
+                    diagnostics,
+                );
+                validate_symbol(
+                    *variant_name,
+                    &format!("{context} variant symbol"),
+                    validation.symbol_count,
+                    diagnostics,
+                );
+            }
+            Instruction::JumpIfNotEnumVariant {
+                enum_name,
+                variant_name,
+                target,
+                ..
+            } => {
+                validate_symbol(
+                    *enum_name,
+                    &format!("{context} enum symbol"),
+                    validation.symbol_count,
+                    diagnostics,
+                );
+                validate_symbol(
+                    *variant_name,
+                    &format!("{context} variant symbol"),
+                    validation.symbol_count,
+                    diagnostics,
+                );
+                if *target > instruction_count {
+                    diagnostics.push(invalid_bytecode_diagnostic(format!(
+                        "{context} has jump target {target} outside chunk length {instruction_count}"
+                    )));
+                }
+            }
+            Instruction::LoadName { target, .. } => validate_name_ref(
+                *target,
+                &format!("{context} target"),
+                validation,
+                diagnostics,
+            ),
+            Instruction::LoadField { field, .. } => validate_symbol(
+                *field,
+                &format!("{context} field symbol"),
+                validation.symbol_count,
+                diagnostics,
+            ),
+            Instruction::UpdateRecord { fields, .. } => {
+                for (field_index, field) in fields.iter().enumerate() {
+                    validate_symbol(
+                        *field,
+                        &format!("{context} update field symbol {field_index}"),
+                        validation.symbol_count,
+                        diagnostics,
+                    );
+                }
+            }
+            Instruction::Assign { target, .. } => validate_name_ref(
+                *target,
+                &format!("{context} target"),
+                validation,
+                diagnostics,
+            ),
+            Instruction::DefineFunction {
+                target, function, ..
+            } => {
+                validate_name_ref(
+                    *target,
+                    &format!("{context} target"),
+                    validation,
+                    diagnostics,
+                );
+                validate_function_id(
+                    *function,
+                    &format!("{context} function id"),
+                    validation.function_ids,
+                    diagnostics,
+                );
+            }
+            Instruction::MakeClosure { function } => validate_function_id(
+                *function,
+                &format!("{context} function id"),
+                validation.function_ids,
+                diagnostics,
+            ),
+            Instruction::JumpIfFalse { target, .. } | Instruction::Jump { target } => {
+                if *target > instruction_count {
+                    diagnostics.push(invalid_bytecode_diagnostic(format!(
+                        "{context} has jump target {target} outside chunk length {instruction_count}"
+                    )));
+                }
+            }
+            Instruction::MatchExhausted { enum_name, .. } => validate_symbol(
+                *enum_name,
+                &format!("{context} enum symbol"),
+                validation.symbol_count,
+                diagnostics,
+            ),
+        }
+    }
+}
+
+fn validate_name_ref(
+    value: NameRef,
+    context: &str,
+    validation: &BytecodeValidationContext<'_>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if let Some(binding) = value.binding {
+        validate_binding_id(
+            binding,
+            &format!("{context} binding"),
+            validation.binding_ids,
+            diagnostics,
+        );
+    }
+    validate_local_id(
+        value.local,
+        &format!("{context} local"),
+        validation.local_ids,
+        validation.local_count,
+        diagnostics,
+    );
+    validate_symbol(
+        value.name,
+        &format!("{context} name"),
+        validation.symbol_count,
+        diagnostics,
+    );
+}
+
+fn validate_symbol(
+    value: Symbol,
+    context: &str,
+    symbol_count: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let index = value.as_u32() as usize;
+    if index >= symbol_count {
+        diagnostics.push(invalid_bytecode_diagnostic(format!(
+            "{context} references symbol {index} outside symbol table length {symbol_count}"
+        )));
+    }
+}
+
+fn validate_binding_id(
+    value: BindingId,
+    context: &str,
+    binding_ids: &HashSet<BindingId>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if !binding_ids.contains(&value) {
+        diagnostics.push(invalid_bytecode_diagnostic(format!(
+            "{context} references unknown binding id {}",
+            value.as_u32()
+        )));
+    }
+}
+
+fn validate_local_id(
+    value: LocalId,
+    context: &str,
+    local_ids: &HashSet<LocalId>,
+    local_count: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let index = value.as_u32() as usize;
+    if index >= local_count {
+        diagnostics.push(invalid_bytecode_diagnostic(format!(
+            "{context} references local {index} outside local_count {local_count}"
+        )));
+    }
+    if !local_ids.contains(&value) {
+        diagnostics.push(invalid_bytecode_diagnostic(format!(
+            "{context} references unknown local id {index}"
+        )));
+    }
+}
+
+fn validate_function_id(
+    value: usize,
+    context: &str,
+    function_ids: &HashSet<usize>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if !function_ids.contains(&value) {
+        diagnostics.push(invalid_bytecode_diagnostic(format!(
+            "{context} references unknown function id {value}"
+        )));
+    }
+}
+
+fn validate_package_item_ref(
+    value: Option<PackageItemId>,
+    context: &str,
+    item_ids: &HashSet<PackageItemId>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    if !item_ids.contains(&value) {
+        diagnostics.push(invalid_bytecode_diagnostic(format!(
+            "{context} references unknown package item {}",
+            value.as_u32()
+        )));
+    }
+}
+
 fn next_private_package_item_id(interfaces: &PackageInterfaceGraph) -> u32 {
     interfaces
         .packages
@@ -1319,6 +1743,13 @@ fn unescape_field(value: &str) -> Result<String, Diagnostic> {
 fn implementation_artifact_diagnostic(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("PK022", message, Span::default())
         .with_suggestion("regenerate the package implementation artifact")
+}
+
+fn invalid_bytecode_diagnostic(message: impl Into<String>) -> Diagnostic {
+    implementation_artifact_diagnostic(format!(
+        "invalid package implementation bytecode: {}",
+        message.into()
+    ))
 }
 
 fn stale_implementation_artifact_diagnostic(message: impl Into<String>) -> Diagnostic {
