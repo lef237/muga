@@ -1985,6 +1985,65 @@ fn main(): Int {
 }
 
 #[test]
+fn package_aware_checking_can_use_cached_interface_artifacts_without_dependency_source() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = provider.package_interfaces();
+    let artifact_root = temp_package_root("package-aware-interface-artifact");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["util::numbers"],
+    );
+    let root = temp_package_root("package-aware-artifact-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/package_aware_artifact/main.muga",
+        r#"
+package app::package_aware_artifact
+
+import util::numbers
+
+fn main(): Int {
+  maybe: Option[Int] = numbers::maybe_positive(3)
+  numbers::value_or_zero(maybe)
+}
+"#,
+    );
+    muga::write_package_check_cache_artifact_for_root(&entry, &artifact_root)
+        .expect("check cache artifact should be written");
+
+    assert!(!root.join("util/numbers/option.muga").exists());
+    let result =
+        muga::check_package_aware_path_against_cached_artifact_root(&entry, &artifact_root)
+            .expect("package-aware checking should use cached interface artifacts");
+    let numbers = result
+        .packages
+        .package_graph
+        .package_id("util::numbers")
+        .expect("interface package should exist");
+    let value_or_zero = result
+        .packages
+        .package_graph
+        .item_id(
+            numbers,
+            "value_or_zero",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("interface function item should exist");
+
+    assert!(result.module_checks.iter().any(|check| {
+        check.type_output.calls.iter().any(|call| {
+            matches!(
+                call.callee,
+                muga::typing::TypedCalleeInfo::PackageItem { item, .. } if item == value_or_zero
+            )
+        })
+    }));
+}
+
+#[test]
 fn package_check_reports_missing_interface_artifact() {
     let artifact_root = temp_package_root("interface-artifact-missing");
     let root = temp_package_root("artifact-missing-downstream");

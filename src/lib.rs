@@ -236,6 +236,20 @@ pub fn compile_typed_path_against_interface_artifacts(
     compile_typed_path_against_loaded_interfaces(path, &interfaces, &symbols)
 }
 
+pub fn check_package_aware_path_against_interface_artifacts(
+    path: &Path,
+    interface_root: &Path,
+) -> Result<PackageAwareCheck, Vec<Diagnostic>> {
+    let package_paths = package::import_paths_from_entry(path)?;
+    let mut symbols = symbol::SymbolTable::default();
+    let interfaces = PackageInterfaceGraph::read_persisted_artifacts(
+        interface_root,
+        &package_paths,
+        &mut symbols,
+    )?;
+    check_package_aware_path_against_loaded_interfaces(path, &interfaces, &symbols)
+}
+
 pub fn package_check_cache_key(
     path: &Path,
     interface_root: &Path,
@@ -323,12 +337,34 @@ pub fn compile_typed_path_against_cached_interface_artifacts(
     compile_typed_path_against_interface_artifacts(path, interface_root)
 }
 
+pub fn check_package_aware_path_against_cached_interface_artifacts(
+    path: &Path,
+    interface_root: &Path,
+    checked_artifact_path: &Path,
+) -> Result<PackageAwareCheck, Vec<Diagnostic>> {
+    let key = cache::compute_package_check_cache_key(path, interface_root)?;
+    cache::validate_package_check_artifact(checked_artifact_path, &key)?;
+    check_package_aware_path_against_interface_artifacts(path, interface_root)
+}
+
 pub fn compile_typed_path_against_cached_artifact_root(
     path: &Path,
     artifact_root: &Path,
 ) -> Result<TypedHirProgram, Vec<Diagnostic>> {
     let checked_artifact_path = cache::package_check_artifact_path_from_entry(artifact_root, path)?;
     compile_typed_path_against_cached_interface_artifacts(
+        path,
+        artifact_root,
+        &checked_artifact_path,
+    )
+}
+
+pub fn check_package_aware_path_against_cached_artifact_root(
+    path: &Path,
+    artifact_root: &Path,
+) -> Result<PackageAwareCheck, Vec<Diagnostic>> {
+    let checked_artifact_path = cache::package_check_artifact_path_from_entry(artifact_root, path)?;
+    check_package_aware_path_against_cached_interface_artifacts(
         path,
         artifact_root,
         &checked_artifact_path,
