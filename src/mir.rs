@@ -37,8 +37,14 @@ pub struct Function {
 pub struct Body {
     pub function_defs: Vec<FunctionDef>,
     pub statements: Vec<Stmt>,
-    pub result: Option<Box<Expr>>,
+    pub terminator: BodyTerminator,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum BodyTerminator {
+    Effect,
+    Return(Box<Expr>),
 }
 
 #[derive(Clone, Debug)]
@@ -74,8 +80,6 @@ pub struct FunctionDef {
     pub function: FunctionId,
     pub span: Span,
 }
-
-pub type FunctionStmt = FunctionDef;
 
 #[derive(Clone, Debug)]
 pub struct IfStmt {
@@ -324,7 +328,7 @@ pub fn lower_typed(program: &typed_hir::Program) -> Program {
         entry: Body {
             function_defs,
             statements,
-            result: None,
+            terminator: BodyTerminator::Effect,
             span: Span::default(),
         },
         functions: lowerer.functions,
@@ -699,7 +703,7 @@ fn body_from_value_block(block: ValueBlock) -> Body {
     Body {
         function_defs: block.function_defs,
         statements: block.statements,
-        result: Some(block.expr),
+        terminator: BodyTerminator::Return(block.expr),
         span: block.span,
     }
 }
@@ -708,7 +712,7 @@ fn placeholder_body(span: Span) -> Body {
     Body {
         function_defs: Vec::new(),
         statements: Vec::new(),
-        result: Some(Box::new(Expr::Int(IntExpr { value: 0, span }))),
+        terminator: BodyTerminator::Return(Box::new(Expr::Int(IntExpr { value: 0, span }))),
         span,
     }
 }

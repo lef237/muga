@@ -163,9 +163,12 @@ impl Compiler {
         let mut chunk = Chunk::default();
         self.compile_function_defs(&body.function_defs, &mut chunk);
         self.compile_scope_statements(&body.statements, &mut chunk);
-        if let Some(result) = &body.result {
-            self.compile_expr(result, &mut chunk);
-            chunk.instructions.push(Instruction::Pop);
+        match &body.terminator {
+            mir::BodyTerminator::Effect => {}
+            mir::BodyTerminator::Return(result) => {
+                self.compile_expr(result, &mut chunk);
+                chunk.instructions.push(Instruction::Pop);
+            }
         }
         chunk
     }
@@ -178,8 +181,8 @@ impl Compiler {
         let mut chunk = Chunk::default();
         self.compile_function_defs(&function.body.function_defs, &mut chunk);
         self.compile_scope_statements(&function.body.statements, &mut chunk);
-        let Some(result) = &function.body.result else {
-            unreachable!("function MIR body should have a result expression");
+        let mir::BodyTerminator::Return(result) = &function.body.terminator else {
+            unreachable!("function MIR body should return a value");
         };
         self.compile_expr(result, &mut chunk);
         chunk.instructions.push(Instruction::Return);
