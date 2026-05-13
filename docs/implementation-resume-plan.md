@@ -1,13 +1,13 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-13 after adding initial package-aware module body checking.
+Status: current implementation ledger for 2026-05-13 after adding initial package-aware module body checking and stable interface artifact identities.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after package-aware module body checking support and interface artifact ID remapping: 249 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after package-aware module body checking support.
+- [x] `cargo test` passed after package-aware module body checking support and stable interface artifact ID remapping: 249 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after stable interface artifact identities.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -80,8 +80,8 @@ Ada
 - [x] package rewriting attaches `PackageItemId` to flattened AST record/function declarations so typed HIR no longer recovers item identity from mangled names.
 - [x] the package loader can return an unflattened package graph with original package files plus package/module/item/export metadata.
 - [x] package enum constructor call targets carry enum `PackageItemId` when the enum comes from package mode.
-- [x] package interfaces have a deterministic v1 text format with file write/read helpers.
-- [x] persisted package interface round-trip preserves direct dependency metadata, public records, functions, enums, `TypeInfo`, item identity, enum variants, and payload types.
+- [x] package interfaces have a deterministic v2 text format with stable artifact package/item IDs and file write/read helpers.
+- [x] persisted package interface round-trip preserves direct dependency metadata, public records, functions, enums, `TypeInfo`, loaded item identity, enum variants, and payload types.
 - [x] persisted package interfaces include deterministic content hashes and reject hash mismatches.
 - [x] package interface artifact path naming is deterministic for package paths.
 - [x] typed package compilation can validate against loaded package interface summaries.
@@ -92,7 +92,7 @@ Ada
 - [x] package check cache keys include entry package source hashes and loaded direct/transitive dependency interface hashes.
 - [x] missing or stale `.mgc` package check artifacts are rejected with regeneration guidance.
 - [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts through the package-aware check path without reading dependency implementation bodies.
-- [x] independently generated `.mgi` artifacts are remapped to fresh session-local package and item IDs when loaded together, avoiding artifact-root collisions between separate provider builds.
+- [x] persisted `.mgi` artifacts write stable artifact package/item IDs and are remapped to fresh session-local package and item IDs when loaded, avoiding artifact-root collisions between separate provider builds.
 - [x] `muga emit-interface` writes `.mgi` artifacts and `muga emit-check-cache` writes `.mgc` only after the package checks successfully against `.mgi` artifacts.
 - [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
 - [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking.
@@ -159,7 +159,7 @@ Ada
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
-- Package interfaces now have a deterministic v1 text format and file round-trip helpers.
+- Package interfaces now have a deterministic v2 text format with stable artifact package/item IDs and file round-trip helpers.
 - Loaded package interface summaries can now act as the downstream dependency boundary for typed checking.
 - A library API can discover dependency `.mgi` artifacts from an explicit interface root for typed checking.
 - Interface artifacts now record direct dependencies, and artifact discovery follows those dependencies so public signatures can mention types from transitive packages without reading dependency bodies.
@@ -199,7 +199,7 @@ Reasoning:
 - Loaded package interfaces can now be used for downstream signature/type checking without dependency implementation bodies.
 - Interface artifacts can now be discovered from an explicit root, with missing/hash-mismatched artifacts rejected before checking.
 - Interface artifacts now persist direct dependency paths, and artifact loading follows those paths for transitive public-signature type dependencies.
-- Interface artifact loading remaps persisted package and item IDs into one fresh session namespace so separately generated artifacts can be consumed together.
+- Interface artifact v2 writes stable artifact package/item IDs, and loading remaps persisted IDs into one fresh session namespace so separately generated artifacts can be consumed together.
 - Package check cache keys now include entry source content and loaded direct/transitive dependency interface hashes.
 - Unflattened package graph loading now preserves package files plus package/module/item/export metadata before flattening.
 - Package-aware checking now has source and per-module signature environments that resolve package record/enum/function types without flattening.
@@ -262,7 +262,7 @@ Estimates are in focused engineering days for someone already familiar with this
 | 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
 | 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | Done | High |
 | 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | Done | Medium |
-| 5. Package interface persistence format | Serialize public records/functions/enums and resolved type identities in a deterministic v1 text format. Load the format back into `PackageInterfaceGraph` and validate the reloaded summaries. | `src/interface.rs`, `tests/examples.rs` | Done | Medium |
+| 5. Package interface persistence format | Serialize public records/functions/enums and resolved type identities in a deterministic v2 text format with stable artifact package/item IDs. Load the format back into `PackageInterfaceGraph` and validate the reloaded summaries. | `src/interface.rs`, `tests/examples.rs` | Done | Medium |
 | 6. Interface hashes and loaded-interface validation | Add interface hashes, artifact path conventions, and a typed checking path that validates against loaded interface summaries. | `src/interface.rs`, `src/lib.rs`, tests | Done | Medium |
 | 7. Downstream checking without dependency bodies | Load dependency interfaces as the checking boundary, synthesize or otherwise expose only public signatures, and avoid reading dependency implementation bodies for downstream checks. | `src/package.rs`, `src/interface.rs`, `src/lib.rs`, tests | Done | High |
 | 8. Interface artifact discovery | Teach package checking to find persisted interface artifacts from an explicit interface root and reject missing/hash-mismatched/stale artifacts. | `src/interface.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
