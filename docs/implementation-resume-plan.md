@@ -1,13 +1,13 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-13 after adding initial package-aware module body checking, stable interface artifact identities, and package-aware default checking/typed compilation.
+Status: current implementation ledger for 2026-05-13 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, and removal of the legacy interface-stub typed path.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after package-aware default checking/typed compilation and stable interface artifact ID remapping: 249 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after package-aware default checking/typed compilation.
+- [x] `cargo test --locked` passed after removing the legacy interface-stub typed path: 249 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after package-aware default checking/typed compilation and stable interface artifact ID remapping.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -101,13 +101,14 @@ Ada
 - [x] retained package-aware module typecheck outputs preserve package binding identity needed by typed HIR lowering.
 - [x] package-aware checking exposes per-module typed HIR outputs lowered from retained module typecheck outputs.
 - [x] package-aware checking collects dependency signatures directly from in-memory or persisted package interfaces without reading dependency source bodies.
-- [x] loaded/interface-artifact package-aware checking skips interface stub body checks.
-- [x] loaded-interface package graph construction uses package interfaces directly instead of loading dependency AST stubs.
+- [x] loaded/interface-artifact package-aware checking consumes interface signatures directly; dependency interface AST stubs and stub body checks are no longer part of the typed path.
+- [x] loaded-interface package graph construction uses package interfaces directly instead of loading or synthesizing dependency AST modules.
 - [x] package-aware check results expose package-wide typed HIR aggregated from per-module outputs without using the legacy flattened typed path.
 - [x] default package `check` runs package-aware validation instead of rechecking the legacy flattened AST.
 - [x] default package `compile_typed_path` returns the package-aware typed HIR aggregate instead of the legacy flattened typed HIR.
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
+- [x] the legacy `compile_typed_path_against_interfaces` / interface-stub flattened compilation path has been removed.
 - [x] default package `run` lowers package-aware typed HIR through the existing HIR/bytecode path.
 - [x] package-aware typed HIR can lower through the existing HIR/bytecode VM path for package records/enums/functions.
 - [ ] package execution still reads dependency source bodies.
@@ -176,8 +177,9 @@ Ada
 - The package-aware check entrypoint now runs module body resolution/typechecking with those module signatures and retains per-module resolver/typecheck outputs.
 - Retained package-aware module typecheck outputs now carry package binding identity through typed HIR lowering, so module-local lowering can preserve package item call targets without relying on flattened AST metadata.
 - The package-aware API now exposes those lowered per-module typed HIR programs alongside each module typecheck output.
-- The package-aware API can now collect dependency signatures directly from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source or interface stub body checks.
-- Loaded-interface package-aware checks now build dependency package graph metadata directly from package interfaces instead of loading dependency AST stubs.
+- The package-aware API can now collect dependency signatures directly from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source or synthesized interface AST modules.
+- Loaded-interface package-aware checks now build dependency package graph metadata directly from package interfaces instead of loading or synthesizing dependency AST modules.
+- The legacy interface-stub flattened typed compilation path has been removed; loaded/interface-artifact typed compilation now has one package-aware semantic path.
 - Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
 - CLI default package `check`, default package `compile_typed_path`, `check --artifact-root`, interface artifact emission, and loaded/interface-artifact typed compilation now use package-aware paths.
 - Package-aware typed HIR can now lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls.
@@ -187,7 +189,7 @@ Ada
 
 ## Recommended Next Implementation
 
-The next implementation theme remains package-aware checking without flattening while keeping artifact roots explicit on the CLI. The current package-aware path validates package boundary rules, builds source/module signatures from the unflattened graph, runs module body checks, backs default package `check` and package typed compilation, and exposes per-module plus package-wide typed HIR without flattening. The remaining execution work is moving the VM backend beyond the compatibility HIR path.
+The next implementation theme is removing the remaining compatibility uses of flattened AST/HIR while keeping artifact roots explicit on the CLI. The current package-aware path validates package boundary rules, builds source/module signatures from the unflattened graph, runs module body checks, backs default package `check` and package typed compilation, and exposes per-module plus package-wide typed HIR without flattening. The remaining execution work is moving the VM backend beyond the compatibility HIR path.
 
 Reasoning:
 
@@ -276,10 +278,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
 | 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
-| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module resolver/typecheck outputs, package-wide typed HIR aggregation, default package `check` and `compile_typed_path`, and direct interface-backed dependency signatures/graph metadata now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and connect real artifact storage/reuse. | package/resolver/typing/lib/tests | 4-8 days | High |
+| 15. Package-aware checking without flattening | Done for the current package checking surface: library-only package-aware boundary checking, source/module signature collection, retained module resolver/typecheck outputs, package-wide typed HIR aggregation, default package `check` and `compile_typed_path`, direct interface-backed dependency signatures/graph metadata, and removal of the interface-stub flattened typed path now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is compatibility HIR/VM migration and fuller artifact reuse. | package/resolver/typing/lib/tests | Done | High |
 | 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should broaden package-aware body checking coverage and package artifact reuse while keeping default script execution unchanged.
+The safest immediate code slice is now the post-Slice-15 cleanup: continue removing compatibility flattened AST/HIR usage from execution and public APIs while preserving the explicit `.mgi` / `.mgc` workflow and keeping default script execution unchanged.
 
 ## Test Plan For The Next Code Slice
 
