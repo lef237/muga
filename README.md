@@ -182,6 +182,7 @@ Implemented:
 - initial package-aware module body typechecking against those module signature environments, with per-module typecheck outputs and typed HIR programs retained by the package-aware API
 - package-aware checks aggregate per-module typed HIR from the unflattened module check outputs instead of the legacy flattened typed path
 - package-aware checking and loaded/interface-artifact typed compilation collect dependency signatures directly from in-memory or persisted package interfaces without reading dependency source bodies
+- loaded-interface package-aware checks build dependency package graph metadata directly from package interfaces instead of loading dependency AST stubs
 - package-aware typed HIR can lower through the existing HIR/bytecode VM path, including imported package records/enums/functions
 - default package `run` lowers package-aware typed HIR through the existing HIR/bytecode VM path, while `check_path` still returns a flattened compatibility AST
 
@@ -195,7 +196,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is continuing the package-aware checking migration: broaden package-aware module body typechecking and remove the remaining interface-stub dependency from package graph construction.
+The next implementation slice is continuing the package-aware checking migration: broaden package-aware module body typechecking and continue toward explicit artifact storage/reuse without making artifact roots implicit.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
