@@ -1742,6 +1742,72 @@ fn main(): Int {
 }
 
 #[test]
+fn package_aware_checking_can_use_loaded_interface_signatures_without_dependency_source() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let (interfaces, symbols) = persisted_interfaces_from_program(&provider);
+    let root = temp_package_root("package-aware-loaded-interface-signatures");
+    let entry = write_package_file(
+        &root,
+        "app/package_aware_interface_signatures/main.muga",
+        r#"
+package app::package_aware_interface_signatures
+
+import util::numbers
+
+fn main(): Int {
+  maybe: Option[Int] = numbers::maybe_positive(3)
+  result: Result[Int, String] = numbers::positive_result(4)
+  numbers::value_or_zero(maybe) + numbers::result_or_zero(result)
+}
+"#,
+    );
+
+    assert!(!root.join("util/numbers/option.muga").exists());
+    let result =
+        muga::check_package_aware_path_against_loaded_interfaces(&entry, &interfaces, &symbols)
+            .expect("package-aware checking should use loaded interface signatures");
+    let app = result
+        .packages
+        .package_graph
+        .package_id("app::package_aware_interface_signatures")
+        .expect("entry package should exist");
+    let numbers = result
+        .packages
+        .package_graph
+        .package_id("util::numbers")
+        .expect("interface package should exist");
+    let value_or_zero = result
+        .packages
+        .package_graph
+        .item_id(
+            numbers,
+            "value_or_zero",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("interface function item should exist");
+    let main_check = result
+        .module_checks
+        .iter()
+        .find(|check| check.package == app && check.module_path == "main.muga")
+        .expect("entry module check should exist");
+
+    assert!(main_check.type_output.calls.iter().any(|call| {
+        matches!(
+            call.callee,
+            muga::typing::TypedCalleeInfo::PackageItem { item, .. } if item == value_or_zero
+        )
+    }));
+    let calls = collect_typed_calls(&main_check.typed_program);
+    assert!(calls.iter().any(|call| {
+        matches!(
+            call.resolved_callee,
+            muga::typing::TypedCalleeInfo::PackageItem { item, .. } if item == value_or_zero
+        )
+    }));
+}
+
+#[test]
 fn interface_artifact_excludes_private_and_pkg_items() {
     let program = muga::compile_typed_path(Path::new(
         "samples/packages/app/module_visibility/main.muga",

@@ -99,6 +99,7 @@ Ada
 - [x] package-aware checking runs an initial module body typecheck pass against the module signature environments before the legacy typed HIR path, and retains the per-module typecheck outputs.
 - [x] retained package-aware module typecheck outputs preserve package binding identity needed by typed HIR lowering.
 - [x] package-aware checking exposes per-module typed HIR outputs lowered from retained module typecheck outputs.
+- [x] package-aware checking can load dependency signatures from in-memory package interfaces without reading dependency source bodies.
 - [ ] full package-aware typed HIR generation without the flattened typed path is not implemented.
 - [ ] default CLI checking/execution still uses package flattening and dependency source loading.
 
@@ -166,6 +167,7 @@ Ada
 - The package-aware check entrypoint now runs module body typechecking with those module signatures and retains per-module typecheck outputs before falling through to the legacy typed HIR path.
 - Retained package-aware module typecheck outputs now carry package binding identity through typed HIR lowering, so module-local lowering can preserve package item call targets without relying on flattened AST metadata.
 - The package-aware API now exposes those lowered per-module typed HIR programs alongside each module typecheck output.
+- The package-aware API can now load dependency signatures from in-memory package interfaces, letting package-aware module checks run without dependency implementation source.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
 - Full incremental artifact reuse and full typed HIR generation without the flattened typed path are still not implemented.
@@ -261,7 +263,7 @@ Estimates are in focused engineering days for someone already familiar with this
 | 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module typecheck outputs, and initial module body checking now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and move typed HIR generation plus loaded-interface signatures off the flattened typed path. | package/resolver/typing/lib/tests | 4-8 days | High |
 | 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should broaden module body checking coverage and move loaded-interface signatures into package-aware semantic analysis.
+The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should broaden module body checking coverage and reduce the remaining entry-level dependency on the legacy flattened typed path.
 
 ## Test Plan For The Next Code Slice
 
@@ -275,6 +277,7 @@ Package-aware checking:
 - [x] `package_aware_checking_reuses_unflattened_package_graph`
 - [x] `package_aware_checking_exposes_module_type_outputs`
 - [x] `package_module_typed_hir_lowering_preserves_package_binding_identity`
+- [x] `package_aware_checking_can_use_loaded_interface_signatures_without_dependency_source`
 - [x] `package_signature_environment_preserves_same_package_type_identities`
 - [x] `package_signature_environment_resolves_imported_public_types`
 - [x] `package_signature_environment_preserves_generic_enum_signatures`

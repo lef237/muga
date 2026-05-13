@@ -34,6 +34,7 @@ Implemented language surface:
 - a library-only package-aware check path validates package boundary, import, visibility, and public-signature rules from the unflattened package graph before delegating valid programs to the legacy typed checking path
 - package-aware source and per-module signature environments resolve record/enum/function signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility
 - initial package-aware module body checking consumes those module signature environments before the legacy typed HIR path runs, and the package-aware API retains per-module typecheck outputs plus typed HIR programs
+- package-aware checking can consume loaded in-memory package interfaces as dependency signatures without reading dependency source bodies
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:
@@ -41,7 +42,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package checking/execution still flattens packages and reads dependency source
-- package-aware checking now has boundary validation plus source/module signature environments, an initial body-check pass, and per-module typed HIR outputs, but the entry-level typed HIR result still relies on the flattened typed path
+- package-aware checking now has boundary validation plus source/module signature environments, loaded-interface dependency signatures, an initial body-check pass, and per-module typed HIR outputs, but the entry-level typed HIR result still relies on the flattened typed path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
 - VM bytecode still lowers from the older HIR path, not from typed HIR/MIR
 

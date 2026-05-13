@@ -180,6 +180,7 @@ Implemented:
 - library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before handing valid programs to the legacy typed checking path
 - package-aware source and per-module signature environments derived from the unflattened package graph, preserving package item identity, module/same-package/import visibility, and generic enum signature arity
 - initial package-aware module body typechecking against those module signature environments, with per-module typecheck outputs and typed HIR programs retained by the package-aware API
+- package-aware checking can load dependency signatures from in-memory package interfaces without reading dependency source bodies
 
 Not implemented yet:
 
@@ -191,7 +192,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is continuing the package-aware checking migration: broaden package-aware module body typechecking and move loaded-interface signatures into semantic analysis instead of expanding the legacy flattened AST rewrite path.
+The next implementation slice is continuing the package-aware checking migration: broaden package-aware module body typechecking and reduce the remaining entry-level dependency on the legacy flattened typed path.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
