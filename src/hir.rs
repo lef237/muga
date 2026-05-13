@@ -26,7 +26,11 @@ pub fn lower(program: &ast::Program) -> Program {
         .filter_map(|statement| lowerer.lower_stmt(statement))
         .collect();
     Program {
-        statements,
+        entry: Body {
+            statements,
+            result: None,
+            span: Span::default(),
+        },
         functions: lowerer.functions,
         symbols: lowerer.symbols,
     }
@@ -307,10 +311,10 @@ impl Lowerer {
             id,
             name: Some(name),
             params,
-            body: placeholder_value_block(stmt.span),
+            body: placeholder_body(stmt.span),
             span: stmt.span,
         });
-        let body = self.lower_value_block(&stmt.body);
+        let body = body_from_value_block(self.lower_value_block(&stmt.body));
         self.functions[id].body = body;
         id
     }
@@ -326,10 +330,10 @@ impl Lowerer {
             id,
             name: None,
             params,
-            body: placeholder_value_block(expr.span),
+            body: placeholder_body(expr.span),
             span: expr.span,
         });
-        let body = self.lower_value_block(&expr.body);
+        let body = body_from_value_block(self.lower_value_block(&expr.body));
         self.functions[id].body = body;
         id
     }
@@ -339,10 +343,18 @@ impl Lowerer {
     }
 }
 
-fn placeholder_value_block(span: Span) -> ValueBlock {
-    ValueBlock {
+fn body_from_value_block(block: ValueBlock) -> Body {
+    Body {
+        statements: block.statements,
+        result: Some(block.expr),
+        span: block.span,
+    }
+}
+
+fn placeholder_body(span: Span) -> Body {
+    Body {
         statements: Vec::new(),
-        expr: Box::new(Expr::Int(IntExpr { value: 0, span })),
+        result: Some(Box::new(Expr::Int(IntExpr { value: 0, span }))),
         span,
     }
 }
