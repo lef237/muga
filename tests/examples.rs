@@ -5942,14 +5942,17 @@ fn main(): Int {
     assert_eq!(assign_targets[0], assign_targets[1]);
     assert_eq!(assign_targets[0], load_targets[0]);
     assert_eq!(program.symbols.resolve(assign_targets[0].name), "value");
+    let target_binding = assign_targets[0]
+        .binding
+        .expect("value name ref should preserve semantic binding");
     let binding = program
         .bindings
         .iter()
-        .find(|binding| binding.id == assign_targets[0].binding)
+        .find(|binding| binding.id == target_binding)
         .expect("value binding should be preserved");
     assert_eq!(binding.local, assign_targets[0].local);
     assert!(program.locals.iter().any(|local| {
-        local.id == assign_targets[0].local && local.binding == Some(assign_targets[0].binding)
+        local.id == assign_targets[0].local && local.binding == Some(target_binding)
     }));
     assert!(program.local_count > assign_targets[0].local.as_u32() as usize);
 }
@@ -6048,11 +6051,14 @@ fn compile_bytecode_path_uses_package_definition_binding_for_runtime_names() {
                 && target.local == definition_targets[0].local),
         "{load_targets:#?}"
     );
-    assert_ne!(definition_targets[0].binding, import.id);
+    assert!(
+        definition_targets[0].binding.is_some(),
+        "{definition_targets:#?}"
+    );
+    assert_ne!(definition_targets[0].binding, Some(import.id));
     assert_ne!(definition_targets[0].local, import.local);
     assert!(program.locals.iter().any(|local| {
-        local.id == definition_targets[0].local
-            && local.binding == Some(definition_targets[0].binding)
+        local.id == definition_targets[0].local && local.binding == definition_targets[0].binding
     }));
     assert!(program.local_count > definition_targets[0].local.as_u32() as usize);
 }

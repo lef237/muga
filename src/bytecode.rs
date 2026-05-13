@@ -48,7 +48,7 @@ pub enum LocalKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NameRef {
-    pub binding: BindingId,
+    pub binding: Option<BindingId>,
     pub local: LocalId,
     pub name: Symbol,
 }
@@ -209,7 +209,7 @@ fn entry_main_ref(entry: &mir::Body, symbols: &SymbolTable) -> Option<NameRef> {
         .iter()
         .find_map(|function| {
             (symbols.resolve(function.name) == "main").then_some(NameRef {
-                binding: function.binding,
+                binding: Some(function.binding),
                 local: local_for_binding(function.binding),
                 name: function.name,
             })
@@ -221,7 +221,7 @@ fn entry_main_ref(entry: &mir::Body, symbols: &SymbolTable) -> Option<NameRef> {
                 .find_map(|statement| match statement {
                     mir::Stmt::Assign(statement) if symbols.resolve(statement.name) == "main" => {
                         Some(NameRef {
-                            binding: statement.binding,
+                            binding: Some(statement.binding),
                             local: local_for_binding(statement.binding),
                             name: statement.name,
                         })
@@ -615,7 +615,7 @@ impl Compiler {
 
     fn name_ref(&self, binding: BindingId, name: Symbol) -> NameRef {
         NameRef {
-            binding,
+            binding: Some(binding),
             local: local_for_binding(binding),
             name,
         }
@@ -635,7 +635,6 @@ impl Compiler {
 
     fn synthetic_name_ref(&mut self, name: Symbol) -> NameRef {
         let local = LocalId::new(self.next_synthetic_local);
-        let binding = BindingId::new(self.next_synthetic_local);
         self.next_synthetic_local += 1;
         self.locals.push(LocalDef {
             id: local,
@@ -646,7 +645,7 @@ impl Compiler {
             span: Span::default(),
         });
         NameRef {
-            binding,
+            binding: None,
             local,
             name,
         }
