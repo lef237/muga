@@ -62,7 +62,7 @@ cargo run -- check samples/packages/app/main/main.muga
 cargo run -- samples/packages/app/main/main.muga
 ```
 
-For artifact-backed package checking, first emit dependency `.mgi` interface files, then emit the entry package `.mgc` check cache file:
+For artifact-backed package checking, first emit `.mgi` interface files, then emit the entry package `.mgc` check cache file. `--package` can restrict interface emission to one package; without it, reachable package interfaces from the entrypoint are emitted.
 
 ```bash
 cargo run -- emit-interface --artifact-root path/to/artifacts --package util::numbers samples/packages/app/main/main.muga
