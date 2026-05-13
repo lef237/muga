@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use crate::{
@@ -18,6 +18,10 @@ use crate::{
     },
     types::TypeInfo,
 };
+
+const PERSISTED_INTERFACE_HEADER: &str = "muga-package-interface-v1";
+const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+const FNV_PRIME: u64 = 0x100000001b3;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PackageExportGraph {
@@ -188,7 +192,19 @@ pub struct PackageInterfaceGraph {
 
 impl PackageInterfaceGraph {
     pub fn to_persisted_text(&self, symbols: &SymbolTable) -> String {
-        let mut out = String::from("muga-package-interface-v1\n");
+        let body = self.persisted_body_text(symbols);
+        format!(
+            "{PERSISTED_INTERFACE_HEADER}\nhash\t{}\n{body}",
+            stable_hash_hex(&body)
+        )
+    }
+
+    pub fn stable_hash(&self, symbols: &SymbolTable) -> String {
+        stable_hash_hex(&self.persisted_body_text(symbols))
+    }
+
+    fn persisted_body_text(&self, symbols: &SymbolTable) -> String {
+        let mut out = String::new();
         for package in &self.packages {
             push_line(
                 &mut out,
@@ -319,6 +335,10 @@ impl PackageInterfaceGraph {
         Self::from_persisted_text(&text, symbols)
     }
 
+    pub fn persisted_file_path(root: &Path, package_path: &str) -> PathBuf {
+        root.join(format!("{}.mgi", package_path.replace("::", "__")))
+    }
+
     pub fn package(&self, id: PackageId) -> Option<&PackageInterface> {
         self.packages
             .iter()
@@ -444,10 +464,11 @@ impl<'a> PersistedInterfaceParser<'a> {
 
     fn parse(mut self) -> Result<PackageInterfaceGraph, Vec<Diagnostic>> {
         match self.next_parts() {
-            Some(parts) if parts == ["muga-package-interface-v1"] => {}
+            Some(parts) if parts == [PERSISTED_INTERFACE_HEADER] => {}
             Some(_) => self.push_error("invalid package interface header"),
             None => self.push_error("empty package interface"),
         }
+        self.validate_optional_hash();
 
         let mut packages = Vec::new();
         while self.index < self.lines.len() {
@@ -468,6 +489,34 @@ impl<'a> PersistedInterfaceParser<'a> {
             Ok(PackageInterfaceGraph { packages })
         } else {
             Err(self.diagnostics)
+        }
+    }
+
+    fn validate_optional_hash(&mut self) {
+        let Some(line) = self.lines.get(self.index).copied() else {
+            return;
+        };
+        let Some(expected) = line.strip_prefix("hash\t") else {
+            return;
+        };
+        self.index += 1;
+        let body = if self.index < self.lines.len() {
+            format!("{}\n", self.lines[self.index..].join("\n"))
+        } else {
+            String::new()
+        };
+        let actual = stable_hash_hex(&body);
+        if expected != actual {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "PK019",
+                    format!(
+                        "package interface hash mismatch: expected `{expected}` but found `{actual}`"
+                    ),
+                    Span::default(),
+                )
+                .with_suggestion("regenerate the package interface"),
+            );
         }
     }
 
@@ -813,6 +862,15 @@ impl<'a, 's> TypeInfoParser<'a, 's> {
 
 fn parse_u32_token(value: &str, label: &str) -> Result<u32, String> {
     value.parse().map_err(|_| format!("invalid {label}"))
+}
+
+fn stable_hash_hex(text: &str) -> String {
+    let mut hash = FNV_OFFSET_BASIS;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    format!("{hash:016x}")
 }
 
 fn push_line(out: &mut String, parts: &[String]) {

@@ -782,6 +782,7 @@ fn package_interfaces_round_trip_public_records_functions_and_enums() {
     let interfaces = program.package_interfaces();
     let text = interfaces.to_persisted_text(&program.symbols);
     assert!(text.starts_with("muga-package-interface-v1\n"), "{text}");
+    assert!(text.contains("\nhash\t"), "{text}");
 
     let mut symbols = program.symbols.clone();
     let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
@@ -790,6 +791,89 @@ fn package_interfaces_round_trip_public_records_functions_and_enums() {
 
     let diagnostics = program.validate_package_references_against_interfaces(&loaded);
     assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
+fn package_interface_hash_is_stable_for_same_interface() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    assert_eq!(
+        interfaces.stable_hash(&program.symbols),
+        interfaces.stable_hash(&program.symbols)
+    );
+
+    let text = interfaces.to_persisted_text(&program.symbols);
+    let mut symbols = program.symbols.clone();
+    let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
+        .expect("persisted interfaces should parse");
+    assert_eq!(
+        loaded.stable_hash(&program.symbols),
+        interfaces.stable_hash(&program.symbols)
+    );
+}
+
+#[test]
+fn package_interface_hash_changes_when_public_signature_changes() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let original_hash = interfaces.stable_hash(&program.symbols);
+    let numbers = program
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let mut changed = interfaces.clone();
+    changed
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .iter_mut()
+        .find(|function| function.name == "inc_twice")
+        .expect("inc_twice should be exported")
+        .ret = muga::types::TypeInfo::String;
+
+    assert_ne!(changed.stable_hash(&program.symbols), original_hash);
+}
+
+#[test]
+fn package_interface_hash_changes_when_public_enum_shape_changes() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let original_hash = interfaces.stable_hash(&program.symbols);
+    let states = program
+        .package_graph
+        .package_id("util::states")
+        .expect("states package should exist");
+    let mut changed = interfaces.clone();
+    changed
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == states)
+        .expect("states interface should exist")
+        .enums
+        .iter_mut()
+        .find(|enumeration| enumeration.name == "Status")
+        .expect("Status enum should be exported")
+        .variants
+        .iter_mut()
+        .find(|variant| variant.name == "Ready")
+        .expect("Ready variant should exist")
+        .name = "Done".to_string();
+
+    assert_ne!(changed.stable_hash(&program.symbols), original_hash);
+}
+
+#[test]
+fn package_interface_artifact_path_is_deterministic() {
+    let path = muga::interface::PackageInterfaceGraph::persisted_file_path(
+        Path::new(".muga/interfaces"),
+        "util::states",
+    );
+    assert_eq!(path, Path::new(".muga/interfaces/util__states.mgi"));
 }
 
 #[test]
@@ -829,6 +913,40 @@ fn package_interface_file_round_trip_preserves_type_info_identities() {
         ),
         "{birthday:#?}"
     );
+}
+
+#[test]
+fn package_interface_rejects_hash_mismatch() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let text = interfaces.to_persisted_text(&program.symbols);
+    let tampered = text.replacen("Ready", "Done", 1);
+    let mut symbols = program.symbols.clone();
+    let diagnostics =
+        muga::interface::PackageInterfaceGraph::from_persisted_text(&tampered, &mut symbols)
+            .unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK019" && diagnostic.message.contains("hash mismatch")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_validates_reloaded_package_interfaces() {
+    let path = Path::new("samples/packages/app/enum_demo/main.muga");
+    let program = muga::compile_typed_path(path).expect("typed package compilation should pass");
+    let text = program
+        .package_interfaces()
+        .to_persisted_text(&program.symbols);
+    let mut symbols = program.symbols.clone();
+    let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
+        .expect("persisted interfaces should parse");
+
+    muga::compile_typed_path_against_interfaces(path, &loaded)
+        .expect("typed package compilation against loaded interfaces should pass");
 }
 
 #[test]

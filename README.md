@@ -159,7 +159,7 @@ Implemented:
 - typed HIR with resolved call shape, call origin, expression types, local binding identity, and package item identity
 - in-memory package interface summaries for public records/enums/functions plus validation of public package references against those summaries
 - hardened enum diagnostics, package enum visibility checks, imported `alias::Enum::Variant` constructors/patterns, and package enum call-target identity
-- deterministic v1 package interface text persistence with file write/read helpers and round-trip validation for public records/enums/functions
+- deterministic v1 package interface text persistence with content hashes, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 
 Not implemented yet:
@@ -167,12 +167,12 @@ Not implemented yet:
 - user-defined generic records and generic functions
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
-- interface hashes, downstream checking from loaded interface artifacts, dependency declarations, registries, package caching, MIR, and native code generation
+- dependency-body skipping for downstream interface-only checking, dependency declarations, registries, package caching, MIR, and native code generation
 - error propagation syntax such as `try expr`
 
 ## Planned Priority
 
-The next implementation slice is interface hashes and downstream package checking from loaded interface artifacts.
+The next implementation slice is downstream package checking from loaded interface artifacts without reading dependency implementation bodies.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
