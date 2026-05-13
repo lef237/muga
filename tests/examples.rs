@@ -1242,6 +1242,35 @@ pkg fn helper(value: Int): Int {
 }
 
 #[test]
+fn package_aware_checking_runs_module_resolver_for_body_errors() {
+    let root = temp_package_root("package-module-resolver-check");
+    let entry = write_package_file(
+        &root,
+        "app/body_resolver/main.muga",
+        r#"
+package app::body_resolver
+
+fn main(): Int {
+  value = 1
+  value = 2
+  value
+}
+"#,
+    );
+
+    let diagnostics = muga::check_package_aware_path(&entry).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E001"
+                && diagnostic
+                    .message
+                    .contains("cannot update immutable binding `value`")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn package_aware_checking_exposes_module_type_outputs() {
     let result = muga::check_package_aware_path(Path::new(
         "samples/packages/app/module_visibility/main.muga",

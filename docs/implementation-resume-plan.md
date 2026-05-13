@@ -96,7 +96,7 @@ Ada
 - [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
 - [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking.
 - [x] package-aware checking builds source and per-module signature environments from the unflattened package graph, preserving package item identity for records/enums/functions, validating generic enum arity, and recording module/same-package/import visibility.
-- [x] package-aware checking runs an initial module body typecheck pass against the module signature environments and retains the per-module typecheck outputs.
+- [x] package-aware checking runs module body resolver/typecheck passes against the module signature environments and retains the per-module typecheck outputs.
 - [x] retained package-aware module typecheck outputs preserve package binding identity needed by typed HIR lowering.
 - [x] package-aware checking exposes per-module typed HIR outputs lowered from retained module typecheck outputs.
 - [x] package-aware checking collects dependency signatures directly from in-memory or persisted package interfaces without reading dependency source bodies.
@@ -170,7 +170,7 @@ Ada
 - The package loader can now return unflattened package files with the same package graph/export metadata used by the legacy flattening path.
 - A library-only package-aware check entrypoint validates package boundary, import, visibility, and public-signature rules directly over the unflattened package graph before package-aware module checking.
 - The package-aware source and module signature environments resolve same-package and imported public record/enum/function signatures from the unflattened graph while preserving `PackageItemId` identities and source-visible module names.
-- The package-aware check entrypoint now runs module body typechecking with those module signatures and retains per-module typecheck outputs.
+- The package-aware check entrypoint now runs module body resolution/typechecking with those module signatures and retains per-module typecheck outputs.
 - Retained package-aware module typecheck outputs now carry package binding identity through typed HIR lowering, so module-local lowering can preserve package item call targets without relying on flattened AST metadata.
 - The package-aware API now exposes those lowered per-module typed HIR programs alongside each module typecheck output.
 - The package-aware API can now collect dependency signatures directly from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source or interface stub body checks.
@@ -201,7 +201,7 @@ Reasoning:
 - Package check cache keys now include entry source content and loaded direct/transitive dependency interface hashes.
 - Unflattened package graph loading now preserves package files plus package/module/item/export metadata before flattening.
 - Package-aware checking now has source and per-module signature environments that resolve package record/enum/function types without flattening.
-- Package-aware checking now uses those module signatures for an initial body typecheck pass over each original package file and exposes those outputs through the library API.
+- Package-aware checking now uses those module signatures for body resolver/typecheck passes over each original package file and exposes those outputs through the library API.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
@@ -270,7 +270,7 @@ Estimates are in focused engineering days for someone already familiar with this
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
 | 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
-| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module typecheck outputs, package-wide typed HIR aggregation, and direct interface-backed dependency signatures/graph metadata now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and connect real artifact storage/reuse. | package/resolver/typing/lib/tests | 4-8 days | High |
+| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module resolver/typecheck outputs, package-wide typed HIR aggregation, and direct interface-backed dependency signatures/graph metadata now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and connect real artifact storage/reuse. | package/resolver/typing/lib/tests | 4-8 days | High |
 | 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
 The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should broaden package-aware body checking coverage while keeping default script execution unchanged.

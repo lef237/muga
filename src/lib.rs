@@ -189,6 +189,13 @@ fn typecheck_loaded_package_modules(
             else {
                 continue;
             };
+            let resolve_output =
+                resolver::resolve_package_module(&file.program, signatures, module_id);
+            let has_resolve_diagnostics = !resolve_output.diagnostics.is_empty();
+            diagnostics.extend(resolve_output.diagnostics.clone());
+            if has_resolve_diagnostics {
+                continue;
+            }
             let type_output =
                 typing::typecheck_package_module(&file.program, signatures, module_id);
             let has_diagnostics = !type_output.diagnostics.is_empty();

@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::{BindingId, BindingKind, ExprId};
+use crate::identity::{BindingId, BindingKind, ExprId, ModuleId};
+use crate::package_signature::{
+    PackageModuleSignatureEnvironment, PackageSignatureEnvironment, PackageSignatureSource,
+};
 use crate::prelude::{self, BuiltinKind};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
@@ -38,6 +41,22 @@ pub fn resolve(program: &Program) -> Vec<Diagnostic> {
 pub fn resolve_program(program: &Program) -> ResolveOutput {
     let mut resolver = Resolver::new();
     resolver.install_prelude();
+    resolver.predeclare_records(&program.statements);
+    resolver.predeclare_enums(&program.statements);
+    resolver.resolve_scope_statements(&program.statements);
+    resolver.into_output()
+}
+
+pub fn resolve_package_module(
+    program: &Program,
+    signatures: &PackageSignatureEnvironment,
+    module: ModuleId,
+) -> ResolveOutput {
+    let mut resolver = Resolver::new();
+    resolver.install_prelude();
+    if let Some(environment) = signatures.module(module) {
+        resolver.install_package_module_signatures(signatures, environment);
+    }
     resolver.predeclare_records(&program.statements);
     resolver.predeclare_enums(&program.statements);
     resolver.resolve_scope_statements(&program.statements);
@@ -122,6 +141,63 @@ impl Resolver {
             };
             let symbol = self.symbol(builtin.name);
             self.insert_current(symbol, kind, Span::default());
+        }
+    }
+
+    fn install_package_module_signatures(
+        &mut self,
+        signatures: &PackageSignatureEnvironment,
+        environment: &PackageModuleSignatureEnvironment,
+    ) {
+        for visible in &environment.records {
+            if visible.source == PackageSignatureSource::ModuleLocal {
+                continue;
+            }
+            let Some(record) = signatures.record(visible.item) else {
+                continue;
+            };
+            let symbol = self.symbol(&visible.name);
+            self.records.insert(symbol, record.span);
+        }
+
+        for visible in &environment.enums {
+            if visible.source == PackageSignatureSource::ModuleLocal {
+                continue;
+            }
+            let Some(enumeration) = signatures.enumeration(visible.item) else {
+                continue;
+            };
+            let enum_symbol = self.symbol(&visible.name);
+            let mut variants = HashMap::new();
+            for variant in &enumeration.variants {
+                let variant_symbol = self.symbol(&variant.name);
+                variants.insert(variant_symbol, variant.span);
+                let qualified = self.symbol(&format!("{}::{}", visible.name, variant.name));
+                let kind = if variant.payload.is_some() {
+                    BindingKind::Function
+                } else {
+                    BindingKind::Immutable
+                };
+                self.insert_current(qualified, kind, variant.span);
+            }
+            self.enums.insert(
+                enum_symbol,
+                EnumResolveInfo {
+                    span: enumeration.span,
+                    variants,
+                },
+            );
+        }
+
+        for visible in &environment.functions {
+            if visible.source == PackageSignatureSource::ModuleLocal {
+                continue;
+            }
+            let Some(function) = signatures.function(visible.item) else {
+                continue;
+            };
+            let symbol = self.symbol(&visible.name);
+            self.insert_current(symbol, BindingKind::Function, function.span);
         }
     }
 
