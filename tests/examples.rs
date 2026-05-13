@@ -3162,6 +3162,8 @@ fn cli_emit_artifacts_writes_interfaces_and_check_cache() {
     assert!(output.status.success(), "{output:#?}");
     assert!(stdout.contains("app__enum_demo.mgi"), "{stdout}");
     assert!(stdout.contains("util__states.mgi"), "{stdout}");
+    assert!(stdout.contains("app__enum_demo.mgb"), "{stdout}");
+    assert!(stdout.contains("util__states.mgb"), "{stdout}");
     assert!(stdout.contains("app__enum_demo.mgc"), "{stdout}");
     assert_eq!(stderr, "");
     assert!(
@@ -3173,6 +3175,14 @@ fn cli_emit_artifacts_writes_interfaces_and_check_cache() {
     );
     assert!(
         muga::interface::PackageInterfaceGraph::persisted_file_path(&artifact_root, "util::states")
+            .is_file()
+    );
+    assert!(
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "app::enum_demo")
+            .is_file()
+    );
+    assert!(
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "util::states")
             .is_file()
     );
     assert!(artifact_root.join("app__enum_demo.mgc").is_file());
@@ -3201,6 +3211,242 @@ fn cli_emit_artifacts_can_drive_cli_artifact_check() {
     assert!(output.status.success(), "{output:#?}");
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
+fn cli_run_uses_artifact_root_without_dependency_source() {
+    let artifact_root = temp_package_root("cli-run-artifact-root");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+
+    let root = temp_package_root("cli-run-artifact-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/artifact_run/main.muga",
+        r#"
+package app::artifact_run
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(9))
+}
+"#,
+    );
+    assert!(!root.join("util/states/model.muga").exists());
+
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "9\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
+fn cli_run_reports_missing_dependency_implementation_artifact() {
+    let artifact_root = temp_package_root("cli-run-missing-implementation");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+    fs::remove_file(muga::implementation_artifact::persisted_file_path(
+        &artifact_root,
+        "util::states",
+    ))
+    .expect("implementation artifact should be removable");
+
+    let root = temp_package_root("cli-run-missing-implementation-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/missing_impl/main.muga",
+        r#"
+package app::missing_impl
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(4))
+}
+"#,
+    );
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert!(stderr.contains("PK022"), "{stderr}");
+    assert!(
+        stderr.contains("missing package implementation artifact"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("util::states"), "{stderr}");
+}
+
+#[test]
+fn cli_run_reports_stale_dependency_implementation_artifact() {
+    let artifact_root = temp_package_root("cli-run-stale-implementation");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+
+    let artifact_path =
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "util::states");
+    let mut artifact = muga::implementation_artifact::read_persisted_file(&artifact_path)
+        .expect("implementation artifact should parse");
+    artifact.interface_hash = "stale-interface-hash".to_string();
+    artifact
+        .write_persisted_artifact(&artifact_root)
+        .expect("stale implementation artifact should be rewritten");
+
+    let root = temp_package_root("cli-run-stale-implementation-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/stale_impl/main.muga",
+        r#"
+package app::stale_impl
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(6))
+}
+"#,
+    );
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert!(stderr.contains("PK023"), "{stderr}");
+    assert!(
+        stderr.contains("stale package implementation artifact"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("util::states"), "{stderr}");
+}
+
+#[test]
+fn cli_run_reports_dependency_implementation_interface_mismatch() {
+    let artifact_root = temp_package_root("cli-run-implementation-interface-mismatch");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+
+    let artifact_path =
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "util::states");
+    let mut artifact = muga::implementation_artifact::read_persisted_file(&artifact_path)
+        .expect("implementation artifact should parse");
+    artifact.files[0].source.push_str(
+        r#"
+
+pub fn extra_public_value(): Int {
+  1
+}
+"#,
+    );
+    artifact
+        .write_persisted_artifact(&artifact_root)
+        .expect("mismatched implementation artifact should be rewritten");
+
+    let root = temp_package_root("cli-run-implementation-interface-mismatch-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/impl_mismatch/main.muga",
+        r#"
+package app::impl_mismatch
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(8))
+}
+"#,
+    );
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert!(stderr.contains("PK023"), "{stderr}");
+    assert!(stderr.contains("interface hash"), "{stderr}");
+    assert!(stderr.contains("util::states"), "{stderr}");
 }
 
 #[test]
