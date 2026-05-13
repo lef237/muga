@@ -198,6 +198,18 @@ pub fn write_package_interface_artifacts(
     }
 }
 
+pub fn write_package_artifacts(
+    path: &Path,
+    artifact_root: &Path,
+) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
+    let mut paths = write_package_interface_artifacts(path, artifact_root, &[])?;
+    paths.push(write_package_check_cache_artifact_for_root(
+        path,
+        artifact_root,
+    )?);
+    Ok(paths)
+}
+
 pub fn compile_typed_path_against_cached_interface_artifacts(
     path: &Path,
     interface_root: &Path,

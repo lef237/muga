@@ -1812,6 +1812,63 @@ fn main(): Int {
 }
 
 #[test]
+fn cli_emit_artifacts_writes_interfaces_and_check_cache() {
+    let artifact_root = temp_package_root("cli-emit-artifacts");
+    let output = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(output.status.success(), "{output:#?}");
+    assert!(stdout.contains("app__enum_demo.mgi"), "{stdout}");
+    assert!(stdout.contains("util__states.mgi"), "{stdout}");
+    assert!(stdout.contains("app__enum_demo.mgc"), "{stdout}");
+    assert_eq!(stderr, "");
+    assert!(
+        muga::interface::PackageInterfaceGraph::persisted_file_path(
+            &artifact_root,
+            "app::enum_demo"
+        )
+        .is_file()
+    );
+    assert!(
+        muga::interface::PackageInterfaceGraph::persisted_file_path(&artifact_root, "util::states")
+            .is_file()
+    );
+    assert!(artifact_root.join("app__enum_demo.mgc").is_file());
+}
+
+#[test]
+fn cli_emit_artifacts_can_drive_cli_artifact_check() {
+    let artifact_root = temp_package_root("cli-emit-artifacts-check");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+
+    let output = muga_command()
+        .arg("check")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
 fn typed_hir_rejects_reloaded_stale_enum_interface_shape() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
         .expect("typed package compilation should pass");
