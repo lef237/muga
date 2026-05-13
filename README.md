@@ -183,7 +183,7 @@ Implemented:
 - package-aware checks aggregate per-module typed HIR from the unflattened module check outputs instead of the legacy flattened typed path
 - package-aware checking and loaded/interface-artifact typed compilation can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies
 - package-aware typed HIR can lower through the existing HIR/bytecode VM path, including imported package records/enums/functions
-- default package `check` / `run` validation goes through package-aware checking before preserving the existing flattened HIR bytecode execution path
+- default package `run` lowers package-aware typed HIR through the existing HIR/bytecode VM path, while `check_path` still returns a flattened compatibility AST
 
 Not implemented yet:
 

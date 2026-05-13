@@ -43,10 +43,10 @@ Current architectural gaps:
 
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
-- normal package execution still lowers from flattened packages and reads dependency source
-- package-aware checking now has boundary validation plus source/module signature environments, loaded/artifact interface dependency signatures, an initial body-check pass, per-module typed HIR outputs, and a package-wide typed HIR aggregate, but bytecode execution still defaults to the older flattened HIR path
+- normal package execution still reads dependency source bodies; dependency-body-free execution is not implemented
+- package-aware checking now has boundary validation plus source/module signature environments, loaded/artifact interface dependency signatures, an initial body-check pass, per-module typed HIR outputs, and a package-wide typed HIR aggregate, and package execution lowers that typed HIR through the existing HIR/bytecode path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
-- default VM bytecode execution still lowers from the compatibility HIR path; typed HIR has an adapter, but MIR/native lowering is not implemented
+- VM bytecode execution still uses the compatibility HIR as its immediate input; package-aware typed HIR adapts into that path, but MIR/native lowering is not implemented
 
 ## Settled Direction
 
