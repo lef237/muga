@@ -624,12 +624,12 @@ fn package_aware_checking_preserves_public_import_resolution() {
 }
 
 #[test]
-fn package_aware_typed_hir_lowers_to_bytecode_runtime() {
+fn package_aware_typed_hir_lowers_to_mir_bytecode_runtime() {
     let result = muga::check_package_aware_path(Path::new("samples/packages/app/main/main.muga"))
         .expect("package-aware checking should pass");
-    let hir = muga::hir::lower_typed(&result.typed_program);
-    let bytecode = muga::bytecode::compile(hir);
-    let outcome = muga::runtime::run(&bytecode).expect("package-aware HIR should execute");
+    let mir = muga::mir::lower_typed(&result.typed_program);
+    let bytecode = muga::bytecode::compile(mir);
+    let outcome = muga::runtime::run(&bytecode).expect("package-aware MIR should execute");
     let value = outcome.main_result.expect("main result should exist");
 
     assert_eq!(value.to_string(), "23");
@@ -637,13 +637,13 @@ fn package_aware_typed_hir_lowers_to_bytecode_runtime() {
 }
 
 #[test]
-fn package_aware_typed_hir_lowers_imported_enum_runtime() {
+fn package_aware_typed_hir_lowers_imported_enum_to_mir_runtime() {
     let result =
         muga::check_package_aware_path(Path::new("samples/packages/app/enum_demo/main.muga"))
             .expect("package-aware checking should pass");
-    let hir = muga::hir::lower_typed(&result.typed_program);
-    let bytecode = muga::bytecode::compile(hir);
-    let outcome = muga::runtime::run(&bytecode).expect("package-aware enum HIR should execute");
+    let mir = muga::mir::lower_typed(&result.typed_program);
+    let bytecode = muga::bytecode::compile(mir);
+    let outcome = muga::runtime::run(&bytecode).expect("package-aware enum MIR should execute");
     let value = outcome.main_result.expect("main result should exist");
 
     assert_eq!(value.to_string(), "7");
