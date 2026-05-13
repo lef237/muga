@@ -120,6 +120,7 @@ Ada
 - [x] bytecode records the CLI entrypoint as a `NameRef`, so runtime invokes `main` by binding identity instead of scanning the root environment by display name.
 - [x] bytecode `NameRef` and binding metadata now carry `LocalId`; runtime environments are keyed by lowered local identity while retaining `BindingId` for cross-stage identity and diagnostics.
 - [x] bytecode records total local capacity and runtime environment storage is now slot-backed by `LocalId` instead of a hash map.
+- [x] bytecode exposes a local metadata table for binding-backed and synthetic locals, preparing the next frame-layout step.
 - [x] default package `run` lowers package-aware typed HIR through MIR before bytecode generation.
 - [x] package-aware typed HIR can lower through the MIR/bytecode VM path for package records/enums/functions.
 - [ ] package execution still reads dependency source bodies.
