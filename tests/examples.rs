@@ -1311,6 +1311,13 @@ fn package_aware_checking_exposes_module_type_outputs() {
         .expect("main module check should exist");
 
     assert_eq!(main_check.package, package);
+    assert!(
+        main_check
+            .resolve_output
+            .identifier_refs
+            .iter()
+            .any(|ident| { main_check.resolve_output.symbols.resolve(ident.name) == "helper" })
+    );
     assert!(main_check.type_output.calls.iter().any(|call| {
         matches!(
             call.callee,

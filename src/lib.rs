@@ -42,6 +42,7 @@ pub struct PackageModuleCheck {
     pub package: identity::PackageId,
     pub module: identity::ModuleId,
     pub module_path: String,
+    pub resolve_output: resolver::ResolveOutput,
     pub type_output: typing::TypeCheckOutput,
     pub typed_program: TypedHirProgram,
 }
@@ -214,6 +215,7 @@ fn typecheck_loaded_package_modules(
                 package: package_id,
                 module: module_id,
                 module_path: file.module_path.clone(),
+                resolve_output,
                 type_output,
                 typed_program,
             });
