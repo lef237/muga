@@ -332,6 +332,44 @@ impl PackageInterfaceGraph {
         })
     }
 
+    pub fn package_graph_by_path(&self, package_path: &str) -> Option<Self> {
+        let package = self.package_by_path(package_path)?.clone();
+        Some(Self {
+            packages: vec![package],
+        })
+    }
+
+    pub fn write_persisted_artifact(
+        &self,
+        root: &Path,
+        package_path: &str,
+        symbols: &SymbolTable,
+    ) -> Result<PathBuf, Diagnostic> {
+        let Some(graph) = self.package_graph_by_path(package_path) else {
+            return Err(Diagnostic::new(
+                "PK016",
+                format!("compiled package interfaces do not contain `{package_path}`"),
+                Span::default(),
+            )
+            .with_suggestion("choose a package that is reachable from the entrypoint"));
+        };
+        let path = Self::persisted_file_path(root, package_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                Diagnostic::new(
+                    "PK018",
+                    format!(
+                        "failed to create package interface artifact directory {}: {error}",
+                        parent.display()
+                    ),
+                    Span::default(),
+                )
+            })?;
+        }
+        graph.write_persisted_file(&path, symbols)?;
+        Ok(path)
+    }
+
     pub fn read_persisted_file(
         path: &Path,
         symbols: &mut SymbolTable,

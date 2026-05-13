@@ -1677,6 +1677,113 @@ fn default_cli_check_keeps_existing_body_based_behavior() {
 }
 
 #[test]
+fn cli_emit_interface_writes_requested_package_artifacts() {
+    let artifact_root = temp_package_root("cli-emit-interface");
+    let output = muga_command()
+        .arg("emit-interface")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("--package")
+        .arg("util::states")
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(output.status.success(), "{output:#?}");
+    assert!(stdout.contains("util__states.mgi"), "{stdout}");
+    assert_eq!(stderr, "");
+
+    let artifact_path =
+        muga::interface::PackageInterfaceGraph::persisted_file_path(&artifact_root, "util::states");
+    assert!(artifact_path.is_file());
+    let mut symbols = muga::symbol::SymbolTable::default();
+    let graph =
+        muga::interface::PackageInterfaceGraph::read_persisted_file(&artifact_path, &mut symbols)
+            .expect("emitted interface should parse");
+    assert!(graph.package_by_path("util::states").is_some());
+    assert!(graph.package_by_path("app::enum_demo").is_none());
+}
+
+#[test]
+fn cli_emit_check_cache_writes_entry_package_mgc() {
+    let artifact_root = temp_package_root("cli-emit-check-cache");
+    emit_states_interface(&artifact_root);
+    let root = temp_package_root("cli-emit-check-cache-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/emit_cache/main.muga",
+        r#"
+package app::emit_cache
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(3))
+}
+"#,
+    );
+
+    let output = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(output.status.success(), "{output:#?}");
+    assert!(stdout.contains("app__emit_cache.mgc"), "{stdout}");
+    assert_eq!(stderr, "");
+    let artifact_path = muga::package_check_cache_artifact_path(&artifact_root, &entry)
+        .expect("check cache path should be derived");
+    assert!(artifact_path.is_file());
+}
+
+#[test]
+fn generated_artifacts_can_drive_cli_artifact_check() {
+    let artifact_root = temp_package_root("cli-generated-artifacts");
+    emit_states_interface(&artifact_root);
+    let root = temp_package_root("cli-generated-artifacts-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/generated_artifacts/main.muga",
+        r#"
+package app::generated_artifacts
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(5))
+}
+"#,
+    );
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("check")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
 fn typed_hir_rejects_reloaded_stale_enum_interface_shape() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
         .expect("typed package compilation should pass");
@@ -4961,6 +5068,19 @@ fn write_interface_artifacts(
 
 fn muga_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_muga"))
+}
+
+fn emit_states_interface(artifact_root: &Path) {
+    let output = muga_command()
+        .arg("emit-interface")
+        .arg("--artifact-root")
+        .arg(artifact_root)
+        .arg("--package")
+        .arg("util::states")
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(output.status.success(), "{output:#?}");
 }
 
 fn main_return_type(program: &muga::typed_hir::Program) -> Option<muga::types::TypeInfo> {

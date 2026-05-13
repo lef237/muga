@@ -1,6 +1,6 @@
 # Enums, Result, And Error Propagation Draft
 
-Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, stale enum interface validation, downstream typed checking from loaded interface summaries, explicit-root `.mgi` artifact discovery for typed checking, source/dependency-hash `.mgc` package check cache validation, and `muga check --artifact-root` consumption of those artifacts. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching. Error propagation syntax is not implemented yet.
+Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, stale enum interface validation, downstream typed checking from loaded interface summaries, explicit-root `.mgi` artifact discovery for typed checking, source/dependency-hash `.mgc` package check cache validation, `muga check --artifact-root` consumption of those artifacts, and CLI emission of `.mgi` / `.mgc` artifacts. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching. Error propagation syntax is not implemented yet.
 
 ## 1. Goals
 
@@ -266,7 +266,7 @@ Public function signatures may then mention enum types such as:
 pub fn read_file(path: String): Result[String, IOError]
 ```
 
-In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. The v1 persisted interface text format round-trips the same resolved enum identity, type parameters, variants, payload types, public signatures, and source spans. Persisted interfaces also carry deterministic content hashes. Downstream typed checking can use loaded interface summaries or discovered `.mgi` artifacts without reading dependency implementation bodies. Package check cache keys now combine entry package source hashes and dependency interface hashes, with missing or stale `.mgc` artifacts rejected before artifact-backed checking proceeds. The CLI can consume existing artifacts with `muga check --artifact-root`; artifact generation remains a separate follow-up.
+In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. The v1 persisted interface text format round-trips the same resolved enum identity, type parameters, variants, payload types, public signatures, and source spans. Persisted interfaces also carry deterministic content hashes. Downstream typed checking can use loaded interface summaries or discovered `.mgi` artifacts without reading dependency implementation bodies. Package check cache keys now combine entry package source hashes and dependency interface hashes, with missing or stale `.mgc` artifacts rejected before artifact-backed checking proceeds. The CLI can emit artifacts with `muga emit-interface` and `muga emit-check-cache`, then consume them with `muga check --artifact-root`.
 
 ## 9. Runtime Representation
 
@@ -307,7 +307,7 @@ Performance-specific representations can be handled later in MIR/native lowering
 
 ## 11. Recommended Phasing
 
-1. Add artifact generation/project wiring around the existing interface and check-cache metadata.
+1. Add project artifact-root config or dependency artifact discovery around the existing interface and check-cache metadata.
 2. Add full package artifact storage/reuse.
 3. Revisit `try expr` propagation syntax.
 4. Continue toward MIR/native lowering once package boundaries are real inputs.
