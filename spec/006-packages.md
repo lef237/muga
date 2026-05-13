@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, a minimal `muga.toml` project mode that infers package paths from `name` and `source`, explicit `.mgi` / `.mgc` artifact workflows, and a library-only package-aware check scaffold that validates package boundary rules and source signatures over the unflattened package graph before using the legacy typed checking path. Dependency manifests, registries, selective imports, full package-aware typechecking without flattening, package-level caching, and any future per-field record visibility are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, a minimal `muga.toml` project mode that infers package paths from `name` and `source`, explicit `.mgi` / `.mgc` artifact workflows, and a library-only package-aware check scaffold that validates package boundary rules plus source/module signatures over the unflattened package graph before using the legacy typed checking path. Dependency manifests, registries, selective imports, full package-aware typechecking without flattening, package-level caching, and any future per-field record visibility are still deferred.
 
 ## 1. Design Goals
 
@@ -938,7 +938,7 @@ It currently:
 - records package, module, and item identity in `PackageSymbolGraph`
 - routes public import lookup through `PackageExportGraph`
 - can return an unflattened package graph containing package files plus package/module/item/export metadata
-- can build source package signatures from the unflattened graph while preserving package item identity for records, enums, and functions
+- can build source and module package signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility for records, enums, and functions
 - generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
 - validates typed package references against generated summaries
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
