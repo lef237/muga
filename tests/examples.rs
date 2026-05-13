@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fs, path::Path, process::Command};
 
-use muga::bytecode::Instruction;
+use muga::bytecode::{self, Chunk, Instruction};
 
 fn extract_code(markdown: &str) -> String {
     let start = markdown.find("```txt").expect("missing opening code fence");
@@ -3181,9 +3181,22 @@ fn cli_emit_artifacts_writes_interfaces_and_check_cache() {
         muga::implementation_artifact::persisted_file_path(&artifact_root, "app::enum_demo")
             .is_file()
     );
+    let implementation_path =
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "util::states");
+    assert!(implementation_path.is_file());
+    let implementation_text = fs::read_to_string(&implementation_path)
+        .expect("implementation artifact should be readable");
     assert!(
-        muga::implementation_artifact::persisted_file_path(&artifact_root, "util::states")
-            .is_file()
+        implementation_text.starts_with("muga-package-implementation-bytecode-v1\n"),
+        "{implementation_text}"
+    );
+    assert!(
+        implementation_text.contains("\nins\t"),
+        "{implementation_text}"
+    );
+    assert!(
+        !implementation_text.contains("pub fn"),
+        "{implementation_text}"
     );
     assert!(artifact_root.join("app__enum_demo.mgc").is_file());
 }
@@ -3384,8 +3397,8 @@ fn main(): Int {
 }
 
 #[test]
-fn cli_run_reports_dependency_implementation_interface_mismatch() {
-    let artifact_root = temp_package_root("cli-run-implementation-interface-mismatch");
+fn cli_run_reports_hash_mismatched_dependency_implementation_artifact() {
+    let artifact_root = temp_package_root("cli-run-implementation-hash-mismatch");
     let emitted = muga_command()
         .arg("emit-artifacts")
         .arg("--artifact-root")
@@ -3397,21 +3410,12 @@ fn cli_run_reports_dependency_implementation_interface_mismatch() {
 
     let artifact_path =
         muga::implementation_artifact::persisted_file_path(&artifact_root, "util::states");
-    let mut artifact = muga::implementation_artifact::read_persisted_file(&artifact_path)
-        .expect("implementation artifact should parse");
-    artifact.files[0].source.push_str(
-        r#"
+    let artifact_text =
+        fs::read_to_string(&artifact_path).expect("implementation artifact should be readable");
+    fs::write(&artifact_path, format!("{artifact_text}tampered\n"))
+        .expect("implementation artifact should be tamperable");
 
-pub fn extra_public_value(): Int {
-  1
-}
-"#,
-    );
-    artifact
-        .write_persisted_artifact(&artifact_root)
-        .expect("mismatched implementation artifact should be rewritten");
-
-    let root = temp_package_root("cli-run-implementation-interface-mismatch-downstream");
+    let root = temp_package_root("cli-run-implementation-hash-mismatch-downstream");
     let entry = write_package_file(
         &root,
         "app/impl_mismatch/main.muga",
@@ -3444,8 +3448,8 @@ fn main(): Int {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(!output.status.success(), "{output:#?}");
-    assert!(stderr.contains("PK023"), "{stderr}");
-    assert!(stderr.contains("interface hash"), "{stderr}");
+    assert!(stderr.contains("PK022"), "{stderr}");
+    assert!(stderr.contains("hash mismatch"), "{stderr}");
     assert!(stderr.contains("util::states"), "{stderr}");
 }
 
@@ -4076,6 +4080,53 @@ fn main(): Int {
         _ => panic!("expected main function definition"),
     };
     assert_eq!(program.main, Some(main_target));
+}
+
+#[test]
+fn bytecode_merge_offsets_concatenated_entry_jumps() {
+    fn program(instructions: Vec<Instruction>) -> bytecode::Program {
+        bytecode::Program {
+            entry: Chunk { instructions },
+            functions: Vec::new(),
+            bindings: Vec::new(),
+            locals: Vec::new(),
+            main: None,
+            local_count: 0,
+            symbols: muga::symbol::SymbolTable::default(),
+        }
+    }
+
+    let dependency = program(vec![
+        Instruction::LoadBool(false),
+        Instruction::JumpIfFalse {
+            target: 4,
+            span: Default::default(),
+        },
+        Instruction::LoadInt(1),
+        Instruction::Jump { target: 5 },
+        Instruction::LoadInt(2),
+        Instruction::Pop,
+    ]);
+    let entry = program(vec![Instruction::LoadInt(3), Instruction::Pop]);
+
+    let merged = bytecode::merge(entry, vec![dependency.clone(), dependency]);
+
+    assert!(matches!(
+        merged.entry.instructions.get(1),
+        Some(Instruction::JumpIfFalse { target: 4, .. })
+    ));
+    assert!(matches!(
+        merged.entry.instructions.get(3),
+        Some(Instruction::Jump { target: 5 })
+    ));
+    assert!(matches!(
+        merged.entry.instructions.get(7),
+        Some(Instruction::JumpIfFalse { target: 10, .. })
+    ));
+    assert!(matches!(
+        merged.entry.instructions.get(9),
+        Some(Instruction::Jump { target: 11 })
+    ));
 }
 
 #[test]

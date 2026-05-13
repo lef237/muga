@@ -97,27 +97,6 @@ pub fn load_package_graph_from_entry_against_interfaces(
     loader.load_unflattened_graph_against_interfaces(interfaces, interface_symbols)
 }
 
-pub fn load_package_graph_from_entry_against_artifact_sources(
-    path: &Path,
-    artifact_sources: HashMap<String, Vec<PackageSourceFile>>,
-) -> Result<LoadedPackageGraph, Vec<Diagnostic>> {
-    let (entry_program, manifest) = parse_entry_program(path)?;
-    if entry_program.package.is_none() {
-        return Err(vec![
-            Diagnostic::new(
-                "PK001",
-                "package graph loading requires a package-mode entrypoint",
-                Span::default(),
-            )
-            .with_suggestion("use a file that starts with `package`, or check scripts directly"),
-        ]);
-    }
-
-    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest)
-        .with_artifact_sources(artifact_sources);
-    loader.load_unflattened_graph()
-}
-
 fn parse_entry_program(path: &Path) -> Result<(Program, Option<ProjectManifest>), Vec<Diagnostic>> {
     let entry_source = match fs::read_to_string(path) {
         Ok(source) => source,
@@ -1005,7 +984,7 @@ struct ParsedFile {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PackageSourceFile {
+struct SourceFingerprintFile {
     pub module_path: String,
     pub source: String,
 }
@@ -1044,8 +1023,6 @@ struct PackageLoader {
     source_root: PathBuf,
     entry_package: String,
     manifest: Option<ProjectManifest>,
-    artifact_sources: HashMap<String, Vec<PackageSourceFile>>,
-    require_artifact_dependencies: bool,
     packages: HashMap<String, PackageData>,
     loading: HashSet<String>,
     diagnostics: Vec<Diagnostic>,
@@ -1071,21 +1048,10 @@ impl PackageLoader {
             source_root,
             entry_package,
             manifest,
-            artifact_sources: HashMap::new(),
-            require_artifact_dependencies: false,
             packages: HashMap::new(),
             loading: HashSet::new(),
             diagnostics: Vec::new(),
         }
-    }
-
-    fn with_artifact_sources(
-        mut self,
-        artifact_sources: HashMap<String, Vec<PackageSourceFile>>,
-    ) -> Self {
-        self.artifact_sources = artifact_sources;
-        self.require_artifact_dependencies = true;
-        self
     }
 
     fn load_and_flatten(&mut self) -> Result<LoadedFlattenedProgram, Vec<Diagnostic>> {
@@ -1340,10 +1306,6 @@ impl PackageLoader {
     }
 
     fn load_package_files(&mut self, package_path: &str) -> Vec<ParsedFile> {
-        if self.require_artifact_dependencies && package_path != self.entry_package {
-            return self.load_package_files_from_artifact(package_path);
-        }
-
         let package_dir = self.package_dir(package_path);
         let read_dir = match fs::read_dir(&package_dir) {
             Ok(read_dir) => read_dir,
@@ -1431,73 +1393,7 @@ impl PackageLoader {
         files
     }
 
-    fn load_package_files_from_artifact(&mut self, package_path: &str) -> Vec<ParsedFile> {
-        let Some(source_files) = self.artifact_sources.get(package_path).cloned() else {
-            self.diagnostics.push(
-                Diagnostic::new(
-                    "PK022",
-                    format!("missing package implementation artifact for `{package_path}`"),
-                    Span::default(),
-                )
-                .with_suggestion("regenerate package artifacts with `emit-artifacts`"),
-            );
-            return Vec::new();
-        };
-
-        if source_files.is_empty() {
-            self.diagnostics.push(Diagnostic::new(
-                "PK022",
-                format!("package implementation artifact for `{package_path}` has no source files"),
-                Span::default(),
-            ));
-            return Vec::new();
-        }
-
-        let mut files = Vec::new();
-        for source_file in source_files {
-            let program = match self.parse_package_file(&source_file.source, package_path) {
-                Ok(program) => program,
-                Err(diagnostics) => {
-                    self.diagnostics.extend(diagnostics);
-                    continue;
-                }
-            };
-            match &program.package {
-                Some(package) if package.path == package_path => {}
-                Some(package) => {
-                    self.diagnostics.push(Diagnostic::new(
-                        "PK022",
-                        format!(
-                            "implementation artifact for `{package_path}` contains file `{}` from package `{}`",
-                            source_file.module_path, package.path
-                        ),
-                        package.span,
-                    ));
-                    continue;
-                }
-                None => {
-                    self.diagnostics.push(Diagnostic::new(
-                        "PK022",
-                        format!(
-                            "implementation artifact file `{}` must begin with `package {package_path}`",
-                            source_file.module_path
-                        ),
-                        Span::default(),
-                    ));
-                    continue;
-                }
-            }
-            files.push(ParsedFile {
-                program,
-                module_path: source_file.module_path,
-                source: source_file.source,
-            });
-        }
-        files.sort_by(|left, right| left.module_path.cmp(&right.module_path));
-        files
-    }
-
-    fn load_package_source_files(&mut self, package_path: &str) -> Vec<PackageSourceFile> {
+    fn load_package_source_files(&mut self, package_path: &str) -> Vec<SourceFingerprintFile> {
         let package_dir = self.package_dir(package_path);
         let read_dir = match fs::read_dir(&package_dir) {
             Ok(read_dir) => read_dir,
@@ -1542,7 +1438,7 @@ impl PackageLoader {
                     continue;
                 }
             };
-            files.push(PackageSourceFile {
+            files.push(SourceFingerprintFile {
                 module_path: module_path_for_file(&file_path),
                 source,
             });

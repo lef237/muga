@@ -4,6 +4,10 @@ use std::collections::HashMap;
 pub struct Symbol(u32);
 
 impl Symbol {
+    pub const fn new(index: u32) -> Self {
+        Self(index)
+    }
+
     pub const fn as_u32(self) -> u32 {
         self.0
     }
@@ -41,5 +45,9 @@ impl SymbolTable {
 
     pub fn is_empty(&self) -> bool {
         self.names.is_empty()
+    }
+
+    pub fn names(&self) -> &[String] {
+        &self.names
     }
 }

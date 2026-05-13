@@ -142,8 +142,8 @@ Done:
 
 Remaining:
 
-1. implement dependency-body-free package execution without reading dependency implementation source bodies under `--artifact-root`
-2. add a separate implementation/execution artifact if persisted dependency bodies are needed for artifact-backed `run`; keep `.mgi` as interface data and `.mgc` as check-cache proof
+1. harden the explicit artifact workflow around MIR-lowered bytecode `.mgb` implementation artifacts, including diagnostics and sample coverage
+2. keep `.mgi` as interface data, `.mgc` as check-cache proof, and `.mgb` as the execution body artifact while project-owned dependency metadata is still absent
 3. continue expanding structured diagnostics as artifact-backed execution, cache, and interface errors are introduced
 4. move serialized interface internals toward first-class `InterfaceTypeRef` / stable item-reference data after the v1 package workflow is closed
 
