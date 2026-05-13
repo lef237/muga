@@ -6,7 +6,7 @@
 //! tied to legacy AST lowering.
 
 use crate::{
-    identity::{BindingId, PackageItemId},
+    identity::{BindingId, BindingKind, PackageItemId},
     known_enum,
     package::PackageSymbolGraph,
     span::Span,
@@ -21,7 +21,17 @@ pub type FunctionId = usize;
 pub struct Program {
     pub entry: Body,
     pub functions: Vec<Function>,
+    pub bindings: Vec<BindingDef>,
     pub symbols: SymbolTable,
+}
+
+#[derive(Clone, Debug)]
+pub struct BindingDef {
+    pub id: BindingId,
+    pub name: Symbol,
+    pub kind: BindingKind,
+    pub package_item: Option<PackageItemId>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -205,6 +215,14 @@ pub enum IdentTarget {
     },
 }
 
+impl IdentTarget {
+    pub fn binding(self) -> BindingId {
+        match self {
+            Self::Binding(binding) | Self::PackageItem { binding, .. } => binding,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ListLitExpr {
     pub items: Vec<Expr>,
@@ -327,8 +345,14 @@ pub enum MatchPattern {
 pub struct EnumVariantPattern {
     pub enum_name: Symbol,
     pub variant_name: Symbol,
-    pub binding: Option<Symbol>,
+    pub binding: Option<PatternBinding>,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct PatternBinding {
+    pub name: Symbol,
+    pub binding: BindingId,
 }
 
 #[derive(Clone, Debug)]
@@ -344,6 +368,7 @@ pub fn lower_typed(program: &typed_hir::Program) -> Program {
         source_symbols: &program.symbols,
         package_graph: &program.package_graph,
     };
+    let bindings = lowerer.lower_bindings(&program.bindings);
     let (function_defs, statements) = lowerer.lower_statements(&program.statements);
     Program {
         entry: Body {
@@ -353,6 +378,7 @@ pub fn lower_typed(program: &typed_hir::Program) -> Program {
             span: Span::default(),
         },
         functions: lowerer.functions,
+        bindings,
         symbols: lowerer.symbols,
     }
 }
@@ -365,6 +391,19 @@ struct TypedLowerer<'a> {
 }
 
 impl TypedLowerer<'_> {
+    fn lower_bindings(&mut self, bindings: &[crate::typing::TypedBindingInfo]) -> Vec<BindingDef> {
+        bindings
+            .iter()
+            .map(|binding| BindingDef {
+                id: binding.id,
+                name: self.source_symbol(binding.symbol),
+                kind: binding.kind,
+                package_item: binding.package_item,
+                span: binding.span,
+            })
+            .collect()
+    }
+
     fn lower_statements(
         &mut self,
         statements: &[typed_hir::Stmt],
@@ -622,10 +661,12 @@ impl TypedLowerer<'_> {
             pattern: MatchPattern::Variant(EnumVariantPattern {
                 enum_name,
                 variant_name: self.symbol(&pattern.variant_name),
-                binding: pattern
-                    .binding_name
-                    .as_ref()
-                    .map(|binding| self.symbol(binding)),
+                binding: pattern.binding_name.as_ref().zip(pattern.binding).map(
+                    |(name, binding)| PatternBinding {
+                        name: self.symbol(name),
+                        binding,
+                    },
+                ),
                 span: pattern.span,
             }),
             value: self.lower_expr(&arm.value),

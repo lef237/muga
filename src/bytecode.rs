@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use crate::{
+    identity::{BindingId, BindingKind, PackageItemId},
     mir,
     span::Span,
     symbol::{Symbol, SymbolTable},
@@ -10,14 +13,30 @@ pub type FunctionId = usize;
 pub struct Program {
     pub entry: Chunk,
     pub functions: Vec<Function>,
+    pub bindings: Vec<BindingDef>,
     pub symbols: SymbolTable,
+}
+
+#[derive(Clone, Debug)]
+pub struct BindingDef {
+    pub id: BindingId,
+    pub name: Symbol,
+    pub kind: BindingKind,
+    pub package_item: Option<PackageItemId>,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NameRef {
+    pub binding: BindingId,
+    pub name: Symbol,
 }
 
 #[derive(Clone, Debug)]
 pub struct Function {
     pub id: FunctionId,
     pub name: Option<Symbol>,
-    pub params: Vec<Symbol>,
+    pub params: Vec<NameRef>,
     pub chunk: Chunk,
     pub span: Span,
 }
@@ -48,7 +67,7 @@ pub enum Instruction {
         span: Span,
     },
     LoadName {
-        name: Symbol,
+        target: NameRef,
         span: Span,
     },
     LoadField {
@@ -63,13 +82,13 @@ pub enum Instruction {
         span: Span,
     },
     Assign {
-        name: Symbol,
+        target: NameRef,
         mutable: bool,
         is_update: bool,
         span: Span,
     },
     DefineFunction {
-        name: Symbol,
+        target: NameRef,
         function: FunctionId,
         span: Span,
     },
@@ -131,9 +150,11 @@ pub fn compile(program: mir::Program) -> Program {
     let mir::Program {
         entry,
         functions,
+        bindings,
         symbols,
     } = program;
-    let mut compiler = Compiler::new(symbols);
+    let bindings: Vec<_> = bindings.into_iter().map(BindingDef::from).collect();
+    let mut compiler = Compiler::new(symbols, next_synthetic_binding(&bindings));
     let entry = compiler.compile_entry_body(&entry);
     for function in &functions {
         compiler.compile_function(function);
@@ -141,22 +162,47 @@ pub fn compile(program: mir::Program) -> Program {
     Program {
         entry,
         functions: compiler.functions,
+        bindings,
         symbols: compiler.symbols,
+    }
+}
+
+fn next_synthetic_binding(bindings: &[BindingDef]) -> u32 {
+    bindings
+        .iter()
+        .map(|binding| binding.id.as_u32())
+        .max()
+        .map_or(0, |id| id + 1)
+}
+
+impl From<mir::BindingDef> for BindingDef {
+    fn from(binding: mir::BindingDef) -> Self {
+        Self {
+            id: binding.id,
+            name: binding.name,
+            kind: binding.kind,
+            package_item: binding.package_item,
+            span: binding.span,
+        }
     }
 }
 
 struct Compiler {
     functions: Vec<Function>,
     symbols: SymbolTable,
+    package_function_bindings: HashMap<PackageItemId, BindingId>,
     next_match_temp: usize,
+    next_synthetic_binding: u32,
 }
 
 impl Compiler {
-    fn new(symbols: SymbolTable) -> Self {
+    fn new(symbols: SymbolTable, next_synthetic_binding: u32) -> Self {
         Self {
             functions: Vec::new(),
             symbols,
+            package_function_bindings: HashMap::new(),
             next_match_temp: 0,
+            next_synthetic_binding,
         }
     }
 
@@ -190,7 +236,11 @@ impl Compiler {
         self.functions[function.id] = Function {
             id: function.id,
             name: function.name,
-            params: function.params.iter().map(|param| param.name).collect(),
+            params: function
+                .params
+                .iter()
+                .map(|param| self.name_ref(param.binding, param.name))
+                .collect(),
             chunk,
             span: function.span,
         };
@@ -198,8 +248,13 @@ impl Compiler {
 
     fn compile_function_defs(&mut self, function_defs: &[mir::FunctionDef], chunk: &mut Chunk) {
         for func in function_defs {
+            if let Some(item) = func.package_item {
+                self.package_function_bindings
+                    .entry(item)
+                    .or_insert(func.binding);
+            }
             chunk.instructions.push(Instruction::DefineFunction {
-                name: func.name,
+                target: self.name_ref(func.binding, func.name),
                 function: func.function,
                 span: func.span,
             });
@@ -217,7 +272,7 @@ impl Compiler {
             mir::Stmt::Assign(stmt) => {
                 self.compile_expr(&stmt.value, chunk);
                 chunk.instructions.push(Instruction::Assign {
-                    name: stmt.name,
+                    target: self.name_ref(stmt.binding, stmt.name),
                     mutable: stmt.mutable,
                     is_update: stmt.is_update,
                     span: stmt.span,
@@ -314,10 +369,12 @@ impl Compiler {
                     span: expr.span,
                 });
             }
-            mir::Expr::Ident(expr) => chunk.instructions.push(Instruction::LoadName {
-                name: expr.name,
-                span: expr.span,
-            }),
+            mir::Expr::Ident(expr) => {
+                chunk.instructions.push(Instruction::LoadName {
+                    target: self.name_ref_for_ident_target(expr.target, expr.name),
+                    span: expr.span,
+                });
+            }
             mir::Expr::Field(expr) => {
                 self.compile_expr(&expr.base, chunk);
                 chunk.instructions.push(Instruction::LoadField {
@@ -401,10 +458,11 @@ impl Compiler {
     fn compile_match_expr(&mut self, expr: &mir::MatchExpr, chunk: &mut Chunk) {
         let enum_name = self.pattern_enum_symbol(expr);
         let temp = self.match_temp_symbol();
+        let temp_ref = self.synthetic_name_ref(temp);
         chunk.instructions.push(Instruction::PushScope);
         self.compile_expr(&expr.value, chunk);
         chunk.instructions.push(Instruction::Assign {
-            name: temp,
+            target: temp_ref,
             mutable: false,
             is_update: false,
             span: expr.value.span(),
@@ -414,7 +472,7 @@ impl Compiler {
         for arm in &expr.arms {
             let (_, variant_name) = self.pattern_variant_symbols(&arm.pattern);
             chunk.instructions.push(Instruction::LoadName {
-                name: temp,
+                target: temp_ref,
                 span: expr.value.span(),
             });
             let next_arm_jump = self.emit_jump_if_not_enum_variant(
@@ -447,7 +505,7 @@ impl Compiler {
                 .pattern_binding(&arm.pattern)
                 .expect("typechecked payload variant arm should bind payload");
             chunk.instructions.push(Instruction::Assign {
-                name: binding,
+                target: binding,
                 mutable: false,
                 is_update: false,
                 span,
@@ -466,14 +524,39 @@ impl Compiler {
         pattern.enum_name
     }
 
-    fn pattern_binding(&self, pattern: &mir::MatchPattern) -> Option<(Symbol, Span)> {
+    fn pattern_binding(&self, pattern: &mir::MatchPattern) -> Option<(NameRef, Span)> {
         let mir::MatchPattern::Variant(pattern) = pattern;
-        pattern.binding.map(|binding| (binding, pattern.span))
+        pattern
+            .binding
+            .as_ref()
+            .map(|binding| (self.name_ref(binding.binding, binding.name), pattern.span))
     }
 
     fn pattern_variant_symbols(&self, pattern: &mir::MatchPattern) -> (Symbol, Symbol) {
         let mir::MatchPattern::Variant(pattern) = pattern;
         (pattern.enum_name, pattern.variant_name)
+    }
+
+    fn name_ref(&self, binding: BindingId, name: Symbol) -> NameRef {
+        NameRef { binding, name }
+    }
+
+    fn name_ref_for_ident_target(&self, target: mir::IdentTarget, name: Symbol) -> NameRef {
+        let binding = match target {
+            mir::IdentTarget::Binding(binding) => binding,
+            mir::IdentTarget::PackageItem { binding, item } => self
+                .package_function_bindings
+                .get(&item)
+                .copied()
+                .unwrap_or(binding),
+        };
+        self.name_ref(binding, name)
+    }
+
+    fn synthetic_name_ref(&mut self, name: Symbol) -> NameRef {
+        let binding = BindingId::new(self.next_synthetic_binding);
+        self.next_synthetic_binding += 1;
+        self.name_ref(binding, name)
     }
 
     fn emit_jump_if_false(&self, chunk: &mut Chunk, span: Span) -> usize {

@@ -115,6 +115,7 @@ Ada
 - [x] MIR now has explicit entry/function `Body` nodes with body terminators and body-local function definitions, so bytecode compiles execution bodies instead of reading top-level statements and function value blocks directly.
 - [x] MIR preserves typed HIR binding and package-item identity on function definitions, parameters, assignments, and identifier uses while bytecode still emits symbol-based VM instructions.
 - [x] MIR and bytecode preserve typed assignment mode (`new binding` vs `update`) so runtime no longer infers assignment semantics from name lookup alone.
+- [x] bytecode and runtime name references now carry `BindingId` plus display symbol, runtime environments are keyed by binding identity instead of symbol text, and package function item references are canonicalized to the defining function binding while preserving import bindings in metadata.
 - [x] default package `run` lowers package-aware typed HIR through MIR before bytecode generation.
 - [x] package-aware typed HIR can lower through the MIR/bytecode VM path for package records/enums/functions.
 - [ ] package execution still reads dependency source bodies.
@@ -163,7 +164,7 @@ Ada
 
 - The VM/bytecode path is the current execution backend and should remain a reference backend.
 - typed HIR is the semantic boundary for package interfaces and MIR lowering.
-- The default compile APIs and bytecode backend now consume an initial expression-shaped MIR with explicit entry/function bodies, body terminators, hoisted body-local function definitions, typed HIR binding/package-item identity, and typed assignment update mode. MIR is now the only backend-facing IR while it is matured toward a control-flow-oriented backend IR.
+- The default compile APIs and bytecode backend now consume an initial expression-shaped MIR with explicit entry/function bodies, body terminators, hoisted body-local function definitions, typed HIR binding/package-item identity, and typed assignment update mode. Bytecode/runtime name references carry binding identity plus display symbols, and package function item references resolve to the defining function binding at bytecode lowering. MIR is now the only backend-facing IR while it is matured toward a control-flow-oriented backend IR.
 - `Option[T]` and `Result[T, E]` remain compiler-known enum-like types for now; user-defined enums use a parallel source-level enum model.
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.

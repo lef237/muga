@@ -51,7 +51,7 @@ Current architectural gaps:
 - normal package execution still reads dependency source bodies; dependency-body-free execution is not implemented
 - remaining package work is MIR maturation plus normal project/artifact integration; package-aware checking is now the default package validation path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
-- VM bytecode execution now consumes an initial expression-shaped MIR with explicit execution bodies, body terminators, hoisted body-local function definitions, typed binding/package-item identity, and typed assignment update mode; control-flow-oriented MIR and native lowering are not implemented
+- VM bytecode execution now consumes an initial expression-shaped MIR with explicit execution bodies, body terminators, hoisted body-local function definitions, typed binding/package-item identity, typed assignment update mode, and binding-keyed runtime names with package function references canonicalized to their defining binding; control-flow-oriented MIR and native lowering are not implemented
 - default compile APIs lower typed HIR into MIR; the old untyped AST-to-HIR compatibility module has been removed
 
 ## Settled Direction
