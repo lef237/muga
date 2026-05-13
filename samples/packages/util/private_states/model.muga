@@ -1,0 +1,5 @@
+package util::private_states
+
+enum Secret {
+  Hidden
+}

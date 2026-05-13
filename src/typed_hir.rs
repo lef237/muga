@@ -200,6 +200,7 @@ pub enum IdentTarget {
     EnumVariant {
         binding: BindingId,
         enum_name: Symbol,
+        enum_item: Option<PackageItemId>,
         variant_name: Symbol,
     },
 }
@@ -729,6 +730,7 @@ impl<'a> Lowerer<'a> {
         let binding = self.binding_for_expr(id);
         if let Some(TypeInfo::EnumConstructor {
             enum_symbol,
+            enum_item,
             variant,
         }) = self
             .analysis
@@ -740,6 +742,7 @@ impl<'a> Lowerer<'a> {
             return IdentTarget::EnumVariant {
                 binding,
                 enum_name: enum_symbol,
+                enum_item,
                 variant_name: variant,
             };
         }

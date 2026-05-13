@@ -1,0 +1,5 @@
+package app::enum_private_visibility
+
+fn main(): HiddenState {
+  HiddenState::Hidden
+}

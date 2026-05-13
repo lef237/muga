@@ -4,6 +4,10 @@ pkg record PackageValue {
   value: Int
 }
 
+pkg enum PackageState {
+  Open
+}
+
 pkg fn helper(): Int {
   41
 }

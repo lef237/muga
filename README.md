@@ -158,6 +158,7 @@ Implemented:
 - minimal `muga.toml` project mode with `[package] name/source`
 - typed HIR with resolved call shape, call origin, expression types, local binding identity, and package item identity
 - in-memory package interface summaries for public records/enums/functions plus validation of public package references against those summaries
+- hardened enum diagnostics, package enum visibility checks, imported `alias::Enum::Variant` constructors/patterns, and package enum call-target identity
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 
 Not implemented yet:
@@ -170,9 +171,9 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is enum integration hardening: broader diagnostics, package visibility edge cases, imported enum constructor/pattern coverage, stale interface validation for enum variants, and compatibility tests around `Option` / `Result`.
+The next implementation slice is persisted package interfaces: deterministic serialization of public records/functions/enums, resolved `TypeInfo`, item identity, enum variants, payload types, and interface hashes.
 
-After that, the priority returns to persisted package interfaces, package-interface consumption, caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
+After that, the priority moves to downstream package checking from interface artifacts, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
 ## Samples
 

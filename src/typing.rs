@@ -63,6 +63,7 @@ pub enum TypedCalleeInfo {
     EnumVariant {
         binding: BindingId,
         enum_name: Symbol,
+        enum_item: Option<PackageItemId>,
         variant_name: Symbol,
     },
     Builtin {
@@ -95,6 +96,7 @@ enum Type {
     OptionNone,
     EnumConstructor {
         enum_name: Symbol,
+        enum_item: Option<PackageItemId>,
         variant_name: Symbol,
     },
     Function(FunctionSig),
@@ -441,6 +443,24 @@ impl TypeChecker {
         self.check_expr_with_expected(expr, None)
     }
 
+    fn check_call_callee(&mut self, callee: &Expr) -> Type {
+        if let Expr::Ident(ident) = callee {
+            let name = self.symbol(&ident.name);
+            if let Some(binding) = self.lookup(name).cloned()
+                && matches!(binding.ty, Type::EnumConstructor { .. })
+            {
+                self.identifier_refs.push(TypedIdentifier {
+                    expr_id: ident.id,
+                    name,
+                    span: ident.span,
+                    binding: binding.id,
+                });
+                return self.record_expr_type(ident.id, ident.span, binding.ty);
+            }
+        }
+        self.check_expr(callee)
+    }
+
     fn check_expr_with_expected(&mut self, expr: &Expr, expected: Option<Type>) -> Type {
         let span = expr.span();
         let ty = match expr {
@@ -462,15 +482,13 @@ impl TypeChecker {
                     }
                     if let Type::EnumConstructor {
                         enum_name,
+                        enum_item: _,
                         variant_name,
                     } = binding.ty
                     {
-                        let Some(expected) = expected else {
-                            return self.record_expr_type(expr.id, span, binding.ty);
-                        };
                         let ty = self.check_user_enum_constructor(
                             expr.span,
-                            Some(expected),
+                            expected,
                             enum_name,
                             variant_name,
                             &[],
@@ -479,6 +497,9 @@ impl TypeChecker {
                     }
                     self.apply_expected(binding.ty, expected, expr.span)
                 } else {
+                    if let Some((enum_name, variant_name)) = split_variant_name(&expr.name) {
+                        self.diagnose_unknown_enum_variant(enum_name, variant_name, expr.span);
+                    }
                     Type::Error
                 }
             }
@@ -546,7 +567,7 @@ impl TypeChecker {
                 }
             },
             Expr::Call(expr) => {
-                let callee_ty = self.check_expr(&expr.callee);
+                let callee_ty = self.check_call_callee(&expr.callee);
                 let ty = match self.resolve_type(&callee_ty) {
                     Type::Builtin(BuiltinId::Print | BuiltinId::Println) => {
                         if expr.args.len() != 1 {
@@ -786,6 +807,7 @@ impl TypeChecker {
                     ),
                     Type::EnumConstructor {
                         enum_name,
+                        enum_item: _,
                         variant_name,
                     } => self.check_user_enum_constructor(
                         expr.span,
@@ -993,6 +1015,7 @@ impl TypeChecker {
                     kind,
                     Type::EnumConstructor {
                         enum_name: name,
+                        enum_item: enumeration.package_item,
                         variant_name,
                     },
                     variant.span,
@@ -1699,6 +1722,35 @@ impl TypeChecker {
         enum_ty
     }
 
+    fn diagnose_unknown_enum_variant(&mut self, enum_name: &str, variant_name: &str, span: Span) {
+        let enum_symbol = self.symbol(enum_name);
+        let variant_symbol = self.symbol(variant_name);
+        if let Some(enumeration) = self.enums.get(&enum_symbol) {
+            if enumeration
+                .variants
+                .iter()
+                .any(|variant| variant.name == variant_symbol)
+            {
+                return;
+            }
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "T022",
+                    format!("unknown variant `{variant_name}` for enum `{enum_name}`"),
+                    span,
+                )
+                .with_related("enum is declared here", enumeration.span),
+            );
+            return;
+        }
+
+        self.diagnostics.push(Diagnostic::new(
+            "T022",
+            format!("unknown enum `{enum_name}` in variant constructor"),
+            span,
+        ));
+    }
+
     fn check_match_expr(&mut self, expr: &MatchExpr, expected: Option<Type>) -> Type {
         let value_ty = self.check_expr(&expr.value);
         let spec = self.enum_match_spec_for_value(&value_ty, expr.value.span());
@@ -2318,7 +2370,7 @@ impl TypeChecker {
                         self.diagnostics.push(Diagnostic::new(
                             "T022",
                             format!(
-                                "{} expects exactly {} type arguments",
+                                "enum `{}` expects exactly {} type arguments",
                                 generic.name,
                                 enumeration.type_params.len()
                             ),
@@ -2473,9 +2525,11 @@ impl TypeChecker {
             Type::Builtin(builtin) => Type::Builtin(*builtin),
             Type::EnumConstructor {
                 enum_name,
+                enum_item,
                 variant_name,
             } => Type::EnumConstructor {
                 enum_name: *enum_name,
+                enum_item: *enum_item,
                 variant_name: *variant_name,
             },
             other => other.clone(),
@@ -2511,9 +2565,11 @@ impl TypeChecker {
             Type::OptionNone => TypeInfo::Builtin(BuiltinId::OptionNone),
             Type::EnumConstructor {
                 enum_name,
+                enum_item,
                 variant_name,
             } => TypeInfo::EnumConstructor {
                 enum_symbol: enum_name,
+                enum_item,
                 variant: variant_name,
             },
             Type::Unknown(_) => TypeInfo::Unknown,
@@ -2597,12 +2653,14 @@ impl TypeChecker {
                 .unwrap_or(TypedCalleeInfo::Error),
             Type::EnumConstructor {
                 enum_name,
+                enum_item,
                 variant_name,
             } => self
                 .binding_for_expr(callee.id())
                 .map(|binding| TypedCalleeInfo::EnumVariant {
                     binding,
                     enum_name: *enum_name,
+                    enum_item: *enum_item,
                     variant_name: *variant_name,
                 })
                 .unwrap_or(TypedCalleeInfo::Error),
@@ -2753,6 +2811,15 @@ impl Type {
             Self::Unknown(_) => "Unknown",
             Self::Error => "Error",
         }
+    }
+}
+
+fn split_variant_name(name: &str) -> Option<(&str, &str)> {
+    let (enum_name, variant_name) = name.rsplit_once("::")?;
+    if enum_name.is_empty() || variant_name.is_empty() {
+        None
+    } else {
+        Some((enum_name, variant_name))
     }
 }
 

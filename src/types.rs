@@ -26,6 +26,7 @@ pub enum TypeInfo {
     Result(Box<TypeInfo>, Box<TypeInfo>),
     EnumConstructor {
         enum_symbol: Symbol,
+        enum_item: Option<PackageItemId>,
         variant: Symbol,
     },
     Function(FunctionTypeInfo),
