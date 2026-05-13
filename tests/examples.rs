@@ -3812,6 +3812,10 @@ fn main(): Int {
     let program = muga::compile_mir_source(source).unwrap();
     assert_eq!(program.entry.statements.len(), 0);
     assert_eq!(program.entry.function_defs.len(), 1);
+    assert!(matches!(
+        program.entry.terminator,
+        muga::mir::BodyTerminator::Effect
+    ));
     let main_def = &program.entry.function_defs[0];
     assert_eq!(program.symbols.resolve(main_def.name), "main");
 
@@ -3827,8 +3831,9 @@ fn main(): Int {
         muga::mir::Stmt::Assign(_)
     ));
     assert!(matches!(
-        main.body.result.as_deref(),
-        Some(muga::mir::Expr::Binary(_))
+        &main.body.terminator,
+        muga::mir::BodyTerminator::Return(result)
+            if matches!(result.as_ref(), muga::mir::Expr::Binary(_))
     ));
 }
 
@@ -3871,14 +3876,12 @@ fn main(): Int {
         muga::mir::Stmt::Assign(stmt) => stmt.name,
         _ => panic!("expected assign statement"),
     };
-    let final_symbol = match function
-        .body
-        .result
-        .as_deref()
-        .expect("function body should have a result")
-    {
-        muga::mir::Expr::Ident(expr) => expr.name,
-        _ => panic!("expected final identifier"),
+    let final_symbol = match &function.body.terminator {
+        muga::mir::BodyTerminator::Return(result) => match result.as_ref() {
+            muga::mir::Expr::Ident(expr) => expr.name,
+            _ => panic!("expected final identifier"),
+        },
+        muga::mir::BodyTerminator::Effect => panic!("function body should return a value"),
     };
     assert_eq!(value_symbol, final_symbol);
     assert_eq!(program.symbols.resolve(value_symbol), "value");
