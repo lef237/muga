@@ -943,8 +943,9 @@ It currently:
 - exposes package-wide typed HIR aggregated from unflattened module check outputs with remapped local IDs and symbols
 - can collect dependency signatures directly from loaded in-memory or persisted package interfaces for package-aware module checks without reading dependency implementation source
 - can build loaded-interface dependency package graph metadata directly from package interfaces without dependency AST stubs
-- routes `muga check --artifact-root` through the package-aware artifact path
+- routes `muga check --artifact-root` and `muga run --artifact-root` through explicit package artifact paths
 - emits `.mgi` interface artifacts from the package-aware typed HIR aggregate
+- emits `.mgb` package implementation artifacts containing the source bodies needed for artifact-backed execution
 - returns package-aware typed HIR from loaded/interface-artifact typed compilation paths
 - can lower package-aware typed HIR through the existing HIR/bytecode VM path
 - generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
@@ -952,9 +953,9 @@ It currently:
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
 - includes loaded direct/transitive dependency interface hashes in `.mgc` check cache keys
 - writes `.mgc` check cache artifacts only after package-aware artifact checking succeeds
-- still flattens loaded packages into one internal program before the main resolver/typechecker/runtime path
+- validates `.mgb` artifacts against loaded `.mgi` interface hashes before artifact-backed execution and rejects missing or stale dependency implementation artifacts without source-tree fallback
 
-Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns only package naming and source-root inference. Artifact-backed checking and artifact emission are explicit CLI workflows through `--artifact-root`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. Project-level artifact-root config should be reconsidered after dependency declarations, lockfiles, and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.
+Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns only package naming and source-root inference. Artifact-backed checking, running, and artifact emission are explicit CLI workflows through `--artifact-root`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. Project-level artifact-root config should be reconsidered after dependency declarations, lockfiles, and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.
 
 This is enough to validate the package surface and the next interface boundary. It is not the final compilation model. The dependency layers in 17.1 to 17.10 are target design, to be implemented incrementally on top of the existing manifest, package graph, typed HIR, and interface-summary work.
 

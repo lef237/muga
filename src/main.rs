@@ -34,7 +34,11 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Mode::Run => match muga::run_path(Path::new(&cli.path)) {
+        Mode::Run => match if let Some(artifact_root) = &cli.artifact_root {
+            muga::run_path_against_artifact_root(Path::new(&cli.path), Path::new(artifact_root))
+        } else {
+            muga::run_path(Path::new(&cli.path))
+        } {
             Ok(outcome) => {
                 let has_output = !outcome.output_text.is_empty();
                 if has_output {
@@ -201,11 +205,15 @@ impl Cli {
         if artifact_root.is_some()
             && !matches!(
                 mode,
-                Mode::Check | Mode::EmitInterface | Mode::EmitCheckCache | Mode::EmitArtifacts
+                Mode::Check
+                    | Mode::Run
+                    | Mode::EmitInterface
+                    | Mode::EmitCheckCache
+                    | Mode::EmitArtifacts
             )
         {
             return Err(
-                "--artifact-root is only supported with `check`, `emit-interface`, `emit-check-cache`, or `emit-artifacts`"
+                "--artifact-root is only supported with `check`, `run`, `emit-interface`, `emit-check-cache`, or `emit-artifacts`"
                     .to_string(),
             );
         }
