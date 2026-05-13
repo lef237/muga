@@ -128,7 +128,7 @@ pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Di
     }
     let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
     let module_checks = typecheck_loaded_package_modules(&packages, &signatures)?;
-    let typed_program = compile_typed_path(path)?;
+    let typed_program = entry_typed_program(&packages, &module_checks)?;
     Ok(PackageAwareCheck {
         packages,
         signatures,
@@ -153,8 +153,7 @@ pub fn check_package_aware_path_against_loaded_interfaces(
     }
     let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
     let module_checks = typecheck_loaded_package_modules(&packages, &signatures)?;
-    let typed_program =
-        compile_typed_path_against_loaded_interfaces(path, interfaces, interface_symbols)?;
+    let typed_program = entry_typed_program(&packages, &module_checks)?;
     Ok(PackageAwareCheck {
         packages,
         signatures,
@@ -187,8 +186,13 @@ fn typecheck_loaded_package_modules(
             if has_diagnostics {
                 continue;
             }
-            let typed_program =
+            let mut typed_program =
                 typed_hir::lower(&file.program, &type_output, packages.package_graph.clone());
+            attach_package_items_to_module_typed_program(
+                &mut typed_program,
+                &packages.package_graph,
+                module_id,
+            );
             module_checks.push(PackageModuleCheck {
                 package: package_id,
                 module: module_id,
@@ -202,6 +206,64 @@ fn typecheck_loaded_package_modules(
         Ok(module_checks)
     } else {
         Err(diagnostics)
+    }
+}
+
+fn entry_typed_program(
+    packages: &package::LoadedPackageGraph,
+    module_checks: &[PackageModuleCheck],
+) -> Result<TypedHirProgram, Vec<Diagnostic>> {
+    module_checks
+        .iter()
+        .find(|check| {
+            check.package == packages.entry_package && check.module == packages.entry_module
+        })
+        .map(|check| check.typed_program.clone())
+        .ok_or_else(|| {
+            vec![Diagnostic::new(
+                "PK018",
+                "entry module was not typechecked in package-aware checking",
+                Default::default(),
+            )]
+        })
+}
+
+fn attach_package_items_to_module_typed_program(
+    program: &mut TypedHirProgram,
+    package_graph: &package::PackageSymbolGraph,
+    module: identity::ModuleId,
+) {
+    for statement in &mut program.statements {
+        match statement {
+            typed_hir::Stmt::Record(record) => {
+                record.package_item = record.package_item.or_else(|| {
+                    package_graph.item_id_in_module(
+                        module,
+                        &record.name,
+                        package::PackageItemKind::Record,
+                    )
+                });
+            }
+            typed_hir::Stmt::Enum(enumeration) => {
+                enumeration.package_item = enumeration.package_item.or_else(|| {
+                    package_graph.item_id_in_module(
+                        module,
+                        &enumeration.name,
+                        package::PackageItemKind::Enum,
+                    )
+                });
+            }
+            typed_hir::Stmt::Function(function) => {
+                function.package_item = function.package_item.or_else(|| {
+                    package_graph.item_id_in_module(
+                        module,
+                        &function.name,
+                        package::PackageItemKind::Function,
+                    )
+                });
+            }
+            _ => {}
+        }
     }
 }
 

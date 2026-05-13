@@ -180,6 +180,7 @@ Implemented:
 - library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before handing valid programs to the legacy typed checking path
 - package-aware source and per-module signature environments derived from the unflattened package graph, preserving package item identity, module/same-package/import visibility, and generic enum signature arity
 - initial package-aware module body typechecking against those module signature environments, with per-module typecheck outputs and typed HIR programs retained by the package-aware API
+- package-aware checks return the entry module typed HIR from the unflattened module check output instead of the legacy flattened typed path
 - package-aware checking can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies
 
 Not implemented yet:
@@ -187,12 +188,12 @@ Not implemented yet:
 - user-defined generic records and generic functions
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
-- full package-aware typechecking without the legacy flattened typed path, project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, MIR, and native code generation
+- full package-wide typed HIR aggregation without flattening, package-aware execution, project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, MIR, and native code generation
 - error propagation syntax such as `try expr`
 
 ## Planned Priority
 
-The next implementation slice is continuing the package-aware checking migration: broaden package-aware module body typechecking and reduce the remaining entry-level dependency on the legacy flattened typed path.
+The next implementation slice is continuing the package-aware checking migration: broaden package-aware module body typechecking and then design package-wide typed HIR aggregation without flattening.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
