@@ -620,17 +620,14 @@ emit executable/library
 
 The current codebase should move toward the ideal in this order:
 
-1. Add user-defined enum identity to the semantic model.
-2. Complete stable `ItemRef` / `InterfaceTypeRef` for interface design. The current `.mgi` v2 text no longer writes session-local package/item IDs, but it still maps through the existing `TypeInfo` model instead of a first-class interface type model.
-3. Introduce stable `VariantRef` and include variants in the interface model.
-4. Define public API hash vs recheck fingerprint before writing persisted interfaces.
+1. Finish dependency-body-free package execution for the reference VM while keeping artifact roots explicit on the CLI.
+2. Preserve `.mgi` as the public interface artifact and `.mgc` as the check-cache proof; add a separate implementation/execution artifact if persisted dependency bodies are needed for `run`.
+3. Keep interface generation on package-aware typed HIR and move the serialized interface model toward first-class `InterfaceTypeRef` / `ItemRef` / `VariantRef` data after the v1 package workflow is closed.
+4. Replace remaining compatibility uses of flattened AST/HIR only when they are on the v1 package/artifact path.
 5. Replace compiler-known `Option` / `Result` special cases with prelude enum metadata where possible.
-6. Continue replacing the remaining compatibility uses of flattened AST/HIR now that default package `check_path`, `compile_typed_path`, and loaded-interface typed compilation use the package-aware graph.
-7. Keep interface generation on package-aware typed HIR and move the serialized interface model toward first-class `InterfaceTypeRef` / `ItemRef` data.
-8. Make package import lookup consume interfaces as its primary input.
-9. Mature MIR from the current expression-shaped backend IR into a control-flow-oriented IR, then lower VM bytecode from that form.
-10. Remove the old untyped HIR compatibility API once external callers no longer need it.
-11. Split large files by responsibility before splitting into workspace crates.
+6. Mature MIR from the current expression-shaped backend IR into a control-flow-oriented IR, then lower VM bytecode from that form.
+7. Remove old compatibility APIs once external callers no longer need them.
+8. Split large files by responsibility before splitting into workspace crates.
 
 Completed structural steps:
 
@@ -641,9 +638,13 @@ Completed structural steps:
 - loaded-interface typed compilation no longer synthesizes dependency interface AST stubs or routes them through the legacy flattened typed path
 - VM bytecode now consumes `mir::Program`
 - default compile APIs lower typed HIR into MIR; the legacy untyped AST-to-HIR compatibility module has been removed
+- user-defined enum declarations carry identity through typed HIR, package interfaces, MIR/bytecode, and runtime values
+- package-aware default `check`, `compile_typed_path`, interface artifact emission, and loaded-interface typed compilation use the unflattened package-aware semantic path
+- bytecode/runtime name references carry optional binding identity, lowered local identity, and display symbols; runtime environments are slot-backed by `LocalId`
 
 Critical current risks to eliminate:
 
+- normal package execution still reads dependency source bodies; artifact-backed execution needs persisted implementation bodies or an equivalent execution artifact
 - resolver and typechecker still build scopes independently
 - MIR is still expression-shaped, though it now has explicit execution bodies, body terminators, hoisted body-local function definitions, typed binding/package-item identity, typed assignment update mode, runtime names carrying binding/local identity, and slot-backed runtime environments with package function references canonicalized to their defining binding, and is not yet a control-flow-oriented backend IR
 - package interfaces still use session-local IDs and compiler-owned type structs in memory, even though `.mgi` v2 maps stable artifact identities back into fresh session IDs when loaded

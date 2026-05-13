@@ -51,7 +51,8 @@ The completed migration foundation includes:
 - identifier-reference analysis records with `ExprId`, source spans, and `BindingId`
 - expression type results from typechecking
 - typed HIR nodes that preserve resolved local/package targets
-- current runtime and bytecode behavior kept unchanged during the transition
+- bytecode name references that carry semantic binding identity, lowered local identity, and display symbols
+- runtime environments keyed by lowered `LocalId` slots instead of display-name lookup
 
 Source spans are still kept for diagnostics, but analysis consumers should prefer explicit node identity. The current AST carries `ExprId` and `StmtId`, and resolver/typechecker outputs use `ExprId` for identifier references and expression types. Package flattening renumbers node IDs after combining files so IDs remain unique inside the final checked program.
 
@@ -110,7 +111,7 @@ Current typed HIR status:
 - package item statements, call targets, and package record types carry `PackageItemId`-backed identity
 - typed HIR lowering reads package item identity from the AST instead of recovering it from flattened mangled names
 - `Option` and `Result` match patterns are represented as enum variant patterns with enum name, variant name, and optional payload binding
-- compiler-known enum metadata currently describes `Option` and `Result` and feeds current match validation plus runtime construction/branching
+- compiler-known enum metadata describes `Option` and `Result`, while user-defined enum declarations carry package item identity through typed HIR, package interfaces, MIR lowering, bytecode, and runtime values
 
 ## Current Migration Status
 
@@ -130,23 +131,24 @@ Done:
 - typed HIR package identifiers, public item statements, call targets, and record types point to package item identities
 - shared public `TypeInfo` data lives in `types` instead of being owned by typechecker internals
 - diagnostics support related notes and suggestions for selected resolver, typechecker, and package errors
-- `interface` can generate in-memory package interface summaries for public records and functions from typed HIR item identities
+- `interface` can generate in-memory package interface summaries for public records, enums, and functions from typed HIR item identities
 - `interface` validates public package references against generated interface summaries
 - `interface` validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup is routed through `interface::PackageExportGraph` before whole-program flattening
 - `interface::PackageExportGraph` can be derived from either package identity data or typed package interface summaries
-- local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` / `Result[T, E]` / `Map[K, V]` `TypeInfo` cases, typed prelude list and map operations, direct list indexing, typed Option/Result construction, typed Option/Result `match`, enum-variant-shaped match patterns, and compiler-known enum metadata for Option/Result variants are in place
+- local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` / `Result[T, E]` / `Map[K, V]` `TypeInfo` cases, typed prelude list and map operations, direct list indexing, typed Option/Result construction, typed Option/Result `match`, user-defined enum declarations, enum-variant-shaped match patterns, and compiler-known enum metadata for Option/Result variants are in place
 - resolver, typechecker output, runtime, and package builtin filtering share `prelude::BuiltinId` as the single builtin identity
 - MIR is the backend boundary for default compile APIs, and bytecode/runtime name references now carry optional semantic `BindingId`, lowered `LocalId`, and display symbols for diagnostics; bytecode exposes local metadata for binding-backed and synthetic locals; runtime environments are slot-backed by `LocalId`
 
 Remaining:
 
-1. extend enum/variant identity from compiler-known `Option` / `Result` metadata to user-defined enums
-2. make downstream package checking consume typed package interface summaries instead of the source-level export surface
-3. continue expanding structured diagnostics as new enum and interface errors are introduced
+1. implement dependency-body-free package execution without reading dependency implementation source bodies under `--artifact-root`
+2. add a separate implementation/execution artifact if persisted dependency bodies are needed for artifact-backed `run`; keep `.mgi` as interface data and `.mgc` as check-cache proof
+3. continue expanding structured diagnostics as artifact-backed execution, cache, and interface errors are introduced
+4. move serialized interface internals toward first-class `InterfaceTypeRef` / stable item-reference data after the v1 package workflow is closed
 
 ## Foundation Note
 
-Typed HIR, package symbol graph, `interface::PackageExportGraph`, and in-memory package summaries are now the foundation for the remaining interface work.
+Typed HIR, package symbol graph, `interface::PackageExportGraph`, in-memory package summaries, MIR `LocalId`, and bytecode local metadata are now the foundation for the remaining v1 package work.
 
-They add reusable compiler data without replacing the current VM execution path. The remaining tasks should build on that foundation instead of reintroducing string-based lookup or package flattening as long-term architecture.
+They add reusable compiler data while keeping the VM as the reference execution backend. The remaining tasks should build on that foundation instead of reintroducing string-based lookup, display-name runtime lookup, or package flattening as long-term architecture.
