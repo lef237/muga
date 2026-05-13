@@ -167,11 +167,11 @@ Implemented:
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
-- unflattened package graph loading for package/module/item/export metadata, used as the next package-aware checking migration point
+- unflattened package graph loading for package/module/item/export metadata, used by the default package-aware checking path
 - typed HIR with resolved call shape, call origin, expression types, local binding identity, and package item identity
 - in-memory package interface summaries for public records/enums/functions plus validation of public package references against those summaries
 - hardened enum diagnostics, package enum visibility checks, imported `alias::Enum::Variant` constructors/patterns, and package enum call-target identity
-- deterministic v1 package interface text persistence with content hashes, direct dependency metadata, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
+- deterministic v2 package interface text persistence with stable artifact package/item IDs, content hashes, direct dependency metadata, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
 - downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts, including transitive public-signature type dependencies, without reading dependency implementation bodies
 - package check cache keys combine entry package source content with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` validates package entries through package-aware checks against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
@@ -185,6 +185,7 @@ Implemented:
 - loaded-interface package-aware checks build dependency package graph metadata directly from package interfaces instead of loading dependency AST stubs
 - package-aware typed HIR can lower through the MIR/bytecode VM path, including imported package records/enums/functions
 - default package `run` lowers package-aware typed HIR through MIR before bytecode generation
+- bytecode/runtime name references carry semantic binding identity, lowered local identity, and display symbols; runtime environments are slot-backed by lowered `LocalId`
 
 Not implemented yet:
 
@@ -196,9 +197,9 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is continuing MIR maturation while keeping package artifact roots explicit.
+The next implementation slice is dependency-body-free package execution while keeping package artifact roots explicit. Artifact-backed `check` can already consume `.mgi` and `.mgc` artifacts without dependency implementation bodies; artifact-backed `run` still needs an implementation/execution artifact path for dependencies.
 
-After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
+Control-flow MIR, native backend work, generic records/functions, wildcard-heavy pattern matching, and `try expr` remain deferred until the v1 package/artifact workflow is closed. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md) and [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md).
 
 ## Samples
 
@@ -253,7 +254,7 @@ Package layout note:
 - Source files import logical package paths such as `my_service::users`, not filesystem paths such as `../users`.
 - In manifest project mode, `name = "my_service"` and `source = "src"` let `src/users/` map to `my_service::users` without nesting another `my_service/` directory under `src/`.
 - Without a nearby `muga.toml`, a package file must start with an explicit `package ...` declaration before it can use `import`, `pub`, or `pkg`.
-- The target distribution model is manifest-based and should use cached package interfaces for fast rebuilds. The compiler library and CLI can emit and consume `.mgi` and `.mgc` artifacts for explicit artifact-backed checks, but project-mode artifact-root config and automatic artifact reuse are not implemented yet.
+- The target distribution model is manifest-based and should use cached package interfaces and implementation artifacts for fast rebuilds. The compiler library and CLI can emit and consume `.mgi` and `.mgc` artifacts for explicit artifact-backed checks, but dependency-body-free execution, project-mode artifact-root config, and automatic artifact reuse are not implemented yet.
 - See [spec/006-packages.md](./spec/006-packages.md) for the large-project layout and distribution model.
 
 ## License

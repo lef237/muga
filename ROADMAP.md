@@ -48,10 +48,10 @@ Current architectural gaps:
 
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
-- normal package execution still reads dependency source bodies; dependency-body-free execution is not implemented
-- remaining package work is MIR maturation plus normal project/artifact integration; package-aware checking is now the default package validation path
+- normal package execution still reads dependency source bodies; dependency-body-free execution is the primary remaining v1 package gap
+- remaining package work is dependency-body-free execution, explicit artifact workflow hardening, and normal project/artifact integration; package-aware checking is now the default package validation path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
-- VM bytecode execution now consumes an initial expression-shaped MIR with explicit execution bodies, body terminators, hoisted body-local function definitions, typed binding/package-item identity, typed assignment update mode, runtime names carrying binding/local identity, and slot-backed runtime environments with package function references canonicalized to their defining binding; control-flow-oriented MIR and native lowering are not implemented
+- VM bytecode execution now consumes an initial expression-shaped MIR with explicit execution bodies, body terminators, hoisted body-local function definitions, typed binding/package-item identity, typed assignment update mode, runtime names carrying binding/local identity, and slot-backed runtime environments with package function references canonicalized to their defining binding; control-flow-oriented MIR and native lowering are post-v1 unless needed to close a concrete artifact/execution gap
 - default compile APIs lower typed HIR into MIR; the old untyped AST-to-HIR compatibility module has been removed
 
 ## Settled Direction
@@ -81,15 +81,14 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice should keep artifact roots explicit on the CLI and move toward package-aware checking:
+The next code slices should convert the completed package-aware checking foundation into a v1-ready package/artifact experience:
 
-1. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist.
-2. Keep `muga emit-artifacts` and `muga check --artifact-root` as the explicit artifact workflow.
-3. Preserve the existing `.mgi` / `.mgc` artifact reuse semantics without silently falling back to dependency implementation bodies.
-4. Use the unflattened package graph as the migration point for package-aware checking.
-5. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
-6. Keep native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production and MIR are stable.
-7. Continue maturing MIR away from the expression-shaped compatibility model; loaded-interface signatures should stay semantic inputs, not synthesized AST.
+1. Treat the current MIR/runtime identity cleanup as a foundation-closing slice, not an open-ended backend rewrite. The VM should execute checked package programs by lowered local identity and semantic package identity, but control-flow MIR and native lowering should wait unless they are required to close a concrete v1 execution gap.
+2. Implement dependency-body-free package execution next. `check --artifact-root` can already avoid dependency implementation bodies; `run` still needs an equivalent package/interface boundary for dependencies.
+3. Keep artifact roots explicit on the CLI for v1. `muga emit-artifacts`, `muga check --artifact-root`, and any run-time artifact-root flag should fail loudly on missing or stale artifacts instead of silently falling back to dependency source bodies.
+4. Harden the explicit artifact workflow with samples, diagnostics, and documentation before adding manifest-owned artifact configuration.
+5. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist. Revisit it later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
+6. Keep generic records/functions, wildcard enum patterns, `try expr`, native backend work, broad stdlib effects, and full incremental reuse deferred unless one becomes necessary to finish the v1 package/artifact path.
 
 ## Compiler Architecture Path
 
@@ -137,7 +136,8 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- package-aware checking after transitive interface artifact reuse
+- dependency-body-free package execution and the implementation/execution artifact format
+- explicit `run --artifact-root` semantics for missing, stale, or mismatched dependency artifacts
 - eventual project-mode artifact-root config after dependency declarations and lockfiles
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported
@@ -169,12 +169,10 @@ These should stay deferred unless the active implementation slice requires them:
 
 ## Short Version
 
-The coherent path is:
+The coherent path to v1 is:
 
-1. persisted package interfaces
-2. package checking without flattening
-3. cache and incremental compilation
-4. MIR
-5. native backend
-6. structured concurrency
-7. practical standard library
+1. close the MIR/runtime identity foundation for the reference VM
+2. make package execution work without dependency implementation bodies
+3. keep `emit-artifacts` / `check --artifact-root` / artifact-backed execution explicit and non-silent
+4. document and test the v1 package workflow end to end
+5. only then resume larger post-v1 work: control-flow MIR, native backend, richer generics, structured concurrency, and practical standard library expansion

@@ -1,13 +1,26 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-13 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, and an initial MIR bytecode boundary.
+Status: current implementation ledger for 2026-05-13 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, and slot-backed runtime locals keyed by lowered local identity.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
+## V1 Route To Preserve
+
+The current phase is foundation closure for v1, not open-ended compiler idealization. Package-aware checking, persisted interfaces, explicit check artifacts, package-wide typed HIR aggregation, MIR-backed bytecode generation, and slot-backed runtime locals are already in place. The next work should turn that foundation into a complete v1 package workflow.
+
+Recommended order:
+
+1. Close the current MIR/runtime identity foundation at the reference-VM boundary. Do enough to keep execution keyed by lowered local identity and semantic package identity; do not start control-flow MIR or native lowering before v1 unless a concrete artifact-backed execution bug requires it.
+2. Implement dependency-body-free package execution. Artifact-backed `check` already avoids dependency implementation bodies; artifact-backed `run` should do the same.
+3. Keep the artifact root explicit on the CLI. Extend the explicit workflow before adding any `muga.toml` artifact-root configuration.
+4. Preserve `.mgi` as the public interface artifact and `.mgc` as the check-cache proof. Do not stretch `.mgc` into an executable body store; add a separate implementation/execution artifact for VM bytecode or MIR-backed bodies if execution needs persisted dependency implementations.
+5. Make missing, stale, or hash-mismatched execution artifacts hard errors under `--artifact-root`; do not silently read dependency source bodies in artifact-backed execution.
+6. After artifact-backed execution is green, harden samples, README/spec notes, and diagnostics. Keep generic records/functions, wildcard enum patterns, `try expr`, native backend work, broad stdlib effects, and full incremental reuse deferred unless one is required to finish the v1 package/artifact path.
+
 ## Verification Snapshot
 
-- [x] `cargo test --locked` passed after introducing the initial MIR bytecode boundary: 249 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after introducing the initial MIR bytecode boundary.
+- [x] `cargo fmt --check`, `git diff --check`, `cargo check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest MIR/runtime identity slice.
+- [x] `cargo test --locked` passed after slot-backed runtime locals and bytecode local metadata: 258 tests, 0 failures.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -202,74 +215,39 @@ Ada
 
 ## Recommended Next Implementation
 
-The next implementation theme is maturing MIR while keeping artifact roots explicit on the CLI. The current package-aware path validates package boundary rules, builds source/module signatures from the unflattened graph, runs module body checks, backs default package `check` and package typed compilation, exposes per-module plus package-wide typed HIR without flattening, and lowers execution through an initial expression-shaped MIR before bytecode generation.
+The next implementation theme is dependency-body-free package execution while keeping artifact roots explicit on the CLI. The current package-aware path validates package boundary rules, builds source/module signatures from the unflattened graph, runs module body checks, backs default package `check` and package typed compilation, exposes per-module plus package-wide typed HIR without flattening, and lowers execution through an initial expression-shaped MIR before bytecode generation. Artifact-backed `check` can already consume `.mgi` and `.mgc` artifacts without dependency implementation bodies; normal `run` still reads dependency source bodies.
 
 Reasoning:
 
-- `List[T]`, `Option[T]`, and `Map[K, V]` now cover the first collection slice.
-- `Map.get` and `List.get` already depend on `Option[T]`, so the compiler has a working enum-like subset.
-- `Result[T, E]` now proves the same enum metadata, runtime value, typed HIR, and package-interface path for a second generic enum.
-- General IO, process, HTTP, time, and concurrency APIs can use explicit `Result` before any propagation sugar is added.
-- User-defined enum declarations, runtime values, typed HIR, and in-memory public interface summaries are now represented.
-- Enum integration hardening now covers diagnostics, imported constructors/patterns, visibility errors, package enum call-target identity, and stale interface validation.
-- Persisted package interfaces now round-trip record/function/enum identity, type parameters, variants, payload types, public signatures, and source spans.
-- Loaded package interfaces can now be used for downstream signature/type checking without dependency implementation bodies.
-- Interface artifacts can now be discovered from an explicit root, with missing/hash-mismatched artifacts rejected before checking.
-- Interface artifacts now persist direct dependency paths, and artifact loading follows those paths for transitive public-signature type dependencies.
-- Interface artifact v2 writes stable artifact package/item IDs, and loading remaps persisted IDs into one fresh session namespace so separately generated artifacts can be consumed together.
-- Package check cache keys now include entry source content and loaded direct/transitive dependency interface hashes.
-- Unflattened package graph loading now preserves package files plus package/module/item/export metadata before flattening.
-- Package-aware checking now has source and per-module signature environments that resolve package record/enum/function types without flattening.
-- Package-aware checking now uses those module signatures for body resolver/typecheck passes over each original package file and exposes those outputs through the library API.
-- Default package `check` now treats that package-aware validation as the semantic check and does not reload a flattened AST after validation.
-- Default package `compile_typed_path` now returns the package-aware typed HIR aggregate instead of compiling the flattened AST.
-- CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
-- CLI artifact generation can now produce `.mgi` and checked `.mgc` artifacts for the explicit workflow.
-- `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
-- `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
-- The remaining boundary pieces are control-flow-oriented MIR, fuller artifact storage/reuse, dependency/lockfile-driven project configuration, and dependency-body-free execution.
+- The package-aware semantic boundary is now real enough for `check`; v1 risk has moved from name resolution/flattening to execution and artifact workflow closure.
+- The reference VM now consumes MIR-lowered bytecode with binding/local identity metadata and slot-backed locals, so persisted dependency implementations can be keyed by compiler-owned identity instead of display-name lookup.
+- `.mgi` should remain a public-signature artifact, and `.mgc` should remain a check-cache proof. Execution needs persisted implementation bodies; keep that as a separate implementation/execution artifact rather than overloading either existing format.
+- Artifact-backed `run` must fail loudly when required dependency execution artifacts are missing, stale, or inconsistent with loaded interfaces. It should not silently fall back to dependency source bodies under `--artifact-root`.
+- `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` and `run` semantics ambiguous.
+- Control-flow MIR, native lowering, broad stdlib effects, `try expr`, wildcard-heavy matching, and generic records/functions should remain out of the v1 path unless they become necessary to make artifact-backed execution correct.
 
 ## Requirement Decisions For The Next Slice
 
-Closed before coding the next feature:
+Closed before coding artifact-backed execution:
 
-- [x] `Result[T, E]` lands first as a compiler-known enum-like standard type.
+- [x] Keep `.mgi` as the public interface artifact.
+- [x] Keep `.mgc` as the check-cache proof keyed by entry source and dependency interface hashes.
+- [x] Add a separate implementation/execution artifact if dependency-body-free `run` needs persisted dependency bodies; do not overload `.mgi` or `.mgc` for executable code.
+- [x] Keep `--artifact-root` explicit for v1; do not add `muga.toml` artifact-root configuration before dependency declarations, lockfiles, and a package-aware project driver.
+- [x] Artifact-backed `run` must reject missing, stale, or mismatched execution artifacts instead of falling back to dependency source bodies.
+- [x] Default `run` without `--artifact-root` should remain source-compatible while v1 artifact execution is introduced.
+- [x] Control-flow MIR and native lowering are deferred unless expression-shaped MIR cannot correctly represent the first execution artifact.
+
+Earlier enum/result decisions remain settled:
+
+- [x] `Result[T, E]` landed first as a compiler-known enum-like standard type.
 - [x] The enum declaration syntax is `enum Name[T, E] { Variant | Variant(Type) }`.
-- [x] Variant declarations use newline or comma boundaries, matching record fields.
 - [x] The MVP supports zero-payload and one-payload variants only.
-- [x] Multi-field variants and named-field variants are deferred.
 - [x] Variant constructors and patterns are always qualified as `Enum::Variant`.
 - [x] Match patterns must be exhaustive with no wildcard in the MVP.
 - [x] Package-mode enum declarations use `PackageItemId`.
 - [x] Public enum declarations appear in in-memory package interface summaries.
-- [x] Prefer `try expr` over postfix `?` if Result propagation sugar is added.
-
-Current recommendation:
-
-- Use `enum` as the declaration keyword with optional unconstrained type parameters.
-- Keep variant names qualified in expressions and patterns, matching current `Option::Some` and `Option::None`.
-- MVP variants should support zero or one unnamed payload. This covers `Option[T]` and `Result[T, E]`.
-- Keep wildcard patterns deferred until basic exhaustiveness diagnostics are solid.
-- Keep `Option[T]` canonical; keep `T?` reserved and unimplemented.
-- Keep explicit `Result[T, E]` construction and `match` as the baseline before propagation sugar.
-- If propagation sugar is added, prefer `try expr` because it is visible and avoids overloading `?`.
-- Avoid adding broad stdlib effects until `Result` behavior is stable.
-
-Recommended source shape:
-
-```muga
-enum Result[T, E] {
-  Ok(T)
-  Err(E)
-}
-
-fn value_or_zero(value: Result[Int, String]): Int {
-  match value {
-    Result::Ok(x) => x
-    Result::Err(message) => 0
-  }
-}
-```
+- [x] Prefer `try expr` over postfix `?` if Result propagation sugar is added later.
 
 ## Implementation Plan And Estimate
 
@@ -291,16 +269,30 @@ Estimates are in focused engineering days for someone already familiar with this
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
 | 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
-| 15. Package-aware checking without flattening | Done for the current package checking surface: library-only package-aware boundary checking, source/module signature collection, retained module resolver/typecheck outputs, package-wide typed HIR aggregation, default package `check` and `compile_typed_path`, direct interface-backed dependency signatures/graph metadata, and removal of the interface-stub flattened typed path now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is MIR maturation and fuller artifact reuse. | package/resolver/typing/lib/tests | Done | High |
-| 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 15. Package-aware checking without flattening | Done for the current package checking surface: library-only package-aware boundary checking, source/module signature collection, retained module resolver/typecheck outputs, package-wide typed HIR aggregation, default package `check` and `compile_typed_path`, direct interface-backed dependency signatures/graph metadata, and removal of the interface-stub flattened typed path now run over the unflattened package graph while keeping artifact semantics explicit. Remaining v1 work is dependency-body-free execution and workflow hardening. | package/resolver/typing/lib/tests | Done | High |
+| 16. MIR/runtime identity foundation | Route package-aware typed HIR through MIR into bytecode with explicit body nodes, binding/package-item identity, assignment mode, `NameRef` local identity, slot-backed runtime locals, entrypoint identity, and synthetic local metadata. | `src/mir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/lib.rs`, tests/docs | Done | Medium |
+| 17. Dependency-body-free execution | Add an explicit artifact-backed `run` path that validates `.mgi` / `.mgc`, loads separate dependency implementation/execution artifacts, and executes package dependencies without reading their source bodies. `emit-artifacts` should write every artifact needed by this path. | `src/main.rs`, `src/lib.rs`, `src/cache.rs`, `src/interface.rs`, `src/bytecode.rs`, `src/runtime.rs`, tests/docs | 3-6 days | High |
+| 18. V1 package workflow hardening | Document and test the explicit artifact workflow end to end, including missing/stale artifact diagnostics, default source-compatible execution, and sample package/project commands. | `README.md`, `ROADMAP.md`, `docs/*`, `tests/examples.rs`, samples | 1-2 days | Medium |
+| 19. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Keep this post-v1 unless v1 error-handling docs require the syntax decision. | spec docs first, then parser/typechecker/HIR/runtime | Deferred | High |
 
-The safest immediate code slice is now MIR maturation: make the initial expression-shaped MIR more explicit and backend-oriented while preserving the explicit `.mgi` / `.mgc` workflow and keeping default script execution unchanged.
+The safest immediate code slice is now artifact-backed execution: keep the current expression-shaped MIR/reference VM path, add the minimal implementation artifact needed for dependencies, and make `run --artifact-root` fail loudly instead of reading dependency source bodies.
 
 ## Test Plan For The Next Code Slice
 
-Add tests around these behavioral anchors before enabling artifact-backed package checking by default.
+Add tests around these behavioral anchors before treating artifact-backed package execution as v1-ready.
 
-Package-aware checking:
+Artifact-backed execution:
+
+- [ ] `emit_artifacts_writes_interface_check_and_execution_artifacts`
+- [ ] `run_with_artifact_root_executes_dependency_without_dependency_source_body`
+- [ ] `run_with_artifact_root_rejects_missing_dependency_execution_artifact`
+- [ ] `run_with_artifact_root_rejects_stale_dependency_execution_artifact`
+- [ ] `run_with_artifact_root_rejects_execution_artifact_interface_hash_mismatch`
+- [ ] `run_with_artifact_root_does_not_fall_back_to_dependency_source`
+- [ ] `default_run_without_artifact_root_remains_source_compatible`
+- [ ] `artifact_backed_run_does_not_change_default_run_behavior`
+
+Already-covered package-aware checking anchors:
 
 - [x] `package_aware_checking_preserves_public_import_resolution`
 - [x] `package_aware_checking_rejects_private_cross_package_references`
@@ -333,6 +325,8 @@ Compatibility:
 - [ ] No `muga.toml` artifact-root field is added before dependency declarations and lockfiles.
 - [ ] Artifact-root behavior remains explicit through CLI flags.
 - [ ] Default CLI checking/execution remains unchanged when no artifact root is provided.
+- [ ] Artifact-backed package execution can run dependencies from artifacts without reading dependency implementation source bodies.
+- [ ] Artifact-backed package execution rejects missing, stale, or interface-mismatched execution artifacts without source fallback.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
 ## Resume Checklist
@@ -342,9 +336,9 @@ When resuming implementation:
 1. [ ] Run `cargo test`.
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
-4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
+4. [ ] Read [docs/internal/identity-model.md](internal/identity-model.md) before changing resolver/typechecker/HIR/MIR/runtime identity flow.
 5. [ ] Keep artifact roots explicit on the CLI; do not add `muga.toml` artifact-root config until dependency declarations and lockfiles exist.
-6. [ ] Keep package flattening unchanged for normal execution unless the task explicitly changes package checking.
+6. [ ] Do not reintroduce flattened AST/HIR or dependency source-body lookup as the long-term package boundary.
 7. [ ] After every compiler-core change, verify at least:
 
 ```bash
