@@ -216,7 +216,7 @@ Reasoning:
 - CLI artifact generation can now produce `.mgi` and checked `.mgc` artifacts for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
-- The remaining boundary pieces are broadening package-aware body typechecking coverage, real artifact storage/reuse, dependency/lockfile-driven project configuration, dependency-body-free execution, and eventually making interface-backed checking the normal package path.
+- The remaining boundary pieces are compatibility HIR/VM migration, fuller artifact storage/reuse, dependency/lockfile-driven project configuration, and dependency-body-free execution.
 
 ## Requirement Decisions For The Next Slice
 
