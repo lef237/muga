@@ -951,6 +951,7 @@ It currently:
 - validates typed package references against generated summaries
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
 - includes loaded direct/transitive dependency interface hashes in `.mgc` check cache keys
+- writes `.mgc` check cache artifacts only after package-aware artifact checking succeeds
 - still flattens loaded packages into one internal program before the main resolver/typechecker/runtime path
 
 Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns only package naming and source-root inference. Artifact-backed checking and artifact emission are explicit CLI workflows through `--artifact-root`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. Project-level artifact-root config should be reconsidered after dependency declarations, lockfiles, and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.

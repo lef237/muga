@@ -354,6 +354,7 @@ pub fn write_package_check_cache_artifact_for_root(
     path: &Path,
     artifact_root: &Path,
 ) -> Result<PathBuf, Vec<Diagnostic>> {
+    check_package_aware_path_against_interface_artifacts(path, artifact_root)?;
     let key = cache::compute_package_check_cache_key(path, artifact_root)?;
     let artifact_path = cache::package_check_artifact_path_from_entry(artifact_root, path)?;
     cache::write_package_check_artifact(&artifact_path, &key)

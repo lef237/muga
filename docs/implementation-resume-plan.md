@@ -92,7 +92,7 @@ Ada
 - [x] package check cache keys include entry package source hashes and loaded direct/transitive dependency interface hashes.
 - [x] missing or stale `.mgc` package check artifacts are rejected with regeneration guidance.
 - [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts through the package-aware check path without reading dependency implementation bodies.
-- [x] `muga emit-interface` and `muga emit-check-cache` write `.mgi` and `.mgc` artifacts for explicit artifact-backed checks.
+- [x] `muga emit-interface` writes `.mgi` artifacts and `muga emit-check-cache` writes `.mgc` only after the package checks successfully against `.mgi` artifacts.
 - [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
 - [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking.
 - [x] package-aware checking builds source and per-module signature environments from the unflattened package graph, preserving package item identity for records/enums/functions, validating generic enum arity, and recording module/same-package/import visibility.
@@ -164,7 +164,7 @@ Ada
 - Interface artifacts now record direct dependencies, and artifact discovery follows those dependencies so public signatures can mention types from transitive packages without reading dependency bodies.
 - A library API can compute package check cache keys and validate `.mgc` artifacts against source plus loaded dependency interface hashes.
 - CLI `check --artifact-root` can consume `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
-- CLI `emit-interface` and `emit-check-cache` can produce the artifacts consumed by `check --artifact-root`.
+- CLI `emit-interface` and `emit-check-cache` can produce the artifacts consumed by `check --artifact-root`, with `.mgc` emission gated by a successful package-aware artifact check.
 - CLI `emit-interface` can emit all reachable interfaces without manually naming each dependency package.
 - CLI `emit-artifacts` emits reachable `.mgi` interfaces and the entry `.mgc` check cache in one explicit artifact-root workflow.
 - The package loader can now return unflattened package files with the same package graph/export metadata used by the legacy flattening path.
@@ -203,7 +203,7 @@ Reasoning:
 - Package-aware checking now has source and per-module signature environments that resolve package record/enum/function types without flattening.
 - Package-aware checking now uses those module signatures for body resolver/typecheck passes over each original package file and exposes those outputs through the library API.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
-- CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
+- CLI artifact generation can now produce `.mgi` and checked `.mgc` artifacts for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
 - The remaining boundary pieces are broadening package-aware body typechecking coverage, real artifact storage/reuse, dependency/lockfile-driven project configuration, dependency-body-free execution, and eventually making interface-backed checking the normal package path.
