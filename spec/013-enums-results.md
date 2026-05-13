@@ -1,6 +1,6 @@
 # Enums, Result, And Error Propagation Draft
 
-Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, in-memory package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, and stale enum interface validation. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching. Error propagation syntax is not implemented yet.
+Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, stale enum interface validation, and downstream typed checking from loaded interface summaries. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching. Error propagation syntax is not implemented yet.
 
 ## 1. Goals
 
@@ -266,7 +266,7 @@ Public function signatures may then mention enum types such as:
 pub fn read_file(path: String): Result[String, IOError]
 ```
 
-In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. The v1 persisted interface text format round-trips the same resolved enum identity, type parameters, variants, payload types, public signatures, and source spans. Persisted interfaces also carry deterministic content hashes. Downstream checking from loaded artifacts without dependency bodies is the next package-interface step.
+In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. The v1 persisted interface text format round-trips the same resolved enum identity, type parameters, variants, payload types, public signatures, and source spans. Persisted interfaces also carry deterministic content hashes. Downstream typed checking can use loaded interface summaries without reading dependency implementation bodies; automatic artifact discovery and invalidation are the next package-interface steps.
 
 ## 9. Runtime Representation
 
@@ -307,7 +307,7 @@ Performance-specific representations can be handled later in MIR/native lowering
 
 ## 11. Recommended Phasing
 
-1. Start checking downstream packages against loaded interface artifacts without dependency implementation bodies.
+1. Add package interface artifact discovery and stale-artifact invalidation.
 2. Add package cache integration around interface artifacts.
 3. Revisit `try expr` propagation syntax.
 4. Continue toward MIR/native lowering once package boundaries are real inputs.

@@ -4,15 +4,49 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::{ModuleId, PackageId, PackageItemId};
-use crate::interface::PackageExportGraph;
+use crate::identity::{ExprId, ModuleId, PackageId, PackageItemId, StmtId};
+use crate::interface::{PackageExportGraph, PackageInterface, PackageInterfaceGraph};
 use crate::span::Span;
+use crate::symbol::{Symbol, SymbolTable};
+use crate::types::{FunctionTypeInfo, TypeInfo};
 
 pub fn load_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> {
     Ok(load_from_entry(path)?.program)
 }
 
 pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
+    let (entry_program, manifest) = parse_entry_program(path)?;
+    if entry_program.package.is_none() {
+        return Ok(LoadedProgram {
+            program: entry_program,
+            package_graph: PackageSymbolGraph::default(),
+            package_exports: PackageExportGraph::default(),
+        });
+    }
+
+    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest);
+    loader.load_and_flatten()
+}
+
+pub fn load_from_entry_against_interfaces(
+    path: &Path,
+    interfaces: &PackageInterfaceGraph,
+    interface_symbols: &SymbolTable,
+) -> Result<LoadedProgram, Vec<Diagnostic>> {
+    let (entry_program, manifest) = parse_entry_program(path)?;
+    if entry_program.package.is_none() {
+        return Ok(LoadedProgram {
+            program: entry_program,
+            package_graph: PackageSymbolGraph::default(),
+            package_exports: PackageExportGraph::default(),
+        });
+    }
+
+    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest);
+    loader.load_and_flatten_against_interfaces(interfaces, interface_symbols)
+}
+
+fn parse_entry_program(path: &Path) -> Result<(Program, Option<ProjectManifest>), Vec<Diagnostic>> {
     let entry_source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) => {
@@ -46,16 +80,7 @@ pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
     } else {
         crate::parser::parse(entry_tokens)?
     };
-    if entry_program.package.is_none() {
-        return Ok(LoadedProgram {
-            program: entry_program,
-            package_graph: PackageSymbolGraph::default(),
-            package_exports: PackageExportGraph::default(),
-        });
-    }
-
-    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest);
-    loader.load_and_flatten()
+    Ok((entry_program, manifest))
 }
 
 #[derive(Clone, Debug)]
@@ -256,9 +281,74 @@ impl PackageLoader {
         let package_paths = self.sorted_package_paths();
         let package_graph = self.build_symbol_graph(&package_paths);
         let package_exports = PackageExportGraph::from_symbol_graph(&package_graph);
+        self.flatten_packages(&package_paths, package_graph, package_exports)
+    }
 
+    fn load_and_flatten_against_interfaces(
+        &mut self,
+        interfaces: &PackageInterfaceGraph,
+        interface_symbols: &SymbolTable,
+    ) -> Result<LoadedProgram, Vec<Diagnostic>> {
+        if self.manifest.is_none() {
+            match infer_source_root(&self.entry_file, &self.entry_package) {
+                Ok(source_root) => self.source_root = source_root,
+                Err(diagnostic) => {
+                    self.diagnostics.push(diagnostic);
+                    return Err(std::mem::take(&mut self.diagnostics));
+                }
+            }
+        }
+
+        let entry_package = self.entry_package.clone();
+        let files = self.load_package_files(&entry_package);
+        let entry_data = collect_package_data(&entry_package, files, &mut self.diagnostics);
+        let imported_paths = package_import_paths(&entry_data);
+        self.packages.insert(entry_package.clone(), entry_data);
+
+        for import_path in &imported_paths {
+            if interfaces.package_by_path(import_path).is_none() {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "PK016",
+                        format!("missing loaded package interface for `{import_path}`"),
+                        Span::default(),
+                    )
+                    .with_suggestion("load or regenerate the package interface before checking"),
+                );
+            }
+        }
+
+        for interface in &interfaces.packages {
+            if interface.path == entry_package {
+                continue;
+            }
+            let package_data = stub_package_data_from_interface(
+                interface,
+                interfaces,
+                interface_symbols,
+                &mut self.diagnostics,
+            );
+            self.packages.insert(interface.path.clone(), package_data);
+        }
+
+        if !self.diagnostics.is_empty() {
+            return Err(std::mem::take(&mut self.diagnostics));
+        }
+
+        let package_paths = self.sorted_package_paths();
+        let package_graph = self.build_symbol_graph_against_interfaces(&package_paths, interfaces);
+        let package_exports = PackageExportGraph::from_interfaces(interfaces, &package_graph);
+        self.flatten_packages(&package_paths, package_graph, package_exports)
+    }
+
+    fn flatten_packages(
+        &mut self,
+        package_paths: &[String],
+        package_graph: PackageSymbolGraph,
+        package_exports: PackageExportGraph,
+    ) -> Result<LoadedProgram, Vec<Diagnostic>> {
         let mut statements = Vec::new();
-        for package_path in &package_paths {
+        for package_path in package_paths {
             let Some(package) = self.packages.get(package_path) else {
                 continue;
             };
@@ -320,69 +410,8 @@ impl PackageLoader {
             }
         }
 
-        let mut records: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
-        let mut enums: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
-        let mut functions: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
-
-        for file in &files {
-            for statement in &file.program.statements {
-                match statement {
-                    Stmt::RecordDecl(record) => {
-                        insert_package_item_decl(
-                            &mut records,
-                            PackageItemDeclInput {
-                                name: &record.name,
-                                visibility: record.visibility,
-                                module_path: &file.module_path,
-                                span: record.span,
-                                kind: PackageItemKind::Record,
-                                package_path: package_path.as_str(),
-                            },
-                            &mut self.diagnostics,
-                        );
-                    }
-                    Stmt::EnumDecl(enumeration) => {
-                        insert_package_item_decl(
-                            &mut enums,
-                            PackageItemDeclInput {
-                                name: &enumeration.name,
-                                visibility: enumeration.visibility,
-                                module_path: &file.module_path,
-                                span: enumeration.span,
-                                kind: PackageItemKind::Enum,
-                                package_path: package_path.as_str(),
-                            },
-                            &mut self.diagnostics,
-                        );
-                    }
-                    Stmt::FuncDecl(func) => {
-                        insert_package_item_decl(
-                            &mut functions,
-                            PackageItemDeclInput {
-                                name: &func.name,
-                                visibility: func.visibility,
-                                module_path: &file.module_path,
-                                span: func.span,
-                                kind: PackageItemKind::Function,
-                                package_path: package_path.as_str(),
-                            },
-                            &mut self.diagnostics,
-                        );
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        self.packages.insert(
-            package_path.clone(),
-            PackageData {
-                files,
-                records,
-                enums,
-                functions,
-            },
-        );
+        let package_data = collect_package_data(&package_path, files, &mut self.diagnostics);
+        self.packages.insert(package_path.clone(), package_data);
         self.loading.remove(&package_path);
     }
 
@@ -625,6 +654,232 @@ impl PackageLoader {
                 }
             }
         }
+
+        PackageSymbolGraph {
+            packages,
+            modules,
+            items,
+        }
+    }
+
+    fn build_symbol_graph_against_interfaces(
+        &mut self,
+        package_paths: &[String],
+        interfaces: &PackageInterfaceGraph,
+    ) -> PackageSymbolGraph {
+        let mut package_ids: HashMap<String, PackageId> = interfaces
+            .packages
+            .iter()
+            .map(|interface| (interface.path.clone(), interface.package))
+            .collect();
+        let mut next_package_id = interfaces
+            .packages
+            .iter()
+            .map(|interface| interface.package.as_u32())
+            .max()
+            .map_or(0, |id| id + 1);
+        for package_path in package_paths {
+            package_ids.entry(package_path.clone()).or_insert_with(|| {
+                let id = PackageId::new(next_package_id);
+                next_package_id += 1;
+                id
+            });
+        }
+
+        let max_package_id = package_ids
+            .values()
+            .map(|id| id.as_u32())
+            .max()
+            .unwrap_or(0) as usize;
+        let max_item_id = interfaces
+            .packages
+            .iter()
+            .flat_map(|interface| {
+                interface
+                    .records
+                    .iter()
+                    .map(|record| record.item)
+                    .chain(interface.enums.iter().map(|enumeration| enumeration.item))
+                    .chain(interface.functions.iter().map(|function| function.item))
+            })
+            .map(|id| id.as_u32())
+            .max()
+            .map_or(0, |id| id + 1) as usize;
+
+        let mut package_slots: Vec<Option<PackageInfo>> = vec![None; max_package_id + 1];
+        let mut modules = Vec::new();
+        let mut item_slots: Vec<Option<PackageItemInfo>> = vec![None; max_item_id];
+
+        for package_path in package_paths {
+            let Some(package) = self.packages.get(package_path) else {
+                continue;
+            };
+            let package_id = package_ids[package_path];
+            let mut package_modules = Vec::new();
+            let mut file_modules = HashMap::new();
+            for file in &package.files {
+                let id = ModuleId::new(modules.len() as u32);
+                package_modules.push(id);
+                file_modules.insert(file.module_path.as_str(), id);
+                modules.push(PackageModuleInfo {
+                    id,
+                    package: package_id,
+                    path: file.module_path.clone(),
+                });
+            }
+            let mut imports = Vec::new();
+            for file in &package.files {
+                for import in &file.program.imports {
+                    if let Some(imported_package) = package_ids.get(&import.path) {
+                        imports.push(PackageImportInfo {
+                            alias: import.alias.clone(),
+                            package: *imported_package,
+                            path: import.path.clone(),
+                            span: import.span,
+                        });
+                    }
+                }
+            }
+            package_slots[package_id.as_u32() as usize] = Some(PackageInfo {
+                id: package_id,
+                path: package_path.clone(),
+                modules: package_modules,
+                imports,
+            });
+
+            let package_interface = interfaces.package_by_path(package_path);
+            for file in &package.files {
+                let module_id = file_modules[file.module_path.as_str()];
+                for statement in &file.program.statements {
+                    match statement {
+                        Stmt::RecordDecl(record) => {
+                            let id = interface_item_id(
+                                package_interface,
+                                &record.name,
+                                PackageItemKind::Record,
+                                record.visibility,
+                            )
+                            .unwrap_or_else(|| allocate_package_item_id(&mut item_slots));
+                            insert_package_graph_item(
+                                &mut item_slots,
+                                PackageItemInfo {
+                                    id,
+                                    package: package_id,
+                                    module: module_id,
+                                    name: record.name.clone(),
+                                    kind: PackageItemKind::Record,
+                                    visibility: record.visibility,
+                                    span: record.span,
+                                    mangled_name: mangle_record_name_for_visibility(
+                                        package_path,
+                                        &file.module_path,
+                                        &record.name,
+                                        record.visibility,
+                                    ),
+                                },
+                                &mut self.diagnostics,
+                            );
+                        }
+                        Stmt::EnumDecl(enumeration) => {
+                            let id = interface_item_id(
+                                package_interface,
+                                &enumeration.name,
+                                PackageItemKind::Enum,
+                                enumeration.visibility,
+                            )
+                            .unwrap_or_else(|| allocate_package_item_id(&mut item_slots));
+                            insert_package_graph_item(
+                                &mut item_slots,
+                                PackageItemInfo {
+                                    id,
+                                    package: package_id,
+                                    module: module_id,
+                                    name: enumeration.name.clone(),
+                                    kind: PackageItemKind::Enum,
+                                    visibility: enumeration.visibility,
+                                    span: enumeration.span,
+                                    mangled_name: mangle_enum_name_for_visibility(
+                                        package_path,
+                                        &file.module_path,
+                                        &enumeration.name,
+                                        enumeration.visibility,
+                                    ),
+                                },
+                                &mut self.diagnostics,
+                            );
+                        }
+                        Stmt::FuncDecl(func) => {
+                            let id = interface_item_id(
+                                package_interface,
+                                &func.name,
+                                PackageItemKind::Function,
+                                func.visibility,
+                            )
+                            .unwrap_or_else(|| allocate_package_item_id(&mut item_slots));
+                            insert_package_graph_item(
+                                &mut item_slots,
+                                PackageItemInfo {
+                                    id,
+                                    package: package_id,
+                                    module: module_id,
+                                    name: func.name.clone(),
+                                    kind: PackageItemKind::Function,
+                                    visibility: func.visibility,
+                                    span: func.span,
+                                    mangled_name: mangle_function_name_for_visibility(
+                                        package_path,
+                                        &file.module_path,
+                                        &func.name,
+                                        func.visibility,
+                                        &self.entry_package,
+                                    ),
+                                },
+                                &mut self.diagnostics,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        let fallback_package = package_ids
+            .values()
+            .copied()
+            .next()
+            .unwrap_or_else(|| PackageId::new(0));
+        let fallback_module = modules
+            .first()
+            .map(|module| module.id)
+            .unwrap_or(ModuleId::new(0));
+        let packages = package_slots
+            .into_iter()
+            .enumerate()
+            .map(|(index, package)| {
+                package.unwrap_or_else(|| PackageInfo {
+                    id: PackageId::new(index as u32),
+                    path: format!("<interface-gap-{index}>"),
+                    modules: Vec::new(),
+                    imports: Vec::new(),
+                })
+            })
+            .collect();
+        let items = item_slots
+            .into_iter()
+            .enumerate()
+            .map(|(index, item)| {
+                item.unwrap_or_else(|| PackageItemInfo {
+                    id: PackageItemId::new(index as u32),
+                    package: fallback_package,
+                    module: fallback_module,
+                    name: format!("<interface-gap-{index}>"),
+                    kind: PackageItemKind::Function,
+                    visibility: Visibility::Private,
+                    span: Span::default(),
+                    mangled_name: format!("__muga_interface_gap_{index}"),
+                })
+            })
+            .collect();
 
         PackageSymbolGraph {
             packages,
@@ -1134,6 +1389,9 @@ impl<'a> PackageRewriter<'a> {
             return name.to_string();
         }
         if let Some((enum_name, variant_name)) = split_variant_name(name) {
+            if is_mangled_item_name(enum_name) {
+                return name.to_string();
+            }
             if let Some((alias, item)) = split_qualified_name(enum_name) {
                 let resolved =
                     self.resolve_imported_item(alias, item, ImportedItemKind::Enum, span);
@@ -1413,6 +1671,685 @@ impl<'a> PackageRewriter<'a> {
 enum ImportedItemKind {
     Enum,
     Function,
+}
+
+fn collect_package_data(
+    package_path: &str,
+    files: Vec<ParsedFile>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> PackageData {
+    let mut records: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
+    let mut enums: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
+    let mut functions: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
+
+    for file in &files {
+        for statement in &file.program.statements {
+            match statement {
+                Stmt::RecordDecl(record) => {
+                    insert_package_item_decl(
+                        &mut records,
+                        PackageItemDeclInput {
+                            name: &record.name,
+                            visibility: record.visibility,
+                            module_path: &file.module_path,
+                            span: record.span,
+                            kind: PackageItemKind::Record,
+                            package_path,
+                        },
+                        diagnostics,
+                    );
+                }
+                Stmt::EnumDecl(enumeration) => {
+                    insert_package_item_decl(
+                        &mut enums,
+                        PackageItemDeclInput {
+                            name: &enumeration.name,
+                            visibility: enumeration.visibility,
+                            module_path: &file.module_path,
+                            span: enumeration.span,
+                            kind: PackageItemKind::Enum,
+                            package_path,
+                        },
+                        diagnostics,
+                    );
+                }
+                Stmt::FuncDecl(func) => {
+                    insert_package_item_decl(
+                        &mut functions,
+                        PackageItemDeclInput {
+                            name: &func.name,
+                            visibility: func.visibility,
+                            module_path: &file.module_path,
+                            span: func.span,
+                            kind: PackageItemKind::Function,
+                            package_path,
+                        },
+                        diagnostics,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    PackageData {
+        files,
+        records,
+        enums,
+        functions,
+    }
+}
+
+fn package_import_paths(package: &PackageData) -> Vec<String> {
+    let mut paths: Vec<String> = package
+        .files
+        .iter()
+        .flat_map(|file| {
+            file.program
+                .imports
+                .iter()
+                .map(|import| import.path.clone())
+        })
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    paths.sort();
+    paths
+}
+
+const INTERFACE_STUB_MODULE: &str = "<interface>";
+
+fn stub_package_data_from_interface(
+    interface: &PackageInterface,
+    interfaces: &PackageInterfaceGraph,
+    symbols: &SymbolTable,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> PackageData {
+    let mut statements = Vec::new();
+    for record in &interface.records {
+        statements.push(Stmt::RecordDecl(RecordDecl {
+            id: StmtId::new(0),
+            name: record.name.clone(),
+            package_item: None,
+            visibility: Visibility::Public,
+            fields: record
+                .fields
+                .iter()
+                .map(|field| RecordFieldDecl {
+                    name: field.name.clone(),
+                    type_name: type_expr_from_type_info(
+                        &field.ty,
+                        symbols,
+                        diagnostics,
+                        field.span,
+                    ),
+                    span: field.span,
+                })
+                .collect(),
+            span: record.span,
+        }));
+    }
+    for enumeration in &interface.enums {
+        statements.push(Stmt::EnumDecl(EnumDecl {
+            id: StmtId::new(0),
+            name: enumeration.name.clone(),
+            package_item: None,
+            visibility: Visibility::Public,
+            type_params: enumeration.type_params.clone(),
+            variants: enumeration
+                .variants
+                .iter()
+                .map(|variant| EnumVariantDecl {
+                    name: variant.name.clone(),
+                    payload: variant.payload.as_ref().map(|payload| {
+                        type_expr_from_type_info(payload, symbols, diagnostics, variant.span)
+                    }),
+                    span: variant.span,
+                })
+                .collect(),
+            span: enumeration.span,
+        }));
+    }
+    for function in &interface.functions {
+        let return_type =
+            type_expr_from_type_info(&function.ret, symbols, diagnostics, function.span);
+        let body_expr = {
+            let mut context = DummyExprContext {
+                symbols,
+                interfaces,
+                diagnostics,
+            };
+            dummy_expr_for_type_info(&function.ret, &mut context, function.span, 0)
+        };
+        statements.push(Stmt::FuncDecl(FuncDecl {
+            id: StmtId::new(0),
+            name: function.name.clone(),
+            package_item: None,
+            visibility: Visibility::Public,
+            params: function
+                .params
+                .iter()
+                .map(|param| Param {
+                    name: param.name.clone(),
+                    type_name: Some(type_expr_from_type_info(
+                        &param.ty,
+                        symbols,
+                        diagnostics,
+                        param.span,
+                    )),
+                    span: param.span,
+                })
+                .collect(),
+            return_type: Some(return_type),
+            body: ValueBlock {
+                statements: Vec::new(),
+                expr: Box::new(body_expr),
+                span: function.span,
+            },
+            span: function.span,
+        }));
+    }
+
+    let files = vec![ParsedFile {
+        program: Program {
+            package: Some(PackageDecl {
+                path: interface.path.clone(),
+                span: Span::default(),
+            }),
+            imports: Vec::new(),
+            statements,
+        },
+        module_path: INTERFACE_STUB_MODULE.to_string(),
+    }];
+    collect_package_data(&interface.path, files, diagnostics)
+}
+
+fn type_expr_from_type_info(
+    ty: &TypeInfo,
+    symbols: &SymbolTable,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) -> TypeExpr {
+    match ty {
+        TypeInfo::Int => TypeExpr::Int,
+        TypeInfo::Bool => TypeExpr::Bool,
+        TypeInfo::String => TypeExpr::String,
+        TypeInfo::GenericParam(symbol) => {
+            TypeExpr::Named(symbol_name(*symbol, symbols, diagnostics, span))
+        }
+        TypeInfo::Record(symbol) | TypeInfo::PackageRecord { symbol, .. } => {
+            TypeExpr::Named(symbol_name(*symbol, symbols, diagnostics, span))
+        }
+        TypeInfo::Enum { symbol, args } | TypeInfo::PackageEnum { symbol, args, .. } => {
+            named_or_generic_type_expr(*symbol, args, symbols, diagnostics, span)
+        }
+        TypeInfo::List(item) => TypeExpr::Generic(GenericTypeExpr {
+            name: "List".to_string(),
+            args: vec![type_expr_from_type_info(item, symbols, diagnostics, span)],
+        }),
+        TypeInfo::Map(key, value) => TypeExpr::Generic(GenericTypeExpr {
+            name: "Map".to_string(),
+            args: vec![
+                type_expr_from_type_info(key, symbols, diagnostics, span),
+                type_expr_from_type_info(value, symbols, diagnostics, span),
+            ],
+        }),
+        TypeInfo::Option(item) => TypeExpr::Generic(GenericTypeExpr {
+            name: "Option".to_string(),
+            args: vec![type_expr_from_type_info(item, symbols, diagnostics, span)],
+        }),
+        TypeInfo::Result(ok, err) => TypeExpr::Generic(GenericTypeExpr {
+            name: "Result".to_string(),
+            args: vec![
+                type_expr_from_type_info(ok, symbols, diagnostics, span),
+                type_expr_from_type_info(err, symbols, diagnostics, span),
+            ],
+        }),
+        TypeInfo::Function(function) => TypeExpr::Function(FunctionTypeExpr {
+            params: function
+                .params
+                .iter()
+                .map(|param| type_expr_from_type_info(param, symbols, diagnostics, span))
+                .collect(),
+            ret: Box::new(type_expr_from_type_info(
+                &function.ret,
+                symbols,
+                diagnostics,
+                span,
+            )),
+        }),
+        TypeInfo::EnumConstructor { .. }
+        | TypeInfo::Builtin(_)
+        | TypeInfo::Unknown
+        | TypeInfo::Error => {
+            diagnostics.push(
+                Diagnostic::new(
+                    "PK018",
+                    "package interface contains a value-only or unresolved type in a signature",
+                    span,
+                )
+                .with_suggestion("regenerate the package interface"),
+            );
+            TypeExpr::Named("<invalid-interface-type>".to_string())
+        }
+    }
+}
+
+fn named_or_generic_type_expr(
+    symbol: Symbol,
+    args: &[TypeInfo],
+    symbols: &SymbolTable,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) -> TypeExpr {
+    let name = symbol_name(symbol, symbols, diagnostics, span);
+    if args.is_empty() {
+        TypeExpr::Named(name)
+    } else {
+        TypeExpr::Generic(GenericTypeExpr {
+            name,
+            args: args
+                .iter()
+                .map(|arg| type_expr_from_type_info(arg, symbols, diagnostics, span))
+                .collect(),
+        })
+    }
+}
+
+struct DummyExprContext<'a, 'd> {
+    symbols: &'a SymbolTable,
+    interfaces: &'a PackageInterfaceGraph,
+    diagnostics: &'d mut Vec<Diagnostic>,
+}
+
+fn dummy_expr_for_type_info(
+    ty: &TypeInfo,
+    context: &mut DummyExprContext<'_, '_>,
+    span: Span,
+    depth: usize,
+) -> Expr {
+    if depth > 8 {
+        context.diagnostics.push(
+            Diagnostic::new(
+                "PK018",
+                "package interface stub return type is recursively nested too deeply",
+                span,
+            )
+            .with_suggestion("use a less recursive public signature or check against source"),
+        );
+        return int_expr(span);
+    }
+
+    match ty {
+        TypeInfo::Int => int_expr(span),
+        TypeInfo::Bool => Expr::Bool(BoolExpr {
+            id: ExprId::new(0),
+            value: false,
+            span,
+        }),
+        TypeInfo::String => Expr::String(StringExpr {
+            id: ExprId::new(0),
+            value: String::new(),
+            span,
+        }),
+        TypeInfo::List(_) => Expr::ListLit(ListLitExpr {
+            id: ExprId::new(0),
+            items: Vec::new(),
+            span,
+        }),
+        TypeInfo::Map(_, _) => call_expr("Map.empty", Vec::new(), span),
+        TypeInfo::Option(_) => ident_expr("Option::None", span),
+        TypeInfo::Result(ok, _) => call_expr(
+            "Result::Ok",
+            vec![dummy_expr_for_type_info(ok, context, span, depth + 1)],
+            span,
+        ),
+        TypeInfo::PackageRecord { symbol, item } => {
+            let type_name = symbol_name(*symbol, context.symbols, context.diagnostics, span);
+            let fields = context
+                .interfaces
+                .record(*item)
+                .map(|record| {
+                    record
+                        .fields
+                        .iter()
+                        .map(|field| RecordFieldInit {
+                            name: field.name.clone(),
+                            value: dummy_expr_for_type_info(
+                                &field.ty,
+                                context,
+                                field.span,
+                                depth + 1,
+                            ),
+                            span: field.span,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Expr::RecordLit(RecordLitExpr {
+                id: ExprId::new(0),
+                type_name,
+                fields,
+                span,
+            })
+        }
+        TypeInfo::PackageEnum { symbol, item, args } => {
+            dummy_package_enum_expr(*symbol, *item, args, context, span, depth)
+        }
+        TypeInfo::Function(function) => dummy_function_expr(function, context, span, depth),
+        TypeInfo::GenericParam(_)
+        | TypeInfo::Record(_)
+        | TypeInfo::Enum { .. }
+        | TypeInfo::EnumConstructor { .. }
+        | TypeInfo::Builtin(_)
+        | TypeInfo::Unknown
+        | TypeInfo::Error => {
+            context.diagnostics.push(
+                Diagnostic::new(
+                    "PK018",
+                    "package interface stub cannot synthesize a value for this return type",
+                    span,
+                )
+                .with_suggestion("check this package against source instead"),
+            );
+            int_expr(span)
+        }
+    }
+}
+
+fn dummy_package_enum_expr(
+    enum_symbol: Symbol,
+    item: PackageItemId,
+    args: &[TypeInfo],
+    context: &mut DummyExprContext<'_, '_>,
+    span: Span,
+    depth: usize,
+) -> Expr {
+    let enum_name = symbol_name(enum_symbol, context.symbols, context.diagnostics, span);
+    let Some(enumeration) = interface_enum(context.interfaces, item) else {
+        context.diagnostics.push(
+            Diagnostic::new(
+                "PK018",
+                format!("package interface is missing enum item {:?}", item),
+                span,
+            )
+            .with_suggestion("regenerate the package interface"),
+        );
+        return int_expr(span);
+    };
+    let Some(variant) = enumeration
+        .variants
+        .iter()
+        .find(|variant| variant.payload.is_none())
+        .or_else(|| enumeration.variants.first())
+    else {
+        context.diagnostics.push(
+            Diagnostic::new(
+                "PK018",
+                format!(
+                    "package interface enum `{}` has no variants",
+                    enumeration.name
+                ),
+                span,
+            )
+            .with_suggestion("add at least one enum variant"),
+        );
+        return int_expr(span);
+    };
+
+    let variant_name = format!("{enum_name}::{}", variant.name);
+    match &variant.payload {
+        None => ident_expr(&variant_name, variant.span),
+        Some(payload) => {
+            let payload = substitute_interface_type_params(
+                payload,
+                &enumeration.type_params,
+                args,
+                context.symbols,
+            );
+            call_expr(
+                &variant_name,
+                vec![dummy_expr_for_type_info(
+                    &payload,
+                    context,
+                    variant.span,
+                    depth + 1,
+                )],
+                variant.span,
+            )
+        }
+    }
+}
+
+fn dummy_function_expr(
+    function: &FunctionTypeInfo,
+    context: &mut DummyExprContext<'_, '_>,
+    span: Span,
+    depth: usize,
+) -> Expr {
+    let params = function
+        .params
+        .iter()
+        .enumerate()
+        .map(|(index, param)| Param {
+            name: format!("__stub_arg_{index}"),
+            type_name: Some(type_expr_from_type_info(
+                param,
+                context.symbols,
+                context.diagnostics,
+                span,
+            )),
+            span,
+        })
+        .collect();
+    let ret = type_expr_from_type_info(&function.ret, context.symbols, context.diagnostics, span);
+    let expr = dummy_expr_for_type_info(&function.ret, context, span, depth + 1);
+    Expr::Fn(FnExpr {
+        id: ExprId::new(0),
+        params,
+        return_type: Some(ret),
+        body: ValueBlock {
+            statements: Vec::new(),
+            expr: Box::new(expr),
+            span,
+        },
+        span,
+    })
+}
+
+fn substitute_interface_type_params(
+    ty: &TypeInfo,
+    params: &[String],
+    type_args: &[TypeInfo],
+    symbols: &SymbolTable,
+) -> TypeInfo {
+    match ty {
+        TypeInfo::GenericParam(symbol) => {
+            if symbol.as_u32() < symbols.len() as u32 {
+                let name = symbols.resolve(*symbol);
+                if let Some(index) = params.iter().position(|param| param == name)
+                    && let Some(arg) = type_args.get(index)
+                {
+                    return arg.clone();
+                }
+            }
+            ty.clone()
+        }
+        TypeInfo::Enum {
+            symbol,
+            args: enum_args,
+        } => TypeInfo::Enum {
+            symbol: *symbol,
+            args: enum_args
+                .iter()
+                .map(|arg| substitute_interface_type_params(arg, params, type_args, symbols))
+                .collect(),
+        },
+        TypeInfo::PackageEnum {
+            symbol,
+            item,
+            args: enum_args,
+        } => TypeInfo::PackageEnum {
+            symbol: *symbol,
+            item: *item,
+            args: enum_args
+                .iter()
+                .map(|arg| substitute_interface_type_params(arg, params, type_args, symbols))
+                .collect(),
+        },
+        TypeInfo::List(item) => TypeInfo::List(Box::new(substitute_interface_type_params(
+            item, params, type_args, symbols,
+        ))),
+        TypeInfo::Map(key, value) => TypeInfo::Map(
+            Box::new(substitute_interface_type_params(
+                key, params, type_args, symbols,
+            )),
+            Box::new(substitute_interface_type_params(
+                value, params, type_args, symbols,
+            )),
+        ),
+        TypeInfo::Option(item) => TypeInfo::Option(Box::new(substitute_interface_type_params(
+            item, params, type_args, symbols,
+        ))),
+        TypeInfo::Result(ok, err) => TypeInfo::Result(
+            Box::new(substitute_interface_type_params(
+                ok, params, type_args, symbols,
+            )),
+            Box::new(substitute_interface_type_params(
+                err, params, type_args, symbols,
+            )),
+        ),
+        TypeInfo::Function(function) => TypeInfo::Function(FunctionTypeInfo {
+            params: function
+                .params
+                .iter()
+                .map(|param| substitute_interface_type_params(param, params, type_args, symbols))
+                .collect(),
+            ret: Box::new(substitute_interface_type_params(
+                &function.ret,
+                params,
+                type_args,
+                symbols,
+            )),
+        }),
+        other => other.clone(),
+    }
+}
+
+fn symbol_name(
+    symbol: Symbol,
+    symbols: &SymbolTable,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Span,
+) -> String {
+    if symbol.as_u32() < symbols.len() as u32 {
+        symbols.resolve(symbol).to_string()
+    } else {
+        diagnostics.push(
+            Diagnostic::new(
+                "PK018",
+                format!("package interface references unknown symbol {:?}", symbol),
+                span,
+            )
+            .with_suggestion("read the interface with the same symbol table used for checking"),
+        );
+        "<invalid-interface-symbol>".to_string()
+    }
+}
+
+fn interface_enum(
+    interfaces: &PackageInterfaceGraph,
+    item: PackageItemId,
+) -> Option<&crate::interface::PackageInterfaceEnum> {
+    interfaces
+        .packages
+        .iter()
+        .flat_map(|package| package.enums.iter())
+        .find(|enumeration| enumeration.item == item)
+}
+
+fn ident_expr(name: &str, span: Span) -> Expr {
+    Expr::Ident(IdentExpr {
+        id: ExprId::new(0),
+        name: name.to_string(),
+        span,
+    })
+}
+
+fn call_expr(name: &str, args: Vec<Expr>, span: Span) -> Expr {
+    Expr::Call(CallExpr {
+        id: ExprId::new(0),
+        callee: Box::new(ident_expr(name, span)),
+        args,
+        origin: CallOrigin::Ordinary,
+        span,
+    })
+}
+
+fn int_expr(span: Span) -> Expr {
+    Expr::Int(IntExpr {
+        id: ExprId::new(0),
+        value: 0,
+        span,
+    })
+}
+
+fn interface_item_id(
+    package_interface: Option<&PackageInterface>,
+    name: &str,
+    kind: PackageItemKind,
+    visibility: Visibility,
+) -> Option<PackageItemId> {
+    if visibility != Visibility::Public {
+        return None;
+    }
+    let interface = package_interface?;
+    match kind {
+        PackageItemKind::Record => interface
+            .records
+            .iter()
+            .find(|record| record.name == name)
+            .map(|record| record.item),
+        PackageItemKind::Enum => interface
+            .enums
+            .iter()
+            .find(|enumeration| enumeration.name == name)
+            .map(|enumeration| enumeration.item),
+        PackageItemKind::Function => interface
+            .functions
+            .iter()
+            .find(|function| function.name == name)
+            .map(|function| function.item),
+    }
+}
+
+fn allocate_package_item_id(items: &mut Vec<Option<PackageItemInfo>>) -> PackageItemId {
+    let id = PackageItemId::new(items.len() as u32);
+    items.push(None);
+    id
+}
+
+fn insert_package_graph_item(
+    items: &mut Vec<Option<PackageItemInfo>>,
+    item: PackageItemInfo,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let index = item.id.as_u32() as usize;
+    if index >= items.len() {
+        items.resize(index + 1, None);
+    }
+    if items[index].is_some() {
+        diagnostics.push(
+            Diagnostic::new(
+                "PK017",
+                format!("duplicate package interface item identity {:?}", item.id),
+                item.span,
+            )
+            .with_suggestion("regenerate the package interface"),
+        );
+    } else {
+        items[index] = Some(item);
+    }
 }
 
 fn insert_package_item_decl(
@@ -1869,4 +2806,8 @@ fn sanitize_mangle_segment(segment: &str) -> String {
 
 fn is_builtin_name(name: &str) -> bool {
     crate::prelude::is_builtin_name(name)
+}
+
+fn is_mangled_item_name(name: &str) -> bool {
+    name.starts_with("__muga_pkg__") || name.starts_with("__muga_mod__")
 }

@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after package interface hash and loaded-interface validation support: 198 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after package interface hash and loaded-interface validation support.
+- [x] `cargo test` passed after interface-only downstream checking support: 204 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after interface-only downstream checking support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -84,9 +84,9 @@ Ada
 - [x] persisted package interfaces include deterministic content hashes and reject hash mismatches.
 - [x] package interface artifact path naming is deterministic for package paths.
 - [x] typed package compilation can validate against loaded package interface summaries.
-- [ ] dependency implementation bodies cannot yet be skipped for downstream checking.
+- [x] loaded package interfaces can be used as the dependency boundary for downstream typed checking without reading dependency implementation bodies.
 - [ ] package cache integration and invalidation are not implemented.
-- [ ] package flattening is still the execution/checking pipeline.
+- [ ] normal CLI checking/execution still uses package flattening and dependency source loading.
 
 ### Diagnostics
 
@@ -138,12 +138,13 @@ Ada
 - Runtime enum-like values use a generic enum-value representation.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
 - Package interfaces now have a deterministic v1 text format and file round-trip helpers.
-- Loaded package interface summaries can validate typed package references, but the package loader still reads and flattens dependency bodies.
-- There is no package cache integration, dependency-body skipping, or incremental invalidation yet.
+- Loaded package interface summaries can now act as the downstream dependency boundary for typed checking.
+- Normal CLI package checking and execution still read and flatten dependency bodies.
+- There is no package cache integration or incremental invalidation yet.
 
 ## Recommended Next Implementation
 
-The next implementation theme is downstream checking from loaded package interfaces without dependency implementation bodies.
+The next implementation theme is package interface artifact integration and cache invalidation.
 
 Reasoning:
 
@@ -154,7 +155,8 @@ Reasoning:
 - User-defined enum declarations, runtime values, typed HIR, and in-memory public interface summaries are now represented.
 - Enum integration hardening now covers diagnostics, imported constructors/patterns, visibility errors, package enum call-target identity, and stale interface validation.
 - Persisted package interfaces now round-trip record/function/enum identity, type parameters, variants, payload types, public signatures, and source spans.
-- The remaining boundary pieces are checking downstream packages against loaded interface summaries instead of dependency bodies, then cache invalidation around those interface artifacts.
+- Loaded package interfaces can now be used for downstream signature/type checking without dependency implementation bodies.
+- The remaining boundary pieces are artifact discovery, cache invalidation, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 
@@ -210,37 +212,37 @@ Estimates are in focused engineering days for someone already familiar with this
 | 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | Done | Medium |
 | 5. Package interface persistence format | Serialize public records/functions/enums and resolved type identities in a deterministic v1 text format. Load the format back into `PackageInterfaceGraph` and validate the reloaded summaries. | `src/interface.rs`, `tests/examples.rs` | Done | Medium |
 | 6. Interface hashes and loaded-interface validation | Add interface hashes, artifact path conventions, and a typed checking path that validates against loaded interface summaries. | `src/interface.rs`, `src/lib.rs`, tests | Done | Medium |
-| 7. Downstream checking without dependency bodies | Load dependency interfaces as the checking boundary, synthesize or otherwise expose only public signatures, and avoid reading dependency implementation bodies for at least one signature-only downstream check. | `src/package.rs`, `src/interface.rs`, `src/lib.rs`, tests | 4-8 days | High |
-| 8. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 7. Downstream checking without dependency bodies | Load dependency interfaces as the checking boundary, synthesize or otherwise expose only public signatures, and avoid reading dependency implementation bodies for downstream checks. | `src/package.rs`, `src/interface.rs`, `src/lib.rs`, tests | Done | High |
+| 8. Interface artifact discovery and invalidation | Teach package checking to find persisted interface artifacts, report missing/stale artifacts clearly, and prepare source/interface hashes for cache reuse. | package/interface/lib/CLI/tests | 3-6 days | High |
+| 9. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 7: make loaded package interfaces sufficient for downstream signature/type checking without dependency implementation bodies. Keep package flattening as the execution path until interface-only checking is proven equivalent on existing samples.
+The safest immediate code slice is now Slice 8: integrate persisted interface artifacts into package checking without making cache reuse implicit yet. Keep package flattening as the execution path until artifact lookup, stale diagnostics, and interface-only typed checking agree on existing samples.
 
 ## Test Plan For The Next Code Slice
 
-Add tests around these behavioral anchors before replacing package-body checking.
+Add tests around these behavioral anchors before enabling cache-backed package checking by default.
 
-Dependency boundary:
+Artifact boundary:
 
-- `downstream_package_can_check_against_loaded_interface_summary`
-- `downstream_package_does_not_require_dependency_function_body_for_signature_checking`
-- `interface_artifact_excludes_private_and_pkg_items`
-- `downstream_package_reports_missing_interface_export`
-- `downstream_package_reports_stale_loaded_interface`
+- `package_check_finds_dependency_interface_artifact`
+- `package_check_reports_missing_interface_artifact`
+- `package_check_reports_hash_mismatched_interface_artifact`
+- `package_check_rejects_stale_interface_signature`
 
 Compatibility:
 
 - `package_body_checking_and_interface_checking_agree_for_existing_samples`
-- `option_result_and_user_enum_signatures_are_available_from_loaded_interfaces`
+- `artifact_interface_checking_and_loaded_interface_checking_agree`
 
 ## Definition Of Done For The Next Code Slice
 
 - [ ] Existing `cargo test` remains green.
 - [ ] Existing package-body checking remains source-compatible.
-- [ ] Dependency implementation bodies can be skipped for at least one signature-only downstream check.
-- [ ] Package-body checking and loaded-interface checking agree for existing package samples.
-- [ ] Missing or stale loaded interfaces produce package diagnostics with regeneration guidance.
-- [ ] Loaded interfaces expose only public records/functions/enums to downstream packages.
-- [ ] `Option`, `Result`, and user enum signatures are available from loaded interfaces.
+- [ ] Persisted dependency interface artifacts can be discovered from the project/interface root.
+- [ ] Missing artifacts produce package diagnostics with regeneration guidance.
+- [ ] Hash-mismatched artifacts are rejected before checking.
+- [ ] Artifact-backed checking and already-loaded-interface checking agree for existing package samples.
+- [ ] Interface artifact lookup does not silently fall back to dependency implementation bodies.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
 ## Resume Checklist
@@ -251,8 +253,8 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is downstream interface-only checking or package cache integration.
-6. [ ] Keep package flattening unchanged unless the task is explicitly package-interface persistence.
+5. [ ] Confirm whether the intended next code slice is interface artifact discovery or broader cache integration.
+6. [ ] Keep package flattening unchanged for normal execution unless the task explicitly changes package checking.
 7. [ ] After every compiler-core change, verify at least:
 
 ```bash
