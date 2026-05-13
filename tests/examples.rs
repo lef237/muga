@@ -950,6 +950,208 @@ fn typed_hir_validates_reloaded_package_interfaces() {
 }
 
 #[test]
+fn downstream_package_can_check_against_loaded_interface_summary() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let (interfaces, symbols) = persisted_interfaces_from_program(&provider);
+    let root = temp_package_root("loaded-interface-enum");
+    let entry = write_package_file(
+        &root,
+        "app/interface_enum/main.muga",
+        r#"
+package app::interface_enum
+
+import util::states
+
+fn main(): Int {
+  status: states::Status[Int] = states::ready(7)
+  match status {
+    states::Status::Ready(value) => value
+    states::Status::Waiting => 0
+    states::Status::Failed(message) => 0
+  }
+}
+"#,
+    );
+
+    assert!(!root.join("util/states/model.muga").exists());
+    let program = muga::compile_typed_path_against_loaded_interfaces(&entry, &interfaces, &symbols)
+        .expect("downstream package should typecheck against loaded interfaces");
+    assert!(
+        program.package_graph.package_id("util::states").is_some(),
+        "{:#?}",
+        program.package_graph.packages
+    );
+}
+
+#[test]
+fn downstream_package_does_not_require_dependency_function_body_for_signature_checking() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let (interfaces, symbols) = persisted_interfaces_from_program(&provider);
+    let root = temp_package_root("loaded-interface-signatures");
+    let entry = write_package_file(
+        &root,
+        "app/interface_signatures/main.muga",
+        r#"
+package app::interface_signatures
+
+import util::numbers
+
+fn main(): Int {
+  maybe: Option[Int] = numbers::maybe_positive(3)
+  result: Result[Int, String] = numbers::positive_result(4)
+  numbers::value_or_zero(maybe) + numbers::result_or_zero(result)
+}
+"#,
+    );
+
+    assert!(!root.join("util/numbers/option.muga").exists());
+    muga::compile_typed_path_against_loaded_interfaces(&entry, &interfaces, &symbols)
+        .expect("dependency function signatures should be enough for downstream checking");
+}
+
+#[test]
+fn interface_artifact_excludes_private_and_pkg_items() {
+    let program = muga::compile_typed_path(Path::new(
+        "samples/packages/app/module_visibility/main.muga",
+    ))
+    .expect("typed package compilation should pass");
+    let text = program
+        .package_interfaces()
+        .to_persisted_text(&program.symbols);
+
+    assert!(!text.contains("helper"), "{text}");
+    assert!(!text.contains("PackageValue"), "{text}");
+    assert!(!text.contains("PackageState"), "{text}");
+}
+
+#[test]
+fn downstream_package_reports_missing_interface_export() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let mut interfaces = provider.package_interfaces();
+    let numbers = provider
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .retain(|function| function.name != "inc_twice");
+    let text = interfaces.to_persisted_text(&provider.symbols);
+    let mut symbols = provider.symbols.clone();
+    let interfaces =
+        muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
+            .expect("persisted interfaces should parse");
+    let root = temp_package_root("loaded-interface-missing-export");
+    let entry = write_package_file(
+        &root,
+        "app/missing_export/main.muga",
+        r#"
+package app::missing_export
+
+import util::numbers
+
+fn main(): Int {
+  numbers::inc_twice(10)
+}
+"#,
+    );
+
+    let diagnostics =
+        muga::compile_typed_path_against_loaded_interfaces(&entry, &interfaces, &symbols)
+            .unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK010"
+                && diagnostic
+                    .message
+                    .contains("does not export function `inc_twice`")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn downstream_package_reports_stale_loaded_interface() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let numbers = provider
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let mut interfaces = provider.package_interfaces();
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .iter_mut()
+        .find(|function| function.name == "maybe_positive")
+        .expect("maybe_positive should be exported")
+        .ret = muga::types::TypeInfo::String;
+    let text = interfaces.to_persisted_text(&provider.symbols);
+    let mut symbols = provider.symbols.clone();
+    let interfaces =
+        muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
+            .expect("persisted interfaces should parse");
+    let root = temp_package_root("loaded-interface-stale");
+    let entry = write_package_file(
+        &root,
+        "app/stale_interface/main.muga",
+        r#"
+package app::stale_interface
+
+import util::numbers
+
+fn main(): Int {
+  maybe: Option[Int] = numbers::maybe_positive(3)
+  numbers::value_or_zero(maybe)
+}
+"#,
+    );
+
+    let diagnostics =
+        muga::compile_typed_path_against_loaded_interfaces(&entry, &interfaces, &symbols)
+            .unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn package_body_checking_and_interface_checking_agree_for_existing_samples() {
+    for path in [
+        "samples/packages/app/main/main.muga",
+        "samples/packages/app/enum_demo/main.muga",
+    ] {
+        let body_checked = muga::compile_typed_path(Path::new(path))
+            .expect("body-based package checking should pass");
+        let (interfaces, symbols) = persisted_interfaces_from_program(&body_checked);
+        let interface_checked = muga::compile_typed_path_against_loaded_interfaces(
+            Path::new(path),
+            &interfaces,
+            &symbols,
+        )
+        .expect("interface-based package checking should pass");
+
+        assert_eq!(
+            main_return_type(&interface_checked),
+            main_return_type(&body_checked),
+            "sample: {path}"
+        );
+    }
+}
+
+#[test]
 fn typed_hir_rejects_reloaded_stale_enum_interface_shape() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
         .expect("typed package compilation should pass");
@@ -4184,6 +4386,49 @@ fn assert_sample_without_main_runs(path: &str, expected_output: &str) {
 fn parse_source(source: &str) -> muga::ast::Program {
     let tokens = muga::lexer::lex(source).unwrap();
     muga::parser::parse(tokens).unwrap()
+}
+
+fn persisted_interfaces_from_program(
+    program: &muga::typed_hir::Program,
+) -> (
+    muga::interface::PackageInterfaceGraph,
+    muga::symbol::SymbolTable,
+) {
+    let text = program
+        .package_interfaces()
+        .to_persisted_text(&program.symbols);
+    let mut symbols = program.symbols.clone();
+    let interfaces =
+        muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
+            .expect("persisted interfaces should parse");
+    (interfaces, symbols)
+}
+
+fn temp_package_root(name: &str) -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!("muga-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).expect("temp package root should be created");
+    root
+}
+
+fn write_package_file(root: &Path, relative: &str, source: &str) -> std::path::PathBuf {
+    let path = root.join(relative);
+    fs::create_dir_all(path.parent().expect("package file should have parent"))
+        .expect("package directory should be created");
+    fs::write(&path, source.trim_start()).expect("package file should be written");
+    path
+}
+
+fn main_return_type(program: &muga::typed_hir::Program) -> Option<muga::types::TypeInfo> {
+    program
+        .statements
+        .iter()
+        .find_map(|statement| match statement {
+            muga::typed_hir::Stmt::Function(function) if function.name == "main" => {
+                Some(function.return_ty.clone())
+            }
+            _ => None,
+        })
 }
 
 fn typecheck_binding_id(

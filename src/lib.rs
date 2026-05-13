@@ -109,6 +109,15 @@ pub fn compile_typed_path_against_interfaces(
     compile_loaded_typed_program(loaded, Some(interfaces))
 }
 
+pub fn compile_typed_path_against_loaded_interfaces(
+    path: &Path,
+    interfaces: &PackageInterfaceGraph,
+    interface_symbols: &symbol::SymbolTable,
+) -> Result<TypedHirProgram, Vec<Diagnostic>> {
+    let loaded = package::load_from_entry_against_interfaces(path, interfaces, interface_symbols)?;
+    compile_loaded_typed_program(loaded, Some(interfaces))
+}
+
 fn compile_loaded_typed_program(
     loaded: package::LoadedProgram,
     interfaces: Option<&PackageInterfaceGraph>,

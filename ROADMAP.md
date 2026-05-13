@@ -23,6 +23,7 @@ Implemented language surface:
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
 - enum diagnostics, package enum visibility coverage, imported `alias::Enum::Variant` constructors/patterns, package enum call-target identity, and stale enum interface validation
 - deterministic v1 package interface text persistence, content hashes, artifact path naming, file round-trip, and loaded-interface validation for public records/functions/enums
+- loaded package interfaces can act as the dependency boundary for downstream typed checking without reading dependency implementation bodies
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -32,8 +33,8 @@ Current architectural gaps:
 
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
-- package compilation still flattens packages before checking/execution
-- dependency-body skipping for downstream interface-only checking, package cache integration, and invalidation are not implemented
+- normal package checking/execution still flattens packages and reads dependency source
+- package interface artifact discovery, cache integration, and invalidation are not implemented
 - VM bytecode still lowers from the older HIR path, not from typed HIR/MIR
 
 ## Settled Direction
@@ -63,13 +64,13 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice is downstream checking from loaded package interfaces without dependency implementation bodies:
+The next code slice is interface artifact discovery and invalidation:
 
-1. Load dependency interface artifacts as the downstream checking boundary.
-2. Expose only public record/function/enum signatures from those loaded summaries.
-3. Avoid reading dependency implementation bodies for at least one signature-only downstream check.
-4. Keep diagnostics actionable for missing exports, stale interfaces, and hash mismatches.
-5. Keep package caching, MIR, native backend work, wildcard enum patterns, and `try expr` deferred until interface-only checking agrees with current body-based checking.
+1. Find persisted dependency interface artifacts from the package/interface root instead of requiring callers to pass an already-loaded graph.
+2. Reject missing, hash-mismatched, or stale artifacts with regeneration guidance.
+3. Keep interface-backed typed checking aligned with current body-based checking on existing package samples.
+4. Avoid silent fallback to dependency implementation bodies in artifact-backed checking.
+5. Keep full package caching, MIR, native backend work, wildcard enum patterns, and `try expr` deferred until artifact-backed checking is stable.
 
 ## Compiler Architecture Path
 
@@ -117,9 +118,8 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- persisted package interface format
-- interface hashes and cache keys
-- downstream checking from interface artifacts
+- interface artifact discovery
+- interface cache keys and invalidation
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported
 

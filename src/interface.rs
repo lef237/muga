@@ -345,6 +345,12 @@ impl PackageInterfaceGraph {
             .find(|interface| interface.package == id)
     }
 
+    pub fn package_by_path(&self, path: &str) -> Option<&PackageInterface> {
+        self.packages
+            .iter()
+            .find(|interface| interface.path == path)
+    }
+
     pub fn record(&self, item: PackageItemId) -> Option<&PackageInterfaceRecord> {
         self.packages
             .iter()
