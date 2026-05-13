@@ -600,11 +600,25 @@ fn package_aware_checking_preserves_public_import_resolution() {
             _ => None,
         })
         .collect();
-    assert_eq!(function_names, vec!["main"]);
+    assert!(function_names.contains(&"main"), "{function_names:#?}");
+    assert!(function_names.contains(&"inc_twice"), "{function_names:#?}");
+    let binding_ids = result
+        .typed_program
+        .bindings
+        .iter()
+        .map(|binding| binding.id.as_u32())
+        .collect::<Vec<_>>();
+    let unique_binding_ids: HashSet<_> = binding_ids.iter().copied().collect();
+    assert_eq!(
+        unique_binding_ids.len(),
+        binding_ids.len(),
+        "{binding_ids:?}"
+    );
+    assert_unique_typed_ids(&result.typed_program);
 }
 
 #[test]
-fn package_aware_entry_typed_program_preserves_public_interface_items() {
+fn package_aware_typed_program_preserves_public_interface_items() {
     let root = temp_package_root("package-aware-entry-interface-items");
     let entry = write_package_file(
         &root,
@@ -6448,6 +6462,138 @@ fn collect_typed_calls_in_expr<'a>(
         }
         muga::typed_hir::ExprKind::Fn(expr) => {
             collect_typed_calls_in_value_block(&expr.body, calls);
+        }
+    }
+}
+
+fn assert_unique_typed_ids(program: &muga::typed_hir::Program) {
+    let mut statement_ids = HashSet::new();
+    let mut expr_ids = HashSet::new();
+    for statement in &program.statements {
+        collect_typed_ids_in_stmt(statement, &mut statement_ids, &mut expr_ids);
+    }
+}
+
+fn collect_typed_ids_in_stmt(
+    statement: &muga::typed_hir::Stmt,
+    statement_ids: &mut HashSet<u32>,
+    expr_ids: &mut HashSet<u32>,
+) {
+    assert!(
+        statement_ids.insert(statement.id().as_u32()),
+        "duplicate typed statement id: {}",
+        statement.id().as_u32()
+    );
+    match statement {
+        muga::typed_hir::Stmt::Assign(stmt) => {
+            collect_typed_ids_in_expr(&stmt.value, statement_ids, expr_ids);
+        }
+        muga::typed_hir::Stmt::Record(_) | muga::typed_hir::Stmt::Enum(_) => {}
+        muga::typed_hir::Stmt::Function(stmt) => {
+            collect_typed_ids_in_value_block(&stmt.body, statement_ids, expr_ids);
+        }
+        muga::typed_hir::Stmt::If(stmt) => {
+            collect_typed_ids_in_expr(&stmt.condition, statement_ids, expr_ids);
+            collect_typed_ids_in_block(&stmt.then_branch, statement_ids, expr_ids);
+            if let Some(else_branch) = &stmt.else_branch {
+                collect_typed_ids_in_block(else_branch, statement_ids, expr_ids);
+            }
+        }
+        muga::typed_hir::Stmt::While(stmt) => {
+            collect_typed_ids_in_expr(&stmt.condition, statement_ids, expr_ids);
+            collect_typed_ids_in_block(&stmt.body, statement_ids, expr_ids);
+        }
+        muga::typed_hir::Stmt::Expr(stmt) => {
+            collect_typed_ids_in_expr(&stmt.expr, statement_ids, expr_ids);
+        }
+    }
+}
+
+fn collect_typed_ids_in_block(
+    block: &muga::typed_hir::Block,
+    statement_ids: &mut HashSet<u32>,
+    expr_ids: &mut HashSet<u32>,
+) {
+    for statement in &block.statements {
+        collect_typed_ids_in_stmt(statement, statement_ids, expr_ids);
+    }
+}
+
+fn collect_typed_ids_in_value_block(
+    block: &muga::typed_hir::ValueBlock,
+    statement_ids: &mut HashSet<u32>,
+    expr_ids: &mut HashSet<u32>,
+) {
+    for statement in &block.statements {
+        collect_typed_ids_in_stmt(statement, statement_ids, expr_ids);
+    }
+    collect_typed_ids_in_expr(&block.expr, statement_ids, expr_ids);
+}
+
+fn collect_typed_ids_in_expr(
+    expr: &muga::typed_hir::Expr,
+    statement_ids: &mut HashSet<u32>,
+    expr_ids: &mut HashSet<u32>,
+) {
+    assert!(
+        expr_ids.insert(expr.id.as_u32()),
+        "duplicate typed expression id: {}",
+        expr.id.as_u32()
+    );
+    match &expr.kind {
+        muga::typed_hir::ExprKind::Int(_)
+        | muga::typed_hir::ExprKind::Bool(_)
+        | muga::typed_hir::ExprKind::String(_)
+        | muga::typed_hir::ExprKind::Ident(_) => {}
+        muga::typed_hir::ExprKind::ListLit(expr) => {
+            for item in &expr.items {
+                collect_typed_ids_in_expr(item, statement_ids, expr_ids);
+            }
+        }
+        muga::typed_hir::ExprKind::Index(expr) => {
+            collect_typed_ids_in_expr(&expr.base, statement_ids, expr_ids);
+            collect_typed_ids_in_expr(&expr.index, statement_ids, expr_ids);
+        }
+        muga::typed_hir::ExprKind::RecordLit(expr) => {
+            for field in &expr.fields {
+                collect_typed_ids_in_expr(&field.value, statement_ids, expr_ids);
+            }
+        }
+        muga::typed_hir::ExprKind::Field(expr) => {
+            collect_typed_ids_in_expr(&expr.base, statement_ids, expr_ids);
+        }
+        muga::typed_hir::ExprKind::RecordUpdate(expr) => {
+            collect_typed_ids_in_expr(&expr.base, statement_ids, expr_ids);
+            for field in &expr.fields {
+                collect_typed_ids_in_expr(&field.value, statement_ids, expr_ids);
+            }
+        }
+        muga::typed_hir::ExprKind::Unary(expr) => {
+            collect_typed_ids_in_expr(&expr.expr, statement_ids, expr_ids);
+        }
+        muga::typed_hir::ExprKind::Binary(expr) => {
+            collect_typed_ids_in_expr(&expr.left, statement_ids, expr_ids);
+            collect_typed_ids_in_expr(&expr.right, statement_ids, expr_ids);
+        }
+        muga::typed_hir::ExprKind::Call(expr) => {
+            collect_typed_ids_in_expr(&expr.callee, statement_ids, expr_ids);
+            for arg in &expr.args {
+                collect_typed_ids_in_expr(arg, statement_ids, expr_ids);
+            }
+        }
+        muga::typed_hir::ExprKind::If(expr) => {
+            collect_typed_ids_in_expr(&expr.condition, statement_ids, expr_ids);
+            collect_typed_ids_in_value_block(&expr.then_branch, statement_ids, expr_ids);
+            collect_typed_ids_in_value_block(&expr.else_branch, statement_ids, expr_ids);
+        }
+        muga::typed_hir::ExprKind::Match(expr) => {
+            collect_typed_ids_in_expr(&expr.value, statement_ids, expr_ids);
+            for arm in &expr.arms {
+                collect_typed_ids_in_expr(&arm.value, statement_ids, expr_ids);
+            }
+        }
+        muga::typed_hir::ExprKind::Fn(expr) => {
+            collect_typed_ids_in_value_block(&expr.body, statement_ids, expr_ids);
         }
     }
 }

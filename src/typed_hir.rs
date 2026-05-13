@@ -339,6 +339,678 @@ pub fn lower(
     }
 }
 
+pub fn merge_modules(modules: &[Program], package_graph: PackageSymbolGraph) -> Program {
+    let mut symbols = SymbolTable::default();
+    let mut statements = Vec::new();
+    let mut bindings = Vec::new();
+    let mut next_binding = 0;
+    let mut next_stmt = 0;
+    let mut next_expr = 0;
+
+    for module in modules {
+        let mut remapper = ModuleRemapper {
+            from_symbols: &module.symbols,
+            to_symbols: &mut symbols,
+            binding_offset: next_binding,
+            stmt_offset: next_stmt,
+            expr_offset: next_expr,
+        };
+        bindings.extend(
+            module
+                .bindings
+                .iter()
+                .map(|binding| remapper.binding_info(binding)),
+        );
+        statements.extend(
+            module
+                .statements
+                .iter()
+                .map(|statement| remapper.stmt(statement)),
+        );
+        next_binding += max_binding_id_in_program(module).map_or(0, |id| id + 1);
+        next_stmt += max_stmt_id_in_program(module).map_or(0, |id| id + 1);
+        next_expr += max_expr_id_in_program(module).map_or(0, |id| id + 1);
+    }
+
+    Program {
+        statements,
+        bindings,
+        package_graph,
+        symbols,
+    }
+}
+
+struct ModuleRemapper<'a, 's> {
+    from_symbols: &'a SymbolTable,
+    to_symbols: &'s mut SymbolTable,
+    binding_offset: u32,
+    stmt_offset: u32,
+    expr_offset: u32,
+}
+
+impl ModuleRemapper<'_, '_> {
+    fn binding_info(&mut self, binding: &TypedBindingInfo) -> TypedBindingInfo {
+        TypedBindingInfo {
+            id: self.binding(binding.id),
+            symbol: self.symbol(binding.symbol),
+            kind: binding.kind,
+            ty: self.type_info(&binding.ty),
+            package_item: binding.package_item,
+            span: binding.span,
+        }
+    }
+
+    fn stmt(&mut self, statement: &Stmt) -> Stmt {
+        match statement {
+            Stmt::Assign(stmt) => Stmt::Assign(AssignStmt {
+                id: self.stmt_id(stmt.id),
+                mutable: stmt.mutable,
+                is_update: stmt.is_update,
+                name: stmt.name.clone(),
+                binding: self.binding(stmt.binding),
+                value: self.expr(&stmt.value),
+                span: stmt.span,
+            }),
+            Stmt::Record(stmt) => Stmt::Record(RecordStmt {
+                id: self.stmt_id(stmt.id),
+                name: stmt.name.clone(),
+                package_item: stmt.package_item,
+                fields: stmt
+                    .fields
+                    .iter()
+                    .map(|field| RecordField {
+                        name: field.name.clone(),
+                        ty: self.type_info(&field.ty),
+                        span: field.span,
+                    })
+                    .collect(),
+                span: stmt.span,
+            }),
+            Stmt::Enum(stmt) => Stmt::Enum(EnumStmt {
+                id: self.stmt_id(stmt.id),
+                name: stmt.name.clone(),
+                package_item: stmt.package_item,
+                type_params: stmt.type_params.clone(),
+                variants: stmt
+                    .variants
+                    .iter()
+                    .map(|variant| EnumVariant {
+                        name: variant.name.clone(),
+                        payload: variant
+                            .payload
+                            .as_ref()
+                            .map(|payload| self.type_info(payload)),
+                        span: variant.span,
+                    })
+                    .collect(),
+                span: stmt.span,
+            }),
+            Stmt::Function(stmt) => Stmt::Function(FunctionStmt {
+                id: self.stmt_id(stmt.id),
+                name: stmt.name.clone(),
+                binding: self.binding(stmt.binding),
+                package_item: stmt.package_item,
+                params: stmt.params.iter().map(|param| self.param(param)).collect(),
+                return_ty: self.type_info(&stmt.return_ty),
+                body: self.value_block(&stmt.body),
+                span: stmt.span,
+            }),
+            Stmt::If(stmt) => Stmt::If(IfStmt {
+                id: self.stmt_id(stmt.id),
+                condition: self.expr(&stmt.condition),
+                then_branch: self.block(&stmt.then_branch),
+                else_branch: stmt.else_branch.as_ref().map(|branch| self.block(branch)),
+                span: stmt.span,
+            }),
+            Stmt::While(stmt) => Stmt::While(WhileStmt {
+                id: self.stmt_id(stmt.id),
+                condition: self.expr(&stmt.condition),
+                body: self.block(&stmt.body),
+                span: stmt.span,
+            }),
+            Stmt::Expr(stmt) => Stmt::Expr(ExprStmt {
+                id: self.stmt_id(stmt.id),
+                expr: self.expr(&stmt.expr),
+                span: stmt.span,
+            }),
+        }
+    }
+
+    fn block(&mut self, block: &Block) -> Block {
+        Block {
+            statements: block
+                .statements
+                .iter()
+                .map(|statement| self.stmt(statement))
+                .collect(),
+            span: block.span,
+        }
+    }
+
+    fn value_block(&mut self, block: &ValueBlock) -> ValueBlock {
+        ValueBlock {
+            statements: block
+                .statements
+                .iter()
+                .map(|statement| self.stmt(statement))
+                .collect(),
+            expr: Box::new(self.expr(&block.expr)),
+            span: block.span,
+        }
+    }
+
+    fn expr(&mut self, expr: &Expr) -> Expr {
+        Expr {
+            id: self.expr_id(expr.id),
+            ty: self.type_info(&expr.ty),
+            kind: match &expr.kind {
+                ExprKind::Int(value) => ExprKind::Int(*value),
+                ExprKind::Bool(value) => ExprKind::Bool(*value),
+                ExprKind::String(value) => ExprKind::String(value.clone()),
+                ExprKind::Ident(expr) => ExprKind::Ident(IdentExpr {
+                    name: expr.name.clone(),
+                    binding: self.binding(expr.binding),
+                    target: self.ident_target(expr.target),
+                }),
+                ExprKind::ListLit(expr) => ExprKind::ListLit(ListLitExpr {
+                    items: expr.items.iter().map(|item| self.expr(item)).collect(),
+                }),
+                ExprKind::Index(expr) => ExprKind::Index(IndexExpr {
+                    base: Box::new(self.expr(&expr.base)),
+                    index: Box::new(self.expr(&expr.index)),
+                }),
+                ExprKind::RecordLit(expr) => ExprKind::RecordLit(RecordLitExpr {
+                    type_name: expr.type_name.clone(),
+                    fields: expr
+                        .fields
+                        .iter()
+                        .map(|field| RecordFieldInit {
+                            name: field.name.clone(),
+                            value: self.expr(&field.value),
+                            span: field.span,
+                        })
+                        .collect(),
+                }),
+                ExprKind::Field(expr) => ExprKind::Field(FieldExpr {
+                    base: Box::new(self.expr(&expr.base)),
+                    field: expr.field.clone(),
+                }),
+                ExprKind::RecordUpdate(expr) => ExprKind::RecordUpdate(RecordUpdateExpr {
+                    base: Box::new(self.expr(&expr.base)),
+                    fields: expr
+                        .fields
+                        .iter()
+                        .map(|field| RecordFieldInit {
+                            name: field.name.clone(),
+                            value: self.expr(&field.value),
+                            span: field.span,
+                        })
+                        .collect(),
+                }),
+                ExprKind::Unary(expr) => ExprKind::Unary(UnaryExpr {
+                    op: expr.op,
+                    expr: Box::new(self.expr(&expr.expr)),
+                }),
+                ExprKind::Binary(expr) => ExprKind::Binary(BinaryExpr {
+                    op: expr.op,
+                    left: Box::new(self.expr(&expr.left)),
+                    right: Box::new(self.expr(&expr.right)),
+                }),
+                ExprKind::Call(expr) => ExprKind::Call(CallExpr {
+                    callee: Box::new(self.expr(&expr.callee)),
+                    args: expr.args.iter().map(|arg| self.expr(arg)).collect(),
+                    origin: expr.origin,
+                    resolved_callee: self.callee(expr.resolved_callee),
+                }),
+                ExprKind::If(expr) => ExprKind::If(IfExpr {
+                    condition: Box::new(self.expr(&expr.condition)),
+                    then_branch: self.value_block(&expr.then_branch),
+                    else_branch: self.value_block(&expr.else_branch),
+                }),
+                ExprKind::Match(expr) => ExprKind::Match(MatchExpr {
+                    value: Box::new(self.expr(&expr.value)),
+                    arms: expr
+                        .arms
+                        .iter()
+                        .map(|arm| MatchArm {
+                            pattern: self.match_pattern(&arm.pattern),
+                            value: self.expr(&arm.value),
+                            span: arm.span,
+                        })
+                        .collect(),
+                }),
+                ExprKind::Fn(expr) => ExprKind::Fn(FnExpr {
+                    params: expr.params.iter().map(|param| self.param(param)).collect(),
+                    return_ty: self.type_info(&expr.return_ty),
+                    body: self.value_block(&expr.body),
+                }),
+            },
+            span: expr.span,
+        }
+    }
+
+    fn param(&mut self, param: &Param) -> Param {
+        Param {
+            name: param.name.clone(),
+            binding: self.binding(param.binding),
+            ty: self.type_info(&param.ty),
+            span: param.span,
+        }
+    }
+
+    fn match_pattern(&mut self, pattern: &MatchPattern) -> MatchPattern {
+        match pattern {
+            MatchPattern::Variant(pattern) => MatchPattern::Variant(EnumVariantPattern {
+                enum_name: pattern.enum_name.clone(),
+                variant_name: pattern.variant_name.clone(),
+                binding_name: pattern.binding_name.clone(),
+                binding: pattern.binding.map(|binding| self.binding(binding)),
+                span: pattern.span,
+            }),
+        }
+    }
+
+    fn ident_target(&mut self, target: IdentTarget) -> IdentTarget {
+        match target {
+            IdentTarget::Binding(binding) => IdentTarget::Binding(self.binding(binding)),
+            IdentTarget::PackageItem { binding, item } => IdentTarget::PackageItem {
+                binding: self.binding(binding),
+                item,
+            },
+            IdentTarget::EnumVariant {
+                binding,
+                enum_name,
+                enum_item,
+                variant_name,
+            } => IdentTarget::EnumVariant {
+                binding: self.binding(binding),
+                enum_name: self.symbol(enum_name),
+                enum_item,
+                variant_name: self.symbol(variant_name),
+            },
+        }
+    }
+
+    fn callee(&mut self, callee: TypedCalleeInfo) -> TypedCalleeInfo {
+        match callee {
+            TypedCalleeInfo::Binding(binding) => TypedCalleeInfo::Binding(self.binding(binding)),
+            TypedCalleeInfo::PackageItem { binding, item } => TypedCalleeInfo::PackageItem {
+                binding: self.binding(binding),
+                item,
+            },
+            TypedCalleeInfo::EnumVariant {
+                binding,
+                enum_name,
+                enum_item,
+                variant_name,
+            } => TypedCalleeInfo::EnumVariant {
+                binding: self.binding(binding),
+                enum_name: self.symbol(enum_name),
+                enum_item,
+                variant_name: self.symbol(variant_name),
+            },
+            TypedCalleeInfo::Builtin { binding, name } => TypedCalleeInfo::Builtin {
+                binding: self.binding(binding),
+                name,
+            },
+            TypedCalleeInfo::Value => TypedCalleeInfo::Value,
+            TypedCalleeInfo::Error => TypedCalleeInfo::Error,
+        }
+    }
+
+    fn type_info(&mut self, ty: &TypeInfo) -> TypeInfo {
+        match ty {
+            TypeInfo::GenericParam(symbol) => TypeInfo::GenericParam(self.symbol(*symbol)),
+            TypeInfo::Record(symbol) => TypeInfo::Record(self.symbol(*symbol)),
+            TypeInfo::PackageRecord { symbol, item } => TypeInfo::PackageRecord {
+                symbol: self.symbol(*symbol),
+                item: *item,
+            },
+            TypeInfo::Enum { symbol, args } => TypeInfo::Enum {
+                symbol: self.symbol(*symbol),
+                args: args.iter().map(|arg| self.type_info(arg)).collect(),
+            },
+            TypeInfo::PackageEnum { symbol, item, args } => TypeInfo::PackageEnum {
+                symbol: self.symbol(*symbol),
+                item: *item,
+                args: args.iter().map(|arg| self.type_info(arg)).collect(),
+            },
+            TypeInfo::List(item) => TypeInfo::List(Box::new(self.type_info(item))),
+            TypeInfo::Map(key, value) => TypeInfo::Map(
+                Box::new(self.type_info(key)),
+                Box::new(self.type_info(value)),
+            ),
+            TypeInfo::Option(item) => TypeInfo::Option(Box::new(self.type_info(item))),
+            TypeInfo::Result(ok, err) => {
+                TypeInfo::Result(Box::new(self.type_info(ok)), Box::new(self.type_info(err)))
+            }
+            TypeInfo::EnumConstructor {
+                enum_symbol,
+                enum_item,
+                variant,
+            } => TypeInfo::EnumConstructor {
+                enum_symbol: self.symbol(*enum_symbol),
+                enum_item: *enum_item,
+                variant: self.symbol(*variant),
+            },
+            TypeInfo::Function(function) => TypeInfo::Function(FunctionTypeInfo {
+                params: function
+                    .params
+                    .iter()
+                    .map(|param| self.type_info(param))
+                    .collect(),
+                ret: Box::new(self.type_info(&function.ret)),
+            }),
+            TypeInfo::Int
+            | TypeInfo::Bool
+            | TypeInfo::String
+            | TypeInfo::Builtin(_)
+            | TypeInfo::Unknown
+            | TypeInfo::Error => ty.clone(),
+        }
+    }
+
+    fn symbol(&mut self, symbol: Symbol) -> Symbol {
+        self.to_symbols.intern(self.from_symbols.resolve(symbol))
+    }
+
+    fn binding(&self, binding: BindingId) -> BindingId {
+        BindingId::new(binding.as_u32() + self.binding_offset)
+    }
+
+    fn stmt_id(&self, id: StmtId) -> StmtId {
+        StmtId::new(id.as_u32() + self.stmt_offset)
+    }
+
+    fn expr_id(&self, id: ExprId) -> ExprId {
+        ExprId::new(id.as_u32() + self.expr_offset)
+    }
+}
+
+fn max_binding_id_in_program(program: &Program) -> Option<u32> {
+    let mut max = program
+        .bindings
+        .iter()
+        .map(|binding| binding.id.as_u32())
+        .max();
+    for statement in &program.statements {
+        max = max_opt(max, max_binding_id_in_stmt(statement));
+    }
+    max
+}
+
+fn max_binding_id_in_stmt(statement: &Stmt) -> Option<u32> {
+    let mut max = None;
+    match statement {
+        Stmt::Assign(stmt) => {
+            max = max_opt(max, Some(stmt.binding.as_u32()));
+            max = max_opt(max, max_binding_id_in_expr(&stmt.value));
+        }
+        Stmt::Record(_) | Stmt::Enum(_) => {}
+        Stmt::Function(stmt) => {
+            max = max_opt(max, Some(stmt.binding.as_u32()));
+            for param in &stmt.params {
+                max = max_opt(max, Some(param.binding.as_u32()));
+            }
+            max = max_opt(max, max_binding_id_in_value_block(&stmt.body));
+        }
+        Stmt::If(stmt) => {
+            max = max_opt(max, max_binding_id_in_expr(&stmt.condition));
+            max = max_opt(max, max_binding_id_in_block(&stmt.then_branch));
+            if let Some(else_branch) = &stmt.else_branch {
+                max = max_opt(max, max_binding_id_in_block(else_branch));
+            }
+        }
+        Stmt::While(stmt) => {
+            max = max_opt(max, max_binding_id_in_expr(&stmt.condition));
+            max = max_opt(max, max_binding_id_in_block(&stmt.body));
+        }
+        Stmt::Expr(stmt) => {
+            max = max_opt(max, max_binding_id_in_expr(&stmt.expr));
+        }
+    }
+    max
+}
+
+fn max_binding_id_in_block(block: &Block) -> Option<u32> {
+    max_binding_id_in_statements(&block.statements)
+}
+
+fn max_binding_id_in_value_block(block: &ValueBlock) -> Option<u32> {
+    let mut max = max_binding_id_in_statements(&block.statements);
+    max = max_opt(max, max_binding_id_in_expr(&block.expr));
+    max
+}
+
+fn max_binding_id_in_statements(statements: &[Stmt]) -> Option<u32> {
+    statements.iter().filter_map(max_binding_id_in_stmt).max()
+}
+
+fn max_binding_id_in_expr(expr: &Expr) -> Option<u32> {
+    let mut max = None;
+    match &expr.kind {
+        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) => {}
+        ExprKind::Ident(expr) => {
+            max = max_opt(max, Some(expr.binding.as_u32()));
+            max = max_opt(max, max_binding_id_in_ident_target(expr.target));
+        }
+        ExprKind::ListLit(expr) => {
+            for item in &expr.items {
+                max = max_opt(max, max_binding_id_in_expr(item));
+            }
+        }
+        ExprKind::Index(expr) => {
+            max = max_opt(max, max_binding_id_in_expr(&expr.base));
+            max = max_opt(max, max_binding_id_in_expr(&expr.index));
+        }
+        ExprKind::RecordLit(expr) => {
+            for field in &expr.fields {
+                max = max_opt(max, max_binding_id_in_expr(&field.value));
+            }
+        }
+        ExprKind::Field(expr) => max = max_opt(max, max_binding_id_in_expr(&expr.base)),
+        ExprKind::RecordUpdate(expr) => {
+            max = max_opt(max, max_binding_id_in_expr(&expr.base));
+            for field in &expr.fields {
+                max = max_opt(max, max_binding_id_in_expr(&field.value));
+            }
+        }
+        ExprKind::Unary(expr) => max = max_opt(max, max_binding_id_in_expr(&expr.expr)),
+        ExprKind::Binary(expr) => {
+            max = max_opt(max, max_binding_id_in_expr(&expr.left));
+            max = max_opt(max, max_binding_id_in_expr(&expr.right));
+        }
+        ExprKind::Call(expr) => {
+            max = max_opt(max, max_binding_id_in_expr(&expr.callee));
+            max = max_opt(max, max_binding_id_in_callee(expr.resolved_callee));
+            for arg in &expr.args {
+                max = max_opt(max, max_binding_id_in_expr(arg));
+            }
+        }
+        ExprKind::If(expr) => {
+            max = max_opt(max, max_binding_id_in_expr(&expr.condition));
+            max = max_opt(max, max_binding_id_in_value_block(&expr.then_branch));
+            max = max_opt(max, max_binding_id_in_value_block(&expr.else_branch));
+        }
+        ExprKind::Match(expr) => {
+            max = max_opt(max, max_binding_id_in_expr(&expr.value));
+            for arm in &expr.arms {
+                let MatchPattern::Variant(pattern) = &arm.pattern;
+                if let Some(binding) = pattern.binding {
+                    max = max_opt(max, Some(binding.as_u32()));
+                }
+                max = max_opt(max, max_binding_id_in_expr(&arm.value));
+            }
+        }
+        ExprKind::Fn(expr) => {
+            for param in &expr.params {
+                max = max_opt(max, Some(param.binding.as_u32()));
+            }
+            max = max_opt(max, max_binding_id_in_value_block(&expr.body));
+        }
+    }
+    max
+}
+
+fn max_binding_id_in_ident_target(target: IdentTarget) -> Option<u32> {
+    match target {
+        IdentTarget::Binding(binding)
+        | IdentTarget::PackageItem { binding, .. }
+        | IdentTarget::EnumVariant { binding, .. } => Some(binding.as_u32()),
+    }
+}
+
+fn max_binding_id_in_callee(callee: TypedCalleeInfo) -> Option<u32> {
+    match callee {
+        TypedCalleeInfo::Binding(binding)
+        | TypedCalleeInfo::PackageItem { binding, .. }
+        | TypedCalleeInfo::EnumVariant { binding, .. }
+        | TypedCalleeInfo::Builtin { binding, .. } => Some(binding.as_u32()),
+        TypedCalleeInfo::Value | TypedCalleeInfo::Error => None,
+    }
+}
+
+fn max_stmt_id_in_program(program: &Program) -> Option<u32> {
+    program
+        .statements
+        .iter()
+        .filter_map(max_stmt_id_in_stmt)
+        .max()
+}
+
+fn max_stmt_id_in_stmt(statement: &Stmt) -> Option<u32> {
+    let mut max = Some(statement.id().as_u32());
+    match statement {
+        Stmt::Function(stmt) => max = max_opt(max, max_stmt_id_in_value_block(&stmt.body)),
+        Stmt::If(stmt) => {
+            max = max_opt(max, max_stmt_id_in_block(&stmt.then_branch));
+            if let Some(else_branch) = &stmt.else_branch {
+                max = max_opt(max, max_stmt_id_in_block(else_branch));
+            }
+        }
+        Stmt::While(stmt) => max = max_opt(max, max_stmt_id_in_block(&stmt.body)),
+        Stmt::Assign(_) | Stmt::Record(_) | Stmt::Enum(_) | Stmt::Expr(_) => {}
+    }
+    max
+}
+
+fn max_stmt_id_in_block(block: &Block) -> Option<u32> {
+    max_stmt_id_in_statements(&block.statements)
+}
+
+fn max_stmt_id_in_value_block(block: &ValueBlock) -> Option<u32> {
+    max_stmt_id_in_statements(&block.statements)
+}
+
+fn max_stmt_id_in_statements(statements: &[Stmt]) -> Option<u32> {
+    statements.iter().filter_map(max_stmt_id_in_stmt).max()
+}
+
+fn max_expr_id_in_program(program: &Program) -> Option<u32> {
+    program
+        .statements
+        .iter()
+        .filter_map(max_expr_id_in_stmt)
+        .max()
+}
+
+fn max_expr_id_in_stmt(statement: &Stmt) -> Option<u32> {
+    match statement {
+        Stmt::Assign(stmt) => max_expr_id_in_expr(&stmt.value),
+        Stmt::Record(_) | Stmt::Enum(_) => None,
+        Stmt::Function(stmt) => max_expr_id_in_value_block(&stmt.body),
+        Stmt::If(stmt) => {
+            let mut max = max_expr_id_in_expr(&stmt.condition);
+            max = max_opt(max, max_expr_id_in_block(&stmt.then_branch));
+            if let Some(else_branch) = &stmt.else_branch {
+                max = max_opt(max, max_expr_id_in_block(else_branch));
+            }
+            max
+        }
+        Stmt::While(stmt) => max_opt(
+            max_expr_id_in_expr(&stmt.condition),
+            max_expr_id_in_block(&stmt.body),
+        ),
+        Stmt::Expr(stmt) => max_expr_id_in_expr(&stmt.expr),
+    }
+}
+
+fn max_expr_id_in_block(block: &Block) -> Option<u32> {
+    max_expr_id_in_statements(&block.statements)
+}
+
+fn max_expr_id_in_value_block(block: &ValueBlock) -> Option<u32> {
+    max_opt(
+        max_expr_id_in_statements(&block.statements),
+        max_expr_id_in_expr(&block.expr),
+    )
+}
+
+fn max_expr_id_in_statements(statements: &[Stmt]) -> Option<u32> {
+    statements.iter().filter_map(max_expr_id_in_stmt).max()
+}
+
+fn max_expr_id_in_expr(expr: &Expr) -> Option<u32> {
+    let mut max = Some(expr.id.as_u32());
+    match &expr.kind {
+        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) | ExprKind::Ident(_) => {}
+        ExprKind::ListLit(expr) => {
+            for item in &expr.items {
+                max = max_opt(max, max_expr_id_in_expr(item));
+            }
+        }
+        ExprKind::Index(expr) => {
+            max = max_opt(max, max_expr_id_in_expr(&expr.base));
+            max = max_opt(max, max_expr_id_in_expr(&expr.index));
+        }
+        ExprKind::RecordLit(expr) => {
+            for field in &expr.fields {
+                max = max_opt(max, max_expr_id_in_expr(&field.value));
+            }
+        }
+        ExprKind::Field(expr) => max = max_opt(max, max_expr_id_in_expr(&expr.base)),
+        ExprKind::RecordUpdate(expr) => {
+            max = max_opt(max, max_expr_id_in_expr(&expr.base));
+            for field in &expr.fields {
+                max = max_opt(max, max_expr_id_in_expr(&field.value));
+            }
+        }
+        ExprKind::Unary(expr) => max = max_opt(max, max_expr_id_in_expr(&expr.expr)),
+        ExprKind::Binary(expr) => {
+            max = max_opt(max, max_expr_id_in_expr(&expr.left));
+            max = max_opt(max, max_expr_id_in_expr(&expr.right));
+        }
+        ExprKind::Call(expr) => {
+            max = max_opt(max, max_expr_id_in_expr(&expr.callee));
+            for arg in &expr.args {
+                max = max_opt(max, max_expr_id_in_expr(arg));
+            }
+        }
+        ExprKind::If(expr) => {
+            max = max_opt(max, max_expr_id_in_expr(&expr.condition));
+            max = max_opt(max, max_expr_id_in_value_block(&expr.then_branch));
+            max = max_opt(max, max_expr_id_in_value_block(&expr.else_branch));
+        }
+        ExprKind::Match(expr) => {
+            max = max_opt(max, max_expr_id_in_expr(&expr.value));
+            for arm in &expr.arms {
+                max = max_opt(max, max_expr_id_in_expr(&arm.value));
+            }
+        }
+        ExprKind::Fn(expr) => max = max_opt(max, max_expr_id_in_value_block(&expr.body)),
+    }
+    max
+}
+
+fn max_opt(left: Option<u32>, right: Option<u32>) -> Option<u32> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
+}
+
 struct Lowerer<'a> {
     analysis: &'a TypeCheckOutput,
     expr_types: HashMap<ExprId, TypeInfo>,

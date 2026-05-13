@@ -34,7 +34,7 @@ Implemented language surface:
 - a library-only package-aware check path validates package boundary, import, visibility, and public-signature rules from the unflattened package graph before delegating valid programs to the legacy typed checking path
 - package-aware source and per-module signature environments resolve record/enum/function signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility
 - initial package-aware module body checking consumes those module signature environments before the legacy typed HIR path runs, and the package-aware API retains per-module typecheck outputs plus typed HIR programs
-- package-aware check results expose the entry module typed HIR from the unflattened module check output instead of the legacy flattened typed path
+- package-aware check results aggregate per-module typed HIR from unflattened module check outputs with remapped local IDs and symbols instead of using the legacy flattened typed path
 - package-aware checking can consume loaded in-memory or persisted package interfaces as dependency signatures without reading dependency source bodies, and `muga check --artifact-root` uses that package-aware artifact path
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
@@ -43,7 +43,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package checking/execution still flattens packages and reads dependency source
-- package-aware checking now has boundary validation plus source/module signature environments, loaded/artifact interface dependency signatures, an initial body-check pass, per-module typed HIR outputs, and an entry-module typed HIR result, but full package-wide typed HIR aggregation without flattening is still not implemented
+- package-aware checking now has boundary validation plus source/module signature environments, loaded/artifact interface dependency signatures, an initial body-check pass, per-module typed HIR outputs, and a package-wide typed HIR aggregate, but checking/execution still defaults to older flattened paths where package-aware mode is not explicitly selected
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
 - VM bytecode still lowers from the older HIR path, not from typed HIR/MIR
 
