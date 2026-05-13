@@ -2,8 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
-use crate::identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId};
+use crate::identity::{BindingId, BindingKind, ExprId, ModuleId, PackageItemId, StmtId};
 use crate::known_enum;
+use crate::package_signature::{
+    PackageModuleSignatureEnvironment, PackageSignatureEnvironment, PackageSignatureSource,
+};
 use crate::prelude::{self, BuiltinId, BuiltinKind};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
@@ -136,7 +139,8 @@ struct RecordDef {
 #[derive(Clone, Debug)]
 struct RecordField {
     name: Symbol,
-    type_name: TypeExpr,
+    type_name: Option<TypeExpr>,
+    ty: Option<Type>,
     span: Span,
 }
 
@@ -151,6 +155,7 @@ struct EnumDef {
 struct EnumVariantDef {
     name: Symbol,
     payload: Option<TypeExpr>,
+    payload_ty: Option<Type>,
     span: Span,
 }
 
@@ -199,6 +204,21 @@ pub fn typecheck_program(program: &Program) -> TypeCheckOutput {
     checker.into_output()
 }
 
+pub fn typecheck_package_module(
+    program: &Program,
+    signatures: &PackageSignatureEnvironment,
+    module: ModuleId,
+) -> TypeCheckOutput {
+    let mut checker = TypeChecker::new();
+    if let Some(environment) = signatures.module(module) {
+        checker.install_package_module_signatures(signatures, environment);
+    }
+    checker.predeclare_records(&program.statements);
+    checker.predeclare_enums(&program.statements);
+    checker.check_scope_statements(&program.statements);
+    checker.into_output()
+}
+
 struct TypeChecker {
     scopes: Vec<ScopeFrame>,
     records: HashMap<Symbol, RecordDef>,
@@ -212,6 +232,8 @@ struct TypeChecker {
     diagnostics: Vec<Diagnostic>,
     next_unknown: u32,
     substitutions: HashMap<u32, Type>,
+    package_records: HashMap<PackageItemId, Symbol>,
+    package_enums: HashMap<PackageItemId, Symbol>,
 }
 
 impl TypeChecker {
@@ -229,6 +251,8 @@ impl TypeChecker {
             diagnostics: Vec::new(),
             next_unknown: 0,
             substitutions: HashMap::new(),
+            package_records: HashMap::new(),
+            package_enums: HashMap::new(),
         };
         checker.install_prelude();
         checker
@@ -279,6 +303,218 @@ impl TypeChecker {
             };
             let symbol = self.symbol(builtin.name);
             self.insert_current(symbol, kind, ty, Span::default());
+        }
+    }
+
+    fn install_package_module_signatures(
+        &mut self,
+        signatures: &PackageSignatureEnvironment,
+        environment: &PackageModuleSignatureEnvironment,
+    ) {
+        for record in &environment.records {
+            let symbol = self.symbol(&record.name);
+            self.package_records.insert(record.item, symbol);
+        }
+        for enumeration in &environment.enums {
+            let symbol = self.symbol(&enumeration.name);
+            self.package_enums.insert(enumeration.item, symbol);
+        }
+
+        for visible in &environment.records {
+            if visible.source == PackageSignatureSource::ModuleLocal {
+                continue;
+            }
+            let Some(record) = signatures.record(visible.item) else {
+                continue;
+            };
+            let symbol = self.symbol(&visible.name);
+            let fields = record
+                .fields
+                .iter()
+                .map(|field| RecordField {
+                    name: self.symbol(&field.name),
+                    type_name: None,
+                    ty: Some(self.type_from_signature_info(&field.ty, signatures)),
+                    span: field.span,
+                })
+                .collect();
+            self.records.insert(
+                symbol,
+                RecordDef {
+                    span: record.span,
+                    fields,
+                },
+            );
+        }
+
+        for visible in &environment.enums {
+            if visible.source == PackageSignatureSource::ModuleLocal {
+                continue;
+            }
+            let Some(enumeration) = signatures.enumeration(visible.item) else {
+                continue;
+            };
+            let enum_symbol = self.symbol(&visible.name);
+            let type_params = enumeration
+                .type_params
+                .iter()
+                .map(|param| self.symbol(param))
+                .collect::<Vec<_>>();
+            let variants = enumeration
+                .variants
+                .iter()
+                .map(|variant| {
+                    let variant_symbol = self.symbol(&variant.name);
+                    let qualified = self.symbol(&format!("{}::{}", visible.name, variant.name));
+                    let kind = if variant.payload.is_some() {
+                        BindingKind::Function
+                    } else {
+                        BindingKind::Immutable
+                    };
+                    self.insert_current(
+                        qualified,
+                        kind,
+                        Type::EnumConstructor {
+                            enum_name: enum_symbol,
+                            enum_item: Some(enumeration.item),
+                            variant_name: variant_symbol,
+                        },
+                        variant.span,
+                    );
+                    EnumVariantDef {
+                        name: variant_symbol,
+                        payload: None,
+                        payload_ty: variant
+                            .payload
+                            .as_ref()
+                            .map(|payload| self.type_from_signature_info(payload, signatures)),
+                        span: variant.span,
+                    }
+                })
+                .collect();
+            self.enums.insert(
+                enum_symbol,
+                EnumDef {
+                    span: enumeration.span,
+                    type_params,
+                    variants,
+                },
+            );
+        }
+
+        for visible in &environment.functions {
+            if visible.source == PackageSignatureSource::ModuleLocal {
+                continue;
+            }
+            let Some(function) = signatures.function(visible.item) else {
+                continue;
+            };
+            let symbol = self.symbol(&visible.name);
+            let sig = FunctionSig {
+                params: function
+                    .params
+                    .iter()
+                    .map(|param| {
+                        param
+                            .ty
+                            .as_ref()
+                            .map(|ty| self.type_from_signature_info(ty, signatures))
+                            .unwrap_or(Type::Unknown(self.fresh_unknown()))
+                    })
+                    .collect(),
+                ret: Box::new(
+                    function
+                        .ret
+                        .as_ref()
+                        .map(|ty| self.type_from_signature_info(ty, signatures))
+                        .unwrap_or(Type::Unknown(self.fresh_unknown())),
+                ),
+            };
+            self.insert_current(
+                symbol,
+                BindingKind::Function,
+                Type::Function(sig),
+                function.span,
+            );
+        }
+    }
+
+    fn type_from_signature_info(
+        &mut self,
+        ty: &TypeInfo,
+        signatures: &PackageSignatureEnvironment,
+    ) -> Type {
+        match ty {
+            TypeInfo::Int => Type::Int,
+            TypeInfo::Bool => Type::Bool,
+            TypeInfo::String => Type::String,
+            TypeInfo::GenericParam(symbol) => {
+                Type::GenericParam(self.symbol(signatures.symbols.resolve(*symbol)))
+            }
+            TypeInfo::Record(symbol) => {
+                Type::Record(self.symbol(signatures.symbols.resolve(*symbol)))
+            }
+            TypeInfo::PackageRecord { symbol, item } => {
+                let symbol = self
+                    .package_records
+                    .get(item)
+                    .copied()
+                    .unwrap_or_else(|| self.symbol(signatures.symbols.resolve(*symbol)));
+                Type::Record(symbol)
+            }
+            TypeInfo::Enum { symbol, args } => Type::Enum(
+                self.symbol(signatures.symbols.resolve(*symbol)),
+                args.iter()
+                    .map(|arg| self.type_from_signature_info(arg, signatures))
+                    .collect(),
+            ),
+            TypeInfo::PackageEnum { symbol, item, args } => {
+                let symbol = self
+                    .package_enums
+                    .get(item)
+                    .copied()
+                    .unwrap_or_else(|| self.symbol(signatures.symbols.resolve(*symbol)));
+                Type::Enum(
+                    symbol,
+                    args.iter()
+                        .map(|arg| self.type_from_signature_info(arg, signatures))
+                        .collect(),
+                )
+            }
+            TypeInfo::List(item) => {
+                Type::List(Box::new(self.type_from_signature_info(item, signatures)))
+            }
+            TypeInfo::Map(key, value) => Type::Map(
+                Box::new(self.type_from_signature_info(key, signatures)),
+                Box::new(self.type_from_signature_info(value, signatures)),
+            ),
+            TypeInfo::Option(item) => {
+                Type::Option(Box::new(self.type_from_signature_info(item, signatures)))
+            }
+            TypeInfo::Result(ok, err) => Type::Result(
+                Box::new(self.type_from_signature_info(ok, signatures)),
+                Box::new(self.type_from_signature_info(err, signatures)),
+            ),
+            TypeInfo::EnumConstructor {
+                enum_symbol,
+                enum_item,
+                variant,
+            } => Type::EnumConstructor {
+                enum_name: self.symbol(signatures.symbols.resolve(*enum_symbol)),
+                enum_item: *enum_item,
+                variant_name: self.symbol(signatures.symbols.resolve(*variant)),
+            },
+            TypeInfo::Function(function) => Type::Function(FunctionSig {
+                params: function
+                    .params
+                    .iter()
+                    .map(|param| self.type_from_signature_info(param, signatures))
+                    .collect(),
+                ret: Box::new(self.type_from_signature_info(&function.ret, signatures)),
+            }),
+            TypeInfo::Builtin(builtin) => Type::Builtin(*builtin),
+            TypeInfo::Unknown => Type::Unknown(self.fresh_unknown()),
+            TypeInfo::Error => Type::Error,
         }
     }
 
@@ -948,7 +1184,8 @@ impl TypeChecker {
             for field in &record.fields {
                 fields.push(RecordField {
                     name: self.symbol(&field.name),
-                    type_name: field.type_name.clone(),
+                    type_name: Some(field.type_name.clone()),
+                    ty: None,
                     span: field.span,
                 });
             }
@@ -1002,6 +1239,7 @@ impl TypeChecker {
                 variants.push(EnumVariantDef {
                     name: variant_name,
                     payload: variant.payload.clone(),
+                    payload_ty: None,
                     span: variant.span,
                 });
                 let qualified = self.symbol(&format!("{}::{}", enumeration.name, variant.name));
@@ -1673,7 +1911,9 @@ impl TypeChecker {
             Some(_) | None => Vec::new(),
         };
 
-        match (&variant.payload, args) {
+        let variant_payload =
+            self.enum_variant_payload_type(&variant, &enumeration.type_params, &enum_args);
+        match (variant_payload.as_ref(), args) {
             (None, []) => {}
             (None, _) => {
                 self.diagnostics.push(Diagnostic::new(
@@ -1709,14 +1949,7 @@ impl TypeChecker {
         }
 
         let enum_ty = Type::Enum(enum_name, enum_args.clone());
-        if let (Some(payload_expr), Some(payload_type)) = (args.first(), variant.payload.as_ref()) {
-            let payload_ty = self.type_from_expr_with_params(
-                payload_type,
-                variant.span,
-                &enumeration.type_params,
-            );
-            let payload_ty =
-                self.substitute_type_params(payload_ty, &enumeration.type_params, &enum_args);
+        if let (Some(payload_expr), Some(payload_ty)) = (args.first(), variant_payload) {
             self.check_expr_with_expected(payload_expr, Some(payload_ty));
         }
         enum_ty
@@ -1939,29 +2172,34 @@ impl TypeChecker {
                 variants: Vec::new(),
             };
         };
-        let variants = enumeration
-            .variants
-            .iter()
-            .map(|variant| {
-                let payload = variant.payload.as_ref().map(|payload| {
-                    let payload_ty = self.type_from_expr_with_params(
-                        payload,
-                        variant.span,
-                        &enumeration.type_params,
-                    );
-                    self.substitute_type_params(payload_ty, &enumeration.type_params, &args)
-                });
-                EnumMatchVariant {
-                    name: variant.name,
-                    payload,
-                }
-            })
-            .collect();
+        let mut variants = Vec::new();
+        for variant in &enumeration.variants {
+            let payload = self.enum_variant_payload_type(variant, &enumeration.type_params, &args);
+            variants.push(EnumMatchVariant {
+                name: variant.name,
+                payload,
+            });
+        }
         EnumMatchSpec {
             enum_name,
             display_name: self.symbols.resolve(enum_name).to_string(),
             variants,
         }
+    }
+
+    fn enum_variant_payload_type(
+        &mut self,
+        variant: &EnumVariantDef,
+        type_params: &[Symbol],
+        type_args: &[Type],
+    ) -> Option<Type> {
+        if let Some(payload_ty) = &variant.payload_ty {
+            return Some(self.substitute_type_params(payload_ty.clone(), type_params, type_args));
+        }
+        variant.payload.as_ref().map(|payload| {
+            let payload_ty = self.type_from_expr_with_params(payload, variant.span, type_params);
+            self.substitute_type_params(payload_ty, type_params, type_args)
+        })
     }
 
     fn qualified_variant(&self, enum_name: Symbol, variant_name: Symbol) -> String {
@@ -2023,7 +2261,7 @@ impl TypeChecker {
                 continue;
             };
 
-            let field_ty = self.type_from_expr(&declared.type_name, declared.span);
+            let field_ty = self.record_field_type(declared);
             if let Err(message) = self.unify(field_ty, value_ty) {
                 self.diagnostics.push(
                     Diagnostic::new("E009", message, field.span)
@@ -2089,7 +2327,7 @@ impl TypeChecker {
             return Type::Error;
         };
 
-        self.type_from_expr(&field.type_name, field.span)
+        self.record_field_type(field)
     }
 
     fn check_record_update(&mut self, expr: &RecordUpdateExpr) -> Type {
@@ -2137,7 +2375,7 @@ impl TypeChecker {
                 continue;
             };
 
-            let field_ty = self.type_from_expr(&declared.type_name, declared.span);
+            let field_ty = self.record_field_type(declared);
             if let Err(message) = self.unify(field_ty, value_ty) {
                 self.diagnostics.push(
                     Diagnostic::new("E012", message, field.span)
@@ -2152,6 +2390,16 @@ impl TypeChecker {
         } else {
             Type::Record(record_name)
         }
+    }
+
+    fn record_field_type(&mut self, field: &RecordField) -> Type {
+        if let Some(ty) = &field.ty {
+            return ty.clone();
+        }
+        let Some(type_name) = &field.type_name else {
+            return Type::Error;
+        };
+        self.type_from_expr(type_name, field.span)
     }
 
     fn signature_from_fn_expr(&mut self, expr: &FnExpr, expected: Option<&Type>) -> FunctionSig {

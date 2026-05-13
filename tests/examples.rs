@@ -1046,6 +1046,68 @@ fn package_module_signature_environment_tracks_imported_exports() {
 }
 
 #[test]
+fn package_module_typechecking_uses_signature_environment_for_body_errors() {
+    let root = temp_package_root("package-module-body-check");
+    let entry = write_package_file(
+        &root,
+        "app/body/main.muga",
+        r#"
+package app::body
+
+fn main(): Int {
+  helper("bad")
+}
+"#,
+    );
+    write_package_file(
+        &root,
+        "app/body/helper.muga",
+        r#"
+package app::body
+
+pkg fn helper(value: Int): Int {
+  value + 1
+}
+"#,
+    );
+
+    let loaded =
+        muga::package::load_package_graph_from_entry(&entry).expect("package graph should load");
+    let signatures =
+        muga::package_signature::PackageSignatureEnvironment::from_loaded_graph(&loaded)
+            .expect("signatures should build");
+    let package = loaded
+        .package_graph
+        .package_id("app::body")
+        .expect("package should exist");
+    let module = loaded
+        .package_graph
+        .module_id(package, "main.muga")
+        .expect("main module should exist");
+    let file = loaded
+        .packages
+        .iter()
+        .find(|package| package.path == "app::body")
+        .and_then(|package| {
+            package
+                .files
+                .iter()
+                .find(|file| file.module_path == "main.muga")
+        })
+        .expect("main file should exist");
+    let output = muga::typing::typecheck_package_module(&file.program, &signatures, module);
+
+    assert!(
+        output
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{:#?}",
+        output.diagnostics
+    );
+}
+
+#[test]
 fn package_symbol_graph_exposes_module_identity() {
     let loaded = muga::package::load_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",

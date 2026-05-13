@@ -33,6 +33,7 @@ Implemented language surface:
 - unflattened package graph loading preserves package files plus package/module/item/export metadata before the legacy flattening path
 - a library-only package-aware check path validates package boundary, import, visibility, and public-signature rules from the unflattened package graph before delegating valid programs to the legacy typed checking path
 - package-aware source and per-module signature environments resolve record/enum/function signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility
+- initial package-aware module body checking consumes those module signature environments before the legacy typed HIR path runs
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:
@@ -40,7 +41,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package checking/execution still flattens packages and reads dependency source
-- package-aware checking now has boundary validation plus source/module signature environments, but body typechecking still needs to move off the flattened typed path
+- package-aware checking now has boundary validation plus source/module signature environments and an initial body-check pass, but typed HIR generation still relies on the flattened typed path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
 - VM bytecode still lowers from the older HIR path, not from typed HIR/MIR
 
@@ -79,7 +80,7 @@ The next code slice should keep artifact roots explicit on the CLI and move towa
 4. Use the unflattened package graph as the migration point for package-aware checking.
 5. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
 6. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
-7. Continue the package-aware checker by using module signature environments for body typechecking and feeding loaded-interface signatures into semantic analysis, not by expanding the flattened AST rewrite path.
+7. Continue the package-aware checker by broadening module body typechecking and feeding loaded-interface signatures into semantic analysis, not by expanding the flattened AST rewrite path.
 
 ## Compiler Architecture Path
 

@@ -117,12 +117,40 @@ pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Di
         return Err(diagnostics);
     }
     let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
+    let diagnostics = typecheck_loaded_package_modules(&packages, &signatures);
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
     let typed_program = compile_typed_path(path)?;
     Ok(PackageAwareCheck {
         packages,
         signatures,
         typed_program,
     })
+}
+
+fn typecheck_loaded_package_modules(
+    packages: &package::LoadedPackageGraph,
+    signatures: &package_signature::PackageSignatureEnvironment,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    for package in &packages.packages {
+        let Some(package_id) = packages.package_graph.package_id(&package.path) else {
+            continue;
+        };
+        for file in &package.files {
+            let Some(module_id) = packages
+                .package_graph
+                .module_id(package_id, &file.module_path)
+            else {
+                continue;
+            };
+            diagnostics.extend(
+                typing::typecheck_package_module(&file.program, signatures, module_id).diagnostics,
+            );
+        }
+    }
+    diagnostics
 }
 
 pub fn compile_typed_path_against_interfaces(
