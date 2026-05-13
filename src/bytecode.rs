@@ -14,6 +14,7 @@ pub struct Program {
     pub entry: Chunk,
     pub functions: Vec<Function>,
     pub bindings: Vec<BindingDef>,
+    pub main: Option<NameRef>,
     pub symbols: SymbolTable,
 }
 
@@ -153,6 +154,7 @@ pub fn compile(program: mir::Program) -> Program {
         bindings,
         symbols,
     } = program;
+    let main = entry_main_ref(&entry, &symbols);
     let bindings: Vec<_> = bindings.into_iter().map(BindingDef::from).collect();
     let mut compiler = Compiler::new(symbols, next_synthetic_binding(&bindings));
     let entry = compiler.compile_entry_body(&entry);
@@ -163,6 +165,7 @@ pub fn compile(program: mir::Program) -> Program {
         entry,
         functions: compiler.functions,
         bindings,
+        main,
         symbols: compiler.symbols,
     }
 }
@@ -173,6 +176,32 @@ fn next_synthetic_binding(bindings: &[BindingDef]) -> u32 {
         .map(|binding| binding.id.as_u32())
         .max()
         .map_or(0, |id| id + 1)
+}
+
+fn entry_main_ref(entry: &mir::Body, symbols: &SymbolTable) -> Option<NameRef> {
+    entry
+        .function_defs
+        .iter()
+        .find_map(|function| {
+            (symbols.resolve(function.name) == "main").then_some(NameRef {
+                binding: function.binding,
+                name: function.name,
+            })
+        })
+        .or_else(|| {
+            entry
+                .statements
+                .iter()
+                .find_map(|statement| match statement {
+                    mir::Stmt::Assign(statement) if symbols.resolve(statement.name) == "main" => {
+                        Some(NameRef {
+                            binding: statement.binding,
+                            name: statement.name,
+                        })
+                    }
+                    _ => None,
+                })
+        })
 }
 
 impl From<mir::BindingDef> for BindingDef {
