@@ -2709,6 +2709,35 @@ fn main(): Int {
 }
 
 #[test]
+fn package_check_cache_artifact_writer_requires_successful_body_check() {
+    let root = temp_package_root("cache-artifact-invalid-body");
+    let entry = write_package_file(
+        &root,
+        "app/cache_invalid/main.muga",
+        r#"
+package app::cache_invalid
+
+fn main(): Int {
+  "bad"
+}
+"#,
+    );
+    let artifact_root = temp_package_root("cache-artifact-invalid-body-artifacts");
+
+    let diagnostics = muga::write_package_check_cache_artifact_for_root(&entry, &artifact_root)
+        .expect_err("invalid package body should not write a check cache artifact");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+    let artifact_path = muga::package_check_cache_artifact_path(&artifact_root, &entry)
+        .expect("check cache path should be derived");
+    assert!(!artifact_path.exists());
+}
+
+#[test]
 fn cache_backed_checking_and_body_checking_agree_for_existing_samples() {
     let path = Path::new("samples/packages/app/main/main.muga");
     let provider = muga::compile_typed_path(path).expect("typed package compilation should pass");

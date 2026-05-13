@@ -63,7 +63,7 @@ cargo run -- check samples/packages/app/main/main.muga
 cargo run -- samples/packages/app/main/main.muga
 ```
 
-For artifact-backed package checking, `emit-artifacts` writes reachable `.mgi` interface files plus the entry package `.mgc` check cache file. Use `emit-interface` with `--package` only when you want to restrict interface emission to one package.
+For artifact-backed package checking, `emit-artifacts` writes reachable `.mgi` interface files plus the entry package `.mgc` check cache file. `emit-check-cache` writes `.mgc` only after the package checks successfully against the available `.mgi` artifacts. Use `emit-interface` with `--package` only when you want to restrict interface emission to one package.
 
 ```bash
 cargo run -- emit-artifacts --artifact-root path/to/artifacts path/to/package/main.muga
@@ -175,7 +175,7 @@ Implemented:
 - downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts, including transitive public-signature type dependencies, without reading dependency implementation bodies
 - package check cache keys combine entry package source content with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` validates package entries through package-aware checks against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
-- `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes the entry `.mgc` check cache; lower-level `emit-check-cache` remains available
+- `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes the entry `.mgc` check cache; lower-level `emit-check-cache` validates the package against `.mgi` artifacts before writing `.mgc`
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 - library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking
 - package-aware source and per-module signature environments derived from the unflattened package graph, preserving package item identity, module/same-package/import visibility, and generic enum signature arity
