@@ -8,6 +8,7 @@ pub mod interface;
 pub mod known_enum;
 pub mod lexer;
 pub mod package;
+pub mod package_signature;
 pub mod parser;
 pub mod prelude;
 pub mod resolver;
@@ -31,6 +32,7 @@ use typed_hir::Program as TypedHirProgram;
 #[derive(Clone, Debug)]
 pub struct PackageAwareCheck {
     pub packages: package::LoadedPackageGraph,
+    pub signatures: package_signature::PackageSignatureEnvironment,
     pub typed_program: TypedHirProgram,
 }
 
@@ -114,9 +116,11 @@ pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Di
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
+    let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
     let typed_program = compile_typed_path(path)?;
     Ok(PackageAwareCheck {
         packages,
+        signatures,
         typed_program,
     })
 }

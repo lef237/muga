@@ -677,6 +677,189 @@ fn package_aware_checking_reuses_unflattened_package_graph() {
 }
 
 #[test]
+fn package_signature_environment_preserves_same_package_type_identities() {
+    let result = muga::check_package_aware_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("package-aware checking should pass");
+    let users = result
+        .packages
+        .package_graph
+        .package_id("util::users")
+        .expect("users package should exist");
+    let user_item = result
+        .packages
+        .package_graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User item should exist");
+    let user = result
+        .signatures
+        .record(user_item)
+        .expect("User signature should exist");
+    let birthday_item = result
+        .packages
+        .package_graph
+        .item_id(users, "birthday", muga::package::PackageItemKind::Function)
+        .expect("birthday item should exist");
+    let birthday = result
+        .signatures
+        .function(birthday_item)
+        .expect("birthday signature should exist");
+
+    assert!(
+        user.fields
+            .iter()
+            .any(|field| field.name == "name" && field.ty == muga::types::TypeInfo::String)
+    );
+    assert!(
+        user.fields
+            .iter()
+            .any(|field| field.name == "age" && field.ty == muga::types::TypeInfo::Int)
+    );
+    assert_eq!(birthday.params.len(), 1);
+    assert!(matches!(
+        birthday.params[0].ty.as_ref(),
+        Some(muga::types::TypeInfo::PackageRecord { item, .. }) if *item == user_item
+    ));
+    assert!(matches!(
+        birthday.ret.as_ref(),
+        Some(muga::types::TypeInfo::PackageRecord { item, .. }) if *item == user_item
+    ));
+}
+
+#[test]
+fn package_signature_environment_resolves_imported_public_types() {
+    let root = temp_package_root("package-signature-imported-types");
+    let entry = write_transitive_interface_provider(&root);
+    let result =
+        muga::check_package_aware_path(&entry).expect("package-aware checking should pass");
+    let users = result
+        .packages
+        .package_graph
+        .package_id("model::users")
+        .expect("users package should exist");
+    let user_item = result
+        .packages
+        .package_graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User item should exist");
+    let facade = result
+        .packages
+        .package_graph
+        .package_id("api::facade")
+        .expect("facade package should exist");
+    let default_user_item = result
+        .packages
+        .package_graph
+        .item_id(
+            facade,
+            "default_user",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("default_user item should exist");
+    let default_user = result
+        .signatures
+        .function(default_user_item)
+        .expect("default_user signature should exist");
+
+    assert!(matches!(
+        default_user.ret.as_ref(),
+        Some(muga::types::TypeInfo::PackageRecord { item, .. }) if *item == user_item
+    ));
+}
+
+#[test]
+fn package_signature_environment_preserves_generic_enum_signatures() {
+    let result =
+        muga::check_package_aware_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+            .expect("package-aware checking should pass");
+    let states = result
+        .packages
+        .package_graph
+        .package_id("util::states")
+        .expect("states package should exist");
+    let status_item = result
+        .packages
+        .package_graph
+        .item_id(states, "Status", muga::package::PackageItemKind::Enum)
+        .expect("Status item should exist");
+    let ready_item = result
+        .packages
+        .package_graph
+        .item_id(states, "ready", muga::package::PackageItemKind::Function)
+        .expect("ready item should exist");
+    let status = result
+        .signatures
+        .enumeration(status_item)
+        .expect("Status signature should exist");
+    let ready = result
+        .signatures
+        .function(ready_item)
+        .expect("ready signature should exist");
+
+    assert_eq!(status.type_params, vec!["T".to_string()]);
+    assert!(status.variants.iter().any(|variant| {
+        variant.name == "Ready"
+            && matches!(
+                variant.payload.as_ref(),
+                Some(muga::types::TypeInfo::GenericParam(_))
+            )
+    }));
+    assert!(matches!(
+        ready.ret.as_ref(),
+        Some(muga::types::TypeInfo::PackageEnum { item, args, .. })
+            if *item == status_item && args == &[muga::types::TypeInfo::Int]
+    ));
+}
+
+#[test]
+fn package_signature_environment_rejects_generic_enum_arity_mismatch() {
+    let root = temp_package_root("package-signature-enum-arity");
+    let entry = write_package_file(
+        &root,
+        "app/main/main.muga",
+        r#"
+package app::main
+
+import util::states
+
+pub fn bad(): states::Status {
+  states::ready(1)
+}
+
+fn main(): Int {
+  0
+}
+"#,
+    );
+    write_package_file(
+        &root,
+        "util/states/model.muga",
+        r#"
+package util::states
+
+pub enum Status[T] {
+  Ready(T)
+  Waiting
+}
+
+pub fn ready(value: Int): Status[Int] {
+  Status::Ready(value)
+}
+"#,
+    );
+
+    let diagnostics = muga::check_package_aware_path(&entry).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "T022"
+                && diagnostic
+                    .message
+                    .contains("enum `Status` expects exactly 1 type arguments")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn package_symbol_graph_exposes_module_identity() {
     let loaded = muga::package::load_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",
