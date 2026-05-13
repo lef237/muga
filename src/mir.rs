@@ -6,7 +6,7 @@
 //! tied to legacy AST lowering.
 
 use crate::{
-    identity::PackageItemId,
+    identity::{BindingId, PackageItemId},
     known_enum,
     package::PackageSymbolGraph,
     span::Span,
@@ -28,7 +28,7 @@ pub struct Program {
 pub struct Function {
     pub id: FunctionId,
     pub name: Option<Symbol>,
-    pub params: Vec<Symbol>,
+    pub params: Vec<ParamDef>,
     pub body: Body,
     pub span: Span,
 }
@@ -45,6 +45,13 @@ pub struct Body {
 pub enum BodyTerminator {
     Effect,
     Return(Box<Expr>),
+}
+
+#[derive(Clone, Debug)]
+pub struct ParamDef {
+    pub name: Symbol,
+    pub binding: BindingId,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -69,6 +76,7 @@ impl Stmt {
 #[derive(Clone, Debug)]
 pub struct AssignStmt {
     pub mutable: bool,
+    pub binding: BindingId,
     pub name: Symbol,
     pub value: Expr,
     pub span: Span,
@@ -77,6 +85,8 @@ pub struct AssignStmt {
 #[derive(Clone, Debug)]
 pub struct FunctionDef {
     pub name: Symbol,
+    pub binding: BindingId,
+    pub package_item: Option<PackageItemId>,
     pub function: FunctionId,
     pub span: Span,
 }
@@ -181,7 +191,17 @@ pub struct StringExpr {
 #[derive(Clone, Debug)]
 pub struct IdentExpr {
     pub name: Symbol,
+    pub target: IdentTarget,
     pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdentTarget {
+    Binding(BindingId),
+    PackageItem {
+        binding: BindingId,
+        item: PackageItemId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -355,6 +375,8 @@ impl TypedLowerer<'_> {
                 typed_hir::Stmt::Function(stmt) => {
                     function_defs.push(FunctionDef {
                         name: self.function_name(stmt),
+                        binding: stmt.binding,
+                        package_item: stmt.package_item,
                         function: self.lower_function(stmt),
                         span: stmt.span,
                     });
@@ -373,6 +395,7 @@ impl TypedLowerer<'_> {
         Some(match statement {
             typed_hir::Stmt::Assign(stmt) => Stmt::Assign(AssignStmt {
                 mutable: stmt.mutable,
+                binding: stmt.binding,
                 name: self.symbol(&stmt.name),
                 value: self.lower_expr(&stmt.value),
                 span: stmt.span,
@@ -534,12 +557,14 @@ impl TypedLowerer<'_> {
                 payload: None,
                 span,
             }),
-            typed_hir::IdentTarget::PackageItem { item, .. } => Expr::Ident(IdentExpr {
+            typed_hir::IdentTarget::PackageItem { binding, item } => Expr::Ident(IdentExpr {
                 name: self.package_item_symbol(item, &expr.name),
+                target: IdentTarget::PackageItem { binding, item },
                 span,
             }),
-            typed_hir::IdentTarget::Binding(_) => Expr::Ident(IdentExpr {
+            typed_hir::IdentTarget::Binding(binding) => Expr::Ident(IdentExpr {
                 name: self.symbol(&expr.name),
+                target: IdentTarget::Binding(binding),
                 span,
             }),
         }
@@ -612,7 +637,7 @@ impl TypedLowerer<'_> {
         let params = stmt
             .params
             .iter()
-            .map(|param| self.symbol(&param.name))
+            .map(|param| self.lower_param(param))
             .collect();
         self.functions.push(Function {
             id,
@@ -631,7 +656,7 @@ impl TypedLowerer<'_> {
         let params = expr
             .params
             .iter()
-            .map(|param| self.symbol(&param.name))
+            .map(|param| self.lower_param(param))
             .collect();
         self.functions.push(Function {
             id,
@@ -650,6 +675,14 @@ impl TypedLowerer<'_> {
             self.package_item_symbol(item, &function.name)
         } else {
             self.symbol(&function.name)
+        }
+    }
+
+    fn lower_param(&mut self, param: &typed_hir::Param) -> ParamDef {
+        ParamDef {
+            name: self.symbol(&param.name),
+            binding: param.binding,
+            span: param.span,
         }
     }
 

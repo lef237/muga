@@ -189,7 +189,7 @@ impl Compiler {
         self.functions[function.id] = Function {
             id: function.id,
             name: function.name,
-            params: function.params.clone(),
+            params: function.params.iter().map(|param| param.name).collect(),
             chunk,
             span: function.span,
         };
