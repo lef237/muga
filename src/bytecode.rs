@@ -128,12 +128,12 @@ pub enum BinaryOp {
 
 pub fn compile(program: mir::Program) -> Program {
     let mir::Program {
-        statements,
+        entry,
         functions,
         symbols,
     } = program;
     let mut compiler = Compiler::new(symbols);
-    let entry = compiler.compile_top_level(&statements);
+    let entry = compiler.compile_entry_body(&entry);
     for function in &functions {
         compiler.compile_function(function);
     }
@@ -159,9 +159,13 @@ impl Compiler {
         }
     }
 
-    fn compile_top_level(&mut self, statements: &[mir::Stmt]) -> Chunk {
+    fn compile_entry_body(&mut self, body: &mir::Body) -> Chunk {
         let mut chunk = Chunk::default();
-        self.compile_scope_statements(statements, &mut chunk);
+        self.compile_scope_statements(&body.statements, &mut chunk);
+        if let Some(result) = &body.result {
+            self.compile_expr(result, &mut chunk);
+            chunk.instructions.push(Instruction::Pop);
+        }
         chunk
     }
 
@@ -172,7 +176,10 @@ impl Compiler {
         }
         let mut chunk = Chunk::default();
         self.compile_scope_statements(&function.body.statements, &mut chunk);
-        self.compile_expr(&function.body.expr, &mut chunk);
+        let Some(result) = &function.body.result else {
+            unreachable!("function MIR body should have a result expression");
+        };
+        self.compile_expr(result, &mut chunk);
         chunk.instructions.push(Instruction::Return);
         self.functions[function.id] = Function {
             id: function.id,

@@ -3812,7 +3812,12 @@ fn main(): Int {
         muga::hir::Stmt::Assign(stmt) => stmt.name,
         _ => panic!("expected assign statement"),
     };
-    let final_symbol = match function.body.expr.as_ref() {
+    let final_symbol = match function
+        .body
+        .result
+        .as_deref()
+        .expect("function body should have a result")
+    {
         muga::hir::Expr::Ident(expr) => expr.name,
         _ => panic!("expected final identifier"),
     };

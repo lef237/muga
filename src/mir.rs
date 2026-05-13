@@ -19,7 +19,7 @@ pub type FunctionId = usize;
 
 #[derive(Clone, Debug)]
 pub struct Program {
-    pub statements: Vec<Stmt>,
+    pub entry: Body,
     pub functions: Vec<Function>,
     pub symbols: SymbolTable,
 }
@@ -29,7 +29,14 @@ pub struct Function {
     pub id: FunctionId,
     pub name: Option<Symbol>,
     pub params: Vec<Symbol>,
-    pub body: ValueBlock,
+    pub body: Body,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct Body {
+    pub statements: Vec<Stmt>,
+    pub result: Option<Box<Expr>>,
     pub span: Span,
 }
 
@@ -315,7 +322,11 @@ pub fn lower_typed(program: &typed_hir::Program) -> Program {
         .filter_map(|statement| lowerer.lower_stmt(statement))
         .collect();
     Program {
-        statements,
+        entry: Body {
+            statements,
+            result: None,
+            span: Span::default(),
+        },
         functions: lowerer.functions,
         symbols: lowerer.symbols,
     }
@@ -583,10 +594,10 @@ impl TypedLowerer<'_> {
             id,
             name: Some(name),
             params,
-            body: placeholder_value_block(stmt.span),
+            body: placeholder_body(stmt.span),
             span: stmt.span,
         });
-        let body = self.lower_value_block(&stmt.body);
+        let body = body_from_value_block(self.lower_value_block(&stmt.body));
         self.functions[id].body = body;
         id
     }
@@ -602,10 +613,10 @@ impl TypedLowerer<'_> {
             id,
             name: None,
             params,
-            body: placeholder_value_block(span),
+            body: placeholder_body(span),
             span,
         });
-        let body = self.lower_value_block(&expr.body);
+        let body = body_from_value_block(self.lower_value_block(&expr.body));
         self.functions[id].body = body;
         id
     }
@@ -664,10 +675,18 @@ impl TypedLowerer<'_> {
     }
 }
 
-fn placeholder_value_block(span: Span) -> ValueBlock {
-    ValueBlock {
+fn body_from_value_block(block: ValueBlock) -> Body {
+    Body {
+        statements: block.statements,
+        result: Some(block.expr),
+        span: block.span,
+    }
+}
+
+fn placeholder_body(span: Span) -> Body {
+    Body {
         statements: Vec::new(),
-        expr: Box::new(Expr::Int(IntExpr { value: 0, span })),
+        result: Some(Box::new(Expr::Int(IntExpr { value: 0, span }))),
         span,
     }
 }
