@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after combined CLI artifact emission support: 224 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after CLI artifact generation support.
+- [x] `cargo test` passed after transitive interface artifact reuse support: 226 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after transitive interface artifact reuse support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -80,14 +80,15 @@ Ada
 - [x] package rewriting attaches `PackageItemId` to flattened AST record/function declarations so typed HIR no longer recovers item identity from mangled names.
 - [x] package enum constructor call targets carry enum `PackageItemId` when the enum comes from package mode.
 - [x] package interfaces have a deterministic v1 text format with file write/read helpers.
-- [x] persisted package interface round-trip preserves public records, functions, enums, `TypeInfo`, item identity, enum variants, and payload types.
+- [x] persisted package interface round-trip preserves direct dependency metadata, public records, functions, enums, `TypeInfo`, item identity, enum variants, and payload types.
 - [x] persisted package interfaces include deterministic content hashes and reject hash mismatches.
 - [x] package interface artifact path naming is deterministic for package paths.
 - [x] typed package compilation can validate against loaded package interface summaries.
 - [x] loaded package interfaces can be used as the dependency boundary for downstream typed checking without reading dependency implementation bodies.
 - [x] package interface artifacts can be discovered from an explicit interface root for downstream typed checking.
+- [x] interface artifact discovery follows transitive `.mgi` dependencies needed by public signatures.
 - [x] missing and hash-mismatched interface artifacts are rejected with regeneration guidance.
-- [x] package check cache keys include entry package source hashes and dependency interface hashes.
+- [x] package check cache keys include entry package source hashes and loaded direct/transitive dependency interface hashes.
 - [x] missing or stale `.mgc` package check artifacts are rejected with regeneration guidance.
 - [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
 - [x] `muga emit-interface` and `muga emit-check-cache` write `.mgi` and `.mgc` artifacts for explicit artifact-backed checks.
@@ -146,18 +147,19 @@ Ada
 - Package interfaces now have a deterministic v1 text format and file round-trip helpers.
 - Loaded package interface summaries can now act as the downstream dependency boundary for typed checking.
 - A library API can discover dependency `.mgi` artifacts from an explicit interface root for typed checking.
-- A library API can compute package check cache keys and validate `.mgc` artifacts against source/dependency interface hashes.
+- Interface artifacts now record direct dependencies, and artifact discovery follows those dependencies so public signatures can mention types from transitive packages without reading dependency bodies.
+- A library API can compute package check cache keys and validate `.mgc` artifacts against source plus loaded dependency interface hashes.
 - CLI `check --artifact-root` can consume `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
 - CLI `emit-interface` and `emit-check-cache` can produce the artifacts consumed by `check --artifact-root`.
 - CLI `emit-interface` can emit all reachable interfaces without manually naming each dependency package.
 - CLI `emit-artifacts` emits reachable `.mgi` interfaces and the entry `.mgc` check cache in one explicit artifact-root workflow.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
-- Full incremental artifact reuse is still not implemented.
+- Full incremental artifact reuse and package-aware checking without flattening are still not implemented.
 
 ## Recommended Next Implementation
 
-The next implementation theme is full package artifact reuse and package-aware checking while keeping artifact roots explicit on the CLI.
+The next implementation theme is package-aware checking without flattening while keeping artifact roots explicit on the CLI.
 
 Reasoning:
 
@@ -170,7 +172,8 @@ Reasoning:
 - Persisted package interfaces now round-trip record/function/enum identity, type parameters, variants, payload types, public signatures, and source spans.
 - Loaded package interfaces can now be used for downstream signature/type checking without dependency implementation bodies.
 - Interface artifacts can now be discovered from an explicit root, with missing/hash-mismatched artifacts rejected before checking.
-- Package check cache keys now include entry source content and dependency interface hashes.
+- Interface artifacts now persist direct dependency paths, and artifact loading follows those paths for transitive public-signature type dependencies.
+- Package check cache keys now include entry source content and loaded direct/transitive dependency interface hashes.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
@@ -237,21 +240,22 @@ Estimates are in focused engineering days for someone already familiar with this
 | 10. CLI artifact-root checking | Expose a narrow CLI path for artifact-backed checking using `.mgi` and `.mgc` artifacts. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Medium |
 | 11. CLI artifact generation | Add CLI/library artifact generation for `.mgi` and `.mgc`, and verify generated artifacts drive `check --artifact-root`. | `src/main.rs`, `src/lib.rs`, `src/interface.rs`, tests/docs | Done | Medium |
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
-| 13. Package artifact reuse and package-aware checking | Improve reuse around existing `.mgi` / `.mgc`, then start replacing package flattening with package-aware checking boundaries. | package/lib/typing/docs/tests | 4-8 days | High |
-| 14. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
+| 14. Package-aware checking without flattening | Start replacing package flattening with package-aware checking boundaries while keeping artifact semantics explicit. | package/resolver/typing/lib/tests | 4-8 days | High |
+| 15. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 13: improve artifact reuse around `.mgi` / `.mgc`, then move package checking away from flattening. This may require a design checkpoint before larger edits.
+The safest immediate code slice is now Slice 14: begin moving package checking away from flattening while preserving the explicit `.mgi` / `.mgc` workflow. This may require a design checkpoint before larger edits.
 
 ## Test Plan For The Next Code Slice
 
 Add tests around these behavioral anchors before enabling artifact-backed package checking by default.
 
-Project/artifact reuse:
+Package-aware checking:
 
-- `artifact_reuse_keeps_cli_artifact_root_explicit`
+- `package_aware_checking_preserves_public_import_resolution`
+- `package_aware_checking_rejects_private_cross_package_references`
+- `package_aware_checking_reports_package_qualified_type_errors`
 - `artifact_workflow_rejects_missing_or_stale_artifacts_without_source_fallback`
-- `manifest_project_without_artifact_config_keeps_body_based_checking`
-- `emit_artifacts_outputs_interfaces_and_check_cache`
 
 Compatibility:
 

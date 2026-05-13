@@ -170,9 +170,9 @@ Implemented:
 - typed HIR with resolved call shape, call origin, expression types, local binding identity, and package item identity
 - in-memory package interface summaries for public records/enums/functions plus validation of public package references against those summaries
 - hardened enum diagnostics, package enum visibility checks, imported `alias::Enum::Variant` constructors/patterns, and package enum call-target identity
-- deterministic v1 package interface text persistence with content hashes, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
-- downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts without reading dependency implementation bodies
-- package check cache keys combine entry package source content with dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
+- deterministic v1 package interface text persistence with content hashes, direct dependency metadata, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
+- downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts, including transitive public-signature type dependencies, without reading dependency implementation bodies
+- package check cache keys combine entry package source content with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` validates package entries against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
 - `muga emit-artifacts` writes reachable `.mgi` interfaces and the entry `.mgc` check cache; lower-level `emit-interface` and `emit-check-cache` commands remain available
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
@@ -187,7 +187,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is full package artifact reuse and package-aware checking without flattening.
+The next implementation slice is package-aware checking without flattening the checked package graph.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 

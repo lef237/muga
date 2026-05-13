@@ -1333,6 +1333,119 @@ fn artifact_interface_checking_and_loaded_interface_checking_agree() {
 }
 
 #[test]
+fn interface_artifact_checking_loads_transitive_public_type_interfaces() {
+    let provider_root = temp_package_root("interface-artifact-transitive-provider");
+    let provider_entry = write_transitive_interface_provider(&provider_root);
+    let provider =
+        muga::compile_typed_path(&provider_entry).expect("provider package graph should typecheck");
+    let interfaces = provider.package_interfaces();
+    let artifact_root = temp_package_root("interface-artifact-transitive");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["api::facade", "model::users"],
+    );
+    let facade_artifact =
+        muga::interface::PackageInterfaceGraph::persisted_file_path(&artifact_root, "api::facade");
+    let facade_text = fs::read_to_string(facade_artifact).expect("facade artifact should exist");
+    assert!(facade_text.contains("\ndependency\tmodel::users\n"));
+    let consumer_root = temp_package_root("interface-artifact-transitive-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import api::facade
+
+fn main(): Int {
+  facade::age(facade::default_user())
+}
+"#,
+    );
+
+    assert!(!consumer_root.join("api/facade/main.muga").exists());
+    assert!(!consumer_root.join("model/users/main.muga").exists());
+    muga::compile_typed_path_against_interface_artifacts(&consumer_entry, &artifact_root)
+        .expect("transitive public type interface should be loaded from artifacts");
+}
+
+#[test]
+fn package_cache_key_includes_transitive_public_type_interface_hashes() {
+    let provider_root = temp_package_root("cache-transitive-provider");
+    let provider_entry = write_transitive_interface_provider(&provider_root);
+    let provider =
+        muga::compile_typed_path(&provider_entry).expect("provider package graph should typecheck");
+    let mut interfaces = provider.package_interfaces();
+    let artifact_root = temp_package_root("cache-transitive-artifacts");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["api::facade", "model::users"],
+    );
+    let consumer_root = temp_package_root("cache-transitive-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import api::facade
+
+fn main(): Int {
+  facade::age(facade::default_user())
+}
+"#,
+    );
+    let before = muga::package_check_cache_key(&consumer_entry, &artifact_root)
+        .expect("cache key should include transitive interface");
+
+    let users = provider
+        .package_graph
+        .package_id("model::users")
+        .expect("users package should exist");
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == users)
+        .expect("users interface should exist")
+        .records
+        .iter_mut()
+        .find(|record| record.name == "User")
+        .expect("User should be exported")
+        .fields
+        .push(muga::interface::PackageInterfaceField {
+            name: "active".to_string(),
+            ty: muga::types::TypeInfo::Bool,
+            span: Default::default(),
+        });
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["model::users"],
+    );
+    let after = muga::package_check_cache_key(&consumer_entry, &artifact_root)
+        .expect("cache key should be recomputed");
+
+    assert_ne!(before.stable_hash(), after.stable_hash());
+    assert!(
+        before
+            .dependency_interfaces
+            .iter()
+            .any(|dependency| dependency.package_path == "api::facade")
+    );
+    assert!(
+        before
+            .dependency_interfaces
+            .iter()
+            .any(|dependency| dependency.package_path == "model::users")
+    );
+}
+
+#[test]
 fn package_cache_key_changes_when_source_changes() {
     let root = temp_package_root("cache-source");
     let entry = write_package_file(
@@ -5144,11 +5257,55 @@ fn write_interface_artifacts(
 ) {
     fs::create_dir_all(root).expect("interface artifact root should be created");
     for package_path in package_paths {
-        let path = muga::interface::PackageInterfaceGraph::persisted_file_path(root, package_path);
         interfaces
-            .write_persisted_file(&path, symbols)
+            .write_persisted_artifact(root, package_path, symbols)
             .expect("interface artifact should be written");
     }
+}
+
+fn write_transitive_interface_provider(root: &Path) -> std::path::PathBuf {
+    write_package_file(
+        root,
+        "model/users/main.muga",
+        r#"
+package model::users
+
+pub record User {
+  name: String,
+  age: Int
+}
+"#,
+    );
+    write_package_file(
+        root,
+        "api/facade/main.muga",
+        r#"
+package api::facade
+
+import model::users
+
+pub fn default_user(): users::User {
+  users::User { name: "Ada", age: 21 }
+}
+
+pub fn age(user: users::User): Int {
+  user.age
+}
+"#,
+    );
+    write_package_file(
+        root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import api::facade
+
+fn main(): Int {
+  facade::age(facade::default_user())
+}
+"#,
+    )
 }
 
 fn muga_command() -> Command {

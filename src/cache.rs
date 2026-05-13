@@ -170,9 +170,13 @@ pub fn compute_package_check_cache_key(
         &mut symbols,
     )?;
 
-    let mut dependency_interfaces = Vec::with_capacity(package_paths.len());
+    let mut dependency_interfaces = Vec::with_capacity(interfaces.packages.len());
     let mut diagnostics = Vec::new();
-    for package_path in package_paths {
+    for package_path in interfaces
+        .packages
+        .iter()
+        .map(|interface| interface.path.clone())
+    {
         match interfaces.stable_hash_for_package(&package_path, &symbols) {
             Some(interface_hash) => dependency_interfaces.push(PackageDependencyInterfaceHash {
                 package_path,

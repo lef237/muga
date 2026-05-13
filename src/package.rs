@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{ExprId, ModuleId, PackageId, PackageItemId, StmtId};
-use crate::interface::{PackageExportGraph, PackageInterface, PackageInterfaceGraph};
+use crate::interface::{
+    PackageExportGraph, PackageInterface, PackageInterfaceEnum, PackageInterfaceGraph,
+    PackageInterfaceRecord,
+};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
 use crate::types::{FunctionTypeInfo, TypeInfo};
@@ -1894,6 +1897,13 @@ fn stub_package_data_from_interface(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> PackageData {
     let mut statements = Vec::new();
+    let mut context = InterfaceStubContext {
+        current_package: &interface.path,
+        symbols,
+        interfaces,
+        diagnostics,
+        dependency_aliases: HashMap::new(),
+    };
     for record in &interface.records {
         statements.push(Stmt::RecordDecl(RecordDecl {
             id: StmtId::new(0),
@@ -1905,12 +1915,7 @@ fn stub_package_data_from_interface(
                 .iter()
                 .map(|field| RecordFieldDecl {
                     name: field.name.clone(),
-                    type_name: type_expr_from_type_info(
-                        &field.ty,
-                        symbols,
-                        diagnostics,
-                        field.span,
-                    ),
+                    type_name: type_expr_from_type_info(&field.ty, &mut context, field.span),
                     span: field.span,
                 })
                 .collect(),
@@ -1930,7 +1935,7 @@ fn stub_package_data_from_interface(
                 .map(|variant| EnumVariantDecl {
                     name: variant.name.clone(),
                     payload: variant.payload.as_ref().map(|payload| {
-                        type_expr_from_type_info(payload, symbols, diagnostics, variant.span)
+                        type_expr_from_type_info(payload, &mut context, variant.span)
                     }),
                     span: variant.span,
                 })
@@ -1939,16 +1944,8 @@ fn stub_package_data_from_interface(
         }));
     }
     for function in &interface.functions {
-        let return_type =
-            type_expr_from_type_info(&function.ret, symbols, diagnostics, function.span);
-        let body_expr = {
-            let mut context = DummyExprContext {
-                symbols,
-                interfaces,
-                diagnostics,
-            };
-            dummy_expr_for_type_info(&function.ret, &mut context, function.span, 0)
-        };
+        let return_type = type_expr_from_type_info(&function.ret, &mut context, function.span);
+        let body_expr = dummy_expr_for_type_info(&function.ret, &mut context, function.span, 0);
         statements.push(Stmt::FuncDecl(FuncDecl {
             id: StmtId::new(0),
             name: function.name.clone(),
@@ -1961,8 +1958,7 @@ fn stub_package_data_from_interface(
                     name: param.name.clone(),
                     type_name: Some(type_expr_from_type_info(
                         &param.ty,
-                        symbols,
-                        diagnostics,
+                        &mut context,
                         param.span,
                     )),
                     span: param.span,
@@ -1977,6 +1973,7 @@ fn stub_package_data_from_interface(
             span: function.span,
         }));
     }
+    let imports = context.dependency_imports();
 
     let files = vec![ParsedFile {
         program: Program {
@@ -1984,73 +1981,77 @@ fn stub_package_data_from_interface(
                 path: interface.path.clone(),
                 span: Span::default(),
             }),
-            imports: Vec::new(),
+            imports,
             statements,
         },
         module_path: INTERFACE_STUB_MODULE.to_string(),
     }];
-    collect_package_data(&interface.path, files, diagnostics)
+    collect_package_data(&interface.path, files, context.diagnostics)
 }
 
 fn type_expr_from_type_info(
     ty: &TypeInfo,
-    symbols: &SymbolTable,
-    diagnostics: &mut Vec<Diagnostic>,
+    context: &mut InterfaceStubContext<'_, '_>,
     span: Span,
 ) -> TypeExpr {
     match ty {
         TypeInfo::Int => TypeExpr::Int,
         TypeInfo::Bool => TypeExpr::Bool,
         TypeInfo::String => TypeExpr::String,
-        TypeInfo::GenericParam(symbol) => {
-            TypeExpr::Named(symbol_name(*symbol, symbols, diagnostics, span))
+        TypeInfo::GenericParam(symbol) => TypeExpr::Named(symbol_name(
+            *symbol,
+            context.symbols,
+            context.diagnostics,
+            span,
+        )),
+        TypeInfo::PackageRecord { symbol, item } => {
+            TypeExpr::Named(package_record_type_name(*symbol, *item, context, span))
         }
-        TypeInfo::Record(symbol) | TypeInfo::PackageRecord { symbol, .. } => {
-            TypeExpr::Named(symbol_name(*symbol, symbols, diagnostics, span))
+        TypeInfo::Record(symbol) => TypeExpr::Named(symbol_name(
+            *symbol,
+            context.symbols,
+            context.diagnostics,
+            span,
+        )),
+        TypeInfo::PackageEnum { symbol, item, args } => {
+            package_enum_type_expr(*symbol, *item, args, context, span)
         }
-        TypeInfo::Enum { symbol, args } | TypeInfo::PackageEnum { symbol, args, .. } => {
-            named_or_generic_type_expr(*symbol, args, symbols, diagnostics, span)
-        }
+        TypeInfo::Enum { symbol, args } => named_or_generic_type_expr(*symbol, args, context, span),
         TypeInfo::List(item) => TypeExpr::Generic(GenericTypeExpr {
             name: "List".to_string(),
-            args: vec![type_expr_from_type_info(item, symbols, diagnostics, span)],
+            args: vec![type_expr_from_type_info(item, context, span)],
         }),
         TypeInfo::Map(key, value) => TypeExpr::Generic(GenericTypeExpr {
             name: "Map".to_string(),
             args: vec![
-                type_expr_from_type_info(key, symbols, diagnostics, span),
-                type_expr_from_type_info(value, symbols, diagnostics, span),
+                type_expr_from_type_info(key, context, span),
+                type_expr_from_type_info(value, context, span),
             ],
         }),
         TypeInfo::Option(item) => TypeExpr::Generic(GenericTypeExpr {
             name: "Option".to_string(),
-            args: vec![type_expr_from_type_info(item, symbols, diagnostics, span)],
+            args: vec![type_expr_from_type_info(item, context, span)],
         }),
         TypeInfo::Result(ok, err) => TypeExpr::Generic(GenericTypeExpr {
             name: "Result".to_string(),
             args: vec![
-                type_expr_from_type_info(ok, symbols, diagnostics, span),
-                type_expr_from_type_info(err, symbols, diagnostics, span),
+                type_expr_from_type_info(ok, context, span),
+                type_expr_from_type_info(err, context, span),
             ],
         }),
         TypeInfo::Function(function) => TypeExpr::Function(FunctionTypeExpr {
             params: function
                 .params
                 .iter()
-                .map(|param| type_expr_from_type_info(param, symbols, diagnostics, span))
+                .map(|param| type_expr_from_type_info(param, context, span))
                 .collect(),
-            ret: Box::new(type_expr_from_type_info(
-                &function.ret,
-                symbols,
-                diagnostics,
-                span,
-            )),
+            ret: Box::new(type_expr_from_type_info(&function.ret, context, span)),
         }),
         TypeInfo::EnumConstructor { .. }
         | TypeInfo::Builtin(_)
         | TypeInfo::Unknown
         | TypeInfo::Error => {
-            diagnostics.push(
+            context.diagnostics.push(
                 Diagnostic::new(
                     "PK018",
                     "package interface contains a value-only or unresolved type in a signature",
@@ -2066,11 +2067,10 @@ fn type_expr_from_type_info(
 fn named_or_generic_type_expr(
     symbol: Symbol,
     args: &[TypeInfo],
-    symbols: &SymbolTable,
-    diagnostics: &mut Vec<Diagnostic>,
+    context: &mut InterfaceStubContext<'_, '_>,
     span: Span,
 ) -> TypeExpr {
-    let name = symbol_name(symbol, symbols, diagnostics, span);
+    let name = symbol_name(symbol, context.symbols, context.diagnostics, span);
     if args.is_empty() {
         TypeExpr::Named(name)
     } else {
@@ -2078,21 +2078,125 @@ fn named_or_generic_type_expr(
             name,
             args: args
                 .iter()
-                .map(|arg| type_expr_from_type_info(arg, symbols, diagnostics, span))
+                .map(|arg| type_expr_from_type_info(arg, context, span))
                 .collect(),
         })
     }
 }
 
-struct DummyExprContext<'a, 'd> {
+struct InterfaceStubContext<'a, 'd> {
+    current_package: &'a str,
     symbols: &'a SymbolTable,
     interfaces: &'a PackageInterfaceGraph,
     diagnostics: &'d mut Vec<Diagnostic>,
+    dependency_aliases: HashMap<String, String>,
+}
+
+impl<'a, 'd> InterfaceStubContext<'a, 'd> {
+    fn alias_for_package(&mut self, package_path: &str) -> String {
+        if let Some(alias) = self.dependency_aliases.get(package_path) {
+            return alias.clone();
+        }
+        let alias = format!("__muga_iface_dep_{}", package_path.replace("::", "_"));
+        self.dependency_aliases
+            .insert(package_path.to_string(), alias.clone());
+        alias
+    }
+
+    fn dependency_imports(&self) -> Vec<ImportDecl> {
+        let mut imports = self
+            .dependency_aliases
+            .iter()
+            .map(|(path, alias)| ImportDecl {
+                path: path.clone(),
+                alias: alias.clone(),
+                span: Span::default(),
+            })
+            .collect::<Vec<_>>();
+        imports.sort_by(|left, right| left.path.cmp(&right.path));
+        imports
+    }
+}
+
+fn package_record_type_name(
+    symbol: Symbol,
+    item: PackageItemId,
+    context: &mut InterfaceStubContext<'_, '_>,
+    span: Span,
+) -> String {
+    let Some((package_path, record_name)) = interface_record_name(context.interfaces, item)
+        .map(|(package, record)| (package.path.clone(), record.name.clone()))
+    else {
+        context.diagnostics.push(
+            Diagnostic::new(
+                "PK018",
+                format!("package interface is missing record item {:?}", item),
+                span,
+            )
+            .with_suggestion("regenerate the package interface"),
+        );
+        return symbol_name(symbol, context.symbols, context.diagnostics, span);
+    };
+    if package_path == context.current_package {
+        record_name
+    } else {
+        format!(
+            "{}::{record_name}",
+            context.alias_for_package(&package_path)
+        )
+    }
+}
+
+fn package_enum_type_expr(
+    symbol: Symbol,
+    item: PackageItemId,
+    args: &[TypeInfo],
+    context: &mut InterfaceStubContext<'_, '_>,
+    span: Span,
+) -> TypeExpr {
+    let name = package_enum_type_name(symbol, item, context, span);
+    if args.is_empty() {
+        TypeExpr::Named(name)
+    } else {
+        TypeExpr::Generic(GenericTypeExpr {
+            name,
+            args: args
+                .iter()
+                .map(|arg| type_expr_from_type_info(arg, context, span))
+                .collect(),
+        })
+    }
+}
+
+fn package_enum_type_name(
+    symbol: Symbol,
+    item: PackageItemId,
+    context: &mut InterfaceStubContext<'_, '_>,
+    span: Span,
+) -> String {
+    let Some((package_path, enum_name)) = interface_enum_name(context.interfaces, item)
+        .map(|(package, enumeration)| (package.path.clone(), enumeration.name.clone()))
+    else {
+        context.diagnostics.push(
+            Diagnostic::new(
+                "PK018",
+                format!("package interface is missing enum item {:?}", item),
+                span,
+            )
+            .with_suggestion("regenerate the package interface"),
+        );
+        return symbol_name(symbol, context.symbols, context.diagnostics, span);
+    };
+    if package_path == context.current_package {
+        enum_name
+    } else {
+        format!("{}::{enum_name}", context.alias_for_package(&package_path))
+    }
 }
 
 fn dummy_expr_for_type_info(
     ty: &TypeInfo,
-    context: &mut DummyExprContext<'_, '_>,
+    context: &mut InterfaceStubContext<'_, '_>,
     span: Span,
     depth: usize,
 ) -> Expr {
@@ -2133,27 +2237,24 @@ fn dummy_expr_for_type_info(
             span,
         ),
         TypeInfo::PackageRecord { symbol, item } => {
-            let type_name = symbol_name(*symbol, context.symbols, context.diagnostics, span);
-            let fields = context
-                .interfaces
-                .record(*item)
-                .map(|record| {
+            let type_name = package_record_type_name(*symbol, *item, context, span);
+            let field_specs = interface_record_name(context.interfaces, *item)
+                .map(|(_, record)| {
                     record
                         .fields
                         .iter()
-                        .map(|field| RecordFieldInit {
-                            name: field.name.clone(),
-                            value: dummy_expr_for_type_info(
-                                &field.ty,
-                                context,
-                                field.span,
-                                depth + 1,
-                            ),
-                            span: field.span,
-                        })
-                        .collect()
+                        .map(|field| (field.name.clone(), field.ty.clone(), field.span))
+                        .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
+            let fields = field_specs
+                .into_iter()
+                .map(|(name, ty, span)| RecordFieldInit {
+                    name,
+                    value: dummy_expr_for_type_info(&ty, context, span, depth + 1),
+                    span,
+                })
+                .collect();
             Expr::RecordLit(RecordLitExpr {
                 id: ExprId::new(0),
                 type_name,
@@ -2189,12 +2290,19 @@ fn dummy_package_enum_expr(
     enum_symbol: Symbol,
     item: PackageItemId,
     args: &[TypeInfo],
-    context: &mut DummyExprContext<'_, '_>,
+    context: &mut InterfaceStubContext<'_, '_>,
     span: Span,
     depth: usize,
 ) -> Expr {
-    let enum_name = symbol_name(enum_symbol, context.symbols, context.diagnostics, span);
-    let Some(enumeration) = interface_enum(context.interfaces, item) else {
+    let enum_name = package_enum_type_name(enum_symbol, item, context, span);
+    let Some((type_params, variants)) =
+        interface_enum_name(context.interfaces, item).map(|(_, enumeration)| {
+            (
+                enumeration.type_params.clone(),
+                enumeration.variants.clone(),
+            )
+        })
+    else {
         context.diagnostics.push(
             Diagnostic::new(
                 "PK018",
@@ -2205,19 +2313,15 @@ fn dummy_package_enum_expr(
         );
         return int_expr(span);
     };
-    let Some(variant) = enumeration
-        .variants
+    let Some(variant) = variants
         .iter()
         .find(|variant| variant.payload.is_none())
-        .or_else(|| enumeration.variants.first())
+        .or_else(|| variants.first())
     else {
         context.diagnostics.push(
             Diagnostic::new(
                 "PK018",
-                format!(
-                    "package interface enum `{}` has no variants",
-                    enumeration.name
-                ),
+                format!("package interface enum `{}` has no variants", enum_name),
                 span,
             )
             .with_suggestion("add at least one enum variant"),
@@ -2229,12 +2333,8 @@ fn dummy_package_enum_expr(
     match &variant.payload {
         None => ident_expr(&variant_name, variant.span),
         Some(payload) => {
-            let payload = substitute_interface_type_params(
-                payload,
-                &enumeration.type_params,
-                args,
-                context.symbols,
-            );
+            let payload =
+                substitute_interface_type_params(payload, &type_params, args, context.symbols);
             call_expr(
                 &variant_name,
                 vec![dummy_expr_for_type_info(
@@ -2251,7 +2351,7 @@ fn dummy_package_enum_expr(
 
 fn dummy_function_expr(
     function: &FunctionTypeInfo,
-    context: &mut DummyExprContext<'_, '_>,
+    context: &mut InterfaceStubContext<'_, '_>,
     span: Span,
     depth: usize,
 ) -> Expr {
@@ -2261,16 +2361,11 @@ fn dummy_function_expr(
         .enumerate()
         .map(|(index, param)| Param {
             name: format!("__stub_arg_{index}"),
-            type_name: Some(type_expr_from_type_info(
-                param,
-                context.symbols,
-                context.diagnostics,
-                span,
-            )),
+            type_name: Some(type_expr_from_type_info(param, context, span)),
             span,
         })
         .collect();
-    let ret = type_expr_from_type_info(&function.ret, context.symbols, context.diagnostics, span);
+    let ret = type_expr_from_type_info(&function.ret, context, span);
     let expr = dummy_expr_for_type_info(&function.ret, context, span, depth + 1);
     Expr::Fn(FnExpr {
         id: ExprId::new(0),
@@ -2385,15 +2480,30 @@ fn symbol_name(
     }
 }
 
-fn interface_enum(
+fn interface_record_name(
     interfaces: &PackageInterfaceGraph,
     item: PackageItemId,
-) -> Option<&crate::interface::PackageInterfaceEnum> {
-    interfaces
-        .packages
-        .iter()
-        .flat_map(|package| package.enums.iter())
-        .find(|enumeration| enumeration.item == item)
+) -> Option<(&PackageInterface, &PackageInterfaceRecord)> {
+    interfaces.packages.iter().find_map(|package| {
+        package
+            .records
+            .iter()
+            .find(|record| record.item == item)
+            .map(|record| (package, record))
+    })
+}
+
+fn interface_enum_name(
+    interfaces: &PackageInterfaceGraph,
+    item: PackageItemId,
+) -> Option<(&PackageInterface, &PackageInterfaceEnum)> {
+    interfaces.packages.iter().find_map(|package| {
+        package
+            .enums
+            .iter()
+            .find(|enumeration| enumeration.item == item)
+            .map(|enumeration| (package, enumeration))
+    })
 }
 
 fn ident_expr(name: &str, span: Span) -> Expr {

@@ -22,9 +22,9 @@ Implemented language surface:
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for compiler-known `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
 - enum diagnostics, package enum visibility coverage, imported `alias::Enum::Variant` constructors/patterns, package enum call-target identity, and stale enum interface validation
-- deterministic v1 package interface text persistence, content hashes, artifact path naming, file round-trip, and loaded-interface validation for public records/functions/enums
-- loaded package interfaces and discovered `.mgi` artifacts can act as the dependency boundary for downstream typed checking without reading dependency implementation bodies
-- package check cache keys combine entry package source hashes with dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
+- deterministic v1 package interface text persistence, content hashes, direct dependency metadata, artifact path naming, file round-trip, and loaded-interface validation for public records/functions/enums
+- loaded package interfaces and discovered `.mgi` artifacts can act as the dependency boundary for downstream typed checking, including transitive public-signature type dependencies, without reading dependency implementation bodies
+- package check cache keys combine entry package source hashes with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts for dependency-body-free package checking
 - `muga emit-artifacts` writes reachable `.mgi` interfaces and the entry `.mgc` check cache, with lower-level `emit-interface` and `emit-check-cache` commands still available
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
@@ -67,12 +67,12 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice should keep artifact roots explicit on the CLI and move toward full package artifact reuse:
+The next code slice should keep artifact roots explicit on the CLI and move toward package-aware checking:
 
 1. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist.
 2. Keep `muga emit-artifacts` and `muga check --artifact-root` as the explicit artifact workflow.
-3. Improve full package artifact reuse around the existing `.mgi` and `.mgc` files without silently falling back to dependency implementation bodies.
-4. Start replacing package flattening with a package-aware checking boundary once artifact reuse semantics are clear.
+3. Preserve the existing `.mgi` / `.mgc` artifact reuse semantics without silently falling back to dependency implementation bodies.
+4. Start replacing package flattening with a package-aware checking boundary.
 5. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
 6. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
 
@@ -122,7 +122,7 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- full package artifact storage/reuse after check cache metadata
+- package-aware checking after transitive interface artifact reuse
 - eventual project-mode artifact-root config after dependency declarations and lockfiles
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported

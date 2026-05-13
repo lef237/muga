@@ -937,8 +937,10 @@ It currently:
 - enforces module-private, `pkg`, and `pub` top-level visibility before flattening
 - records package, module, and item identity in `PackageSymbolGraph`
 - routes public import lookup through `PackageExportGraph`
-- generates in-memory package interface summaries for public records and functions
+- generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
 - validates typed package references against generated summaries
+- persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
+- includes loaded direct/transitive dependency interface hashes in `.mgc` check cache keys
 - still flattens loaded packages into one internal program before the main resolver/typechecker/runtime path
 
 Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns only package naming and source-root inference. Artifact-backed checking and artifact emission are explicit CLI workflows through `--artifact-root`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. Project-level artifact-root config should be reconsidered after dependency declarations, lockfiles, and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.
