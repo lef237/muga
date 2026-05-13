@@ -119,14 +119,38 @@ impl PackageModuleSignatureEnvironment {
         self.records.iter().find(|record| record.name == name)
     }
 
+    pub fn record_signature<'a>(
+        &self,
+        signatures: &'a PackageSignatureEnvironment,
+        name: &str,
+    ) -> Option<&'a PackageRecordSignature> {
+        signatures.record(self.record(name)?.item)
+    }
+
     pub fn enumeration(&self, name: &str) -> Option<&PackageVisibleSignature> {
         self.enums
             .iter()
             .find(|enumeration| enumeration.name == name)
     }
 
+    pub fn enum_signature<'a>(
+        &self,
+        signatures: &'a PackageSignatureEnvironment,
+        name: &str,
+    ) -> Option<&'a PackageEnumSignature> {
+        signatures.enumeration(self.enumeration(name)?.item)
+    }
+
     pub fn function(&self, name: &str) -> Option<&PackageVisibleSignature> {
         self.functions.iter().find(|function| function.name == name)
+    }
+
+    pub fn function_signature<'a>(
+        &self,
+        signatures: &'a PackageSignatureEnvironment,
+        name: &str,
+    ) -> Option<&'a PackageFunctionSignature> {
+        signatures.function(self.function(name)?.item)
     }
 }
 
