@@ -14,6 +14,16 @@ pub fn load_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> 
     Ok(load_from_entry(path)?.program)
 }
 
+pub fn import_paths_from_entry(path: &Path) -> Result<Vec<String>, Vec<Diagnostic>> {
+    let (entry_program, manifest) = parse_entry_program(path)?;
+    if entry_program.package.is_none() {
+        return Ok(Vec::new());
+    }
+
+    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest);
+    loader.load_entry_import_paths()
+}
+
 pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
     let (entry_program, manifest) = parse_entry_program(path)?;
     if entry_program.package.is_none() {
@@ -262,14 +272,9 @@ impl PackageLoader {
     }
 
     fn load_and_flatten(&mut self) -> Result<LoadedProgram, Vec<Diagnostic>> {
-        if self.manifest.is_none() {
-            match infer_source_root(&self.entry_file, &self.entry_package) {
-                Ok(source_root) => self.source_root = source_root,
-                Err(diagnostic) => {
-                    self.diagnostics.push(diagnostic);
-                    return Err(std::mem::take(&mut self.diagnostics));
-                }
-            }
+        if let Err(diagnostic) = self.ensure_source_root() {
+            self.diagnostics.push(diagnostic);
+            return Err(std::mem::take(&mut self.diagnostics));
         }
 
         self.load_package(self.entry_package.clone());
@@ -289,14 +294,9 @@ impl PackageLoader {
         interfaces: &PackageInterfaceGraph,
         interface_symbols: &SymbolTable,
     ) -> Result<LoadedProgram, Vec<Diagnostic>> {
-        if self.manifest.is_none() {
-            match infer_source_root(&self.entry_file, &self.entry_package) {
-                Ok(source_root) => self.source_root = source_root,
-                Err(diagnostic) => {
-                    self.diagnostics.push(diagnostic);
-                    return Err(std::mem::take(&mut self.diagnostics));
-                }
-            }
+        if let Err(diagnostic) = self.ensure_source_root() {
+            self.diagnostics.push(diagnostic);
+            return Err(std::mem::take(&mut self.diagnostics));
         }
 
         let entry_package = self.entry_package.clone();
@@ -339,6 +339,29 @@ impl PackageLoader {
         let package_graph = self.build_symbol_graph_against_interfaces(&package_paths, interfaces);
         let package_exports = PackageExportGraph::from_interfaces(interfaces, &package_graph);
         self.flatten_packages(&package_paths, package_graph, package_exports)
+    }
+
+    fn load_entry_import_paths(&mut self) -> Result<Vec<String>, Vec<Diagnostic>> {
+        if let Err(diagnostic) = self.ensure_source_root() {
+            self.diagnostics.push(diagnostic);
+            return Err(std::mem::take(&mut self.diagnostics));
+        }
+
+        let entry_package = self.entry_package.clone();
+        let files = self.load_package_files(&entry_package);
+        let entry_data = collect_package_data(&entry_package, files, &mut self.diagnostics);
+        if self.diagnostics.is_empty() {
+            Ok(package_import_paths(&entry_data))
+        } else {
+            Err(std::mem::take(&mut self.diagnostics))
+        }
+    }
+
+    fn ensure_source_root(&mut self) -> Result<(), Diagnostic> {
+        if self.manifest.is_none() {
+            self.source_root = infer_source_root(&self.entry_file, &self.entry_package)?;
+        }
+        Ok(())
     }
 
     fn flatten_packages(

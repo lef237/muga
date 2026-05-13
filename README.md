@@ -160,7 +160,7 @@ Implemented:
 - in-memory package interface summaries for public records/enums/functions plus validation of public package references against those summaries
 - hardened enum diagnostics, package enum visibility checks, imported `alias::Enum::Variant` constructors/patterns, and package enum call-target identity
 - deterministic v1 package interface text persistence with content hashes, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
-- downstream typed checking can use loaded package interfaces without reading dependency implementation bodies
+- downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts without reading dependency implementation bodies
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 
 Not implemented yet:
@@ -168,12 +168,12 @@ Not implemented yet:
 - user-defined generic records and generic functions
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
-- automatic interface artifact discovery, dependency declarations, registries, package caching, MIR, and native code generation
+- CLI/project-mode interface artifact flags, dependency declarations, registries, package caching, MIR, and native code generation
 - error propagation syntax such as `try expr`
 
 ## Planned Priority
 
-The next implementation slice is package interface artifact discovery and invalidation.
+The next implementation slice is package cache integration and invalidation around interface artifacts.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
@@ -230,7 +230,7 @@ Package layout note:
 - Source files import logical package paths such as `my_service::users`, not filesystem paths such as `../users`.
 - In manifest project mode, `name = "my_service"` and `source = "src"` let `src/users/` map to `my_service::users` without nesting another `my_service/` directory under `src/`.
 - Without a nearby `muga.toml`, a package file must start with an explicit `package ...` declaration before it can use `import`, `pub`, or `pkg`.
-- The target distribution model is manifest-based and should use cached package interfaces for fast rebuilds. The compiler can already typecheck against loaded interface summaries, but the CLI does not yet discover those artifacts automatically.
+- The target distribution model is manifest-based and should use cached package interfaces for fast rebuilds. The compiler library can typecheck against loaded interface summaries or a supplied interface artifact root, but the CLI does not yet expose artifact-backed checking.
 - See [spec/006-packages.md](./spec/006-packages.md) for the large-project layout and distribution model.
 
 ## License

@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after interface-only downstream checking support: 204 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after interface-only downstream checking support.
+- [x] `cargo test` passed after interface artifact discovery support: 209 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after interface artifact discovery support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -85,6 +85,8 @@ Ada
 - [x] package interface artifact path naming is deterministic for package paths.
 - [x] typed package compilation can validate against loaded package interface summaries.
 - [x] loaded package interfaces can be used as the dependency boundary for downstream typed checking without reading dependency implementation bodies.
+- [x] package interface artifacts can be discovered from an explicit interface root for downstream typed checking.
+- [x] missing and hash-mismatched interface artifacts are rejected with regeneration guidance.
 - [ ] package cache integration and invalidation are not implemented.
 - [ ] normal CLI checking/execution still uses package flattening and dependency source loading.
 
@@ -139,12 +141,13 @@ Ada
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
 - Package interfaces now have a deterministic v1 text format and file round-trip helpers.
 - Loaded package interface summaries can now act as the downstream dependency boundary for typed checking.
+- A library API can discover dependency `.mgi` artifacts from an explicit interface root for typed checking.
 - Normal CLI package checking and execution still read and flatten dependency bodies.
 - There is no package cache integration or incremental invalidation yet.
 
 ## Recommended Next Implementation
 
-The next implementation theme is package interface artifact integration and cache invalidation.
+The next implementation theme is package cache integration and invalidation.
 
 Reasoning:
 
@@ -156,7 +159,8 @@ Reasoning:
 - Enum integration hardening now covers diagnostics, imported constructors/patterns, visibility errors, package enum call-target identity, and stale interface validation.
 - Persisted package interfaces now round-trip record/function/enum identity, type parameters, variants, payload types, public signatures, and source spans.
 - Loaded package interfaces can now be used for downstream signature/type checking without dependency implementation bodies.
-- The remaining boundary pieces are artifact discovery, cache invalidation, and eventually making interface-backed checking the normal package path.
+- Interface artifacts can now be discovered from an explicit root, with missing/hash-mismatched artifacts rejected before checking.
+- The remaining boundary pieces are cache keys, invalidation, CLI/project wiring, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 
@@ -213,36 +217,36 @@ Estimates are in focused engineering days for someone already familiar with this
 | 5. Package interface persistence format | Serialize public records/functions/enums and resolved type identities in a deterministic v1 text format. Load the format back into `PackageInterfaceGraph` and validate the reloaded summaries. | `src/interface.rs`, `tests/examples.rs` | Done | Medium |
 | 6. Interface hashes and loaded-interface validation | Add interface hashes, artifact path conventions, and a typed checking path that validates against loaded interface summaries. | `src/interface.rs`, `src/lib.rs`, tests | Done | Medium |
 | 7. Downstream checking without dependency bodies | Load dependency interfaces as the checking boundary, synthesize or otherwise expose only public signatures, and avoid reading dependency implementation bodies for downstream checks. | `src/package.rs`, `src/interface.rs`, `src/lib.rs`, tests | Done | High |
-| 8. Interface artifact discovery and invalidation | Teach package checking to find persisted interface artifacts, report missing/stale artifacts clearly, and prepare source/interface hashes for cache reuse. | package/interface/lib/CLI/tests | 3-6 days | High |
-| 9. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 8. Interface artifact discovery | Teach package checking to find persisted interface artifacts from an explicit interface root and reject missing/hash-mismatched/stale artifacts. | `src/interface.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
+| 9. Package cache integration and invalidation | Define source/interface/dependency hash inputs, cache checked package artifacts, and expose a narrow CLI/project path for artifact-backed checking. | package/interface/lib/CLI/tests | 4-8 days | High |
+| 10. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 8: integrate persisted interface artifacts into package checking without making cache reuse implicit yet. Keep package flattening as the execution path until artifact lookup, stale diagnostics, and interface-only typed checking agree on existing samples.
+The safest immediate code slice is now Slice 9: add cache keys and invalidation around interface artifacts without replacing normal CLI checking/execution yet.
 
 ## Test Plan For The Next Code Slice
 
 Add tests around these behavioral anchors before enabling cache-backed package checking by default.
 
-Artifact boundary:
+Cache boundary:
 
-- `package_check_finds_dependency_interface_artifact`
-- `package_check_reports_missing_interface_artifact`
-- `package_check_reports_hash_mismatched_interface_artifact`
-- `package_check_rejects_stale_interface_signature`
+- `package_cache_key_changes_when_source_changes`
+- `package_cache_key_changes_when_dependency_interface_hash_changes`
+- `package_cache_rejects_missing_checked_artifact`
+- `package_cache_rejects_stale_checked_artifact`
 
 Compatibility:
 
-- `package_body_checking_and_interface_checking_agree_for_existing_samples`
-- `artifact_interface_checking_and_loaded_interface_checking_agree`
+- `cache_backed_checking_and_body_checking_agree_for_existing_samples`
+- `cli_or_project_artifact_check_reports_same_errors_as_library_api`
 
 ## Definition Of Done For The Next Code Slice
 
 - [ ] Existing `cargo test` remains green.
 - [ ] Existing package-body checking remains source-compatible.
-- [ ] Persisted dependency interface artifacts can be discovered from the project/interface root.
-- [ ] Missing artifacts produce package diagnostics with regeneration guidance.
-- [ ] Hash-mismatched artifacts are rejected before checking.
-- [ ] Artifact-backed checking and already-loaded-interface checking agree for existing package samples.
-- [ ] Interface artifact lookup does not silently fall back to dependency implementation bodies.
+- [ ] Package cache keys include source content and dependency interface hashes.
+- [ ] Stale checked package artifacts are rejected with regeneration guidance.
+- [ ] Cache-backed checking and current body-based checking agree for existing package samples.
+- [ ] CLI/project artifact checking does not silently fall back to dependency implementation bodies.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
 ## Resume Checklist
@@ -253,7 +257,7 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is interface artifact discovery or broader cache integration.
+5. [ ] Confirm whether the intended next code slice is package cache keys/invalidation or CLI artifact-root wiring.
 6. [ ] Keep package flattening unchanged for normal execution unless the task explicitly changes package checking.
 7. [ ] After every compiler-core change, verify at least:
 
