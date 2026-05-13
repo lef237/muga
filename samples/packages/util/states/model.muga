@@ -1,0 +1,19 @@
+package util::states
+
+pub enum Status[T] {
+  Ready(T)
+  Waiting
+  Failed(String)
+}
+
+pub fn ready(value: Int): Status[Int] {
+  Status::Ready(value)
+}
+
+pub fn value_or_zero(status: Status[Int]): Int {
+  match status {
+    Status::Ready(value) => value
+    Status::Waiting => 0
+    Status::Failed(message) => 0
+  }
+}

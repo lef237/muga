@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::{
-    ast,
+    ast, known_enum,
     span::Span,
     symbol::{Symbol, SymbolTable},
 };
@@ -101,6 +103,7 @@ pub enum Expr {
     ListLit(ListLitExpr),
     Index(IndexExpr),
     RecordLit(RecordLitExpr),
+    EnumVariant(EnumVariantExpr),
     Field(FieldExpr),
     RecordUpdate(RecordUpdateExpr),
     Unary(UnaryExpr),
@@ -121,6 +124,7 @@ impl Expr {
             Self::ListLit(expr) => expr.span,
             Self::Index(expr) => expr.span,
             Self::RecordLit(expr) => expr.span,
+            Self::EnumVariant(expr) => expr.span,
             Self::Field(expr) => expr.span,
             Self::RecordUpdate(expr) => expr.span,
             Self::Unary(expr) => expr.span,
@@ -181,6 +185,14 @@ pub struct RecordLitExpr {
 pub struct RecordFieldInit {
     pub name: Symbol,
     pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumVariantExpr {
+    pub enum_name: Symbol,
+    pub variant_name: Symbol,
+    pub payload: Option<Box<Expr>>,
     pub span: Span,
 }
 
@@ -285,7 +297,9 @@ pub fn lower(program: &ast::Program) -> Program {
     let mut lowerer = Lowerer {
         functions: Vec::new(),
         symbols: SymbolTable::default(),
+        enum_variants: HashMap::new(),
     };
+    lowerer.collect_enum_variants(program);
     let statements = program
         .statements
         .iter()
@@ -301,9 +315,41 @@ pub fn lower(program: &ast::Program) -> Program {
 struct Lowerer {
     functions: Vec<Function>,
     symbols: SymbolTable,
+    enum_variants: HashMap<String, EnumVariantLowering>,
+}
+
+#[derive(Clone, Copy)]
+struct EnumVariantLowering {
+    has_payload: bool,
 }
 
 impl Lowerer {
+    fn collect_enum_variants(&mut self, program: &ast::Program) {
+        for known in [known_enum::option_enum(), known_enum::result_enum()] {
+            for variant in known.variants {
+                self.enum_variants.insert(
+                    known.qualified_variant(*variant),
+                    EnumVariantLowering {
+                        has_payload: variant.has_payload,
+                    },
+                );
+            }
+        }
+
+        for statement in &program.statements {
+            if let ast::Stmt::EnumDecl(enumeration) = statement {
+                for variant in &enumeration.variants {
+                    self.enum_variants.insert(
+                        format!("{}::{}", enumeration.name, variant.name),
+                        EnumVariantLowering {
+                            has_payload: variant.payload.is_some(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+
     fn lower_stmt(&mut self, statement: &ast::Stmt) -> Option<Stmt> {
         Some(match statement {
             ast::Stmt::Assign(stmt) => Stmt::Assign(AssignStmt {
@@ -313,6 +359,7 @@ impl Lowerer {
                 span: stmt.span,
             }),
             ast::Stmt::RecordDecl(_) => return None,
+            ast::Stmt::EnumDecl(_) => return None,
             ast::Stmt::FuncDecl(stmt) => Stmt::Function(FunctionStmt {
                 name: self.symbol(&stmt.name),
                 function: self.lower_function_decl(stmt),
@@ -376,10 +423,27 @@ impl Lowerer {
                 value: expr.value.clone(),
                 span: expr.span,
             }),
-            ast::Expr::Ident(expr) => Expr::Ident(IdentExpr {
-                name: self.symbol(&expr.name),
-                span: expr.span,
-            }),
+            ast::Expr::Ident(expr) => {
+                if self
+                    .enum_variants
+                    .get(&expr.name)
+                    .is_some_and(|variant| !variant.has_payload)
+                {
+                    let (enum_name, variant_name) =
+                        split_variant_name(&expr.name).unwrap_or((&expr.name, ""));
+                    Expr::EnumVariant(EnumVariantExpr {
+                        enum_name: self.symbol(enum_name),
+                        variant_name: self.symbol(variant_name),
+                        payload: None,
+                        span: expr.span,
+                    })
+                } else {
+                    Expr::Ident(IdentExpr {
+                        name: self.symbol(&expr.name),
+                        span: expr.span,
+                    })
+                }
+            }
             ast::Expr::ListLit(expr) => Expr::ListLit(ListLitExpr {
                 items: expr
                     .items
@@ -449,11 +513,30 @@ impl Lowerer {
                 right: Box::new(self.lower_expr(&expr.right)),
                 span: expr.span,
             }),
-            ast::Expr::Call(expr) => Expr::Call(CallExpr {
-                callee: Box::new(self.lower_expr(&expr.callee)),
-                args: expr.args.iter().map(|arg| self.lower_expr(arg)).collect(),
-                span: expr.span,
-            }),
+            ast::Expr::Call(expr) => {
+                if let ast::Expr::Ident(callee) = expr.callee.as_ref() {
+                    if self
+                        .enum_variants
+                        .get(&callee.name)
+                        .is_some_and(|variant| variant.has_payload)
+                        && expr.args.len() == 1
+                    {
+                        let (enum_name, variant_name) =
+                            split_variant_name(&callee.name).unwrap_or((&callee.name, ""));
+                        return Expr::EnumVariant(EnumVariantExpr {
+                            enum_name: self.symbol(enum_name),
+                            variant_name: self.symbol(variant_name),
+                            payload: Some(Box::new(self.lower_expr(&expr.args[0]))),
+                            span: expr.span,
+                        });
+                    }
+                }
+                Expr::Call(CallExpr {
+                    callee: Box::new(self.lower_expr(&expr.callee)),
+                    args: expr.args.iter().map(|arg| self.lower_expr(arg)).collect(),
+                    span: expr.span,
+                })
+            }
             ast::Expr::If(expr) => Expr::If(IfExpr {
                 condition: Box::new(self.lower_expr(&expr.condition)),
                 then_branch: self.lower_value_block(&expr.then_branch),
@@ -542,4 +625,8 @@ fn placeholder_value_block(span: Span) -> ValueBlock {
         expr: Box::new(Expr::Int(IntExpr { value: 0, span })),
         span,
     }
+}
+
+fn split_variant_name(name: &str) -> Option<(&str, &str)> {
+    name.rsplit_once("::")
 }

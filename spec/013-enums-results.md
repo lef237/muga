@@ -1,6 +1,6 @@
 # Enums, Result, And Error Propagation Draft
 
-Status: design draft. The current Rust compiler implements compiler-known `Option[T]`, `Result[T, E]`, their qualified constructors, and exhaustive `match` for both. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime Option/Result values use a generic enum-value representation, and variant facts are stored in a compiler-known enum metadata table consumed by typechecking, bytecode lowering, and runtime branching. General user-defined enum declarations and error propagation are not implemented yet.
+Status: design draft with an implemented MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, and in-memory package interface summaries. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching. Error propagation syntax is not implemented yet.
 
 ## 1. Goals
 
@@ -140,7 +140,7 @@ Identity rules for the MVP:
 
 `Option[T]` is currently compiler-known. That can remain true internally during migration, but its source semantics should match ordinary enum behavior.
 
-The implementation has started moving toward one internal ADT model: match patterns are represented as enum variant patterns, runtime values use a generic enum value shape, and current `Option` / `Result` match validation plus bytecode/runtime branching consult compiler-known enum metadata. The next step is to make source enum declarations consume the same model so that `Option[T]`, `Result[T, E]`, and user-defined enums do not permanently require separate code paths.
+The implementation has moved the MVP toward one internal ADT model: match patterns are represented as enum variant patterns, runtime values use a generic enum value shape, and `Option` / `Result` match validation plus bytecode/runtime branching consult compiler-known enum metadata. Source enum declarations now consume the same runtime and match model, while compiler-known `Option[T]` and `Result[T, E]` remain special for prelude compatibility.
 
 Compatibility requirements:
 
@@ -266,7 +266,7 @@ Public function signatures may then mention enum types such as:
 pub fn read_file(path: String): Result[String, IOError]
 ```
 
-Before persisted interfaces are introduced, in-memory summaries should be extended far enough to represent user-defined enum declarations in public signatures. Compiler-known `Result[T, E]` signatures are already represented.
+In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. Persisted interfaces should carry the same resolved enum identity, type parameters, variants, payload types, and public signatures from the start.
 
 ## 9. Runtime Representation
 
@@ -280,7 +280,7 @@ Enum {
 }
 ```
 
-This currently preserves existing `Option::Some(...)`, `Option::None`, `Result::Ok(...)`, and `Result::Err(...)` behavior. User-defined enums should reuse the same value shape.
+This preserves existing `Option::Some(...)`, `Option::None`, `Result::Ok(...)`, and `Result::Err(...)` behavior. User-defined enums reuse the same value shape.
 
 Performance-specific representations can be handled later in MIR/native lowering.
 
@@ -293,21 +293,21 @@ Performance-specific representations can be handled later in MIR/native lowering
 - [x] Add compiler-known `Result[T, E]`, `Result::Ok`, and `Result::Err`.
 - [x] Make current Result match validation, bytecode lowering, and runtime branching consume the same metadata path.
 - [x] Represent public compiler-known `Result[T, E]` signatures in in-memory package interface summaries.
-- [ ] Add parser support for `enum` declarations, type parameters, and variant declarations.
-- [ ] Add AST nodes for enum declarations and enum variants.
-- [ ] Add resolver/typechecker identity for enum declarations and variants.
-- [ ] Extend `TypeInfo` to represent enum types and enum item identity.
+- [x] Add parser support for `enum` declarations, type parameters, and variant declarations.
+- [x] Add AST nodes for enum declarations and enum variants.
+- [x] Add resolver/typechecker identity for enum declarations and variants.
+- [x] Extend `TypeInfo` to represent enum types and enum item identity.
 - [x] Generalize compiler-known `match` beyond `Option[T]` to `Result[T, E]`.
 - [x] Add exhaustive match checking over compiler-known enum variants.
 - [x] Add HIR, bytecode, and runtime support for compiler-known enum construction and matching.
-- [ ] Add typed HIR support for enum declarations, variant constructors, match patterns, and enum types.
-- [ ] Add in-memory package interface summaries for public enum declarations.
-- [ ] Preserve all existing `Option[T]` behavior and tests.
+- [x] Add typed HIR support for enum declarations, variant constructors, match patterns, and enum types.
+- [x] Add in-memory package interface summaries for public enum declarations.
+- [x] Preserve all existing `Option[T]` behavior and tests.
 - [x] Add `Result[T, E]` tests before adding any propagation operator.
 
 ## 11. Recommended Phasing
 
-1. Add user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants.
-2. Harden enum diagnostics, package visibility, and in-memory interface validation.
+1. Harden enum diagnostics, package visibility, imported qualified variants, and in-memory interface validation.
+2. Extend persisted package interfaces and cache formats now that enum/result signatures have source-level identity.
 3. Revisit `try expr` propagation syntax.
-4. Extend persisted package interfaces and cache formats once enum/result signatures are stable.
+4. Continue toward MIR/native lowering once package boundaries are real inputs.

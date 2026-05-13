@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast,
@@ -23,6 +23,7 @@ pub struct Program {
 pub enum Stmt {
     Assign(AssignStmt),
     Record(RecordStmt),
+    Enum(EnumStmt),
     Function(FunctionStmt),
     If(IfStmt),
     While(WhileStmt),
@@ -34,6 +35,7 @@ impl Stmt {
         match self {
             Self::Assign(stmt) => stmt.id,
             Self::Record(stmt) => stmt.id,
+            Self::Enum(stmt) => stmt.id,
             Self::Function(stmt) => stmt.id,
             Self::If(stmt) => stmt.id,
             Self::While(stmt) => stmt.id,
@@ -66,6 +68,23 @@ pub struct RecordStmt {
 pub struct RecordField {
     pub name: String,
     pub ty: TypeInfo,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumStmt {
+    pub id: StmtId,
+    pub name: String,
+    pub package_item: Option<PackageItemId>,
+    pub type_params: Vec<String>,
+    pub variants: Vec<EnumVariant>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumVariant {
+    pub name: String,
+    pub payload: Option<TypeInfo>,
     pub span: Span,
 }
 
@@ -177,6 +196,11 @@ pub enum IdentTarget {
     PackageItem {
         binding: BindingId,
         item: PackageItemId,
+    },
+    EnumVariant {
+        binding: BindingId,
+        enum_name: Symbol,
+        variant_name: Symbol,
     },
 }
 
@@ -321,6 +345,7 @@ struct Lowerer<'a> {
     calls: HashMap<ExprId, TypedCalleeInfo>,
     package_items_by_binding: HashMap<BindingId, PackageItemId>,
     package_items_by_symbol: HashMap<Symbol, PackageItemId>,
+    enum_symbols: HashSet<Symbol>,
     assignment_targets: HashMap<StmtId, TypedAssignmentTarget>,
 }
 
@@ -352,6 +377,19 @@ impl<'a> Lowerer<'a> {
                     let symbol = analysis.symbols.lookup(&record.name)?;
                     Some((symbol, item))
                 }
+                ast::Stmt::EnumDecl(enumeration) => {
+                    let item = enumeration.package_item?;
+                    let symbol = analysis.symbols.lookup(&enumeration.name)?;
+                    Some((symbol, item))
+                }
+                _ => None,
+            })
+            .collect();
+        let enum_symbols = program
+            .statements
+            .iter()
+            .filter_map(|statement| match statement {
+                ast::Stmt::EnumDecl(enumeration) => analysis.symbols.lookup(&enumeration.name),
                 _ => None,
             })
             .collect();
@@ -374,6 +412,7 @@ impl<'a> Lowerer<'a> {
                 .collect(),
             package_items_by_binding,
             package_items_by_symbol,
+            enum_symbols,
             assignment_targets: analysis
                 .assignment_targets
                 .iter()
@@ -421,6 +460,24 @@ impl<'a> Lowerer<'a> {
                         name: field.name.clone(),
                         ty: self.type_info_from_type_expr(&field.type_name),
                         span: field.span,
+                    })
+                    .collect(),
+                span: stmt.span,
+            }),
+            ast::Stmt::EnumDecl(stmt) => Stmt::Enum(EnumStmt {
+                id: stmt.id,
+                name: stmt.name.clone(),
+                package_item: stmt.package_item,
+                type_params: stmt.type_params.clone(),
+                variants: stmt
+                    .variants
+                    .iter()
+                    .map(|variant| EnumVariant {
+                        name: variant.name.clone(),
+                        payload: variant.payload.as_ref().map(|payload| {
+                            self.type_info_from_type_expr_with_params(payload, &stmt.type_params)
+                        }),
+                        span: variant.span,
                     })
                     .collect(),
                 span: stmt.span,
@@ -670,6 +727,22 @@ impl<'a> Lowerer<'a> {
 
     fn target_for_expr(&self, id: ExprId) -> IdentTarget {
         let binding = self.binding_for_expr(id);
+        if let Some(TypeInfo::EnumConstructor {
+            enum_symbol,
+            variant,
+        }) = self
+            .analysis
+            .bindings
+            .iter()
+            .find(|candidate| candidate.id == binding)
+            .map(|candidate| candidate.ty.clone())
+        {
+            return IdentTarget::EnumVariant {
+                binding,
+                enum_name: enum_symbol,
+                variant_name: variant,
+            };
+        }
         self.package_items_by_binding
             .get(&binding)
             .copied()
@@ -730,49 +803,110 @@ impl<'a> Lowerer<'a> {
     }
 
     fn type_info_from_type_expr(&self, type_expr: &ast::TypeExpr) -> TypeInfo {
+        self.type_info_from_type_expr_with_params(type_expr, &[])
+    }
+
+    fn type_info_from_type_expr_with_params(
+        &self,
+        type_expr: &ast::TypeExpr,
+        type_params: &[String],
+    ) -> TypeInfo {
         match type_expr {
             ast::TypeExpr::Int => TypeInfo::Int,
             ast::TypeExpr::Bool => TypeInfo::Bool,
             ast::TypeExpr::String => TypeInfo::String,
+            ast::TypeExpr::Named(name) if type_params.iter().any(|param| param == name) => self
+                .analysis
+                .symbols
+                .lookup(name)
+                .map(TypeInfo::GenericParam)
+                .unwrap_or(TypeInfo::Error),
             ast::TypeExpr::Named(name) => self
                 .analysis
                 .symbols
                 .lookup(name)
-                .map(TypeInfo::Record)
-                .map(|ty| self.package_target_for_type(ty))
+                .map(|symbol| {
+                    let ty = if self.enum_symbols.contains(&symbol) {
+                        TypeInfo::Enum {
+                            symbol,
+                            args: Vec::new(),
+                        }
+                    } else {
+                        TypeInfo::Record(symbol)
+                    };
+                    self.package_target_for_type(ty)
+                })
                 .unwrap_or(TypeInfo::Error),
             ast::TypeExpr::Generic(generic)
                 if generic.name == "List" && generic.args.len() == 1 =>
             {
-                TypeInfo::List(Box::new(self.type_info_from_type_expr(&generic.args[0])))
+                TypeInfo::List(Box::new(
+                    self.type_info_from_type_expr_with_params(&generic.args[0], type_params),
+                ))
             }
             ast::TypeExpr::Generic(generic)
                 if generic.name == known_enum::OPTION_NAME && generic.args.len() == 1 =>
             {
-                TypeInfo::Option(Box::new(self.type_info_from_type_expr(&generic.args[0])))
+                TypeInfo::Option(Box::new(
+                    self.type_info_from_type_expr_with_params(&generic.args[0], type_params),
+                ))
             }
             ast::TypeExpr::Generic(generic)
                 if generic.name == known_enum::RESULT_NAME && generic.args.len() == 2 =>
             {
                 TypeInfo::Result(
-                    Box::new(self.type_info_from_type_expr(&generic.args[0])),
-                    Box::new(self.type_info_from_type_expr(&generic.args[1])),
+                    Box::new(
+                        self.type_info_from_type_expr_with_params(&generic.args[0], type_params),
+                    ),
+                    Box::new(
+                        self.type_info_from_type_expr_with_params(&generic.args[1], type_params),
+                    ),
                 )
             }
             ast::TypeExpr::Generic(generic) if generic.name == "Map" && generic.args.len() == 2 => {
                 TypeInfo::Map(
-                    Box::new(self.type_info_from_type_expr(&generic.args[0])),
-                    Box::new(self.type_info_from_type_expr(&generic.args[1])),
+                    Box::new(
+                        self.type_info_from_type_expr_with_params(&generic.args[0], type_params),
+                    ),
+                    Box::new(
+                        self.type_info_from_type_expr_with_params(&generic.args[1], type_params),
+                    ),
                 )
+            }
+            ast::TypeExpr::Generic(generic)
+                if self
+                    .analysis
+                    .symbols
+                    .lookup(&generic.name)
+                    .is_some_and(|symbol| self.enum_symbols.contains(&symbol)) =>
+            {
+                self.analysis
+                    .symbols
+                    .lookup(&generic.name)
+                    .map(|symbol| {
+                        self.package_target_for_type(TypeInfo::Enum {
+                            symbol,
+                            args: generic
+                                .args
+                                .iter()
+                                .map(|arg| {
+                                    self.type_info_from_type_expr_with_params(arg, type_params)
+                                })
+                                .collect(),
+                        })
+                    })
+                    .unwrap_or(TypeInfo::Error)
             }
             ast::TypeExpr::Generic(_) => TypeInfo::Error,
             ast::TypeExpr::Function(function) => TypeInfo::Function(FunctionTypeInfo {
                 params: function
                     .params
                     .iter()
-                    .map(|param| self.type_info_from_type_expr(param))
+                    .map(|param| self.type_info_from_type_expr_with_params(param, type_params))
                     .collect(),
-                ret: Box::new(self.type_info_from_type_expr(&function.ret)),
+                ret: Box::new(
+                    self.type_info_from_type_expr_with_params(&function.ret, type_params),
+                ),
             }),
         }
     }
@@ -785,6 +919,25 @@ impl<'a> Lowerer<'a> {
                 .copied()
                 .map(|item| TypeInfo::PackageRecord { symbol, item })
                 .unwrap_or(TypeInfo::Record(symbol)),
+            TypeInfo::Enum { symbol, args } => {
+                let args = args
+                    .into_iter()
+                    .map(|arg| self.package_target_for_type(arg))
+                    .collect();
+                if let Some(item) = self.package_items_by_symbol.get(&symbol).copied() {
+                    TypeInfo::PackageEnum { symbol, item, args }
+                } else {
+                    TypeInfo::Enum { symbol, args }
+                }
+            }
+            TypeInfo::PackageEnum { symbol, item, args } => TypeInfo::PackageEnum {
+                symbol,
+                item,
+                args: args
+                    .into_iter()
+                    .map(|arg| self.package_target_for_type(arg))
+                    .collect(),
+            },
             TypeInfo::Function(function) => TypeInfo::Function(FunctionTypeInfo {
                 params: function
                     .params

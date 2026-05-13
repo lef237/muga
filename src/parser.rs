@@ -1,7 +1,6 @@
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{ExprId, StmtId};
-use crate::known_enum;
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
@@ -157,6 +156,9 @@ impl Parser {
             TokenKind::Record => self
                 .parse_record_decl_with_visibility(Visibility::Private)
                 .map(Stmt::RecordDecl),
+            TokenKind::Enum => self
+                .parse_enum_decl_with_visibility(Visibility::Private)
+                .map(Stmt::EnumDecl),
             _ => self.parse_stmt(),
         }
     }
@@ -216,12 +218,15 @@ impl Parser {
             TokenKind::Record => self
                 .parse_record_decl_with_visibility(visibility)
                 .map(Stmt::RecordDecl),
+            TokenKind::Enum => self
+                .parse_enum_decl_with_visibility(visibility)
+                .map(Stmt::EnumDecl),
             TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self
                 .parse_func_decl_with_visibility(visibility)
                 .map(Stmt::FuncDecl),
             _ => Err(Diagnostic::new(
                 "P014",
-                "package mode allows only top-level `record` and `fn` declarations",
+                "package mode allows only top-level `record`, `enum`, and `fn` declarations",
                 self.current_span(),
             )),
         }
@@ -233,6 +238,11 @@ impl Parser {
             TokenKind::Record => Err(Diagnostic::new(
                 "P010",
                 "record declarations are top-level only",
+                self.current_span(),
+            )),
+            TokenKind::Enum => Err(Diagnostic::new(
+                "P010",
+                "enum declarations are top-level only",
                 self.current_span(),
             )),
             TokenKind::Pub | TokenKind::Pkg => Err(Diagnostic::new(
@@ -317,6 +327,90 @@ impl Parser {
             visibility,
             fields,
             span: start.merge(end),
+        })
+    }
+
+    fn parse_enum_decl_with_visibility(
+        &mut self,
+        visibility: Visibility,
+    ) -> Result<EnumDecl, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::Enum, "expected `enum`")?;
+        let (name, _) = self.expect_ident()?;
+        let type_params = if self.matches_simple(&TokenKind::LBracket) {
+            self.parse_type_param_names()?
+        } else {
+            Vec::new()
+        };
+        self.expect_simple(TokenKind::LBrace, "expected `{` after enum name")?;
+        self.skip_newlines();
+        let mut variants = Vec::new();
+        while !matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+            variants.push(self.parse_enum_variant_decl()?);
+            if matches!(self.peek_kind(), TokenKind::RBrace) {
+                break;
+            }
+            self.consume_enum_boundary()?;
+            self.skip_newlines();
+        }
+        let end = self.expect_simple(TokenKind::RBrace, "expected `}` after enum declaration")?;
+        Ok(EnumDecl {
+            id: self.stmt_id(),
+            name,
+            package_item: None,
+            visibility,
+            type_params,
+            variants,
+            span: start.merge(end),
+        })
+    }
+
+    fn parse_type_param_names(&mut self) -> Result<Vec<String>, Diagnostic> {
+        let mut params = Vec::new();
+        if matches!(self.peek_kind(), TokenKind::RBracket) {
+            return Err(Diagnostic::new(
+                "P018",
+                "generic enum declaration requires at least one type parameter",
+                self.current_span(),
+            ));
+        }
+        loop {
+            let (param, _) = self.expect_ident()?;
+            params.push(param);
+            if !self.matches_simple(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect_simple(TokenKind::RBracket, "expected `]` after type parameters")?;
+        Ok(params)
+    }
+
+    fn parse_enum_variant_decl(&mut self) -> Result<EnumVariantDecl, Diagnostic> {
+        let start = self.current_span();
+        let (name, name_span) = self.expect_ident()?;
+        let mut span = start.merge(name_span);
+        let payload = if self.matches_simple(&TokenKind::LParen) {
+            let (payload, payload_span) = self.parse_type_expr()?;
+            if matches!(self.peek_kind(), TokenKind::Comma) {
+                return Err(Diagnostic::new(
+                    "P018",
+                    "enum variants support at most one payload type in v1",
+                    self.current_span(),
+                ));
+            }
+            let end = self.expect_simple(
+                TokenKind::RParen,
+                "expected `)` after enum variant payload type",
+            )?;
+            span = span.merge(payload_span).merge(end);
+            Some(payload)
+        } else {
+            None
+        };
+        Ok(EnumVariantDecl {
+            name,
+            payload,
+            span,
         })
     }
 
@@ -633,45 +727,28 @@ impl Parser {
     fn parse_match_pattern(&mut self) -> Result<MatchPattern, Diagnostic> {
         let (first, first_span) = self.expect_ident()?;
         let (name, name_span) = self.parse_value_name_after_first(first, first_span)?;
-        if let Some((known, variant)) = known_enum::known_variant_qualified(&name) {
-            if variant.has_payload {
-                let message = format!("expected `(` after `{}`", known.qualified_variant(variant));
-                self.expect_simple(TokenKind::LParen, &message)?;
-                let (binding, binding_span) = self.expect_ident()?;
-                let end =
-                    self.expect_simple(TokenKind::RParen, "expected `)` after match binding")?;
-                return Ok(MatchPattern::Variant(EnumVariantPattern {
-                    enum_name: known.name.to_string(),
-                    variant_name: variant.name.to_string(),
-                    binding: Some(binding),
-                    span: name_span.merge(binding_span).merge(end),
-                }));
-            }
+        let Some((enum_name, variant_name)) = split_variant_name(&name) else {
+            return Err(Diagnostic::new(
+                "P016",
+                "expected an enum variant pattern such as `Option::Some(name)`, `Option::None`, or `Result::Ok(value)`",
+                name_span,
+            ));
+        };
 
-            if matches!(self.peek_kind(), TokenKind::LParen) {
-                return Err(Diagnostic::new(
-                    "P016",
-                    format!(
-                        "`{}` pattern does not carry a payload",
-                        known.qualified_variant(variant)
-                    ),
-                    name_span,
-                ));
-            }
+        let (binding, span) = if self.matches_simple(&TokenKind::LParen) {
+            let (binding, binding_span) = self.expect_ident()?;
+            let end = self.expect_simple(TokenKind::RParen, "expected `)` after match binding")?;
+            (Some(binding), name_span.merge(binding_span).merge(end))
+        } else {
+            (None, name_span)
+        };
 
-            return Ok(MatchPattern::Variant(EnumVariantPattern {
-                enum_name: known.name.to_string(),
-                variant_name: variant.name.to_string(),
-                binding: None,
-                span: name_span,
-            }));
-        }
-
-        Err(Diagnostic::new(
-            "P016",
-            "expected a compiler-known enum variant pattern such as `Option::Some(name)`, `Option::None`, `Result::Ok(value)`, or `Result::Err(error)`",
-            name_span,
-        ))
+        Ok(MatchPattern::Variant(EnumVariantPattern {
+            enum_name,
+            variant_name,
+            binding,
+            span,
+        }))
     }
 
     fn parse_equality(&mut self) -> Result<Expr, Diagnostic> {
@@ -1127,11 +1204,14 @@ impl Parser {
         first: String,
         first_span: Span,
     ) -> Result<(String, Span), Diagnostic> {
-        if !self.matches_simple(&TokenKind::DoubleColon) {
-            return Ok((first, first_span));
+        let mut parts = vec![first];
+        let mut span = first_span;
+        while self.matches_simple(&TokenKind::DoubleColon) {
+            let (segment, segment_span) = self.expect_ident()?;
+            parts.push(segment);
+            span = span.merge(segment_span);
         }
-        let (second, second_span) = self.expect_ident()?;
-        Ok((format!("{first}::{second}"), first_span.merge(second_span)))
+        Ok((parts.join("::"), span))
     }
 
     fn parse_value_name_after_first(
@@ -1200,6 +1280,24 @@ impl Parser {
         Err(Diagnostic::new(
             "P013",
             "expected newline or `,` between record fields",
+            self.current_span(),
+        ))
+    }
+
+    fn consume_enum_boundary(&mut self) -> Result<(), Diagnostic> {
+        if self.matches_simple(&TokenKind::Comma) {
+            return Ok(());
+        }
+        if matches!(self.peek_kind(), TokenKind::Newline) {
+            self.skip_newlines();
+            return Ok(());
+        }
+        if matches!(self.peek_kind(), TokenKind::RBrace) {
+            return Ok(());
+        }
+        Err(Diagnostic::new(
+            "P018",
+            "expected newline or `,` between enum variants",
             self.current_span(),
         ))
     }
@@ -1354,4 +1452,13 @@ fn block_to_value_block(block: Block) -> Result<ValueBlock, Diagnostic> {
         "value block requires a final expression",
         block.span,
     ))
+}
+
+fn split_variant_name(name: &str) -> Option<(String, String)> {
+    let (enum_name, variant_name) = name.rsplit_once("::")?;
+    if enum_name.is_empty() || variant_name.is_empty() {
+        None
+    } else {
+        Some((enum_name.to_string(), variant_name.to_string()))
+    }
 }

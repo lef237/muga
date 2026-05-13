@@ -20,14 +20,14 @@ Implemented language surface:
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for compiler-known `Option` and `Result`
+- user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
-- in-memory package interface summaries for public records/functions and validation of public package references against those summaries
+- in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:
 
-- user-defined enum declarations are not implemented
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - package compilation still flattens packages before checking/execution
@@ -61,17 +61,15 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice is user-defined enum declarations:
+The next code slice is enum integration hardening:
 
-1. Parse top-level `enum` declarations with optional unconstrained type parameters.
-2. Support zero-payload and one-payload variants only, separated by newline or comma.
-3. Require qualified construction and patterns: `Enum::Variant`.
-4. Represent enum and variant identities in AST, resolver/typechecker data, HIR, typed HIR, and package summaries.
-5. Route enum construction and `match` through the same metadata/runtime path currently used by compiler-known `Option` and `Result`.
-6. Keep exhaustive `match` as the first pattern-matching surface.
-7. Keep wildcard patterns, nested destructuring, multi-payload variants, named-field variants, and `try expr` deferred.
+1. Add focused diagnostics for unknown enum types, unknown variants, duplicate arms, missing arms, constructor arity, and expected-type failures.
+2. Expand package visibility coverage for public, package-visible, and module-private enum declarations.
+3. Add tests for imported enum constructors and imported enum patterns such as `alias::Enum::Variant`.
+4. Validate stale in-memory package interfaces for enum identity, type parameters, variants, and payload types.
+5. Keep wildcard patterns, nested destructuring, multi-payload variants, named-field variants, and `try expr` deferred.
 
-This comes before broad stdlib effects because IO, HTTP, process, time, and concurrency APIs need stable `Result` and enum behavior.
+After that, the priority returns to persisted package interfaces, package-interface consumption, caching, MIR, and native backend work.
 
 ## Compiler Architecture Path
 
@@ -158,7 +156,7 @@ These should stay deferred unless the active implementation slice requires them:
 
 The coherent path is:
 
-1. user-defined enums
+1. enum integration hardening
 2. persisted package interfaces
 3. package checking without flattening
 4. cache and incremental compilation

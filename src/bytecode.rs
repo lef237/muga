@@ -1,6 +1,5 @@
 use crate::{
     hir,
-    known_enum::{self, KnownEnum, KnownEnumVariant},
     span::Span,
     symbol::{Symbol, SymbolTable},
 };
@@ -36,6 +35,12 @@ pub enum Instruction {
     MakeRecord {
         type_name: Symbol,
         fields: Vec<Symbol>,
+        span: Span,
+    },
+    MakeEnum {
+        enum_name: Symbol,
+        variant_name: Symbol,
+        has_payload: bool,
         span: Span,
     },
     MakeList {
@@ -88,11 +93,14 @@ pub enum Instruction {
         target: usize,
         span: Span,
     },
-    JumpIfEnumVariant {
+    JumpIfNotEnumVariant {
         enum_name: Symbol,
-        continue_variant: Symbol,
-        jump_variant: Symbol,
+        variant_name: Symbol,
         target: usize,
+        span: Span,
+    },
+    MatchExhausted {
+        enum_name: Symbol,
         span: Span,
     },
     Jump {
@@ -139,6 +147,7 @@ pub fn compile(program: hir::Program) -> Program {
 struct Compiler {
     functions: Vec<Function>,
     symbols: SymbolTable,
+    next_match_temp: usize,
 }
 
 impl Compiler {
@@ -146,6 +155,7 @@ impl Compiler {
         Self {
             functions: Vec::new(),
             symbols,
+            next_match_temp: 0,
         }
     }
 
@@ -269,6 +279,17 @@ impl Compiler {
                     span: expr.span,
                 });
             }
+            hir::Expr::EnumVariant(expr) => {
+                if let Some(payload) = &expr.payload {
+                    self.compile_expr(payload, chunk);
+                }
+                chunk.instructions.push(Instruction::MakeEnum {
+                    enum_name: expr.enum_name,
+                    variant_name: expr.variant_name,
+                    has_payload: expr.payload.is_some(),
+                    span: expr.span,
+                });
+            }
             hir::Expr::ListLit(expr) => {
                 for item in &expr.items {
                     self.compile_expr(item, chunk);
@@ -363,66 +384,49 @@ impl Compiler {
     }
 
     fn compile_match_expr(&mut self, expr: &hir::MatchExpr, chunk: &mut Chunk) {
-        let known = self.known_enum_for_match(expr);
-        assert_eq!(
-            known.variants.len(),
-            2,
-            "bytecode match lowering currently expects two-variant known enums"
-        );
-        let continue_variant = known.variants[0];
-        let jump_variant = known.variants[1];
-        let continue_arm = expr
-            .arms
-            .iter()
-            .find(|arm| self.pattern_is_variant(&arm.pattern, known, continue_variant))
-            .expect("typechecked known enum match should have first variant arm");
-        let jump_arm = expr
-            .arms
-            .iter()
-            .find(|arm| self.pattern_is_variant(&arm.pattern, known, jump_variant))
-            .expect("typechecked known enum match should have second variant arm");
-
-        self.compile_expr(&expr.value, chunk);
-        let continue_symbols = self.pattern_variant_symbols(&continue_arm.pattern);
-        let jump_symbols = self.pattern_variant_symbols(&jump_arm.pattern);
-        let jump = self.emit_jump_if_enum_variant(
-            chunk,
-            continue_symbols.0,
-            continue_symbols.1,
-            jump_symbols.1,
-            expr.value.span(),
-        );
-
-        self.compile_match_arm(continue_arm, continue_variant, chunk);
-        let end_jump = self.emit_jump(chunk);
-
-        let jump_target = chunk.instructions.len();
-        self.patch_jump_if_enum_variant(chunk, jump, jump_target);
-        self.compile_match_arm(jump_arm, jump_variant, chunk);
-
-        let end_target = chunk.instructions.len();
-        self.patch_jump(chunk, end_jump, end_target);
-    }
-
-    fn known_enum_for_match(&self, expr: &hir::MatchExpr) -> &'static KnownEnum {
-        for arm in &expr.arms {
-            let hir::MatchPattern::Variant(pattern) = &arm.pattern;
-            let enum_name = self.symbols.resolve(pattern.enum_name);
-            if let Some(known) = known_enum::known_enum(enum_name) {
-                return known;
-            }
-        }
-        panic!("typechecked match should use a compiler-known enum");
-    }
-
-    fn compile_match_arm(
-        &mut self,
-        arm: &hir::MatchArm,
-        variant: KnownEnumVariant,
-        chunk: &mut Chunk,
-    ) {
+        let enum_name = self.pattern_enum_symbol(expr);
+        let temp = self.match_temp_symbol();
         chunk.instructions.push(Instruction::PushScope);
-        if variant.has_payload {
+        self.compile_expr(&expr.value, chunk);
+        chunk.instructions.push(Instruction::Assign {
+            name: temp,
+            mutable: false,
+            span: expr.value.span(),
+        });
+
+        let mut end_jumps = Vec::new();
+        for arm in &expr.arms {
+            let (_, variant_name) = self.pattern_variant_symbols(&arm.pattern);
+            chunk.instructions.push(Instruction::LoadName {
+                name: temp,
+                span: expr.value.span(),
+            });
+            let next_arm_jump = self.emit_jump_if_not_enum_variant(
+                chunk,
+                enum_name,
+                variant_name,
+                expr.value.span(),
+            );
+            self.compile_match_arm(arm, chunk);
+            end_jumps.push(self.emit_jump(chunk));
+            let next_target = chunk.instructions.len();
+            self.patch_jump_if_not_enum_variant(chunk, next_arm_jump, next_target);
+        }
+
+        chunk.instructions.push(Instruction::MatchExhausted {
+            enum_name,
+            span: expr.span,
+        });
+        let end_target = chunk.instructions.len();
+        for jump in end_jumps {
+            self.patch_jump(chunk, jump, end_target);
+        }
+        chunk.instructions.push(Instruction::PopScope);
+    }
+
+    fn compile_match_arm(&mut self, arm: &hir::MatchArm, chunk: &mut Chunk) {
+        chunk.instructions.push(Instruction::PushScope);
+        if self.pattern_binding(&arm.pattern).is_some() {
             let (binding, span) = self
                 .pattern_binding(&arm.pattern)
                 .expect("typechecked payload variant arm should bind payload");
@@ -436,15 +440,13 @@ impl Compiler {
         chunk.instructions.push(Instruction::PopScope);
     }
 
-    fn pattern_is_variant(
-        &self,
-        pattern: &hir::MatchPattern,
-        known: &KnownEnum,
-        variant: KnownEnumVariant,
-    ) -> bool {
-        let hir::MatchPattern::Variant(pattern) = pattern;
-        self.symbols.resolve(pattern.enum_name) == known.name
-            && self.symbols.resolve(pattern.variant_name) == variant.name
+    fn pattern_enum_symbol(&self, expr: &hir::MatchExpr) -> Symbol {
+        let first = expr
+            .arms
+            .first()
+            .expect("typechecked match should have at least one arm");
+        let hir::MatchPattern::Variant(pattern) = &first.pattern;
+        pattern.enum_name
     }
 
     fn pattern_binding(&self, pattern: &hir::MatchPattern) -> Option<(Symbol, Span)> {
@@ -465,23 +467,27 @@ impl Compiler {
         index
     }
 
-    fn emit_jump_if_enum_variant(
+    fn emit_jump_if_not_enum_variant(
         &self,
         chunk: &mut Chunk,
         enum_name: Symbol,
-        continue_variant: Symbol,
-        jump_variant: Symbol,
+        variant_name: Symbol,
         span: Span,
     ) -> usize {
         let index = chunk.instructions.len();
-        chunk.instructions.push(Instruction::JumpIfEnumVariant {
+        chunk.instructions.push(Instruction::JumpIfNotEnumVariant {
             enum_name,
-            continue_variant,
-            jump_variant,
+            variant_name,
             target: 0,
             span,
         });
         index
+    }
+
+    fn match_temp_symbol(&mut self) -> Symbol {
+        let name = format!("__muga_match_value_{}", self.next_match_temp);
+        self.next_match_temp += 1;
+        self.symbols.intern(&name)
     }
 
     fn emit_jump(&self, chunk: &mut Chunk) -> usize {
@@ -511,13 +517,13 @@ impl Compiler {
         *patched_target = target;
     }
 
-    fn patch_jump_if_enum_variant(&self, chunk: &mut Chunk, index: usize, target: usize) {
-        let Instruction::JumpIfEnumVariant {
+    fn patch_jump_if_not_enum_variant(&self, chunk: &mut Chunk, index: usize, target: usize) {
+        let Instruction::JumpIfNotEnumVariant {
             target: patched_target,
             ..
         } = &mut chunk.instructions[index]
         else {
-            unreachable!("expected JumpIfEnumVariant at patch site");
+            unreachable!("expected JumpIfNotEnumVariant at patch site");
         };
         *patched_target = target;
     }

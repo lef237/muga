@@ -1,13 +1,13 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-12.
+Status: current implementation ledger for 2026-05-13.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after compiler-known `Result[T, E]` support and the builtin identity cleanup: 163 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after the same cleanup.
+- [x] `cargo test` passed after user-defined enum MVP support: 171 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after user-defined enum MVP support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -23,6 +23,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 Ada
 21
 ```
+
+- [x] `target/debug/muga samples/packages/app/enum_demo/main.muga` printed `7`.
 
 ## Current Implementation Ledger
 
@@ -105,10 +107,14 @@ Ada
 - [x] in-memory package interface summaries can contain public `Result[T, E]` signatures.
 - [x] `Map[K, V]` with `Int`, `Bool`, and `String` keys.
 - [x] `Map.empty`, `len`, `is_empty`, `contains`, safe `get`, value-returning `insert`, and value-returning `remove`.
+- [x] user-defined `enum` declarations with optional unconstrained type parameters.
+- [x] user-defined enum zero-payload and one-payload variants.
+- [x] qualified user enum construction and patterns with exhaustive `match`.
+- [x] user-defined enum runtime values use the same generic `EnumValue` display shape.
+- [x] typed HIR and in-memory package interface summaries preserve public user enum declarations and public signatures containing user enum types.
 - [ ] map literals are deferred.
 - [ ] arbitrary map key types are deferred.
 - [ ] `Set[T]` is deferred.
-- [ ] user-defined enum/sum types are not implemented.
 - [ ] error propagation syntax is not implemented.
 
 ## Architecture Facts To Keep In Mind
@@ -116,15 +122,15 @@ Ada
 - The VM/bytecode path is the current execution backend and should remain a reference backend.
 - typed HIR is the intended semantic boundary for future MIR, package interfaces, and native backend work.
 - The current bytecode backend still lowers from the older untyped HIR, not typed HIR.
-- `Option[T]` and `Result[T, E]` are implemented as compiler-known enum-like types rather than as user-defined enums.
-- `match` currently supports compiler-known `Option[T]` and `Result[T, E]`; match patterns are represented internally as enum variant patterns.
-- Runtime `Option` and `Result` values use a generic enum-value representation; typechecking and bytecode branching consume compiler-known enum metadata.
+- `Option[T]` and `Result[T, E]` remain compiler-known enum-like types for now; user-defined enums use a parallel source-level enum model.
+- `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
+- Runtime enum-like values use a generic enum-value representation.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
 - The public package interface model is in memory only; there is no serialized format, cache key, or incremental invalidation yet.
 
 ## Recommended Next Implementation
 
-The next implementation theme is user-defined enum/sum-type declarations, before broad stdlib or persisted package-interface work.
+The next implementation theme is enum integration hardening before persisted package-interface work.
 
 Reasoning:
 
@@ -132,7 +138,9 @@ Reasoning:
 - `Map.get` and `List.get` already depend on `Option[T]`, so the compiler has a working enum-like subset.
 - `Result[T, E]` now proves the same enum metadata, runtime value, typed HIR, and package-interface path for a second generic enum.
 - General IO, process, HTTP, time, and concurrency APIs can use explicit `Result` before any propagation sugar is added.
-- Persisted package interfaces should not be frozen before user-defined enum identities and public enum declarations are represented.
+- User-defined enum declarations, runtime values, typed HIR, and in-memory public interface summaries are now represented.
+- Persisted package interfaces should now include enum identity, type parameters, variants, payload types, and public signatures from the start.
+- Before persistence, the remaining enum edge cases should be hardened: diagnostics, imported constructors/patterns, visibility errors, and stale interface validation.
 
 ## Requirement Decisions For The Next Slice
 
@@ -184,63 +192,61 @@ Estimates are in focused engineering days for someone already familiar with this
 |---|---|---|---:|---|
 | 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. AST/HIR/typed HIR pattern shape, runtime enum value shape, compiler-known enum metadata, and generic two-variant bytecode/runtime branching are in place. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | Done | Low |
 | 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
-| 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | 4-6 days | High |
+| 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | Done | High |
 | 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | 2-4 days | Medium |
-| 5. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
-| 6. Package interface persistence | Serialize public records/functions/enums, type identities, and hashes. Start consuming stored summaries for downstream checking. | `src/package.rs`, `src/typed_hir.rs`, new interface/cache modules, tests | 5-10 days | High |
+| 5. Package interface persistence | Serialize public records/functions/enums, type identities, and hashes. Start consuming stored summaries for downstream checking. | `src/package.rs`, `src/typed_hir.rs`, new interface/cache modules, tests | 5-10 days | High |
+| 6. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 3: add user-defined enum declarations with optional type parameters and zero-payload or one-payload variants, then route those declarations into the same match/type/runtime representation currently used by compiler-known `Option` and `Result`.
+The safest immediate code slice is now Slice 4: harden the enum MVP before package interfaces become persisted artifacts. The main goal is to close edge-case gaps around diagnostics, package visibility, imported qualified variants, stale interface validation, and compatibility with compiler-known `Option` / `Result`.
 
 ## Test Plan For The Next Code Slice
 
-Add or rename tests around these behavioral anchors before filling in the implementation.
+Add or rename tests around these behavioral anchors before moving on to persisted interfaces.
 
 Parser and AST:
 
-- `parser_preserves_user_enum_declarations`
-- `parser_accepts_generic_user_enum_declarations`
 - `parser_rejects_multi_payload_enum_variants`
 - `parser_rejects_named_field_enum_variants`
+- `parser_rejects_duplicate_enum_variant_names`
 
 Typechecking and diagnostics:
 
-- `user_enum_constructors_typecheck_with_expected_type`
-- `user_enum_zero_payload_constructor_requires_expected_type`
-- `user_enum_constructor_payload_type_must_match`
-- `user_enum_match_requires_all_variants`
+- `user_enum_unknown_variant_has_targeted_diagnostic`
 - `user_enum_match_rejects_duplicate_variant_arm`
 - `user_enum_match_rejects_foreign_variant`
 - `user_enum_payload_binding_is_arm_local`
+- `user_enum_generic_arity_mismatch_has_targeted_diagnostic`
+- `user_enum_zero_payload_expected_type_diagnostic_is_clear`
 
 Runtime and lowering:
 
-- `user_enum_zero_payload_sample_runs`
-- `user_enum_payload_match_sample_runs`
 - `user_enum_runtime_display_uses_enum_value_shape`
+- `user_enum_three_variant_match_lowering_remains_stable`
 
 Typed HIR and package interfaces:
 
-- `typed_hir_preserves_user_enum_declarations`
 - `typed_hir_preserves_user_enum_variant_call_callee`
 - `typed_hir_preserves_user_enum_match_patterns`
-- `package_public_enum_is_exported`
 - `package_private_enum_from_import_is_rejected`
-- `typed_hir_generates_package_interface_enum_summaries`
 - `typed_hir_rejects_stale_package_interface_enum_variants`
 - `public_function_signature_can_use_public_enum`
+- `imported_enum_constructor_uses_package_item_identity`
+- `imported_enum_pattern_uses_package_item_identity`
 
 Compatibility:
 
 - `option_and_result_samples_remain_source_compatible`
 - `prelude_catalog_still_uses_builtin_ids_for_compiler_known_variants`
+- `user_enum_names_do_not_shadow_prelude_enum_variants`
 
 ## Definition Of Done For The Next Code Slice
 
 - [ ] Existing `cargo test` remains green.
 - [ ] Existing Option, List, Map, package, and typed HIR behavior remains source-compatible.
-- [ ] New user-defined enum behavior is covered in parser, typechecker, runtime, typed HIR, and package-interface tests as applicable.
-- [ ] Exhaustiveness diagnostics include missing and duplicate variant coverage.
-- [ ] Public signatures containing user-defined enum types are represented in package interface summaries.
+- [ ] Enum diagnostics include unknown enum, unknown variant, missing arm, duplicate arm, foreign arm, constructor arity, and expected-type cases.
+- [ ] Imported enum constructors and match patterns are covered with package aliases such as `alias::Enum::Variant`.
+- [ ] Public, `pkg`, and module-private enum visibility cases are covered.
+- [ ] Stale in-memory interface validation catches enum name, type parameter, variant, and payload mismatches.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
 ## Resume Checklist
@@ -251,7 +257,7 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is user-defined enum declaration MVP or a package-interface task.
+5. [ ] Confirm whether the intended next code slice is enum integration hardening or package-interface persistence.
 6. [ ] Keep package flattening unchanged unless the task is explicitly package-interface persistence.
 7. [ ] After every compiler-core change, verify at least:
 

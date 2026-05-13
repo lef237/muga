@@ -42,6 +42,7 @@ pub enum Visibility {
 pub enum Stmt {
     Assign(AssignStmt),
     RecordDecl(RecordDecl),
+    EnumDecl(EnumDecl),
     FuncDecl(FuncDecl),
     If(IfStmt),
     While(WhileStmt),
@@ -53,6 +54,7 @@ impl Stmt {
         match self {
             Self::Assign(stmt) => stmt.id,
             Self::RecordDecl(stmt) => stmt.id,
+            Self::EnumDecl(stmt) => stmt.id,
             Self::FuncDecl(stmt) => stmt.id,
             Self::If(stmt) => stmt.id,
             Self::While(stmt) => stmt.id,
@@ -64,6 +66,7 @@ impl Stmt {
         match self {
             Self::Assign(stmt) => stmt.span,
             Self::RecordDecl(stmt) => stmt.span,
+            Self::EnumDecl(stmt) => stmt.span,
             Self::FuncDecl(stmt) => stmt.span,
             Self::If(stmt) => stmt.span,
             Self::While(stmt) => stmt.span,
@@ -96,6 +99,24 @@ pub struct RecordDecl {
 pub struct RecordFieldDecl {
     pub name: String,
     pub type_name: TypeExpr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumDecl {
+    pub id: StmtId,
+    pub name: String,
+    pub package_item: Option<PackageItemId>,
+    pub visibility: Visibility,
+    pub type_params: Vec<String>,
+    pub variants: Vec<EnumVariantDecl>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumVariantDecl {
+    pub name: String,
+    pub payload: Option<TypeExpr>,
     pub span: Span,
 }
 
@@ -432,6 +453,9 @@ impl NodeIdAssigner {
                 self.assign_expr(&mut stmt.value);
             }
             Stmt::RecordDecl(stmt) => {
+                stmt.id = self.stmt_id();
+            }
+            Stmt::EnumDecl(stmt) => {
                 stmt.id = self.stmt_id();
             }
             Stmt::FuncDecl(stmt) => {

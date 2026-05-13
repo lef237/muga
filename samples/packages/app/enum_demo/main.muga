@@ -1,0 +1,8 @@
+package app::enum_demo
+
+import util::states
+
+fn main(): Int {
+  status: states::Status[Int] = states::ready(7)
+  states::value_or_zero(status)
+}
