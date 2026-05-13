@@ -113,7 +113,7 @@ Ada
 - [x] bytecode generation consumes `mir::Program`; the legacy untyped AST-to-HIR compatibility module has been removed.
 - [x] default `compile_source` / `compile_path` now lower typed HIR into MIR.
 - [x] MIR now has explicit entry/function `Body` nodes with body terminators and body-local function definitions, so bytecode compiles execution bodies instead of reading top-level statements and function value blocks directly.
-- [x] MIR preserves typed HIR binding and package-item identity on function definitions, parameters, assignments, and identifier uses while bytecode still emits symbol-based VM instructions.
+- [x] MIR preserves typed HIR binding and package-item identity on function definitions, parameters, assignments, and identifier uses, and bytecode now carries those identities into runtime name references.
 - [x] MIR and bytecode preserve typed assignment mode (`new binding` vs `update`) so runtime no longer infers assignment semantics from name lookup alone.
 - [x] bytecode and runtime name references now carry `BindingId` plus display symbol, runtime environments are keyed by binding identity instead of symbol text, and package function item references are canonicalized to the defining function binding while preserving import bindings in metadata.
 - [x] runtime new-binding assignment trusts checked `BindingId` semantics and no longer re-runs shadowing checks through display-name parent-scope lookup.
