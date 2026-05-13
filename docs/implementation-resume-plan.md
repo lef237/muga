@@ -99,7 +99,8 @@ Ada
 - [x] package-aware checking runs an initial module body typecheck pass against the module signature environments and retains the per-module typecheck outputs.
 - [x] retained package-aware module typecheck outputs preserve package binding identity needed by typed HIR lowering.
 - [x] package-aware checking exposes per-module typed HIR outputs lowered from retained module typecheck outputs.
-- [x] package-aware checking can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies.
+- [x] package-aware checking collects dependency signatures directly from in-memory or persisted package interfaces without reading dependency source bodies.
+- [x] loaded/interface-artifact package-aware checking skips interface stub body checks.
 - [x] package-aware check results expose package-wide typed HIR aggregated from per-module outputs without using the legacy flattened typed path.
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
@@ -171,7 +172,7 @@ Ada
 - The package-aware check entrypoint now runs module body typechecking with those module signatures and retains per-module typecheck outputs.
 - Retained package-aware module typecheck outputs now carry package binding identity through typed HIR lowering, so module-local lowering can preserve package item call targets without relying on flattened AST metadata.
 - The package-aware API now exposes those lowered per-module typed HIR programs alongside each module typecheck output.
-- The package-aware API can now load dependency signatures from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source.
+- The package-aware API can now collect dependency signatures directly from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source or interface stub body checks.
 - Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
 - CLI `check --artifact-root`, interface artifact emission, and loaded/interface-artifact typed compilation now use package-aware paths.
 - Package-aware typed HIR can now lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls.
@@ -203,7 +204,7 @@ Reasoning:
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
-- The remaining boundary pieces are broadening package-aware body typechecking coverage, loading interface signatures as semantic inputs instead of AST stubs, real artifact storage/reuse, dependency/lockfile-driven project configuration, dependency-body-free execution, and eventually making interface-backed checking the normal package path.
+- The remaining boundary pieces are broadening package-aware body typechecking coverage, removing the remaining interface stubs from package graph construction, real artifact storage/reuse, dependency/lockfile-driven project configuration, dependency-body-free execution, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 
@@ -267,10 +268,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
 | 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
-| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module typecheck outputs, package-wide typed HIR aggregation, and interface-backed dependency signatures now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and move package-aware execution off the legacy flattened path. | package/resolver/typing/lib/tests | 4-8 days | High |
+| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module typecheck outputs, package-wide typed HIR aggregation, and direct interface-backed dependency signatures now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and remove the remaining interface stubs from package graph construction. | package/resolver/typing/lib/tests | 4-8 days | High |
 | 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should reduce the remaining interface-stub dependency in loaded-interface checking while keeping default script execution unchanged.
+The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should remove the remaining interface-stub dependency from loaded-interface package graph construction while keeping default script execution unchanged.
 
 ## Test Plan For The Next Code Slice
 

@@ -168,8 +168,31 @@ pub struct LoadedPackageGraph {
     pub packages: Vec<LoadedPackage>,
     pub package_graph: PackageSymbolGraph,
     pub package_exports: PackageExportGraph,
+    pub interfaces: Option<LoadedPackageInterfaces>,
     pub entry_package: PackageId,
     pub entry_module: ModuleId,
+}
+
+impl LoadedPackageGraph {
+    pub fn is_loaded_interface_package_path(&self, path: &str) -> bool {
+        let Some(interfaces) = &self.interfaces else {
+            return false;
+        };
+        if self
+            .package_graph
+            .package(self.entry_package)
+            .is_some_and(|package| package.path == path)
+        {
+            return false;
+        }
+        interfaces.graph.package_by_path(path).is_some()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LoadedPackageInterfaces {
+    pub graph: PackageInterfaceGraph,
+    pub symbols: SymbolTable,
 }
 
 #[derive(Clone, Debug)]
@@ -1079,6 +1102,7 @@ impl PackageLoader {
             packages,
             package_graph,
             package_exports,
+            interfaces: None,
             entry_package,
             entry_module,
         })
@@ -1140,6 +1164,10 @@ impl PackageLoader {
             packages,
             package_graph,
             package_exports,
+            interfaces: Some(LoadedPackageInterfaces {
+                graph: interfaces.clone(),
+                symbols: interface_symbols.clone(),
+            }),
             entry_package,
             entry_module,
         })

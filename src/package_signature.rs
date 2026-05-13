@@ -200,8 +200,12 @@ impl<'a> SignatureCollector<'a> {
     }
 
     fn collect(&mut self) {
+        self.collect_interface_signatures();
         self.collect_enum_headers();
         for package in &self.loaded.packages {
+            if self.loaded.is_loaded_interface_package_path(&package.path) {
+                continue;
+            }
             let Some(package_id) = self.loaded.package_graph.package_id(&package.path) else {
                 continue;
             };
@@ -231,6 +235,99 @@ impl<'a> SignatureCollector<'a> {
                         _ => {}
                     }
                 }
+            }
+        }
+    }
+
+    fn collect_interface_signatures(&mut self) {
+        let Some(interfaces) = self.loaded.interfaces.clone() else {
+            return;
+        };
+        for interface in &interfaces.graph.packages {
+            if self
+                .loaded
+                .package_graph
+                .package(self.loaded.entry_package)
+                .is_some_and(|package| package.path == interface.path)
+            {
+                continue;
+            }
+            for record in &interface.records {
+                let Some(item) = self.loaded.package_graph.item(record.item) else {
+                    continue;
+                };
+                let fields = record
+                    .fields
+                    .iter()
+                    .map(|field| PackageFieldSignature {
+                        name: field.name.clone(),
+                        ty: self.interface_type_info(&field.ty, &interfaces.symbols),
+                        span: field.span,
+                    })
+                    .collect();
+                self.records.push(PackageRecordSignature {
+                    item: record.item,
+                    package: item.package,
+                    module: item.module,
+                    name: record.name.clone(),
+                    visibility: Visibility::Public,
+                    fields,
+                    span: record.span,
+                });
+            }
+            for enumeration in &interface.enums {
+                let Some(item) = self.loaded.package_graph.item(enumeration.item) else {
+                    continue;
+                };
+                self.enum_type_params
+                    .insert(enumeration.item, enumeration.type_params.clone());
+                let variants = enumeration
+                    .variants
+                    .iter()
+                    .map(|variant| PackageEnumVariantSignature {
+                        name: variant.name.clone(),
+                        payload: variant
+                            .payload
+                            .as_ref()
+                            .map(|payload| self.interface_type_info(payload, &interfaces.symbols)),
+                        span: variant.span,
+                    })
+                    .collect();
+                self.enums.push(PackageEnumSignature {
+                    item: enumeration.item,
+                    package: item.package,
+                    module: item.module,
+                    name: enumeration.name.clone(),
+                    visibility: Visibility::Public,
+                    type_params: enumeration.type_params.clone(),
+                    variants,
+                    span: enumeration.span,
+                });
+            }
+            for function in &interface.functions {
+                let Some(item) = self.loaded.package_graph.item(function.item) else {
+                    continue;
+                };
+                let params = function
+                    .params
+                    .iter()
+                    .map(|param| PackageParamSignature {
+                        name: param.name.clone(),
+                        ty: Some(self.interface_type_info(&param.ty, &interfaces.symbols)),
+                        span: param.span,
+                    })
+                    .collect();
+                let ret = self.interface_type_info(&function.ret, &interfaces.symbols);
+                self.functions.push(PackageFunctionSignature {
+                    item: function.item,
+                    package: item.package,
+                    module: item.module,
+                    name: function.name.clone(),
+                    visibility: Visibility::Public,
+                    params,
+                    ret: Some(ret),
+                    span: function.span,
+                });
             }
         }
     }
@@ -333,6 +430,9 @@ impl<'a> SignatureCollector<'a> {
     fn collect_enum_headers(&mut self) {
         let mut headers = Vec::new();
         for package in &self.loaded.packages {
+            if self.loaded.is_loaded_interface_package_path(&package.path) {
+                continue;
+            }
             let Some(package_id) = self.loaded.package_graph.package_id(&package.path) else {
                 continue;
             };
@@ -664,6 +764,75 @@ impl<'a> SignatureCollector<'a> {
             span,
         ));
         false
+    }
+
+    fn interface_type_info(&mut self, ty: &TypeInfo, symbols: &SymbolTable) -> TypeInfo {
+        match ty {
+            TypeInfo::GenericParam(symbol) => {
+                TypeInfo::GenericParam(self.interface_symbol(*symbol, symbols))
+            }
+            TypeInfo::Record(symbol) => TypeInfo::Record(self.interface_symbol(*symbol, symbols)),
+            TypeInfo::PackageRecord { symbol, item } => TypeInfo::PackageRecord {
+                symbol: self.interface_symbol(*symbol, symbols),
+                item: *item,
+            },
+            TypeInfo::Enum { symbol, args } => TypeInfo::Enum {
+                symbol: self.interface_symbol(*symbol, symbols),
+                args: args
+                    .iter()
+                    .map(|arg| self.interface_type_info(arg, symbols))
+                    .collect(),
+            },
+            TypeInfo::PackageEnum { symbol, item, args } => TypeInfo::PackageEnum {
+                symbol: self.interface_symbol(*symbol, symbols),
+                item: *item,
+                args: args
+                    .iter()
+                    .map(|arg| self.interface_type_info(arg, symbols))
+                    .collect(),
+            },
+            TypeInfo::List(item) => {
+                TypeInfo::List(Box::new(self.interface_type_info(item, symbols)))
+            }
+            TypeInfo::Map(key, value) => TypeInfo::Map(
+                Box::new(self.interface_type_info(key, symbols)),
+                Box::new(self.interface_type_info(value, symbols)),
+            ),
+            TypeInfo::Option(item) => {
+                TypeInfo::Option(Box::new(self.interface_type_info(item, symbols)))
+            }
+            TypeInfo::Result(ok, err) => TypeInfo::Result(
+                Box::new(self.interface_type_info(ok, symbols)),
+                Box::new(self.interface_type_info(err, symbols)),
+            ),
+            TypeInfo::EnumConstructor {
+                enum_symbol,
+                enum_item,
+                variant,
+            } => TypeInfo::EnumConstructor {
+                enum_symbol: self.interface_symbol(*enum_symbol, symbols),
+                enum_item: *enum_item,
+                variant: self.interface_symbol(*variant, symbols),
+            },
+            TypeInfo::Function(function) => TypeInfo::Function(FunctionTypeInfo {
+                params: function
+                    .params
+                    .iter()
+                    .map(|param| self.interface_type_info(param, symbols))
+                    .collect(),
+                ret: Box::new(self.interface_type_info(&function.ret, symbols)),
+            }),
+            TypeInfo::Int
+            | TypeInfo::Bool
+            | TypeInfo::String
+            | TypeInfo::Builtin(_)
+            | TypeInfo::Unknown
+            | TypeInfo::Error => ty.clone(),
+        }
+    }
+
+    fn interface_symbol(&mut self, symbol: Symbol, symbols: &SymbolTable) -> Symbol {
+        self.symbols.intern(symbols.resolve(symbol))
     }
 }
 

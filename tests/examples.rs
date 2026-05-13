@@ -1898,6 +1898,19 @@ fn main(): Int {
             muga::package::PackageItemKind::Function,
         )
         .expect("interface function item should exist");
+    assert!(
+        result.signatures.function(value_or_zero).is_some(),
+        "{:#?}",
+        result.signatures.functions
+    );
+    assert!(
+        result
+            .module_checks
+            .iter()
+            .all(|check| check.package == app && check.module_path != "<interface>"),
+        "{:#?}",
+        result.module_checks
+    );
     let main_check = result
         .module_checks
         .iter()
@@ -2130,6 +2143,11 @@ fn main(): Int {
     let result =
         muga::check_package_aware_path_against_cached_artifact_root(&entry, &artifact_root)
             .expect("package-aware checking should use cached interface artifacts");
+    let app = result
+        .packages
+        .package_graph
+        .package_id("app::package_aware_artifact")
+        .expect("entry package should exist");
     let numbers = result
         .packages
         .package_graph
@@ -2144,6 +2162,19 @@ fn main(): Int {
             muga::package::PackageItemKind::Function,
         )
         .expect("interface function item should exist");
+    assert!(
+        result.signatures.function(value_or_zero).is_some(),
+        "{:#?}",
+        result.signatures.functions
+    );
+    assert!(
+        result
+            .module_checks
+            .iter()
+            .all(|check| check.package == app && check.module_path != "<interface>"),
+        "{:#?}",
+        result.module_checks
+    );
 
     assert!(result.module_checks.iter().any(|check| {
         check.type_output.calls.iter().any(|call| {

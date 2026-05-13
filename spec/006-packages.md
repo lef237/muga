@@ -941,7 +941,7 @@ It currently:
 - can build source and module package signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility for records, enums, and functions
 - can run and retain an initial package-aware module body typecheck pass against those source/module signatures, including per-module typed HIR outputs lowered with package binding identity
 - exposes package-wide typed HIR aggregated from unflattened module check outputs with remapped local IDs and symbols
-- can use loaded in-memory or persisted package interfaces as dependency signatures for package-aware module checks without reading dependency implementation source
+- can collect dependency signatures directly from loaded in-memory or persisted package interfaces for package-aware module checks without reading dependency implementation source
 - routes `muga check --artifact-root` through the package-aware artifact path
 - emits `.mgi` interface artifacts from the package-aware typed HIR aggregate
 - returns package-aware typed HIR from loaded/interface-artifact typed compilation paths
