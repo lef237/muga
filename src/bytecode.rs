@@ -192,7 +192,7 @@ impl Compiler {
         };
     }
 
-    fn compile_function_defs(&mut self, function_defs: &[mir::FunctionStmt], chunk: &mut Chunk) {
+    fn compile_function_defs(&mut self, function_defs: &[mir::FunctionDef], chunk: &mut Chunk) {
         for func in function_defs {
             chunk.instructions.push(Instruction::DefineFunction {
                 name: func.name,
