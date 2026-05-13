@@ -1002,6 +1002,41 @@ fn package_alias_demo_runs() {
 }
 
 #[test]
+fn package_public_enum_is_exported_and_used() {
+    assert_package_runs("samples/packages/app/enum_demo/main.muga", "7", "");
+
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let states = program
+        .package_graph
+        .package_id("util::states")
+        .expect("states package should exist");
+    let status_item = program
+        .package_graph
+        .item_id(states, "Status", muga::package::PackageItemKind::Enum)
+        .expect("Status enum item should exist");
+    let status = interfaces
+        .enum_by_name(states, "Status")
+        .expect("Status should be exported");
+    assert_eq!(status.item, status_item);
+    assert_eq!(status.type_params, vec!["T"]);
+    assert_eq!(status.variants.len(), 3);
+
+    let ready = interfaces
+        .function_by_name(states, "ready")
+        .expect("ready should be exported");
+    assert!(
+        matches!(
+            &ready.ret,
+            muga::types::TypeInfo::PackageEnum { item, args, .. }
+                if *item == status_item && args == &vec![muga::types::TypeInfo::Int]
+        ),
+        "{ready:#?}"
+    );
+}
+
+#[test]
 fn package_public_function_requires_explicit_signature() {
     let diagnostics =
         muga::check_path(Path::new("samples/packages_invalid/app/bad/main.muga")).unwrap_err();
@@ -1294,6 +1329,33 @@ fn main(): Int {
     assert_eq!(err.enum_name, "Result");
     assert_eq!(err.variant_name, "Err");
     assert_eq!(err.binding.as_deref(), Some("message"));
+}
+
+#[test]
+fn parser_preserves_user_enum_declarations() {
+    let source = r#"
+enum Choice[T] {
+  First(T)
+  Second
+  Error(String)
+}
+
+fn main(): Int {
+  1
+}
+"#;
+    let program = parse_source(source);
+    let enumeration = match &program.statements[0] {
+        muga::ast::Stmt::EnumDecl(enumeration) => enumeration,
+        other => panic!("expected enum declaration, got {other:#?}"),
+    };
+    assert_eq!(enumeration.name, "Choice");
+    assert_eq!(enumeration.type_params, vec!["T"]);
+    assert_eq!(enumeration.variants.len(), 3);
+    assert_eq!(enumeration.variants[0].name, "First");
+    assert!(enumeration.variants[0].payload.is_some());
+    assert_eq!(enumeration.variants[1].name, "Second");
+    assert!(enumeration.variants[1].payload.is_none());
 }
 
 #[test]
@@ -2124,6 +2186,121 @@ fn main(): Int {
 }
 
 #[test]
+fn user_enum_payload_match_sample_runs() {
+    let source = r#"
+enum Choice[T] {
+  First(T)
+  Second
+  Error(String)
+}
+
+fn main(): Int {
+  value: Choice[Int] = Choice::First(42)
+  match value {
+    Choice::First(x) => x
+    Choice::Second => 0
+    Choice::Error(message) => 1
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn user_enum_zero_payload_match_sample_runs() {
+    let source = r#"
+enum Choice[T] {
+  First(T)
+  Second
+  Error(String)
+}
+
+fn main(): Int {
+  value: Choice[Int] = Choice::Second
+  match value {
+    Choice::First(x) => x
+    Choice::Second => 7
+    Choice::Error(message) => 1
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "7");
+}
+
+#[test]
+fn user_enum_constructor_requires_expected_type() {
+    let source = r#"
+enum Choice[T] {
+  First(T)
+  Second
+}
+
+fn main(): Int {
+  value = Choice::First(1)
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T022"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn user_enum_constructor_payload_type_must_match() {
+    let source = r#"
+enum Choice[T] {
+  First(T)
+  Second
+}
+
+fn main(): Choice[Int] {
+  Choice::First("bad")
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn user_enum_match_requires_all_variants() {
+    let source = r#"
+enum Choice[T] {
+  First(T)
+  Second
+  Error(String)
+}
+
+fn main(): Int {
+  value: Choice[Int] = Choice::First(1)
+  match value {
+    Choice::First(x) => x
+    Choice::Second => 0
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T018"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn typed_hir_preserves_option_type_info() {
     let source = r#"
 fn main(): Option[Int] {
@@ -2188,6 +2365,51 @@ fn main(): Result[Int, String] {
             Box::new(muga::types::TypeInfo::Int),
             Box::new(muga::types::TypeInfo::String)
         )
+    );
+}
+
+#[test]
+fn typed_hir_preserves_user_enum_type_info() {
+    let source = r#"
+enum Choice[T] {
+  First(T)
+  Second
+}
+
+fn main(): Choice[Int] {
+  value: Choice[Int] = Choice::First(1)
+  value
+}
+"#;
+    let program = muga::compile_typed_source(source).unwrap();
+    let choice = program
+        .symbols
+        .lookup("Choice")
+        .expect("Choice symbol should exist");
+    let enum_ty = muga::types::TypeInfo::Enum {
+        symbol: choice,
+        args: vec![muga::types::TypeInfo::Int],
+    };
+    let main = match &program.statements[1] {
+        muga::typed_hir::Stmt::Function(function) => function,
+        _ => panic!("expected typed function"),
+    };
+    assert_eq!(main.return_ty, enum_ty);
+    let assign = match &main.body.statements[0] {
+        muga::typed_hir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected typed assignment"),
+    };
+    let binding = program
+        .bindings
+        .iter()
+        .find(|binding| binding.id == assign.binding)
+        .expect("assignment binding should exist");
+    assert_eq!(
+        binding.ty,
+        muga::types::TypeInfo::Enum {
+            symbol: choice,
+            args: vec![muga::types::TypeInfo::Int]
+        }
     );
 }
 
@@ -3299,6 +3521,7 @@ fn collect_typed_calls_in_stmt<'a>(
     match statement {
         muga::typed_hir::Stmt::Assign(stmt) => collect_typed_calls_in_expr(&stmt.value, calls),
         muga::typed_hir::Stmt::Record(_) => {}
+        muga::typed_hir::Stmt::Enum(_) => {}
         muga::typed_hir::Stmt::Function(stmt) => {
             collect_typed_calls_in_value_block(&stmt.body, calls);
         }

@@ -198,6 +198,7 @@ impl Lexer {
             "as" => TokenKind::As,
             "fn" => TokenKind::Fn,
             "record" => TokenKind::Record,
+            "enum" => TokenKind::Enum,
             "match" => TokenKind::Match,
             "mut" => TokenKind::Mut,
             "if" => TokenKind::If,

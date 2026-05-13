@@ -14,6 +14,7 @@ pub enum TokenKind {
     As,
     Fn,
     Record,
+    Enum,
     Match,
     Mut,
     If,

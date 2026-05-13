@@ -162,6 +162,7 @@ pub struct PackageItemInfo {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PackageItemKind {
     Record,
+    Enum,
     Function,
 }
 
@@ -179,6 +180,7 @@ struct ProjectManifest {
 struct PackageData {
     files: Vec<ParsedFile>,
     records: HashMap<String, Vec<PackageItemDecl>>,
+    enums: HashMap<String, Vec<PackageItemDecl>>,
     functions: HashMap<String, Vec<PackageItemDecl>>,
 }
 
@@ -319,6 +321,7 @@ impl PackageLoader {
         }
 
         let mut records: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
+        let mut enums: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
         let mut functions: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
 
         for file in &files {
@@ -333,6 +336,20 @@ impl PackageLoader {
                                 module_path: &file.module_path,
                                 span: record.span,
                                 kind: PackageItemKind::Record,
+                                package_path: package_path.as_str(),
+                            },
+                            &mut self.diagnostics,
+                        );
+                    }
+                    Stmt::EnumDecl(enumeration) => {
+                        insert_package_item_decl(
+                            &mut enums,
+                            PackageItemDeclInput {
+                                name: &enumeration.name,
+                                visibility: enumeration.visibility,
+                                module_path: &file.module_path,
+                                span: enumeration.span,
+                                kind: PackageItemKind::Enum,
                                 package_path: package_path.as_str(),
                             },
                             &mut self.diagnostics,
@@ -362,6 +379,7 @@ impl PackageLoader {
             PackageData {
                 files,
                 records,
+                enums,
                 functions,
             },
         );
@@ -565,6 +583,24 @@ impl PackageLoader {
                                 ),
                             });
                         }
+                        Stmt::EnumDecl(enumeration) => {
+                            let id = PackageItemId::new(items.len() as u32);
+                            items.push(PackageItemInfo {
+                                id,
+                                package: package_id,
+                                module: module_id,
+                                name: enumeration.name.clone(),
+                                kind: PackageItemKind::Enum,
+                                visibility: enumeration.visibility,
+                                span: enumeration.span,
+                                mangled_name: mangle_enum_name_for_visibility(
+                                    package_path,
+                                    &file.module_path,
+                                    &enumeration.name,
+                                    enumeration.visibility,
+                                ),
+                            });
+                        }
                         Stmt::FuncDecl(func) => {
                             let id = PackageItemId::new(items.len() as u32);
                             items.push(PackageItemInfo {
@@ -615,6 +651,7 @@ impl<'a> PackageRewriter<'a> {
     fn rewrite_top_level_stmt(&mut self, statement: &Stmt) -> Stmt {
         match statement {
             Stmt::RecordDecl(record) => Stmt::RecordDecl(self.rewrite_record_decl(record)),
+            Stmt::EnumDecl(enumeration) => Stmt::EnumDecl(self.rewrite_enum_decl(enumeration)),
             Stmt::FuncDecl(func) => Stmt::FuncDecl(self.rewrite_func_decl(func, true)),
             _ => statement.clone(),
         }
@@ -647,6 +684,44 @@ impl<'a> PackageRewriter<'a> {
                 })
                 .collect(),
             span: record.span,
+        }
+    }
+
+    fn rewrite_enum_decl(&mut self, enumeration: &EnumDecl) -> EnumDecl {
+        if enumeration.visibility == Visibility::Public
+            || enumeration.visibility == Visibility::Package
+        {
+            for variant in &enumeration.variants {
+                if let Some(payload) = &variant.payload {
+                    self.validate_visible_type(payload, enumeration.visibility, variant.span);
+                }
+            }
+        }
+
+        EnumDecl {
+            id: enumeration.id,
+            package_item: self.package_item_id(&enumeration.name, PackageItemKind::Enum),
+            name: mangle_enum_name_for_visibility(
+                &self.current_package,
+                &self.current_module,
+                &enumeration.name,
+                enumeration.visibility,
+            ),
+            visibility: Visibility::Private,
+            type_params: enumeration.type_params.clone(),
+            variants: enumeration
+                .variants
+                .iter()
+                .map(|variant| EnumVariantDecl {
+                    name: variant.name.clone(),
+                    payload: variant
+                        .payload
+                        .as_ref()
+                        .map(|payload| self.rewrite_type_expr(payload, variant.span)),
+                    span: variant.span,
+                })
+                .collect(),
+            span: enumeration.span,
         }
     }
 
@@ -755,6 +830,7 @@ impl<'a> PackageRewriter<'a> {
                 })
             }
             Stmt::RecordDecl(record) => Stmt::RecordDecl(self.rewrite_record_decl(record)),
+            Stmt::EnumDecl(enumeration) => Stmt::EnumDecl(self.rewrite_enum_decl(enumeration)),
             Stmt::FuncDecl(func) => Stmt::FuncDecl(self.rewrite_func_decl(func, false)),
             Stmt::If(stmt) => Stmt::If(IfStmt {
                 id: stmt.id,
@@ -915,7 +991,12 @@ impl<'a> PackageRewriter<'a> {
                 let value = self.rewrite_expr(&arm.value);
                 self.pop_scope();
                 MatchArm {
-                    pattern: arm.pattern.clone(),
+                    pattern: MatchPattern::Variant(EnumVariantPattern {
+                        enum_name: self.rewrite_type_name(&pattern.enum_name, pattern.span),
+                        variant_name: pattern.variant_name.clone(),
+                        binding: pattern.binding.clone(),
+                        span: pattern.span,
+                    }),
                     value,
                     span: arm.span,
                 }
@@ -984,7 +1065,7 @@ impl<'a> PackageRewriter<'a> {
 
     fn rewrite_type_name(&mut self, name: &str, span: Span) -> String {
         if let Some((alias, item)) = split_qualified_name(name) {
-            return self.resolve_imported_item(alias, item, ImportedItemKind::Record, span);
+            return self.resolve_imported_type_item(alias, item, span);
         }
         if let Some(item) = resolve_package_item(
             &self.current_package_data.records,
@@ -992,6 +1073,16 @@ impl<'a> PackageRewriter<'a> {
             &self.current_module,
         ) {
             return mangle_record_name_for_visibility(
+                &self.current_package,
+                &item.module_path,
+                name,
+                item.visibility,
+            );
+        }
+        if let Some(item) =
+            resolve_package_item(&self.current_package_data.enums, name, &self.current_module)
+        {
+            return mangle_enum_name_for_visibility(
                 &self.current_package,
                 &item.module_path,
                 name,
@@ -1018,12 +1109,49 @@ impl<'a> PackageRewriter<'a> {
                 .with_suggestion("mark the declaration as `pkg` to share it within the package"),
             );
         }
+        if let Some(item) = inaccessible_package_item(&self.current_package_data.enums, name) {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "PK015",
+                    format!(
+                        "enum `{name}` is not visible from module `{}`",
+                        self.current_module
+                    ),
+                    span,
+                )
+                .with_related(
+                    format!("enum `{name}` is module-private to `{}`", item.module_path),
+                    item.span,
+                )
+                .with_suggestion("mark the declaration as `pkg` to share it within the package"),
+            );
+        }
         name.to_string()
     }
 
     fn rewrite_value_name(&mut self, name: &str, span: Span) -> String {
         if name.contains("::") && is_builtin_name(name) {
             return name.to_string();
+        }
+        if let Some((enum_name, variant_name)) = split_variant_name(name) {
+            if let Some((alias, item)) = split_qualified_name(enum_name) {
+                let resolved =
+                    self.resolve_imported_item(alias, item, ImportedItemKind::Enum, span);
+                return format!("{resolved}::{variant_name}");
+            }
+            if let Some(item) = resolve_package_item(
+                &self.current_package_data.enums,
+                enum_name,
+                &self.current_module,
+            ) {
+                let resolved = mangle_enum_name_for_visibility(
+                    &self.current_package,
+                    &item.module_path,
+                    enum_name,
+                    item.visibility,
+                );
+                return format!("{resolved}::{variant_name}");
+            }
         }
         if let Some((alias, item)) = split_qualified_name(name) {
             return self.resolve_imported_item(alias, item, ImportedItemKind::Function, span);
@@ -1080,7 +1208,7 @@ impl<'a> PackageRewriter<'a> {
             TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
             TypeExpr::Named(name) => {
                 if let Some((alias, item)) = split_qualified_name(name) {
-                    let _ = self.resolve_imported_item(alias, item, ImportedItemKind::Record, span);
+                    let _ = self.resolve_imported_type_item(alias, item, span);
                     return;
                 }
                 if let Some(item) = resolve_package_item(
@@ -1100,6 +1228,24 @@ impl<'a> PackageRewriter<'a> {
                                 span,
                             )
                             .with_related(format!("record `{name}` is declared here"), item.span),
+                        );
+                    }
+                }
+                if let Some(item) = resolve_package_item(
+                    &self.current_package_data.enums,
+                    name,
+                    &self.current_module,
+                ) {
+                    if !visibility_can_expose(item.visibility, api_visibility) {
+                        let api = visibility_label(api_visibility);
+                        let item_visibility = visibility_label(item.visibility);
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                "PK012",
+                                format!("{api} API may not expose {item_visibility} enum `{name}`"),
+                                span,
+                            )
+                            .with_related(format!("enum `{name}` is declared here"), item.span),
                         );
                     }
                 }
@@ -1151,15 +1297,15 @@ impl<'a> PackageRewriter<'a> {
         };
 
         match kind {
-            ImportedItemKind::Record => {
-                if let Some(export) = self.package_exports.record_by_name(package_id, item) {
+            ImportedItemKind::Enum => {
+                if let Some(export) = self.package_exports.enum_by_name(package_id, item) {
                     export.mangled_name.clone()
                 } else {
                     let diagnostic = missing_export_diagnostic(
                         package_path,
                         item,
-                        "record",
-                        package_item_decl(&package.records, item),
+                        "enum",
+                        package_item_decl(&package.enums, item),
                         span,
                     );
                     self.diagnostics.push(diagnostic);
@@ -1182,6 +1328,58 @@ impl<'a> PackageRewriter<'a> {
                 }
             }
         }
+    }
+
+    fn resolve_imported_type_item(&mut self, alias: &str, item: &str, span: Span) -> String {
+        let Some(package_path) = self.imports.get(alias) else {
+            self.diagnostics.push(Diagnostic::new(
+                "PK009",
+                format!("unknown import alias `{alias}`"),
+                span,
+            ));
+            return format!("{alias}::{item}");
+        };
+        let Some(package) = self.packages.get(package_path) else {
+            self.diagnostics.push(Diagnostic::new(
+                "PK010",
+                format!("unknown imported package `{package_path}`"),
+                span,
+            ));
+            return format!("{alias}::{item}");
+        };
+        let Some(package_id) = self.package_graph.package_id(package_path) else {
+            self.diagnostics.push(Diagnostic::new(
+                "PK010",
+                format!("unknown imported package `{package_path}`"),
+                span,
+            ));
+            return format!("{alias}::{item}");
+        };
+
+        if let Some(export) = self.package_exports.record_by_name(package_id, item) {
+            return export.mangled_name.clone();
+        }
+        if package_item_decl(&package.records, item).is_some() {
+            self.diagnostics.push(missing_export_diagnostic(
+                package_path,
+                item,
+                "record",
+                package_item_decl(&package.records, item),
+                span,
+            ));
+            return format!("{alias}::{item}");
+        }
+        if let Some(export) = self.package_exports.enum_by_name(package_id, item) {
+            return export.mangled_name.clone();
+        }
+        self.diagnostics.push(missing_export_diagnostic(
+            package_path,
+            item,
+            "enum",
+            package_item_decl(&package.enums, item),
+            span,
+        ));
+        format!("{alias}::{item}")
     }
 
     fn predeclare_nested_functions(&mut self, statements: &[Stmt]) {
@@ -1213,7 +1411,7 @@ impl<'a> PackageRewriter<'a> {
 
 #[derive(Clone, Copy)]
 enum ImportedItemKind {
-    Record,
+    Enum,
     Function,
 }
 
@@ -1231,6 +1429,7 @@ fn insert_package_item_decl(
     if let Some(previous) = duplicate {
         let kind_name = match decl.kind {
             PackageItemKind::Record => "record",
+            PackageItemKind::Enum => "enum",
             PackageItemKind::Function => "function",
         };
         diagnostics.push(
@@ -1555,6 +1754,10 @@ fn split_qualified_name(name: &str) -> Option<(&str, &str)> {
     }
 }
 
+fn split_variant_name(name: &str) -> Option<(&str, &str)> {
+    name.rsplit_once("::")
+}
+
 fn file_import_aliases(
     imports: &[ImportDecl],
     diagnostics: &mut Vec<Diagnostic>,
@@ -1623,6 +1826,22 @@ fn mangle_record_name_for_visibility(
     match visibility {
         Visibility::Private => mangle_module_item_name(package_path, module_path, name),
         Visibility::Package | Visibility::Public => mangle_record_name(package_path, name),
+    }
+}
+
+fn mangle_enum_name(package_path: &str, name: &str) -> String {
+    format!("__muga_pkg__{}__{}", package_path.replace("::", "__"), name)
+}
+
+fn mangle_enum_name_for_visibility(
+    package_path: &str,
+    module_path: &str,
+    name: &str,
+    visibility: Visibility,
+) -> String {
+    match visibility {
+        Visibility::Private => mangle_module_item_name(package_path, module_path, name),
+        Visibility::Package | Visibility::Public => mangle_enum_name(package_path, name),
     }
 }
 

@@ -101,6 +101,19 @@ fn result_err(value: Value) -> Value {
     enum_value(result, err, Some(value))
 }
 
+fn make_enum_value(
+    program: &Program,
+    enum_name: Symbol,
+    variant_name: Symbol,
+    payload: Option<Value>,
+) -> Value {
+    Value::Enum(EnumValue {
+        type_name: program.symbols.resolve(enum_name).to_string(),
+        variant_name: program.symbols.resolve(variant_name).to_string(),
+        payload: payload.map(Box::new),
+    })
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -282,6 +295,24 @@ fn execute_chunk(
                 let values = pop_args(&mut stack, fields.len(), *span)?;
                 stack.push(make_record_value(program, *type_name, fields, values));
             }
+            Instruction::MakeEnum {
+                enum_name,
+                variant_name,
+                has_payload,
+                span,
+            } => {
+                let payload = if *has_payload {
+                    Some(pop_value(
+                        &mut stack,
+                        *span,
+                        "R015",
+                        "missing enum variant payload",
+                    )?)
+                } else {
+                    None
+                };
+                stack.push(make_enum_value(program, *enum_name, *variant_name, payload));
+            }
             Instruction::MakeList { len, span } => {
                 let values = pop_args(&mut stack, *len, *span)?;
                 stack.push(Value::List(values));
@@ -419,40 +450,32 @@ fn execute_chunk(
                     }
                 }
             }
-            Instruction::JumpIfEnumVariant {
+            Instruction::JumpIfNotEnumVariant {
                 enum_name,
-                continue_variant,
-                jump_variant,
+                variant_name,
                 target,
                 span,
             } => {
                 let value = pop_value(&mut stack, *span, "R015", "missing enum value for match")?;
                 let enum_name = program.symbols.resolve(*enum_name);
-                let continue_variant = program.symbols.resolve(*continue_variant);
-                let jump_variant = program.symbols.resolve(*jump_variant);
+                let variant_name = program.symbols.resolve(*variant_name);
                 match value {
                     Value::Enum(value)
-                        if value.type_name == enum_name
-                            && value.variant_name == continue_variant =>
+                        if value.type_name == enum_name && value.variant_name == variant_name =>
                     {
                         if let Some(payload) = value.payload {
                             stack.push(*payload);
                         }
                     }
-                    Value::Enum(value)
-                        if value.type_name == enum_name && value.variant_name == jump_variant =>
-                    {
-                        if let Some(payload) = value.payload {
-                            stack.push(*payload);
-                        }
+                    Value::Enum(value) if value.type_name == enum_name => {
                         pc = *target;
                         continue;
                     }
-                    Value::Enum(value) if value.type_name == enum_name => {
+                    Value::Enum(value) => {
                         return Err(vec![Diagnostic::new(
                             "R019",
                             format!(
-                                "`match` did not expect enum variant `{}::{}`",
+                                "`match` expected a {enum_name} value but found `{}::{}`",
                                 value.type_name, value.variant_name
                             ),
                             *span,
@@ -466,6 +489,16 @@ fn execute_chunk(
                         )]);
                     }
                 }
+            }
+            Instruction::MatchExhausted { enum_name, span } => {
+                return Err(vec![Diagnostic::new(
+                    "R019",
+                    format!(
+                        "`match` did not cover a {} variant",
+                        program.symbols.resolve(*enum_name)
+                    ),
+                    *span,
+                )]);
             }
             Instruction::Jump { target } => {
                 pc = *target;

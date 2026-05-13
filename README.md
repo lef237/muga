@@ -152,16 +152,16 @@ Implemented:
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, direct list indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for `Option` and `Result`
+- user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, VM execution, typed HIR, and in-memory package interface summaries
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
 - typed HIR with resolved call shape, call origin, expression types, local binding identity, and package item identity
-- in-memory package interface summaries for public records/functions plus validation of public package references against those summaries
+- in-memory package interface summaries for public records/enums/functions plus validation of public package references against those summaries
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 
 Not implemented yet:
 
-- user-defined enum declarations
 - user-defined generic records and generic functions
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
@@ -170,7 +170,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified `Enum::Variant` construction/patterns, and exhaustive `match`. It should reuse the enum-like path already used by compiler-known `Option[T]` and `Result[T, E]`.
+The next implementation slice is enum integration hardening: broader diagnostics, package visibility edge cases, imported enum constructor/pattern coverage, stale interface validation for enum variants, and compatibility tests around `Option` / `Result`.
 
 After that, the priority returns to persisted package interfaces, package-interface consumption, caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
@@ -197,6 +197,7 @@ After that, the priority returns to persisted package interfaces, package-interf
 - [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
 - [samples/packages/app/split_main/main.muga](./samples/packages/app/split_main/main.muga) (runnable package sample where the entry package is split across multiple files)
 - [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)
+- [samples/packages/app/enum_demo/main.muga](./samples/packages/app/enum_demo/main.muga) (runnable package sample that exports and consumes a public generic enum)
 - [samples/projects/my_service/src/main/main.muga](./samples/projects/my_service/src/main/main.muga) (runnable manifest project sample where package declarations are inferred from `muga.toml` and directories)
 
 Planned concurrency draft samples:

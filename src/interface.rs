@@ -7,7 +7,8 @@ use crate::{
     package::{PackageItemInfo, PackageItemKind, PackageSymbolGraph},
     span::Span,
     typed_hir::{
-        Block, Expr, ExprKind, FunctionStmt, IdentTarget, Program, RecordStmt, Stmt, ValueBlock,
+        Block, EnumStmt, Expr, ExprKind, FunctionStmt, IdentTarget, Program, RecordStmt, Stmt,
+        ValueBlock,
     },
     types::TypeInfo,
 };
@@ -24,6 +25,7 @@ impl PackageExportGraph {
             .iter()
             .map(|package| {
                 let mut records = Vec::new();
+                let mut enums = Vec::new();
                 let mut functions = Vec::new();
                 for item in graph.items.iter().filter(|item| {
                     item.package == package.id && item.visibility == Visibility::Public
@@ -36,6 +38,7 @@ impl PackageExportGraph {
                     };
                     match item.kind {
                         PackageItemKind::Record => records.push(export),
+                        PackageItemKind::Enum => enums.push(export),
                         PackageItemKind::Function => functions.push(export),
                     }
                 }
@@ -43,6 +46,7 @@ impl PackageExportGraph {
                     package: package.id,
                     path: package.path.clone(),
                     records,
+                    enums,
                     functions,
                 }
             })
@@ -69,6 +73,19 @@ impl PackageExportGraph {
                         )
                     })
                     .collect();
+                let enums = interface
+                    .enums
+                    .iter()
+                    .filter_map(|enumeration| {
+                        export_item_from_interface(
+                            graph,
+                            enumeration.item,
+                            &enumeration.name,
+                            enumeration.span,
+                            PackageItemKind::Enum,
+                        )
+                    })
+                    .collect();
                 let functions = interface
                     .functions
                     .iter()
@@ -87,6 +104,7 @@ impl PackageExportGraph {
                     package: interface.package,
                     path: interface.path.clone(),
                     records,
+                    enums,
                     functions,
                 }
             })
@@ -106,6 +124,13 @@ impl PackageExportGraph {
             .find(|record| record.name == name)
     }
 
+    pub fn enum_by_name(&self, package: PackageId, name: &str) -> Option<&PackageExportItem> {
+        self.package(package)?
+            .enums
+            .iter()
+            .find(|enumeration| enumeration.name == name)
+    }
+
     pub fn function_by_name(&self, package: PackageId, name: &str) -> Option<&PackageExportItem> {
         self.package(package)?
             .functions
@@ -119,6 +144,7 @@ pub struct PackageExports {
     pub package: PackageId,
     pub path: String,
     pub records: Vec<PackageExportItem>,
+    pub enums: Vec<PackageExportItem>,
     pub functions: Vec<PackageExportItem>,
 }
 
@@ -179,6 +205,13 @@ impl PackageInterfaceGraph {
             .find(|record| record.name == name)
     }
 
+    pub fn enum_by_name(&self, package: PackageId, name: &str) -> Option<&PackageInterfaceEnum> {
+        self.package(package)?
+            .enums
+            .iter()
+            .find(|enumeration| enumeration.name == name)
+    }
+
     pub fn function(&self, item: PackageItemId) -> Option<&PackageInterfaceFunction> {
         self.packages
             .iter()
@@ -203,6 +236,7 @@ pub struct PackageInterface {
     pub package: PackageId,
     pub path: String,
     pub records: Vec<PackageInterfaceRecord>,
+    pub enums: Vec<PackageInterfaceEnum>,
     pub functions: Vec<PackageInterfaceFunction>,
 }
 
@@ -218,6 +252,22 @@ pub struct PackageInterfaceRecord {
 pub struct PackageInterfaceField {
     pub name: String,
     pub ty: TypeInfo,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageInterfaceEnum {
+    pub item: PackageItemId,
+    pub name: String,
+    pub type_params: Vec<String>,
+    pub variants: Vec<PackageInterfaceEnumVariant>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageInterfaceEnumVariant {
+    pub name: String,
+    pub payload: Option<TypeInfo>,
     pub span: Span,
 }
 
@@ -247,6 +297,14 @@ impl Program {
                 _ => None,
             })
             .collect();
+        let enums_by_item: HashMap<PackageItemId, &EnumStmt> = self
+            .statements
+            .iter()
+            .filter_map(|statement| match statement {
+                Stmt::Enum(enumeration) => enumeration.package_item.map(|item| (item, enumeration)),
+                _ => None,
+            })
+            .collect();
         let functions_by_item: HashMap<PackageItemId, &FunctionStmt> = self
             .statements
             .iter()
@@ -262,6 +320,7 @@ impl Program {
             .iter()
             .map(|package| {
                 let mut records = Vec::new();
+                let mut enums = Vec::new();
                 let mut functions = Vec::new();
 
                 for item in self.package_graph.items.iter().filter(|item| {
@@ -280,6 +339,25 @@ impl Program {
                                             name: field.name.clone(),
                                             ty: field.ty.clone(),
                                             span: field.span,
+                                        })
+                                        .collect(),
+                                    span: item.span,
+                                });
+                            }
+                        }
+                        PackageItemKind::Enum => {
+                            if let Some(enumeration) = enums_by_item.get(&item.id) {
+                                enums.push(PackageInterfaceEnum {
+                                    item: item.id,
+                                    name: item.name.clone(),
+                                    type_params: enumeration.type_params.clone(),
+                                    variants: enumeration
+                                        .variants
+                                        .iter()
+                                        .map(|variant| PackageInterfaceEnumVariant {
+                                            name: variant.name.clone(),
+                                            payload: variant.payload.clone(),
+                                            span: variant.span,
                                         })
                                         .collect(),
                                     span: item.span,
@@ -312,6 +390,7 @@ impl Program {
                     package: package.id,
                     path: package.path.clone(),
                     records,
+                    enums,
                     functions,
                 }
             })
@@ -358,6 +437,13 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
             Stmt::Record(record) => {
                 for field in &record.fields {
                     self.validate_type(&field.ty, field.span);
+                }
+            }
+            Stmt::Enum(enumeration) => {
+                for variant in &enumeration.variants {
+                    if let Some(payload) = &variant.payload {
+                        self.validate_type(payload, variant.span);
+                    }
                 }
             }
             Stmt::Function(function) => {
@@ -460,6 +546,17 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
     fn validate_type(&mut self, ty: &TypeInfo, span: Span) {
         match ty {
             TypeInfo::PackageRecord { item, .. } => self.validate_item(*item, span),
+            TypeInfo::PackageEnum { item, args, .. } => {
+                self.validate_item(*item, span);
+                for arg in args {
+                    self.validate_type(arg, span);
+                }
+            }
+            TypeInfo::Enum { args, .. } => {
+                for arg in args {
+                    self.validate_type(arg, span);
+                }
+            }
             TypeInfo::List(item) => self.validate_type(item, span),
             TypeInfo::Map(key, value) => {
                 self.validate_type(key, span);
@@ -513,6 +610,17 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
                 }
                 self.validate_record_shape(&info, interface, span);
             }
+            PackageItemKind::Enum => {
+                let Some(interface) = self.interfaces.enum_by_name(info.package, &info.name) else {
+                    self.push_missing_interface_export(&info, "enum", span);
+                    return;
+                };
+                if interface.item != item {
+                    self.push_stale_interface_diagnostic(&info, "enum identity", span);
+                    return;
+                }
+                self.validate_enum_shape(&info, interface, span);
+            }
             PackageItemKind::Function => {
                 let Some(interface) = self.interfaces.function_by_name(info.package, &info.name)
                 else {
@@ -549,6 +657,30 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
         }
     }
 
+    fn validate_enum_shape(
+        &mut self,
+        info: &PackageItemInfo,
+        interface: &PackageInterfaceEnum,
+        span: Span,
+    ) {
+        let Some(enumeration) = self.enum_stmt_for(info) else {
+            self.push_stale_interface_diagnostic(info, "enum shape", span);
+            return;
+        };
+        let matches = enumeration.type_params == interface.type_params
+            && enumeration.variants.len() == interface.variants.len()
+            && enumeration
+                .variants
+                .iter()
+                .zip(interface.variants.iter())
+                .all(|(variant, expected)| {
+                    variant.name == expected.name && variant.payload == expected.payload
+                });
+        if !matches {
+            self.push_stale_interface_diagnostic(info, "enum shape", span);
+        }
+    }
+
     fn validate_function_signature(
         &mut self,
         info: &PackageItemInfo,
@@ -577,6 +709,18 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
             .iter()
             .find_map(|statement| match statement {
                 Stmt::Record(record) if record.package_item == Some(info.id) => Some(record),
+                _ => None,
+            })
+    }
+
+    fn enum_stmt_for(&self, info: &PackageItemInfo) -> Option<&EnumStmt> {
+        self.program
+            .statements
+            .iter()
+            .find_map(|statement| match statement {
+                Stmt::Enum(enumeration) if enumeration.package_item == Some(info.id) => {
+                    Some(enumeration)
+                }
                 _ => None,
             })
     }

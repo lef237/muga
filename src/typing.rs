@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::identity::{BindingId, BindingKind, ExprId, PackageItemId, StmtId};
-use crate::known_enum::{self, KnownEnum, KnownEnumVariant};
+use crate::known_enum;
 use crate::prelude::{self, BuiltinId, BuiltinKind};
 use crate::span::Span;
 use crate::symbol::{Symbol, SymbolTable};
@@ -60,6 +60,11 @@ pub enum TypedCalleeInfo {
         binding: BindingId,
         item: PackageItemId,
     },
+    EnumVariant {
+        binding: BindingId,
+        enum_name: Symbol,
+        variant_name: Symbol,
+    },
     Builtin {
         binding: BindingId,
         name: &'static str,
@@ -81,11 +86,17 @@ enum Type {
     Bool,
     String,
     Record(Symbol),
+    Enum(Symbol, Vec<Type>),
+    GenericParam(Symbol),
     List(Box<Type>),
     Map(Box<Type>, Box<Type>),
     Option(Box<Type>),
     Result(Box<Type>, Box<Type>),
     OptionNone,
+    EnumConstructor {
+        enum_name: Symbol,
+        variant_name: Symbol,
+    },
     Function(FunctionSig),
     Builtin(BuiltinId),
     Unknown(u32),
@@ -128,22 +139,35 @@ struct RecordField {
 }
 
 #[derive(Clone, Debug)]
+struct EnumDef {
+    span: Span,
+    type_params: Vec<Symbol>,
+    variants: Vec<EnumVariantDef>,
+}
+
+#[derive(Clone, Debug)]
+struct EnumVariantDef {
+    name: Symbol,
+    payload: Option<TypeExpr>,
+    span: Span,
+}
+
+#[derive(Clone, Debug)]
 struct EnumMatchSpec {
-    known: &'static KnownEnum,
+    enum_name: Symbol,
+    display_name: String,
     variants: Vec<EnumMatchVariant>,
 }
 
 impl EnumMatchSpec {
-    fn variant(&self, name: &str) -> Option<&EnumMatchVariant> {
-        self.variants
-            .iter()
-            .find(|variant| variant.known.name == name)
+    fn variant(&self, name: Symbol) -> Option<&EnumMatchVariant> {
+        self.variants.iter().find(|variant| variant.name == name)
     }
 }
 
 #[derive(Clone, Debug)]
 struct EnumMatchVariant {
-    known: KnownEnumVariant,
+    name: Symbol,
     payload: Option<Type>,
 }
 
@@ -168,6 +192,7 @@ pub fn typecheck(program: &Program) -> Vec<Diagnostic> {
 pub fn typecheck_program(program: &Program) -> TypeCheckOutput {
     let mut checker = TypeChecker::new();
     checker.predeclare_records(&program.statements);
+    checker.predeclare_enums(&program.statements);
     checker.check_scope_statements(&program.statements);
     checker.into_output()
 }
@@ -175,6 +200,7 @@ pub fn typecheck_program(program: &Program) -> TypeCheckOutput {
 struct TypeChecker {
     scopes: Vec<ScopeFrame>,
     records: HashMap<Symbol, RecordDef>,
+    enums: HashMap<Symbol, EnumDef>,
     bindings: Vec<Binding>,
     assignment_targets: Vec<TypedAssignmentTarget>,
     identifier_refs: Vec<TypedIdentifier>,
@@ -191,6 +217,7 @@ impl TypeChecker {
         let mut checker = Self {
             scopes: vec![ScopeFrame::new(true)],
             records: HashMap::new(),
+            enums: HashMap::new(),
             bindings: Vec::new(),
             assignment_targets: Vec::new(),
             identifier_refs: Vec::new(),
@@ -259,6 +286,7 @@ impl TypeChecker {
         for statement in statements {
             match statement {
                 Stmt::RecordDecl(record) => self.check_record_decl(record),
+                Stmt::EnumDecl(enumeration) => self.check_enum_decl(enumeration),
                 Stmt::FuncDecl(func) => self.check_func_decl(func, &functions),
                 _ => self.check_stmt(statement),
             }
@@ -298,6 +326,7 @@ impl TypeChecker {
         match statement {
             Stmt::Assign(stmt) => self.check_assign(stmt),
             Stmt::RecordDecl(_) => {}
+            Stmt::EnumDecl(_) => {}
             Stmt::FuncDecl(_) => {}
             Stmt::If(stmt) => {
                 let condition = self.check_expr(&stmt.condition);
@@ -429,6 +458,23 @@ impl TypeChecker {
                     });
                     if matches!(binding.ty, Type::OptionNone) {
                         let ty = self.check_option_none(expected, expr.span);
+                        return self.record_expr_type(expr.id, span, ty);
+                    }
+                    if let Type::EnumConstructor {
+                        enum_name,
+                        variant_name,
+                    } = binding.ty
+                    {
+                        let Some(expected) = expected else {
+                            return self.record_expr_type(expr.id, span, binding.ty);
+                        };
+                        let ty = self.check_user_enum_constructor(
+                            expr.span,
+                            Some(expected),
+                            enum_name,
+                            variant_name,
+                            &[],
+                        );
                         return self.record_expr_type(expr.id, span, ty);
                     }
                     self.apply_expected(binding.ty, expected, expr.span)
@@ -738,6 +784,16 @@ impl TypeChecker {
                         expected,
                         known_enum::RESULT_ERR_NAME,
                     ),
+                    Type::EnumConstructor {
+                        enum_name,
+                        variant_name,
+                    } => self.check_user_enum_constructor(
+                        expr.span,
+                        expected,
+                        enum_name,
+                        variant_name,
+                        &expr.args,
+                    ),
                     Type::Function(sig) => {
                         if sig.params.len() != expr.args.len() {
                             self.diagnostics.push(Diagnostic::new(
@@ -884,6 +940,75 @@ impl TypeChecker {
         }
     }
 
+    fn predeclare_enums(&mut self, statements: &[Stmt]) {
+        for statement in statements {
+            let Stmt::EnumDecl(enumeration) = statement else {
+                continue;
+            };
+            let name = self.symbol(&enumeration.name);
+            if let Some(existing) = self.enums.get(&name) {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E002",
+                        format!("duplicate enum `{}` in the current scope", enumeration.name),
+                        enumeration.span,
+                    )
+                    .with_related("previous enum declaration is here", existing.span),
+                );
+                continue;
+            }
+            if let Some(existing) = self.records.get(&name) {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E002",
+                        format!("duplicate type `{}` in the current scope", enumeration.name),
+                        enumeration.span,
+                    )
+                    .with_related("previous type declaration is here", existing.span),
+                );
+                continue;
+            }
+
+            let type_params = enumeration
+                .type_params
+                .iter()
+                .map(|param| self.symbol(param))
+                .collect::<Vec<_>>();
+            let mut variants = Vec::new();
+            for variant in &enumeration.variants {
+                let variant_name = self.symbol(&variant.name);
+                variants.push(EnumVariantDef {
+                    name: variant_name,
+                    payload: variant.payload.clone(),
+                    span: variant.span,
+                });
+                let qualified = self.symbol(&format!("{}::{}", enumeration.name, variant.name));
+                let kind = if variant.payload.is_some() {
+                    BindingKind::Function
+                } else {
+                    BindingKind::Immutable
+                };
+                self.insert_current(
+                    qualified,
+                    kind,
+                    Type::EnumConstructor {
+                        enum_name: name,
+                        variant_name,
+                    },
+                    variant.span,
+                );
+            }
+            self.enums.insert(
+                name,
+                EnumDef {
+                    span: enumeration.span,
+                    type_params,
+                    variants,
+                },
+            );
+        }
+    }
+
     fn check_record_decl(&mut self, record: &RecordDecl) {
         let mut field_names = HashMap::new();
         for field in &record.fields {
@@ -908,6 +1033,52 @@ impl TypeChecker {
                     "record fields may not have function type in v1",
                     field.span,
                 ));
+            }
+        }
+    }
+
+    fn check_enum_decl(&mut self, enumeration: &EnumDecl) {
+        let mut type_params = HashSet::new();
+        for param in &enumeration.type_params {
+            let symbol = self.symbol(param);
+            if !type_params.insert(symbol) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E002",
+                    format!(
+                        "duplicate type parameter `{param}` in enum `{}`",
+                        enumeration.name
+                    ),
+                    enumeration.span,
+                ));
+            }
+            if matches!(param.as_str(), "Int" | "Bool" | "String") {
+                self.diagnostics.push(Diagnostic::new(
+                    "T022",
+                    format!("type parameter `{param}` shadows a built-in type"),
+                    enumeration.span,
+                ));
+            }
+        }
+
+        let params = type_params.into_iter().collect::<Vec<_>>();
+        let mut variant_names = HashMap::new();
+        for variant in &enumeration.variants {
+            let variant_name = self.symbol(&variant.name);
+            if let Some(previous_span) = variant_names.insert(variant_name, variant.span) {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "E002",
+                        format!(
+                            "duplicate variant `{}` in enum `{}`",
+                            variant.name, enumeration.name
+                        ),
+                        variant.span,
+                    )
+                    .with_related("previous variant declaration is here", previous_span),
+                );
+            }
+            if let Some(payload) = &variant.payload {
+                let _ = self.type_from_expr_with_params(payload, variant.span, &params);
             }
         }
     }
@@ -1421,6 +1592,113 @@ impl TypeChecker {
         Type::Result(ok_ty, err_ty)
     }
 
+    fn check_user_enum_constructor(
+        &mut self,
+        span: Span,
+        expected: Option<Type>,
+        enum_name: Symbol,
+        variant_name: Symbol,
+        args: &[Expr],
+    ) -> Type {
+        let Some(enumeration) = self.enums.get(&enum_name).cloned() else {
+            for arg in args {
+                self.check_expr(arg);
+            }
+            return Type::Error;
+        };
+        let Some(variant) = enumeration
+            .variants
+            .iter()
+            .find(|variant| variant.name == variant_name)
+            .cloned()
+        else {
+            for arg in args {
+                self.check_expr(arg);
+            }
+            return Type::Error;
+        };
+
+        let expected = expected.map(|ty| self.resolve_type(&ty));
+        let enum_args = match expected {
+            Some(Type::Enum(expected_enum, args)) if expected_enum == enum_name => args,
+            Some(Type::Error) => {
+                for arg in args {
+                    self.check_expr(arg);
+                }
+                return Type::Error;
+            }
+            Some(_) | None if !enumeration.type_params.is_empty() => {
+                for arg in args {
+                    self.check_expr(arg);
+                }
+                let enum_text = self.symbols.resolve(enum_name).to_string();
+                let variant_text = self.symbols.resolve(variant_name).to_string();
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "T022",
+                        format!(
+                            "`{enum_text}::{variant_text}` requires an expected {enum_text}[...] type"
+                        ),
+                        span,
+                    )
+                    .with_suggestion(format!(
+                        "add a local binding annotation such as `value: {enum_text}[Int] = {enum_text}::{variant_text}`"
+                    )),
+                );
+                return Type::Error;
+            }
+            Some(_) | None => Vec::new(),
+        };
+
+        match (&variant.payload, args) {
+            (None, []) => {}
+            (None, _) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T004",
+                    format!("expected 0 arguments but found {}", args.len()),
+                    span,
+                ));
+                for arg in args {
+                    self.check_expr(arg);
+                }
+                return Type::Error;
+            }
+            (Some(_), []) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T004",
+                    "expected 1 arguments but found 0",
+                    span,
+                ));
+                return Type::Error;
+            }
+            (Some(_), [_]) => {}
+            (Some(_), _) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T004",
+                    format!("expected 1 arguments but found {}", args.len()),
+                    span,
+                ));
+                for arg in args {
+                    self.check_expr(arg);
+                }
+                return Type::Error;
+            }
+        }
+
+        let enum_ty = Type::Enum(enum_name, enum_args.clone());
+        if let (Some(payload_expr), Some(payload_type)) = (args.first(), variant.payload.as_ref()) {
+            let payload_ty = self.type_from_expr_with_params(
+                payload_type,
+                variant.span,
+                &enumeration.type_params,
+            );
+            let payload_ty =
+                self.substitute_type_params(payload_ty, &enumeration.type_params, &enum_args);
+            self.check_expr_with_expected(payload_expr, Some(payload_ty));
+        }
+        enum_ty
+    }
+
     fn check_match_expr(&mut self, expr: &MatchExpr, expected: Option<Type>) -> Type {
         let value_ty = self.check_expr(&expr.value);
         let spec = self.enum_match_spec_for_value(&value_ty, expr.value.span());
@@ -1431,20 +1709,20 @@ impl TypeChecker {
         for arm in &expr.arms {
             self.push_scope(false);
             let MatchPattern::Variant(pattern) = &arm.pattern;
-            if pattern.enum_name != spec.known.name {
+            let pattern_enum = self.symbol(&pattern.enum_name);
+            let pattern_variant = self.symbol(&pattern.variant_name);
+            if pattern_enum != spec.enum_name {
                 self.diagnostics.push(Diagnostic::new(
                     "T018",
                     format!(
                         "`{}::{}` does not belong to {}",
-                        pattern.enum_name,
-                        pattern.variant_name,
-                        Self::known_enum_type_name(spec.known)
+                        pattern.enum_name, pattern.variant_name, spec.display_name
                     ),
                     pattern.span,
                 ));
-            } else if let Some(variant) = spec.variant(&pattern.variant_name) {
-                if let Some(previous) = seen_variants.insert(variant.known.name, pattern.span) {
-                    let qualified = spec.known.qualified_variant(variant.known);
+            } else if let Some(variant) = spec.variant(pattern_variant) {
+                if let Some(previous) = seen_variants.insert(variant.name, pattern.span) {
+                    let qualified = self.qualified_variant(spec.enum_name, variant.name);
                     self.diagnostics.push(
                         Diagnostic::new(
                             "T018",
@@ -1465,7 +1743,7 @@ impl TypeChecker {
                         );
                     }
                     (Some(_), None) => {
-                        let qualified = spec.known.qualified_variant(variant.known);
+                        let qualified = self.qualified_variant(spec.enum_name, variant.name);
                         self.diagnostics.push(Diagnostic::new(
                             "T018",
                             format!("`{qualified}` match arm must bind its payload"),
@@ -1473,7 +1751,7 @@ impl TypeChecker {
                         ));
                     }
                     (None, Some(_)) => {
-                        let qualified = spec.known.qualified_variant(variant.known);
+                        let qualified = self.qualified_variant(spec.enum_name, variant.name);
                         self.diagnostics.push(Diagnostic::new(
                             "T018",
                             format!("`{qualified}` match arm does not carry a payload"),
@@ -1487,7 +1765,7 @@ impl TypeChecker {
                     "T018",
                     format!(
                         "unknown variant `{}` in match for {}",
-                        pattern.variant_name, spec.known.name
+                        pattern.variant_name, spec.display_name
                     ),
                     pattern.span,
                 ));
@@ -1507,13 +1785,13 @@ impl TypeChecker {
         }
 
         for variant in &spec.variants {
-            if !seen_variants.contains_key(variant.known.name) {
-                let qualified = spec.known.qualified_variant(variant.known);
+            if !seen_variants.contains_key(&variant.name) {
+                let qualified = self.qualified_variant(spec.enum_name, variant.name);
                 self.diagnostics.push(Diagnostic::new(
                     "T018",
                     format!(
                         "`match` on {} requires an `{qualified}` arm",
-                        Self::known_enum_type_name(spec.known)
+                        spec.display_name
                     ),
                     expr.span,
                 ));
@@ -1530,6 +1808,7 @@ impl TypeChecker {
         match self.resolve_type(value_ty) {
             Type::Option(item) => self.option_match_spec(*item),
             Type::Result(ok, err) => self.result_match_spec(*ok, *err),
+            Type::Enum(enum_name, args) => self.user_enum_match_spec(enum_name, args),
             Type::Unknown(_) => {
                 let item = Type::Unknown(self.fresh_unknown());
                 let option = Type::Option(Box::new(item.clone()));
@@ -1545,7 +1824,7 @@ impl TypeChecker {
             _ => {
                 self.diagnostics.push(Diagnostic::new(
                     "T018",
-                    "`match` currently supports only Option[T] or Result[T, E] values",
+                    "`match` requires an enum value",
                     value_span,
                 ));
                 self.option_match_spec(Type::Error)
@@ -1553,16 +1832,18 @@ impl TypeChecker {
         }
     }
 
-    fn option_match_spec(&self, item_ty: Type) -> EnumMatchSpec {
+    fn option_match_spec(&mut self, item_ty: Type) -> EnumMatchSpec {
         let known = known_enum::option_enum();
+        let enum_name = self.symbol(known.name);
         EnumMatchSpec {
-            known,
+            enum_name,
+            display_name: "Option[T]".to_string(),
             variants: known
                 .variants
                 .iter()
                 .copied()
                 .map(|variant| EnumMatchVariant {
-                    known: variant,
+                    name: self.symbol(variant.name),
                     payload: if variant.has_payload {
                         Some(item_ty.clone())
                     } else {
@@ -1573,10 +1854,12 @@ impl TypeChecker {
         }
     }
 
-    fn result_match_spec(&self, ok_ty: Type, err_ty: Type) -> EnumMatchSpec {
+    fn result_match_spec(&mut self, ok_ty: Type, err_ty: Type) -> EnumMatchSpec {
         let known = known_enum::result_enum();
+        let enum_name = self.symbol(known.name);
         EnumMatchSpec {
-            known,
+            enum_name,
+            display_name: "Result[T, E]".to_string(),
             variants: known
                 .variants
                 .iter()
@@ -1588,7 +1871,7 @@ impl TypeChecker {
                         _ => None,
                     };
                     EnumMatchVariant {
-                        known: variant,
+                        name: self.symbol(variant.name),
                         payload,
                     }
                 })
@@ -1596,14 +1879,45 @@ impl TypeChecker {
         }
     }
 
-    fn known_enum_type_name(known: &KnownEnum) -> &'static str {
-        if known.name == known_enum::OPTION_NAME {
-            "Option[T]"
-        } else if known.name == known_enum::RESULT_NAME {
-            "Result[T, E]"
-        } else {
-            known.name
+    fn user_enum_match_spec(&mut self, enum_name: Symbol, args: Vec<Type>) -> EnumMatchSpec {
+        let Some(enumeration) = self.enums.get(&enum_name).cloned() else {
+            return EnumMatchSpec {
+                enum_name,
+                display_name: self.symbols.resolve(enum_name).to_string(),
+                variants: Vec::new(),
+            };
+        };
+        let variants = enumeration
+            .variants
+            .iter()
+            .map(|variant| {
+                let payload = variant.payload.as_ref().map(|payload| {
+                    let payload_ty = self.type_from_expr_with_params(
+                        payload,
+                        variant.span,
+                        &enumeration.type_params,
+                    );
+                    self.substitute_type_params(payload_ty, &enumeration.type_params, &args)
+                });
+                EnumMatchVariant {
+                    name: variant.name,
+                    payload,
+                }
+            })
+            .collect();
+        EnumMatchSpec {
+            enum_name,
+            display_name: self.symbols.resolve(enum_name).to_string(),
+            variants,
         }
+    }
+
+    fn qualified_variant(&self, enum_name: Symbol, variant_name: Symbol) -> String {
+        format!(
+            "{}::{}",
+            self.symbols.resolve(enum_name),
+            self.symbols.resolve(variant_name)
+        )
     }
 
     fn check_record_lit(&mut self, expr: &RecordLitExpr) -> Type {
@@ -1905,14 +2219,31 @@ impl TypeChecker {
     }
 
     fn type_from_expr(&mut self, type_expr: &TypeExpr, span: crate::span::Span) -> Type {
+        self.type_from_expr_with_params(type_expr, span, &[])
+    }
+
+    fn type_from_expr_with_params(
+        &mut self,
+        type_expr: &TypeExpr,
+        span: crate::span::Span,
+        type_params: &[Symbol],
+    ) -> Type {
         match type_expr {
             TypeExpr::Int => Type::Int,
             TypeExpr::Bool => Type::Bool,
             TypeExpr::String => Type::String,
             TypeExpr::Named(name) => {
                 let symbol = self.symbol(name);
-                if self.records.contains_key(&symbol) {
+                if type_params.contains(&symbol) {
+                    Type::GenericParam(symbol)
+                } else if self.records.contains_key(&symbol) {
                     Type::Record(symbol)
+                } else if self
+                    .enums
+                    .get(&symbol)
+                    .is_some_and(|enumeration| enumeration.type_params.is_empty())
+                {
+                    Type::Enum(symbol, Vec::new())
                 } else {
                     self.diagnostics.push(Diagnostic::new(
                         "T007",
@@ -1931,7 +2262,11 @@ impl TypeChecker {
                     ));
                     return Type::Error;
                 }
-                Type::List(Box::new(self.type_from_expr(&generic.args[0], span)))
+                Type::List(Box::new(self.type_from_expr_with_params(
+                    &generic.args[0],
+                    span,
+                    type_params,
+                )))
             }
             TypeExpr::Generic(generic) if generic.name == known_enum::OPTION_NAME => {
                 if generic.args.len() != 1 {
@@ -1942,7 +2277,11 @@ impl TypeChecker {
                     ));
                     return Type::Error;
                 }
-                Type::Option(Box::new(self.type_from_expr(&generic.args[0], span)))
+                Type::Option(Box::new(self.type_from_expr_with_params(
+                    &generic.args[0],
+                    span,
+                    type_params,
+                )))
             }
             TypeExpr::Generic(generic) if generic.name == known_enum::RESULT_NAME => {
                 if generic.args.len() != 2 {
@@ -1954,8 +2293,8 @@ impl TypeChecker {
                     return Type::Error;
                 }
                 Type::Result(
-                    Box::new(self.type_from_expr(&generic.args[0], span)),
-                    Box::new(self.type_from_expr(&generic.args[1], span)),
+                    Box::new(self.type_from_expr_with_params(&generic.args[0], span, type_params)),
+                    Box::new(self.type_from_expr_with_params(&generic.args[1], span, type_params)),
                 )
             }
             TypeExpr::Generic(generic) if generic.name == "Map" => {
@@ -1967,14 +2306,37 @@ impl TypeChecker {
                     ));
                     return Type::Error;
                 }
-                let key = self.type_from_expr(&generic.args[0], span);
+                let key = self.type_from_expr_with_params(&generic.args[0], span, type_params);
                 self.validate_map_key_type(&key, span);
-                let value = self.type_from_expr(&generic.args[1], span);
+                let value = self.type_from_expr_with_params(&generic.args[1], span, type_params);
                 Type::Map(Box::new(key), Box::new(value))
             }
             TypeExpr::Generic(generic) => {
+                let symbol = self.symbol(&generic.name);
+                if let Some(enumeration) = self.enums.get(&symbol).cloned() {
+                    if generic.args.len() != enumeration.type_params.len() {
+                        self.diagnostics.push(Diagnostic::new(
+                            "T022",
+                            format!(
+                                "{} expects exactly {} type arguments",
+                                generic.name,
+                                enumeration.type_params.len()
+                            ),
+                            span,
+                        ));
+                        return Type::Error;
+                    }
+                    return Type::Enum(
+                        symbol,
+                        generic
+                            .args
+                            .iter()
+                            .map(|arg| self.type_from_expr_with_params(arg, span, type_params))
+                            .collect(),
+                    );
+                }
                 for arg in &generic.args {
-                    let _ = self.type_from_expr(arg, span);
+                    let _ = self.type_from_expr_with_params(arg, span, type_params);
                 }
                 self.diagnostics.push(
                     Diagnostic::new(
@@ -1992,9 +2354,9 @@ impl TypeChecker {
                 params: function
                     .params
                     .iter()
-                    .map(|param| self.type_from_expr(param, span))
+                    .map(|param| self.type_from_expr_with_params(param, span, type_params))
                     .collect(),
-                ret: Box::new(self.type_from_expr(&function.ret, span)),
+                ret: Box::new(self.type_from_expr_with_params(&function.ret, span, type_params)),
             }),
         }
     }
@@ -2028,6 +2390,19 @@ impl TypeChecker {
             (Type::Bool, Type::Bool) => Ok(Type::Bool),
             (Type::String, Type::String) => Ok(Type::String),
             (Type::Record(left), Type::Record(right)) if left == right => Ok(Type::Record(left)),
+            (Type::Enum(left_name, left_args), Type::Enum(right_name, right_args))
+                if left_name == right_name && left_args.len() == right_args.len() =>
+            {
+                let args = left_args
+                    .into_iter()
+                    .zip(right_args.into_iter())
+                    .map(|(left, right)| self.unify(left, right))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Type::Enum(left_name, args))
+            }
+            (Type::GenericParam(left), Type::GenericParam(right)) if left == right => {
+                Ok(Type::GenericParam(left))
+            }
             (Type::List(left), Type::List(right)) => {
                 let item = self.unify(*left, *right)?;
                 Ok(Type::List(Box::new(item)))
@@ -2081,6 +2456,10 @@ impl TypeChecker {
                 params: sig.params.iter().map(|ty| self.resolve_type(ty)).collect(),
                 ret: Box::new(self.resolve_type(&sig.ret)),
             }),
+            Type::Enum(name, args) => Type::Enum(
+                *name,
+                args.iter().map(|arg| self.resolve_type(arg)).collect(),
+            ),
             Type::List(item) => Type::List(Box::new(self.resolve_type(item))),
             Type::Map(key, value) => Type::Map(
                 Box::new(self.resolve_type(key)),
@@ -2092,6 +2471,13 @@ impl TypeChecker {
                 Box::new(self.resolve_type(err)),
             ),
             Type::Builtin(builtin) => Type::Builtin(*builtin),
+            Type::EnumConstructor {
+                enum_name,
+                variant_name,
+            } => Type::EnumConstructor {
+                enum_name: *enum_name,
+                variant_name: *variant_name,
+            },
             other => other.clone(),
         }
     }
@@ -2102,6 +2488,11 @@ impl TypeChecker {
             Type::Bool => TypeInfo::Bool,
             Type::String => TypeInfo::String,
             Type::Record(symbol) => TypeInfo::Record(symbol),
+            Type::Enum(symbol, args) => TypeInfo::Enum {
+                symbol,
+                args: args.iter().map(|arg| self.type_info_for(arg)).collect(),
+            },
+            Type::GenericParam(symbol) => TypeInfo::GenericParam(symbol),
             Type::List(item) => TypeInfo::List(Box::new(self.type_info_for(&item))),
             Type::Map(key, value) => TypeInfo::Map(
                 Box::new(self.type_info_for(&key)),
@@ -2118,6 +2509,13 @@ impl TypeChecker {
             }),
             Type::Builtin(builtin) => TypeInfo::Builtin(builtin),
             Type::OptionNone => TypeInfo::Builtin(BuiltinId::OptionNone),
+            Type::EnumConstructor {
+                enum_name,
+                variant_name,
+            } => TypeInfo::EnumConstructor {
+                enum_symbol: enum_name,
+                variant: variant_name,
+            },
             Type::Unknown(_) => TypeInfo::Unknown,
             Type::Error => TypeInfo::Error,
         }
@@ -2132,6 +2530,9 @@ impl TypeChecker {
                     .any(|param| self.type_contains_unknown(param, needle))
                     || self.type_contains_unknown(&sig.ret, needle)
             }
+            Type::Enum(_, args) => args
+                .iter()
+                .any(|arg| self.type_contains_unknown(arg, needle)),
             Type::List(item) => self.type_contains_unknown(&item, needle),
             Type::Map(key, value) => {
                 self.type_contains_unknown(&key, needle)
@@ -2145,6 +2546,46 @@ impl TypeChecker {
         }
     }
 
+    fn substitute_type_params(&self, ty: Type, params: &[Symbol], args: &[Type]) -> Type {
+        match ty {
+            Type::GenericParam(param) => params
+                .iter()
+                .position(|candidate| *candidate == param)
+                .and_then(|index| args.get(index).cloned())
+                .unwrap_or(Type::GenericParam(param)),
+            Type::Function(sig) => Type::Function(FunctionSig {
+                params: sig
+                    .params
+                    .into_iter()
+                    .map(|param| self.substitute_type_params(param, params, args))
+                    .collect(),
+                ret: Box::new(self.substitute_type_params(*sig.ret, params, args)),
+            }),
+            Type::Enum(name, enum_args) => Type::Enum(
+                name,
+                enum_args
+                    .into_iter()
+                    .map(|arg| self.substitute_type_params(arg, params, args))
+                    .collect(),
+            ),
+            Type::List(item) => {
+                Type::List(Box::new(self.substitute_type_params(*item, params, args)))
+            }
+            Type::Map(key, value) => Type::Map(
+                Box::new(self.substitute_type_params(*key, params, args)),
+                Box::new(self.substitute_type_params(*value, params, args)),
+            ),
+            Type::Option(item) => {
+                Type::Option(Box::new(self.substitute_type_params(*item, params, args)))
+            }
+            Type::Result(ok, err) => Type::Result(
+                Box::new(self.substitute_type_params(*ok, params, args)),
+                Box::new(self.substitute_type_params(*err, params, args)),
+            ),
+            other => other,
+        }
+    }
+
     fn typed_callee_for(&self, callee: &Expr, resolved_ty: &Type) -> TypedCalleeInfo {
         match resolved_ty {
             Type::Builtin(builtin) => self
@@ -2152,6 +2593,17 @@ impl TypeChecker {
                 .map(|binding| TypedCalleeInfo::Builtin {
                     binding,
                     name: Self::builtin_name(*builtin),
+                })
+                .unwrap_or(TypedCalleeInfo::Error),
+            Type::EnumConstructor {
+                enum_name,
+                variant_name,
+            } => self
+                .binding_for_expr(callee.id())
+                .map(|binding| TypedCalleeInfo::EnumVariant {
+                    binding,
+                    enum_name: *enum_name,
+                    variant_name: *variant_name,
                 })
                 .unwrap_or(TypedCalleeInfo::Error),
             Type::Function(_) | Type::Unknown(_) => self
@@ -2289,10 +2741,13 @@ impl Type {
             Self::Bool => "Bool",
             Self::String => "String",
             Self::Record(_) => "Record",
+            Self::Enum(_, _) => "Enum",
+            Self::GenericParam(_) => "Type parameter",
             Self::List(_) => "List",
             Self::Map(_, _) => "Map",
             Self::Option(_) | Self::OptionNone => "Option",
             Self::Result(_, _) => "Result",
+            Self::EnumConstructor { .. } => "Enum variant",
             Self::Function(_) => "Function",
             Self::Builtin(builtin) => prelude::builtin_debug_label(*builtin),
             Self::Unknown(_) => "Unknown",
@@ -2401,6 +2856,7 @@ fn collect_calls_in_statements(
         match statement {
             Stmt::Assign(stmt) => collect_calls_in_expr(&stmt.value, local_names, calls, symbols),
             Stmt::RecordDecl(_) => {}
+            Stmt::EnumDecl(_) => {}
             Stmt::FuncDecl(_) => {}
             Stmt::If(stmt) => {
                 collect_calls_in_expr(&stmt.condition, local_names, calls, symbols);

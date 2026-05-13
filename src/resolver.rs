@@ -39,6 +39,7 @@ pub fn resolve_program(program: &Program) -> ResolveOutput {
     let mut resolver = Resolver::new();
     resolver.install_prelude();
     resolver.predeclare_records(&program.statements);
+    resolver.predeclare_enums(&program.statements);
     resolver.resolve_scope_statements(&program.statements);
     resolver.into_output()
 }
@@ -68,6 +69,7 @@ impl ScopeFrame {
 struct Resolver {
     scopes: Vec<ScopeFrame>,
     records: HashMap<Symbol, Span>,
+    enums: HashMap<Symbol, Span>,
     bindings: Vec<Binding>,
     identifier_refs: Vec<ResolvedIdentifier>,
     symbols: SymbolTable,
@@ -79,6 +81,7 @@ impl Resolver {
         Self {
             scopes: vec![ScopeFrame::new(true)],
             records: HashMap::new(),
+            enums: HashMap::new(),
             bindings: Vec::new(),
             identifier_refs: Vec::new(),
             symbols: SymbolTable::default(),
@@ -143,6 +146,7 @@ impl Resolver {
         match statement {
             Stmt::Assign(stmt) => self.resolve_assign(stmt),
             Stmt::RecordDecl(_) => {}
+            Stmt::EnumDecl(_) => {}
             Stmt::FuncDecl(stmt) => self.resolve_func_decl(stmt),
             Stmt::If(stmt) => {
                 self.resolve_expr(&stmt.condition);
@@ -447,6 +451,45 @@ impl Resolver {
                     );
                 } else {
                     self.records.insert(name, record.span);
+                }
+            }
+        }
+    }
+
+    fn predeclare_enums(&mut self, statements: &[Stmt]) {
+        for statement in statements {
+            if let Stmt::EnumDecl(enumeration) = statement {
+                let name = self.symbol(&enumeration.name);
+                if let Some(span) = self.enums.get(&name).copied() {
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "E002",
+                            format!("duplicate enum `{}` in the current scope", enumeration.name),
+                            enumeration.span,
+                        )
+                        .with_related("previous enum declaration is here", span),
+                    );
+                } else if let Some(span) = self.records.get(&name).copied() {
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "E002",
+                            format!("duplicate type `{}` in the current scope", enumeration.name),
+                            enumeration.span,
+                        )
+                        .with_related("previous type declaration is here", span),
+                    );
+                } else {
+                    self.enums.insert(name, enumeration.span);
+                    for variant in &enumeration.variants {
+                        let qualified =
+                            self.symbol(&format!("{}::{}", enumeration.name, variant.name));
+                        let kind = if variant.payload.is_some() {
+                            BindingKind::Function
+                        } else {
+                            BindingKind::Immutable
+                        };
+                        self.insert_current(qualified, kind, variant.span);
+                    }
                 }
             }
         }
