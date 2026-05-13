@@ -939,7 +939,7 @@ It currently:
 - routes public import lookup through `PackageExportGraph`
 - can return an unflattened package graph containing package files plus package/module/item/export metadata
 - can build source and module package signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility for records, enums, and functions
-- can run and retain an initial package-aware module body typecheck pass against those source/module signatures, including package binding identity needed by typed HIR lowering
+- can run and retain an initial package-aware module body typecheck pass against those source/module signatures, including per-module typed HIR outputs lowered with package binding identity
 - generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
 - validates typed package references against generated summaries
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
