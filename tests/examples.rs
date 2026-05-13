@@ -2759,7 +2759,7 @@ fn main(): Int {
 }
 
 #[test]
-fn default_cli_check_keeps_existing_body_based_behavior() {
+fn default_cli_check_accepts_package_entry() {
     let output = muga_command()
         .arg("check")
         .arg("samples/packages/app/main/main.muga")

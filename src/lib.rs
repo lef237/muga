@@ -68,6 +68,9 @@ pub fn check_source(source: &str) -> Result<Program, Vec<Diagnostic>> {
 }
 
 pub fn check_path(path: &Path) -> Result<Program, Vec<Diagnostic>> {
+    if package::entry_package_path_from_entry(path)?.is_some() {
+        check_package_aware_path(path)?;
+    }
     let program = package::load_program_from_entry(path)?;
     let mut diagnostics = resolver::resolve(&program);
     diagnostics.extend(typing::typecheck(&program));

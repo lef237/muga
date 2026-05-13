@@ -103,7 +103,8 @@ Ada
 - [x] package-aware check results expose package-wide typed HIR aggregated from per-module outputs without using the legacy flattened typed path.
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
-- [ ] default CLI checking/execution still uses package flattening and dependency source loading.
+- [x] default package `check` / `run` validation goes through package-aware checking before preserving flattened HIR execution.
+- [ ] package execution still lowers from flattened HIR and reads dependency source bodies.
 
 ### Diagnostics
 
@@ -172,9 +173,9 @@ Ada
 - The package-aware API can now load dependency signatures from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source.
 - Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
 - CLI `check --artifact-root`, interface artifact emission, and loaded/interface-artifact typed compilation now use package-aware paths.
-- Default CLI package checking and execution still read and flatten dependency bodies.
+- Default package `check` / `run` validation now goes through package-aware checking, while execution still reads and flattens dependency bodies for bytecode lowering.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
-- Full incremental artifact reuse and package-aware execution without the flattened typed path are still not implemented.
+- Full incremental artifact reuse and package-aware execution without flattened HIR lowering are still not implemented.
 
 ## Recommended Next Implementation
 
@@ -295,7 +296,7 @@ Package-aware checking:
 
 Compatibility:
 
-- [x] `default_cli_check_keeps_existing_body_based_behavior`
+- [x] `default_cli_check_accepts_package_entry`
 - [x] `artifact_generation_does_not_change_default_run_behavior`
 
 ## Definition Of Done For The Next Code Slice

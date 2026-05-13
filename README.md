@@ -182,6 +182,7 @@ Implemented:
 - initial package-aware module body typechecking against those module signature environments, with per-module typecheck outputs and typed HIR programs retained by the package-aware API
 - package-aware checks aggregate per-module typed HIR from the unflattened module check outputs instead of the legacy flattened typed path
 - package-aware checking and loaded/interface-artifact typed compilation can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies
+- default package `check` / `run` validation goes through package-aware checking before preserving the existing flattened HIR bytecode execution path
 
 Not implemented yet:
 
