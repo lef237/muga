@@ -419,7 +419,9 @@ fn manifest_project_infers_package_paths_from_directories() {
 
 #[test]
 fn package_loader_renumbers_statement_ids_after_flattening() {
-    let program = muga::check_path(Path::new("samples/packages/app/main/main.muga")).unwrap();
+    let program =
+        muga::package::load_program_from_entry(Path::new("samples/packages/app/main/main.muga"))
+            .unwrap();
     let mut ids = HashSet::new();
     collect_stmt_ids(&program.statements, &mut ids);
     assert!(

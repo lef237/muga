@@ -36,7 +36,7 @@ Implemented language surface:
 - package-aware source and per-module signature environments resolve record/enum/function signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility
 - package-aware module body resolution/typechecking consumes those module signature environments, and the package-aware API retains per-module resolver/typecheck outputs plus typed HIR programs
 - package-aware check results aggregate per-module typed HIR from unflattened module check outputs with remapped local IDs and symbols instead of using the legacy flattened typed path
-- default package `check` runs the package-aware validation path instead of rechecking the legacy flattened AST
+- default package `check` runs the package-aware validation path and no longer reloads a flattened package AST after validation
 - default package `compile_typed_path` returns the package-aware typed HIR aggregate instead of the legacy flattened typed HIR
 - package-aware checking and loaded/interface-artifact typed compilation collect dependency signatures and build dependency graph metadata directly from loaded interfaces without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
 - the legacy interface-stub flattened typed compilation path has been removed; loaded/interface-artifact typed compilation now uses the package-aware semantic path only

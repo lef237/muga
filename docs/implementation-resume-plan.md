@@ -104,7 +104,7 @@ Ada
 - [x] loaded/interface-artifact package-aware checking consumes interface signatures directly; dependency interface AST stubs and stub body checks are no longer part of the typed path.
 - [x] loaded-interface package graph construction uses package interfaces directly instead of loading or synthesizing dependency AST modules.
 - [x] package-aware check results expose package-wide typed HIR aggregated from per-module outputs without using the legacy flattened typed path.
-- [x] default package `check` runs package-aware validation instead of rechecking the legacy flattened AST.
+- [x] default package `check` runs package-aware validation and no longer reloads a flattened package AST after validation.
 - [x] default package `compile_typed_path` returns the package-aware typed HIR aggregate instead of the legacy flattened typed HIR.
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
@@ -181,7 +181,7 @@ Ada
 - Loaded-interface package-aware checks now build dependency package graph metadata directly from package interfaces instead of loading or synthesizing dependency AST modules.
 - The legacy interface-stub flattened typed compilation path has been removed; loaded/interface-artifact typed compilation now has one package-aware semantic path.
 - Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
-- CLI default package `check`, default package `compile_typed_path`, `check --artifact-root`, interface artifact emission, and loaded/interface-artifact typed compilation now use package-aware paths.
+- CLI default package `check`, default package `compile_typed_path`, `check --artifact-root`, interface artifact emission, and loaded/interface-artifact typed compilation now use package-aware paths; default package `check` no longer reloads a flattened AST after validation.
 - Package-aware typed HIR can now lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls.
 - Default package execution now lowers package-aware typed HIR through the existing HIR/bytecode path, while still reading dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
@@ -208,7 +208,7 @@ Reasoning:
 - Unflattened package graph loading now preserves package files plus package/module/item/export metadata before flattening.
 - Package-aware checking now has source and per-module signature environments that resolve package record/enum/function types without flattening.
 - Package-aware checking now uses those module signatures for body resolver/typecheck passes over each original package file and exposes those outputs through the library API.
-- Default package `check` now treats that package-aware validation as the semantic check instead of rechecking a flattened AST.
+- Default package `check` now treats that package-aware validation as the semantic check and does not reload a flattened AST after validation.
 - Default package `compile_typed_path` now returns the package-aware typed HIR aggregate instead of compiling the flattened AST.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
 - CLI artifact generation can now produce `.mgi` and checked `.mgc` artifacts for the explicit workflow.

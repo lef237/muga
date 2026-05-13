@@ -165,6 +165,18 @@ impl LoadedPackageGraph {
         }
         interfaces.graph.package_by_path(path).is_some()
     }
+
+    pub fn entry_program(&self) -> Option<&Program> {
+        let entry_package = self.package_graph.package(self.entry_package)?;
+        let entry_module = self.package_graph.module(self.entry_module)?;
+        self.packages
+            .iter()
+            .find(|package| package.path == entry_package.path)?
+            .files
+            .iter()
+            .find(|file| file.module_path == entry_module.path)
+            .map(|file| &file.program)
+    }
 }
 
 #[derive(Clone, Debug)]
