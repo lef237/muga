@@ -644,7 +644,7 @@ Completed structural steps:
 
 Critical current risks to eliminate:
 
-- normal package execution still reads dependency source bodies; artifact-backed execution needs persisted implementation bodies or an equivalent execution artifact
+- normal package execution still reads dependency source bodies; artifact-backed execution now uses persisted MIR-lowered bytecode `.mgb` implementation artifacts, but the explicit workflow still needs more end-to-end hardening
 - resolver and typechecker still build scopes independently
 - MIR is still expression-shaped, though it now has explicit execution bodies, body terminators, hoisted body-local function definitions, typed binding/package-item identity, typed assignment update mode, runtime names carrying binding/local identity, and slot-backed runtime environments with package function references canonicalized to their defining binding, and is not yet a control-flow-oriented backend IR
 - package interfaces still use session-local IDs and compiler-owned type structs in memory, even though `.mgi` v2 maps stable artifact identities back into fresh session IDs when loaded

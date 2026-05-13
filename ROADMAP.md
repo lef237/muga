@@ -27,7 +27,7 @@ Implemented language surface:
 - independently generated `.mgi` artifacts are remapped from stable artifact identities into a fresh session-local package/item identity namespace when loaded together, so one artifact root can safely contain artifacts from separate provider builds
 - package check cache keys combine entry package source hashes with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts for dependency-body-free package checking
-- `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes reachable `.mgb` implementation artifacts plus the entry `.mgc` check cache; lower-level `emit-check-cache` validates against `.mgi` artifacts before writing `.mgc`
+- `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes reachable `.mgb` implementation artifacts containing MIR-lowered bytecode programs plus the entry `.mgc` check cache; lower-level `emit-check-cache` validates against `.mgi` artifacts before writing `.mgc`
 - `muga run --artifact-root <dir>` validates `.mgi` / `.mgc` / `.mgb` artifacts and executes dependencies without reading dependency source files from the source tree
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
@@ -73,6 +73,7 @@ These are baseline decisions, not active roadmap questions:
 
 Related design notes:
 
+- practical language readiness: [docs/practical-language-readiness.md](./docs/practical-language-readiness.md)
 - collections: [spec/008-collections.md](./spec/008-collections.md)
 - generics: [spec/009-generics.md](./spec/009-generics.md)
 - explicit references: [spec/010-references-draft.md](./spec/010-references-draft.md)
@@ -85,11 +86,11 @@ Related design notes:
 The next code slices should convert the completed package-aware checking foundation into a v1-ready package/artifact experience:
 
 1. Treat the current MIR/runtime identity cleanup as a foundation-closing slice, not an open-ended backend rewrite. The VM should execute checked package programs by lowered local identity and semantic package identity, but control-flow MIR and native lowering should wait unless they are required to close a concrete v1 execution gap.
-2. Harden dependency-body-free package execution. `check --artifact-root` avoids dependency implementation bodies, and `run --artifact-root` consumes `.mgb` implementation artifacts for dependencies without source-tree fallback.
+2. Harden dependency-body-free package execution. `check --artifact-root` avoids dependency implementation bodies, and `run --artifact-root` consumes MIR-lowered bytecode `.mgb` implementation artifacts for dependencies without source-tree fallback.
 3. Keep artifact roots explicit on the CLI for v1. `muga emit-artifacts`, `muga check --artifact-root`, and any run-time artifact-root flag should fail loudly on missing or stale artifacts instead of silently falling back to dependency source bodies.
 4. Harden the explicit artifact workflow with samples, diagnostics, and documentation before adding manifest-owned artifact configuration.
 5. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist. Revisit it later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
-6. Keep generic records/functions, wildcard enum patterns, `try expr`, native backend work, broad stdlib effects, and full incremental reuse deferred unless one becomes necessary to finish the v1 package/artifact path.
+6. Keep generic records/functions, wildcard enum patterns, `try expr`, native backend work, broad stdlib effects, and full incremental reuse deferred unless one becomes necessary to finish the v1 package/artifact path. Once the v1 package/artifact workflow is stable, resume language-surface work in the order recorded in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
 
 ## Compiler Architecture Path
 
@@ -121,6 +122,8 @@ The next code slices should convert the completed package-aware checking foundat
 
    Add IO, HTTP, strings, richer collections, process/time APIs, and web-oriented packages after package compilation and error handling are stable enough to support them cleanly.
 
+The post-v1 language-feature order and the list of features to keep out of Muga are maintained in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
+
 ## Cross-Cutting Work
 
 Benchmarking and profiling should continue through every compiler step:
@@ -137,7 +140,7 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- hardening the first `.mgb` implementation artifact format into the final v1 execution artifact contract
+- hardening the MIR-lowered bytecode `.mgb` implementation artifact format into the final v1 execution artifact contract
 - broader `run --artifact-root` diagnostics for missing, stale, or mismatched dependency artifacts
 - eventual project-mode artifact-root config after dependency declarations and lockfiles
 - source-root and manifest conventions

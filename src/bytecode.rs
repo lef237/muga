@@ -195,6 +195,353 @@ pub fn compile(program: mir::Program) -> Program {
     }
 }
 
+pub fn merge(entry: Program, dependencies: Vec<Program>) -> Program {
+    let mut merger = ProgramMerger::default();
+    let mut dependency_entries = Vec::new();
+    for dependency in dependencies {
+        let index = merger.add_program(&dependency);
+        dependency_entries.push(merger.import_chunk_at(index, &dependency, &dependency.entry));
+        for function in &dependency.functions {
+            merger.import_function_at(index, &dependency, function);
+        }
+    }
+    let entry_index = merger.add_program(&entry);
+    let entry_chunk = merger.import_chunk_at(entry_index, &entry, &entry.entry);
+    for function in &entry.functions {
+        merger.import_function_at(entry_index, &entry, function);
+    }
+    let mut instructions = Vec::new();
+    for chunk in dependency_entries {
+        append_chunk(&mut instructions, chunk);
+    }
+    append_chunk(&mut instructions, entry_chunk);
+    let main = entry
+        .main
+        .map(|main| merger.name_ref_at(entry_index, &entry, main));
+    let mut program = Program {
+        entry: Chunk { instructions },
+        functions: merger.functions,
+        bindings: merger.bindings,
+        locals: merger.locals,
+        main,
+        local_count: merger.next_local as usize,
+        symbols: merger.symbols,
+    };
+    canonicalize_package_function_refs(&mut program);
+    program
+}
+
+#[derive(Default)]
+struct ProgramMerger {
+    symbols: SymbolTable,
+    bindings: Vec<BindingDef>,
+    locals: Vec<LocalDef>,
+    functions: Vec<Function>,
+    binding_maps: Vec<BindingMap>,
+    local_maps: Vec<LocalMap>,
+    function_maps: Vec<FunctionMap>,
+    next_binding: u32,
+    next_local: u32,
+    next_function: usize,
+}
+
+type BindingMap = HashMap<BindingId, BindingId>;
+type LocalMap = HashMap<LocalId, LocalId>;
+type FunctionMap = HashMap<FunctionId, FunctionId>;
+
+impl ProgramMerger {
+    fn add_program(&mut self, program: &Program) -> usize {
+        let index = self.binding_maps.len();
+        let mut binding_map = HashMap::new();
+        let mut local_map = HashMap::new();
+        let mut function_map = HashMap::new();
+
+        for binding in &program.bindings {
+            let mapped = BindingId::new(self.next_binding);
+            self.next_binding += 1;
+            binding_map.insert(binding.id, mapped);
+        }
+        for local in &program.locals {
+            let mapped = LocalId::new(self.next_local);
+            self.next_local += 1;
+            local_map.insert(local.id, mapped);
+        }
+        for function in &program.functions {
+            let mapped = self.next_function;
+            self.next_function += 1;
+            function_map.insert(function.id, mapped);
+        }
+
+        for binding in &program.bindings {
+            let name = self.symbol(program, binding.name);
+            self.bindings.push(BindingDef {
+                id: binding_map[&binding.id],
+                local: local_map[&binding.local],
+                name,
+                kind: binding.kind,
+                package_item: binding.package_item,
+                span: binding.span,
+            });
+        }
+        for local in &program.locals {
+            let name = self.symbol(program, local.name);
+            self.locals.push(LocalDef {
+                id: local_map[&local.id],
+                binding: local.binding.map(|binding| binding_map[&binding]),
+                name,
+                kind: local.kind,
+                package_item: local.package_item,
+                span: local.span,
+            });
+        }
+
+        self.binding_maps.push(binding_map);
+        self.local_maps.push(local_map);
+        self.function_maps.push(function_map);
+        index
+    }
+
+    fn import_chunk_at(&mut self, index: usize, program: &Program, chunk: &Chunk) -> Chunk {
+        Chunk {
+            instructions: chunk
+                .instructions
+                .iter()
+                .map(|instruction| self.instruction(index, program, instruction))
+                .collect(),
+        }
+    }
+
+    fn import_function_at(&mut self, index: usize, program: &Program, function: &Function) {
+        let id = self.function_maps[index][&function.id];
+        if self.functions.len() <= id {
+            self.functions.resize_with(id + 1, placeholder_function);
+        }
+        self.functions[id] = Function {
+            id,
+            name: function.name.map(|name| self.symbol(program, name)),
+            params: function
+                .params
+                .iter()
+                .map(|param| self.name_ref_at(index, program, *param))
+                .collect(),
+            chunk: self.import_chunk_at(index, program, &function.chunk),
+            span: function.span,
+        };
+    }
+
+    fn instruction(
+        &mut self,
+        index: usize,
+        program: &Program,
+        instruction: &Instruction,
+    ) -> Instruction {
+        match instruction {
+            Instruction::LoadInt(value) => Instruction::LoadInt(*value),
+            Instruction::LoadBool(value) => Instruction::LoadBool(*value),
+            Instruction::LoadString(value) => Instruction::LoadString(value.clone()),
+            Instruction::MakeRecord {
+                type_name,
+                fields,
+                span,
+            } => Instruction::MakeRecord {
+                type_name: self.symbol(program, *type_name),
+                fields: fields
+                    .iter()
+                    .map(|field| self.symbol(program, *field))
+                    .collect(),
+                span: *span,
+            },
+            Instruction::MakeEnum {
+                enum_name,
+                variant_name,
+                has_payload,
+                span,
+            } => Instruction::MakeEnum {
+                enum_name: self.symbol(program, *enum_name),
+                variant_name: self.symbol(program, *variant_name),
+                has_payload: *has_payload,
+                span: *span,
+            },
+            Instruction::MakeList { len, span } => Instruction::MakeList {
+                len: *len,
+                span: *span,
+            },
+            Instruction::LoadName { target, span } => Instruction::LoadName {
+                target: self.name_ref_at(index, program, *target),
+                span: *span,
+            },
+            Instruction::LoadField { field, span } => Instruction::LoadField {
+                field: self.symbol(program, *field),
+                span: *span,
+            },
+            Instruction::LoadIndex { span } => Instruction::LoadIndex { span: *span },
+            Instruction::UpdateRecord { fields, span } => Instruction::UpdateRecord {
+                fields: fields
+                    .iter()
+                    .map(|field| self.symbol(program, *field))
+                    .collect(),
+                span: *span,
+            },
+            Instruction::Assign {
+                target,
+                mutable,
+                is_update,
+                span,
+            } => Instruction::Assign {
+                target: self.name_ref_at(index, program, *target),
+                mutable: *mutable,
+                is_update: *is_update,
+                span: *span,
+            },
+            Instruction::DefineFunction {
+                target,
+                function,
+                span,
+            } => Instruction::DefineFunction {
+                target: self.name_ref_at(index, program, *target),
+                function: self.function_maps[index][function],
+                span: *span,
+            },
+            Instruction::MakeClosure { function } => Instruction::MakeClosure {
+                function: self.function_maps[index][function],
+            },
+            Instruction::UnaryNeg { span } => Instruction::UnaryNeg { span: *span },
+            Instruction::UnaryNot { span } => Instruction::UnaryNot { span: *span },
+            Instruction::Binary { op, span } => Instruction::Binary {
+                op: *op,
+                span: *span,
+            },
+            Instruction::Call { argc, span } => Instruction::Call {
+                argc: *argc,
+                span: *span,
+            },
+            Instruction::JumpIfFalse { target, span } => Instruction::JumpIfFalse {
+                target: *target,
+                span: *span,
+            },
+            Instruction::JumpIfNotEnumVariant {
+                enum_name,
+                variant_name,
+                target,
+                span,
+            } => Instruction::JumpIfNotEnumVariant {
+                enum_name: self.symbol(program, *enum_name),
+                variant_name: self.symbol(program, *variant_name),
+                target: *target,
+                span: *span,
+            },
+            Instruction::MatchExhausted { enum_name, span } => Instruction::MatchExhausted {
+                enum_name: self.symbol(program, *enum_name),
+                span: *span,
+            },
+            Instruction::Jump { target } => Instruction::Jump { target: *target },
+            Instruction::PushScope => Instruction::PushScope,
+            Instruction::PopScope => Instruction::PopScope,
+            Instruction::Pop => Instruction::Pop,
+            Instruction::Return => Instruction::Return,
+        }
+    }
+
+    fn name_ref_at(&mut self, index: usize, program: &Program, name_ref: NameRef) -> NameRef {
+        NameRef {
+            binding: name_ref
+                .binding
+                .map(|binding| self.binding_maps[index][&binding]),
+            local: self.local_maps[index][&name_ref.local],
+            name: self.symbol(program, name_ref.name),
+        }
+    }
+
+    fn symbol(&mut self, program: &Program, symbol: Symbol) -> Symbol {
+        self.symbols.intern(program.symbols.resolve(symbol))
+    }
+}
+
+fn canonicalize_package_function_refs(program: &mut Program) {
+    let local_items = program
+        .locals
+        .iter()
+        .filter_map(|local| local.package_item.map(|item| (local.id, item)))
+        .collect::<HashMap<_, _>>();
+    let mut canonical = HashMap::new();
+    for instruction in &program.entry.instructions {
+        if let Instruction::DefineFunction { target, .. } = instruction
+            && let Some(item) = local_items.get(&target.local)
+        {
+            canonical.entry(*item).or_insert(*target);
+        }
+    }
+    for function in &program.functions {
+        for instruction in &function.chunk.instructions {
+            if let Instruction::DefineFunction { target, .. } = instruction
+                && let Some(item) = local_items.get(&target.local)
+            {
+                canonical.entry(*item).or_insert(*target);
+            }
+        }
+    }
+    rewrite_chunk_package_refs(&mut program.entry, &local_items, &canonical);
+    for function in &mut program.functions {
+        rewrite_chunk_package_refs(&mut function.chunk, &local_items, &canonical);
+    }
+    if let Some(main) = program.main
+        && let Some(item) = local_items.get(&main.local)
+        && let Some(target) = canonical.get(item)
+    {
+        program.main = Some(*target);
+    }
+}
+
+fn rewrite_chunk_package_refs(
+    chunk: &mut Chunk,
+    local_items: &HashMap<LocalId, PackageItemId>,
+    canonical: &HashMap<PackageItemId, NameRef>,
+) {
+    for instruction in &mut chunk.instructions {
+        if let Instruction::LoadName { target, .. } = instruction {
+            if let Some(item) = local_items.get(&target.local)
+                && let Some(canonical) = canonical.get(item)
+            {
+                *target = *canonical;
+            }
+        }
+    }
+}
+
+fn append_chunk(instructions: &mut Vec<Instruction>, chunk: Chunk) {
+    let offset = instructions.len();
+    instructions.extend(
+        chunk
+            .instructions
+            .into_iter()
+            .map(|instruction| offset_jump_targets(instruction, offset)),
+    );
+}
+
+fn offset_jump_targets(instruction: Instruction, offset: usize) -> Instruction {
+    match instruction {
+        Instruction::JumpIfFalse { target, span } => Instruction::JumpIfFalse {
+            target: target + offset,
+            span,
+        },
+        Instruction::JumpIfNotEnumVariant {
+            enum_name,
+            variant_name,
+            target,
+            span,
+        } => Instruction::JumpIfNotEnumVariant {
+            enum_name,
+            variant_name,
+            target: target + offset,
+            span,
+        },
+        Instruction::Jump { target } => Instruction::Jump {
+            target: target + offset,
+        },
+        instruction => instruction,
+    }
+}
+
 fn next_synthetic_local(locals: &[LocalDef]) -> u32 {
     locals
         .iter()

@@ -420,10 +420,27 @@ pub fn write_package_implementation_artifacts(
     let mut diagnostics = Vec::new();
 
     for package in &check.packages.packages {
-        match implementation_artifact::PackageImplementationArtifact::from_loaded_package(
-            package,
+        let Some(package_id) = check.packages.package_graph.package_id(&package.path) else {
+            continue;
+        };
+        let modules = check
+            .module_checks
+            .iter()
+            .filter(|module| module.package == package_id)
+            .map(|module| module.typed_program.clone())
+            .collect::<Vec<_>>();
+        if modules.is_empty() {
+            continue;
+        }
+        let typed_program =
+            typed_hir::merge_modules(&modules, check.packages.package_graph.clone());
+        let bytecode_program = bytecode::compile(mir::lower_typed(&typed_program));
+        match implementation_artifact::PackageImplementationArtifact::from_bytecode_package(
+            &package.path,
             &interfaces,
             &check.typed_program.symbols,
+            &check.packages.package_graph,
+            bytecode_program,
         )
         .and_then(|artifact| artifact.write_persisted_artifact(artifact_root))
         {
@@ -484,75 +501,6 @@ pub fn compile_typed_path_against_cached_artifact_root(
     )
 }
 
-pub fn compile_typed_path_for_run_against_artifact_root(
-    path: &Path,
-    artifact_root: &Path,
-) -> Result<TypedHirProgram, Vec<Diagnostic>> {
-    let checked_artifact_path = cache::package_check_artifact_path_from_entry(artifact_root, path)?;
-    let key = cache::compute_package_check_cache_key(path, artifact_root)?;
-    cache::validate_package_check_artifact(&checked_artifact_path, &key)?;
-
-    let package_paths = package::import_paths_from_entry(path)?;
-    let mut symbols = symbol::SymbolTable::default();
-    let interfaces = PackageInterfaceGraph::read_persisted_artifacts(
-        artifact_root,
-        &package_paths,
-        &mut symbols,
-    )?;
-    let implementation_artifacts =
-        implementation_artifact::read_persisted_artifacts(artifact_root, &interfaces, &symbols)?;
-    let artifact_sources =
-        implementation_artifact::source_map_from_artifacts(implementation_artifacts);
-    let packages =
-        package::load_package_graph_from_entry_against_artifact_sources(path, artifact_sources)?;
-    let diagnostics = package::validate_loaded_package_graph(&packages);
-    if !diagnostics.is_empty() {
-        return Err(diagnostics);
-    }
-    let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
-    let module_checks = typecheck_loaded_package_modules(&packages, &signatures)?;
-    let typed_program = package_typed_program(&packages, &module_checks)?;
-    let rebuilt_interfaces = typed_program.package_interfaces();
-    let mut diagnostics = Vec::new();
-    for interface in &interfaces.packages {
-        let expected = interfaces.stable_hash_for_package(&interface.path, &symbols);
-        let actual =
-            rebuilt_interfaces.stable_hash_for_package(&interface.path, &typed_program.symbols);
-        match (expected, actual) {
-            (Some(expected), Some(actual)) if expected == actual => {}
-            (Some(expected), Some(actual)) => {
-                diagnostics.push(
-                    Diagnostic::new(
-                        "PK023",
-                        format!(
-                            "package implementation artifact for `{}` has interface hash `{actual}` but loaded interface expects `{expected}`",
-                            interface.path
-                        ),
-                        Default::default(),
-                    )
-                    .with_suggestion("regenerate the package implementation artifact"),
-                );
-            }
-            _ => diagnostics.push(
-                Diagnostic::new(
-                    "PK023",
-                    format!(
-                        "package implementation artifact for `{}` does not match the loaded interface",
-                        interface.path
-                    ),
-                    Default::default(),
-                )
-                .with_suggestion("regenerate the package implementation artifact"),
-            ),
-        }
-    }
-    if diagnostics.is_empty() {
-        Ok(typed_program)
-    } else {
-        Err(diagnostics)
-    }
-}
-
 pub fn check_package_aware_path_against_cached_artifact_root(
     path: &Path,
     artifact_root: &Path,
@@ -600,8 +548,19 @@ pub fn compile_bytecode_path_for_run_against_artifact_root(
     path: &Path,
     artifact_root: &Path,
 ) -> Result<BytecodeProgram, Vec<Diagnostic>> {
-    let program = compile_typed_path_for_run_against_artifact_root(path, artifact_root)?;
-    Ok(bytecode::compile(mir::lower_typed(&program)))
+    let entry = compile_typed_path_against_cached_artifact_root(path, artifact_root)?;
+    let entry = bytecode::compile(mir::lower_typed(&entry));
+    let package_paths = package::import_paths_from_entry(path)?;
+    let mut symbols = symbol::SymbolTable::default();
+    let interfaces = PackageInterfaceGraph::read_persisted_artifacts(
+        artifact_root,
+        &package_paths,
+        &mut symbols,
+    )?;
+    let implementation_artifacts =
+        implementation_artifact::read_persisted_artifacts(artifact_root, &interfaces, &symbols)?;
+    let dependencies = implementation_artifact::programs_from_artifacts(implementation_artifacts);
+    Ok(bytecode::merge(entry, dependencies))
 }
 
 pub fn run_source(source: &str) -> Result<RunOutcome, Vec<Diagnostic>> {
