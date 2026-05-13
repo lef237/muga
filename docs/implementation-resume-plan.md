@@ -151,11 +151,12 @@ Ada
 - CLI `emit-interface` and `emit-check-cache` can produce the artifacts consumed by `check --artifact-root`.
 - CLI `emit-interface` can emit all reachable interfaces without manually naming each dependency package.
 - Default CLI package checking and execution still read and flatten dependency bodies.
-- Project-mode artifact-root config and full incremental artifact reuse are still not implemented.
+- Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
+- Full incremental artifact reuse is still not implemented.
 
 ## Recommended Next Implementation
 
-The next implementation theme is project-mode artifact-root config and fuller package artifact reuse.
+The next implementation theme is fuller package artifact reuse while keeping artifact roots explicit on the CLI.
 
 Reasoning:
 
@@ -171,7 +172,8 @@ Reasoning:
 - Package check cache keys now include entry source content and dependency interface hashes.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
-- The remaining boundary pieces are project configuration, real artifact storage/reuse, and eventually making interface-backed checking the normal package path.
+- `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
+- The remaining boundary pieces are real artifact storage/reuse, dependency/lockfile-driven project configuration, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 
@@ -232,10 +234,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 9. Package cache keys and invalidation | Define source/interface/dependency hash inputs, persist checked-package metadata, reject missing/stale cache artifacts, and keep cache-backed checking aligned with body checking. | `src/cache.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
 | 10. CLI artifact-root checking | Expose a narrow CLI path for artifact-backed checking using `.mgi` and `.mgc` artifacts. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Medium |
 | 11. CLI artifact generation | Add CLI/library artifact generation for `.mgi` and `.mgc`, and verify generated artifacts drive `check --artifact-root`. | `src/main.rs`, `src/lib.rs`, `src/interface.rs`, tests/docs | Done | Medium |
-| 12. Project artifact-root config and reuse | Decide whether `muga.toml` should name an artifact root before dependency declarations exist, then use the configured root without changing default non-configured behavior. | package/CLI/docs/tests | 2-4 days | Medium |
+| 12. Package artifact reuse | Keep artifact roots explicit on the CLI, avoid adding `muga.toml` artifact-root config for now, and improve reuse around the existing `.mgi` / `.mgc` workflow. | package/CLI/docs/tests | 2-4 days | Medium |
 | 13. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 12: decide whether project manifests should name an artifact root before dependency declarations exist.
+The safest immediate code slice is now Slice 12: improve package artifact reuse without adding artifact-root config to `muga.toml`.
 
 ## Test Plan For The Next Code Slice
 
@@ -243,8 +245,9 @@ Add tests around these behavioral anchors before enabling artifact-backed packag
 
 Project/artifact reuse:
 
-- `project_check_uses_configured_artifact_root_if_project_mode_gets_config`
-- `project_artifact_root_cli_override_wins_if_both_exist`
+- `artifact_reuse_keeps_cli_artifact_root_explicit`
+- `artifact_workflow_rejects_missing_or_stale_artifacts_without_source_fallback`
+- `manifest_project_without_artifact_config_keeps_body_based_checking`
 
 Compatibility:
 
@@ -255,7 +258,8 @@ Compatibility:
 
 - [ ] Existing `cargo test` remains green.
 - [ ] Existing package-body checking remains source-compatible.
-- [ ] Project artifact-root behavior is explicit and documented if added.
+- [ ] No `muga.toml` artifact-root field is added before dependency declarations and lockfiles.
+- [ ] Artifact-root behavior remains explicit through CLI flags.
 - [ ] Default CLI checking/execution remains unchanged when no artifact root is provided.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
@@ -267,7 +271,7 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is project artifact-root config or dependency artifact discovery.
+5. [ ] Keep artifact roots explicit on the CLI; do not add `muga.toml` artifact-root config until dependency declarations and lockfiles exist.
 6. [ ] Keep package flattening unchanged for normal execution unless the task explicitly changes package checking.
 7. [ ] After every compiler-core change, verify at least:
 
