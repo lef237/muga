@@ -13,7 +13,7 @@ fn main() -> ExitCode {
     match cli.mode {
         Mode::Check => {
             let result = if let Some(artifact_root) = &cli.artifact_root {
-                muga::compile_typed_path_against_cached_artifact_root(
+                muga::check_package_aware_path_against_cached_artifact_root(
                     Path::new(&cli.path),
                     Path::new(artifact_root),
                 )
