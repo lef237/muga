@@ -234,6 +234,9 @@ struct TypeChecker {
     substitutions: HashMap<u32, Type>,
     package_records: HashMap<PackageItemId, Symbol>,
     package_enums: HashMap<PackageItemId, Symbol>,
+    package_record_items: HashMap<Symbol, PackageItemId>,
+    package_enum_items: HashMap<Symbol, PackageItemId>,
+    package_function_items: HashMap<Symbol, PackageItemId>,
     package_items_by_binding: HashMap<BindingId, PackageItemId>,
 }
 
@@ -254,6 +257,9 @@ impl TypeChecker {
             substitutions: HashMap::new(),
             package_records: HashMap::new(),
             package_enums: HashMap::new(),
+            package_record_items: HashMap::new(),
+            package_enum_items: HashMap::new(),
+            package_function_items: HashMap::new(),
             package_items_by_binding: HashMap::new(),
         };
         checker.install_prelude();
@@ -316,10 +322,16 @@ impl TypeChecker {
         for record in &environment.records {
             let symbol = self.symbol(&record.name);
             self.package_records.insert(record.item, symbol);
+            self.package_record_items.insert(symbol, record.item);
         }
         for enumeration in &environment.enums {
             let symbol = self.symbol(&enumeration.name);
             self.package_enums.insert(enumeration.item, symbol);
+            self.package_enum_items.insert(symbol, enumeration.item);
+        }
+        for function in &environment.functions {
+            let symbol = self.symbol(&function.name);
+            self.package_function_items.insert(symbol, function.item);
         }
 
         for visible in &environment.records {
@@ -1251,12 +1263,15 @@ impl TypeChecker {
                 } else {
                     BindingKind::Immutable
                 };
+                let enum_item = enumeration
+                    .package_item
+                    .or_else(|| self.package_enum_items.get(&name).copied());
                 self.insert_current(
                     qualified,
                     kind,
                     Type::EnumConstructor {
                         enum_name: name,
-                        enum_item: enumeration.package_item,
+                        enum_item,
                         variant_name,
                     },
                     variant.span,
@@ -2461,6 +2476,8 @@ impl TypeChecker {
                 );
                 if let Some(item) = func.package_item {
                     self.package_items_by_binding.insert(binding, item);
+                } else if let Some(item) = self.package_function_items.get(&name).copied() {
+                    self.package_items_by_binding.insert(binding, item);
                 }
             }
         }
@@ -2800,11 +2817,20 @@ impl TypeChecker {
             Type::Int => TypeInfo::Int,
             Type::Bool => TypeInfo::Bool,
             Type::String => TypeInfo::String,
-            Type::Record(symbol) => TypeInfo::Record(symbol),
-            Type::Enum(symbol, args) => TypeInfo::Enum {
-                symbol,
-                args: args.iter().map(|arg| self.type_info_for(arg)).collect(),
-            },
+            Type::Record(symbol) => self
+                .package_record_items
+                .get(&symbol)
+                .copied()
+                .map(|item| TypeInfo::PackageRecord { symbol, item })
+                .unwrap_or(TypeInfo::Record(symbol)),
+            Type::Enum(symbol, args) => {
+                let args = args.iter().map(|arg| self.type_info_for(arg)).collect();
+                if let Some(item) = self.package_enum_items.get(&symbol).copied() {
+                    TypeInfo::PackageEnum { symbol, item, args }
+                } else {
+                    TypeInfo::Enum { symbol, args }
+                }
+            }
             Type::GenericParam(symbol) => TypeInfo::GenericParam(symbol),
             Type::List(item) => TypeInfo::List(Box::new(self.type_info_for(&item))),
             Type::Map(key, value) => TypeInfo::Map(
