@@ -1707,6 +1707,34 @@ fn cli_emit_interface_writes_requested_package_artifacts() {
 }
 
 #[test]
+fn cli_emit_interface_without_package_writes_reachable_package_artifacts() {
+    let artifact_root = temp_package_root("cli-emit-interface-all");
+    let output = muga_command()
+        .arg("emit-interface")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success(), "{output:#?}");
+    assert!(stdout.contains("app__enum_demo.mgi"), "{stdout}");
+    assert!(stdout.contains("util__states.mgi"), "{stdout}");
+    assert!(
+        muga::interface::PackageInterfaceGraph::persisted_file_path(
+            &artifact_root,
+            "app::enum_demo"
+        )
+        .is_file()
+    );
+    assert!(
+        muga::interface::PackageInterfaceGraph::persisted_file_path(&artifact_root, "util::states")
+            .is_file()
+    );
+}
+
+#[test]
 fn cli_emit_check_cache_writes_entry_package_mgc() {
     let artifact_root = temp_package_root("cli-emit-check-cache");
     emit_states_interface(&artifact_root);

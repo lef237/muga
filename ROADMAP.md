@@ -71,9 +71,8 @@ The next code slice is project-mode artifact-root config and fuller package arti
 
 1. Decide whether `muga.toml` should name an artifact root before dependency declarations exist.
 2. If yes, route project-mode `check` through the configured artifact root while keeping CLI flags as an override.
-3. Add a clearer package artifact workflow that avoids manually naming dependency packages where possible.
-4. Keep artifact-backed checks from silently falling back to dependency implementation bodies.
-5. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
+3. Keep artifact-backed checks from silently falling back to dependency implementation bodies.
+4. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
 
 ## Compiler Architecture Path
 
@@ -122,7 +121,6 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 Package-interface queue:
 
 - project-mode artifact-root config
-- dependency package discovery for artifact generation
 - full package artifact storage/reuse after check cache metadata
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported

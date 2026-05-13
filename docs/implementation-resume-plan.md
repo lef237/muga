@@ -6,7 +6,7 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after CLI artifact generation support: 221 tests, 0 failures.
+- [x] `cargo test` passed after CLI artifact generation support: 222 tests, 0 failures.
 - [x] `cargo clippy --all-targets -- -D warnings` passed after CLI artifact generation support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
@@ -91,6 +91,7 @@ Ada
 - [x] missing or stale `.mgc` package check artifacts are rejected with regeneration guidance.
 - [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
 - [x] `muga emit-interface` and `muga emit-check-cache` write `.mgi` and `.mgc` artifacts for explicit artifact-backed checks.
+- [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
 - [ ] default CLI checking/execution still uses package flattening and dependency source loading.
 
 ### Diagnostics
@@ -148,6 +149,7 @@ Ada
 - A library API can compute package check cache keys and validate `.mgc` artifacts against source/dependency interface hashes.
 - CLI `check --artifact-root` can consume `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
 - CLI `emit-interface` and `emit-check-cache` can produce the artifacts consumed by `check --artifact-root`.
+- CLI `emit-interface` can emit all reachable interfaces without manually naming each dependency package.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config and full incremental artifact reuse are still not implemented.
 
@@ -169,7 +171,7 @@ Reasoning:
 - Package check cache keys now include entry source content and dependency interface hashes.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
-- The remaining boundary pieces are project configuration, dependency artifact discovery, real artifact storage/reuse, and eventually making interface-backed checking the normal package path.
+- The remaining boundary pieces are project configuration, real artifact storage/reuse, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 
@@ -230,10 +232,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 9. Package cache keys and invalidation | Define source/interface/dependency hash inputs, persist checked-package metadata, reject missing/stale cache artifacts, and keep cache-backed checking aligned with body checking. | `src/cache.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
 | 10. CLI artifact-root checking | Expose a narrow CLI path for artifact-backed checking using `.mgi` and `.mgc` artifacts. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Medium |
 | 11. CLI artifact generation | Add CLI/library artifact generation for `.mgi` and `.mgc`, and verify generated artifacts drive `check --artifact-root`. | `src/main.rs`, `src/lib.rs`, `src/interface.rs`, tests/docs | Done | Medium |
-| 12. Project artifact-root config and reuse | Decide whether `muga.toml` should name an artifact root before dependency declarations exist, and reduce manual dependency package naming where possible. | package/CLI/docs/tests | 2-4 days | Medium |
+| 12. Project artifact-root config and reuse | Decide whether `muga.toml` should name an artifact root before dependency declarations exist, then use the configured root without changing default non-configured behavior. | package/CLI/docs/tests | 2-4 days | Medium |
 | 13. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 12: decide and implement project artifact-root config, or alternatively add dependency artifact discovery before changing project defaults.
+The safest immediate code slice is now Slice 12: decide whether project manifests should name an artifact root before dependency declarations exist.
 
 ## Test Plan For The Next Code Slice
 
@@ -242,7 +244,6 @@ Add tests around these behavioral anchors before enabling artifact-backed packag
 Project/artifact reuse:
 
 - `project_check_uses_configured_artifact_root_if_project_mode_gets_config`
-- `emit_interface_without_package_writes_imported_dependency_interfaces`
 - `project_artifact_root_cli_override_wins_if_both_exist`
 
 Compatibility:
@@ -255,7 +256,6 @@ Compatibility:
 - [ ] Existing `cargo test` remains green.
 - [ ] Existing package-body checking remains source-compatible.
 - [ ] Project artifact-root behavior is explicit and documented if added.
-- [ ] Dependency artifact generation no longer requires avoidable manual package naming.
 - [ ] Default CLI checking/execution remains unchanged when no artifact root is provided.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
