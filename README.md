@@ -174,7 +174,7 @@ Implemented:
 - deterministic v1 package interface text persistence with content hashes, direct dependency metadata, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
 - downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts, including transitive public-signature type dependencies, without reading dependency implementation bodies
 - package check cache keys combine entry package source content with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
-- `muga check --artifact-root <dir>` validates package entries against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
+- `muga check --artifact-root <dir>` validates package entries through package-aware checks against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
 - `muga emit-artifacts` writes reachable `.mgi` interfaces and the entry `.mgc` check cache; lower-level `emit-interface` and `emit-check-cache` commands remain available
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 - library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before handing valid programs to the legacy typed checking path

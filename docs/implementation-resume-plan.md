@@ -91,7 +91,7 @@ Ada
 - [x] missing and hash-mismatched interface artifacts are rejected with regeneration guidance.
 - [x] package check cache keys include entry package source hashes and loaded direct/transitive dependency interface hashes.
 - [x] missing or stale `.mgc` package check artifacts are rejected with regeneration guidance.
-- [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
+- [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts through the package-aware check path without reading dependency implementation bodies.
 - [x] `muga emit-interface` and `muga emit-check-cache` write `.mgi` and `.mgc` artifacts for explicit artifact-backed checks.
 - [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
 - [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before delegating valid programs to the legacy typed checking path.
@@ -168,6 +168,7 @@ Ada
 - Retained package-aware module typecheck outputs now carry package binding identity through typed HIR lowering, so module-local lowering can preserve package item call targets without relying on flattened AST metadata.
 - The package-aware API now exposes those lowered per-module typed HIR programs alongside each module typecheck output.
 - The package-aware API can now load dependency signatures from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source.
+- CLI `check --artifact-root` now uses that package-aware artifact path.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
 - Full incremental artifact reuse and full typed HIR generation without the flattened typed path are still not implemented.
