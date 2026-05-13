@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     path::{Path, PathBuf},
 };
@@ -226,11 +226,15 @@ impl PackageInterfaceGraph {
                     "package".to_string(),
                     package.package.as_u32().to_string(),
                     package.path.clone(),
+                    package.dependencies.len().to_string(),
                     package.records.len().to_string(),
                     package.enums.len().to_string(),
                     package.functions.len().to_string(),
                 ],
             );
+            for dependency in &package.dependencies {
+                push_line(&mut out, &["dependency".to_string(), dependency.clone()]);
+            }
             for record in &package.records {
                 push_line(
                     &mut out,
@@ -394,10 +398,18 @@ impl PackageInterfaceGraph {
     ) -> Result<Self, Vec<Diagnostic>> {
         let mut packages = Vec::new();
         let mut seen_paths = HashSet::new();
+        let mut queued_paths = HashSet::new();
+        let mut queue = VecDeque::new();
         let mut diagnostics = Vec::new();
 
         for package_path in package_paths {
-            let artifact_path = Self::persisted_file_path(root, package_path);
+            if queued_paths.insert(package_path.clone()) {
+                queue.push_back(package_path.clone());
+            }
+        }
+
+        while let Some(package_path) = queue.pop_front() {
+            let artifact_path = Self::persisted_file_path(root, &package_path);
             if !artifact_path.is_file() {
                 diagnostics.push(
                     Diagnostic::new(
@@ -420,7 +432,7 @@ impl PackageInterfaceGraph {
                     continue;
                 }
             };
-            if graph.package_by_path(package_path).is_none() {
+            if graph.package_by_path(&package_path).is_none() {
                 diagnostics.push(
                     Diagnostic::new(
                         "PK016",
@@ -434,6 +446,11 @@ impl PackageInterfaceGraph {
                 );
             }
             for package in graph.packages {
+                for dependency in &package.dependencies {
+                    if queued_paths.insert(dependency.clone()) {
+                        queue.push_back(dependency.clone());
+                    }
+                }
                 if seen_paths.insert(package.path.clone()) {
                     packages.push(package);
                 }
@@ -459,6 +476,7 @@ impl PackageInterfaceGraph {
                 .map(|package| PackageInterface {
                     package: package.package,
                     path: package.path.clone(),
+                    dependencies: package.dependencies.clone(),
                     records: package
                         .records
                         .iter()
@@ -583,6 +601,7 @@ impl PackageInterfaceGraph {
 pub struct PackageInterface {
     pub package: PackageId,
     pub path: String,
+    pub dependencies: Vec<String>,
     pub records: Vec<PackageInterfaceRecord>,
     pub enums: Vec<PackageInterfaceEnum>,
     pub functions: Vec<PackageInterfaceFunction>,
@@ -711,16 +730,37 @@ impl<'a> PersistedInterfaceParser<'a> {
     }
 
     fn parse_package(&mut self, parts: Vec<&str>) -> Option<PackageInterface> {
-        if parts.len() != 6 {
+        if parts.len() != 6 && parts.len() != 7 {
             self.push_error("invalid package line");
             return None;
         }
         let package = PackageId::new(self.parse_u32(parts[1], "package id")?);
         let path = parts[2].to_string();
-        let record_count = self.parse_usize(parts[3], "record count")?;
-        let enum_count = self.parse_usize(parts[4], "enum count")?;
-        let function_count = self.parse_usize(parts[5], "function count")?;
+        let (dependency_count, record_count, enum_count, function_count) = if parts.len() == 7 {
+            (
+                self.parse_usize(parts[3], "dependency count")?,
+                self.parse_usize(parts[4], "record count")?,
+                self.parse_usize(parts[5], "enum count")?,
+                self.parse_usize(parts[6], "function count")?,
+            )
+        } else {
+            (
+                0,
+                self.parse_usize(parts[3], "record count")?,
+                self.parse_usize(parts[4], "enum count")?,
+                self.parse_usize(parts[5], "function count")?,
+            )
+        };
 
+        let mut dependencies = Vec::with_capacity(dependency_count);
+        for _ in 0..dependency_count {
+            let dependency = self.expect_line("dependency")?;
+            if dependency.len() != 2 {
+                self.push_error("invalid package dependency line");
+                return None;
+            }
+            dependencies.push(dependency[1].to_string());
+        }
         let mut records = Vec::with_capacity(record_count);
         for _ in 0..record_count {
             records.push(self.parse_record()?);
@@ -737,6 +777,7 @@ impl<'a> PersistedInterfaceParser<'a> {
         Some(PackageInterface {
             package,
             path,
+            dependencies,
             records,
             enums,
             functions,
@@ -1341,6 +1382,7 @@ impl Program {
                 PackageInterface {
                     package: package.id,
                     path: package.path.clone(),
+                    dependencies: package_interface_dependencies(package),
                     records,
                     enums,
                     functions,
@@ -1364,6 +1406,18 @@ impl Program {
         validator.validate();
         validator.diagnostics
     }
+}
+
+fn package_interface_dependencies(package: &crate::package::PackageInfo) -> Vec<String> {
+    let mut dependencies = package
+        .imports
+        .iter()
+        .map(|import| import.path.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    dependencies.sort();
+    dependencies
 }
 
 struct PackageInterfaceReferenceValidator<'a> {
