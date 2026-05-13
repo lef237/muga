@@ -1,11 +1,17 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+};
 
 use crate::{
     ast::Visibility,
     diagnostic::Diagnostic,
     identity::{PackageId, PackageItemId},
     package::{PackageItemInfo, PackageItemKind, PackageSymbolGraph},
+    prelude, span,
     span::Span,
+    symbol::SymbolTable,
     typed_hir::{
         Block, EnumStmt, Expr, ExprKind, FunctionStmt, IdentTarget, Program, RecordStmt, Stmt,
         ValueBlock,
@@ -181,6 +187,138 @@ pub struct PackageInterfaceGraph {
 }
 
 impl PackageInterfaceGraph {
+    pub fn to_persisted_text(&self, symbols: &SymbolTable) -> String {
+        let mut out = String::from("muga-package-interface-v1\n");
+        for package in &self.packages {
+            push_line(
+                &mut out,
+                &[
+                    "package".to_string(),
+                    package.package.as_u32().to_string(),
+                    package.path.clone(),
+                    package.records.len().to_string(),
+                    package.enums.len().to_string(),
+                    package.functions.len().to_string(),
+                ],
+            );
+            for record in &package.records {
+                push_line(
+                    &mut out,
+                    &[
+                        "record".to_string(),
+                        record.item.as_u32().to_string(),
+                        record.name.clone(),
+                        format_span(record.span),
+                        record.fields.len().to_string(),
+                    ],
+                );
+                for field in &record.fields {
+                    push_line(
+                        &mut out,
+                        &[
+                            "field".to_string(),
+                            field.name.clone(),
+                            format_span(field.span),
+                            format_type_info(&field.ty, symbols),
+                        ],
+                    );
+                }
+            }
+            for enumeration in &package.enums {
+                let mut parts = vec![
+                    "enum".to_string(),
+                    enumeration.item.as_u32().to_string(),
+                    enumeration.name.clone(),
+                    format_span(enumeration.span),
+                    enumeration.type_params.len().to_string(),
+                ];
+                parts.extend(enumeration.type_params.iter().cloned());
+                parts.push(enumeration.variants.len().to_string());
+                push_line(&mut out, &parts);
+                for variant in &enumeration.variants {
+                    push_line(
+                        &mut out,
+                        &[
+                            "variant".to_string(),
+                            variant.name.clone(),
+                            format_span(variant.span),
+                            match &variant.payload {
+                                Some(payload) => format_type_info(payload, symbols),
+                                None => "-".to_string(),
+                            },
+                        ],
+                    );
+                }
+            }
+            for function in &package.functions {
+                push_line(
+                    &mut out,
+                    &[
+                        "function".to_string(),
+                        function.item.as_u32().to_string(),
+                        function.name.clone(),
+                        format_span(function.span),
+                        function.params.len().to_string(),
+                        format_type_info(&function.ret, symbols),
+                    ],
+                );
+                for param in &function.params {
+                    push_line(
+                        &mut out,
+                        &[
+                            "param".to_string(),
+                            param.name.clone(),
+                            format_span(param.span),
+                            format_type_info(&param.ty, symbols),
+                        ],
+                    );
+                }
+            }
+        }
+        out
+    }
+
+    pub fn from_persisted_text(
+        text: &str,
+        symbols: &mut SymbolTable,
+    ) -> Result<Self, Vec<Diagnostic>> {
+        PersistedInterfaceParser::new(text, symbols).parse()
+    }
+
+    pub fn write_persisted_file(
+        &self,
+        path: &Path,
+        symbols: &SymbolTable,
+    ) -> Result<(), Diagnostic> {
+        fs::write(path, self.to_persisted_text(symbols)).map_err(|error| {
+            Diagnostic::new(
+                "PK018",
+                format!(
+                    "failed to write package interface `{}`: {error}",
+                    path.display()
+                ),
+                Span::default(),
+            )
+        })
+    }
+
+    pub fn read_persisted_file(
+        path: &Path,
+        symbols: &mut SymbolTable,
+    ) -> Result<Self, Vec<Diagnostic>> {
+        let text = fs::read_to_string(path).map_err(|error| {
+            vec![Diagnostic::new(
+                "PK018",
+                format!(
+                    "failed to read package interface `{}`: {error}",
+                    path.display()
+                ),
+                Span::default(),
+            )]
+        })?;
+        Self::from_persisted_text(&text, symbols)
+    }
+
     pub fn package(&self, id: PackageId) -> Option<&PackageInterface> {
         self.packages
             .iter()
@@ -285,6 +423,499 @@ pub struct PackageInterfaceParam {
     pub name: String,
     pub ty: TypeInfo,
     pub span: Span,
+}
+
+struct PersistedInterfaceParser<'a> {
+    lines: Vec<&'a str>,
+    index: usize,
+    symbols: &'a mut SymbolTable,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl<'a> PersistedInterfaceParser<'a> {
+    fn new(text: &'a str, symbols: &'a mut SymbolTable) -> Self {
+        Self {
+            lines: text.lines().collect(),
+            index: 0,
+            symbols,
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn parse(mut self) -> Result<PackageInterfaceGraph, Vec<Diagnostic>> {
+        match self.next_parts() {
+            Some(parts) if parts == ["muga-package-interface-v1"] => {}
+            Some(_) => self.push_error("invalid package interface header"),
+            None => self.push_error("empty package interface"),
+        }
+
+        let mut packages = Vec::new();
+        while self.index < self.lines.len() {
+            let Some(parts) = self.next_parts() else {
+                break;
+            };
+            if parts.first().copied() != Some("package") {
+                self.push_error("expected package line");
+                break;
+            }
+            let Some(package) = self.parse_package(parts) else {
+                break;
+            };
+            packages.push(package);
+        }
+
+        if self.diagnostics.is_empty() {
+            Ok(PackageInterfaceGraph { packages })
+        } else {
+            Err(self.diagnostics)
+        }
+    }
+
+    fn parse_package(&mut self, parts: Vec<&str>) -> Option<PackageInterface> {
+        if parts.len() != 6 {
+            self.push_error("invalid package line");
+            return None;
+        }
+        let package = PackageId::new(self.parse_u32(parts[1], "package id")?);
+        let path = parts[2].to_string();
+        let record_count = self.parse_usize(parts[3], "record count")?;
+        let enum_count = self.parse_usize(parts[4], "enum count")?;
+        let function_count = self.parse_usize(parts[5], "function count")?;
+
+        let mut records = Vec::with_capacity(record_count);
+        for _ in 0..record_count {
+            records.push(self.parse_record()?);
+        }
+        let mut enums = Vec::with_capacity(enum_count);
+        for _ in 0..enum_count {
+            enums.push(self.parse_enum()?);
+        }
+        let mut functions = Vec::with_capacity(function_count);
+        for _ in 0..function_count {
+            functions.push(self.parse_function()?);
+        }
+
+        Some(PackageInterface {
+            package,
+            path,
+            records,
+            enums,
+            functions,
+        })
+    }
+
+    fn parse_record(&mut self) -> Option<PackageInterfaceRecord> {
+        let parts = self.expect_line("record")?;
+        if parts.len() != 5 {
+            self.push_error("invalid record line");
+            return None;
+        }
+        let item = PackageItemId::new(self.parse_u32(parts[1], "record item id")?);
+        let name = parts[2].to_string();
+        let span = self.parse_span(parts[3])?;
+        let field_count = self.parse_usize(parts[4], "field count")?;
+        let mut fields = Vec::with_capacity(field_count);
+        for _ in 0..field_count {
+            let field = self.expect_line("field")?;
+            if field.len() != 4 {
+                self.push_error("invalid field line");
+                return None;
+            }
+            fields.push(PackageInterfaceField {
+                name: field[1].to_string(),
+                span: self.parse_span(field[2])?,
+                ty: self.parse_type(field[3])?,
+            });
+        }
+        Some(PackageInterfaceRecord {
+            item,
+            name,
+            fields,
+            span,
+        })
+    }
+
+    fn parse_enum(&mut self) -> Option<PackageInterfaceEnum> {
+        let parts = self.expect_line("enum")?;
+        if parts.len() < 6 {
+            self.push_error("invalid enum line");
+            return None;
+        }
+        let item = PackageItemId::new(self.parse_u32(parts[1], "enum item id")?);
+        let name = parts[2].to_string();
+        let span = self.parse_span(parts[3])?;
+        let type_param_count = self.parse_usize(parts[4], "enum type parameter count")?;
+        let variant_count_index = 5 + type_param_count;
+        if parts.len() != variant_count_index + 1 {
+            self.push_error("invalid enum type parameter list");
+            return None;
+        }
+        let type_params = parts[5..variant_count_index]
+            .iter()
+            .map(|part| (*part).to_string())
+            .collect::<Vec<_>>();
+        let variant_count = self.parse_usize(parts[variant_count_index], "enum variant count")?;
+        let mut variants = Vec::with_capacity(variant_count);
+        for _ in 0..variant_count {
+            let variant = self.expect_line("variant")?;
+            if variant.len() != 4 {
+                self.push_error("invalid enum variant line");
+                return None;
+            }
+            variants.push(PackageInterfaceEnumVariant {
+                name: variant[1].to_string(),
+                span: self.parse_span(variant[2])?,
+                payload: if variant[3] == "-" {
+                    None
+                } else {
+                    Some(self.parse_type(variant[3])?)
+                },
+            });
+        }
+        Some(PackageInterfaceEnum {
+            item,
+            name,
+            type_params,
+            variants,
+            span,
+        })
+    }
+
+    fn parse_function(&mut self) -> Option<PackageInterfaceFunction> {
+        let parts = self.expect_line("function")?;
+        if parts.len() != 6 {
+            self.push_error("invalid function line");
+            return None;
+        }
+        let item = PackageItemId::new(self.parse_u32(parts[1], "function item id")?);
+        let name = parts[2].to_string();
+        let span = self.parse_span(parts[3])?;
+        let param_count = self.parse_usize(parts[4], "function parameter count")?;
+        let ret = self.parse_type(parts[5])?;
+        let mut params = Vec::with_capacity(param_count);
+        for _ in 0..param_count {
+            let param = self.expect_line("param")?;
+            if param.len() != 4 {
+                self.push_error("invalid function parameter line");
+                return None;
+            }
+            params.push(PackageInterfaceParam {
+                name: param[1].to_string(),
+                span: self.parse_span(param[2])?,
+                ty: self.parse_type(param[3])?,
+            });
+        }
+        Some(PackageInterfaceFunction {
+            item,
+            name,
+            params,
+            ret,
+            span,
+        })
+    }
+
+    fn expect_line(&mut self, tag: &str) -> Option<Vec<&'a str>> {
+        let parts = self.next_parts()?;
+        if parts.first().copied() != Some(tag) {
+            self.push_error(format!("expected {tag} line"));
+            return None;
+        }
+        Some(parts)
+    }
+
+    fn next_parts(&mut self) -> Option<Vec<&'a str>> {
+        let line = *self.lines.get(self.index)?;
+        self.index += 1;
+        Some(line.split('\t').collect())
+    }
+
+    fn parse_u32(&mut self, value: &str, label: &str) -> Option<u32> {
+        value.parse().map_or_else(
+            |_| {
+                self.push_error(format!("invalid {label} `{value}`"));
+                None
+            },
+            Some,
+        )
+    }
+
+    fn parse_usize(&mut self, value: &str, label: &str) -> Option<usize> {
+        value.parse().map_or_else(
+            |_| {
+                self.push_error(format!("invalid {label} `{value}`"));
+                None
+            },
+            Some,
+        )
+    }
+
+    fn parse_span(&mut self, value: &str) -> Option<Span> {
+        let Some((start, end)) = value.split_once('-') else {
+            self.push_error(format!("invalid span `{value}`"));
+            return None;
+        };
+        let Some((start_line, start_column)) = start.split_once(':') else {
+            self.push_error(format!("invalid span `{value}`"));
+            return None;
+        };
+        let Some((end_line, end_column)) = end.split_once(':') else {
+            self.push_error(format!("invalid span `{value}`"));
+            return None;
+        };
+        Some(Span::new(
+            span::Position::new(
+                self.parse_usize(start_line, "span start line")?,
+                self.parse_usize(start_column, "span start column")?,
+            ),
+            span::Position::new(
+                self.parse_usize(end_line, "span end line")?,
+                self.parse_usize(end_column, "span end column")?,
+            ),
+        ))
+    }
+
+    fn parse_type(&mut self, value: &str) -> Option<TypeInfo> {
+        let tokens = value.split_whitespace().collect::<Vec<_>>();
+        let mut parser = TypeInfoParser {
+            tokens: &tokens,
+            index: 0,
+            symbols: self.symbols,
+        };
+        match parser.parse() {
+            Ok(ty) if parser.index == tokens.len() => Some(ty),
+            Ok(_) => {
+                self.push_error(format!("trailing tokens in type `{value}`"));
+                None
+            }
+            Err(message) => {
+                self.push_error(message);
+                None
+            }
+        }
+    }
+
+    fn push_error(&mut self, message: impl Into<String>) {
+        self.diagnostics
+            .push(Diagnostic::new("PK018", message.into(), Span::default()));
+    }
+}
+
+struct TypeInfoParser<'a, 's> {
+    tokens: &'a [&'a str],
+    index: usize,
+    symbols: &'s mut SymbolTable,
+}
+
+impl<'a, 's> TypeInfoParser<'a, 's> {
+    fn parse(&mut self) -> Result<TypeInfo, String> {
+        let token = self.next()?;
+        match token {
+            "Int" => Ok(TypeInfo::Int),
+            "Bool" => Ok(TypeInfo::Bool),
+            "String" => Ok(TypeInfo::String),
+            "GenericParam" => Ok(TypeInfo::GenericParam(self.symbol()?)),
+            "Record" => Ok(TypeInfo::Record(self.symbol()?)),
+            "PackageRecord" => Ok(TypeInfo::PackageRecord {
+                symbol: self.symbol()?,
+                item: PackageItemId::new(self.u32("package record item id")?),
+            }),
+            "Enum" => {
+                let symbol = self.symbol()?;
+                let args = self.type_args()?;
+                Ok(TypeInfo::Enum { symbol, args })
+            }
+            "PackageEnum" => {
+                let symbol = self.symbol()?;
+                let item = PackageItemId::new(self.u32("package enum item id")?);
+                let args = self.type_args()?;
+                Ok(TypeInfo::PackageEnum { symbol, item, args })
+            }
+            "List" => Ok(TypeInfo::List(Box::new(self.parse()?))),
+            "Map" => Ok(TypeInfo::Map(
+                Box::new(self.parse()?),
+                Box::new(self.parse()?),
+            )),
+            "Option" => Ok(TypeInfo::Option(Box::new(self.parse()?))),
+            "Result" => Ok(TypeInfo::Result(
+                Box::new(self.parse()?),
+                Box::new(self.parse()?),
+            )),
+            "Function" => {
+                let param_count = self.usize("function type parameter count")?;
+                let mut params = Vec::with_capacity(param_count);
+                for _ in 0..param_count {
+                    params.push(self.parse()?);
+                }
+                let ret = Box::new(self.parse()?);
+                Ok(TypeInfo::Function(crate::types::FunctionTypeInfo {
+                    params,
+                    ret,
+                }))
+            }
+            "EnumConstructor" => {
+                let enum_symbol = self.symbol()?;
+                let enum_item = match self.next()? {
+                    "-" => None,
+                    value => Some(PackageItemId::new(parse_u32_token(
+                        value,
+                        "enum constructor item id",
+                    )?)),
+                };
+                let variant = self.symbol()?;
+                Ok(TypeInfo::EnumConstructor {
+                    enum_symbol,
+                    enum_item,
+                    variant,
+                })
+            }
+            "Builtin" => {
+                let name = self.next()?;
+                prelude::builtin_by_name(name)
+                    .map(|builtin| TypeInfo::Builtin(builtin.id))
+                    .ok_or_else(|| format!("unknown builtin `{name}` in persisted type"))
+            }
+            "Unknown" => Ok(TypeInfo::Unknown),
+            "Error" => Ok(TypeInfo::Error),
+            other => Err(format!("unknown type tag `{other}`")),
+        }
+    }
+
+    fn type_args(&mut self) -> Result<Vec<TypeInfo>, String> {
+        let count = self.usize("type argument count")?;
+        let mut args = Vec::with_capacity(count);
+        for _ in 0..count {
+            args.push(self.parse()?);
+        }
+        Ok(args)
+    }
+
+    fn symbol(&mut self) -> Result<crate::symbol::Symbol, String> {
+        let name = self.next()?;
+        Ok(self.symbols.intern(name))
+    }
+
+    fn usize(&mut self, label: &str) -> Result<usize, String> {
+        self.next()?.parse().map_err(|_| format!("invalid {label}"))
+    }
+
+    fn u32(&mut self, label: &str) -> Result<u32, String> {
+        parse_u32_token(self.next()?, label)
+    }
+
+    fn next(&mut self) -> Result<&'a str, String> {
+        let Some(token) = self.tokens.get(self.index).copied() else {
+            return Err("unexpected end of persisted type".to_string());
+        };
+        self.index += 1;
+        Ok(token)
+    }
+}
+
+fn parse_u32_token(value: &str, label: &str) -> Result<u32, String> {
+    value.parse().map_err(|_| format!("invalid {label}"))
+}
+
+fn push_line(out: &mut String, parts: &[String]) {
+    out.push_str(&parts.join("\t"));
+    out.push('\n');
+}
+
+fn format_span(span: Span) -> String {
+    format!(
+        "{}:{}-{}:{}",
+        span.start.line, span.start.column, span.end.line, span.end.column
+    )
+}
+
+fn format_type_info(ty: &TypeInfo, symbols: &SymbolTable) -> String {
+    let mut tokens = Vec::new();
+    push_type_info_tokens(ty, symbols, &mut tokens);
+    tokens.join(" ")
+}
+
+fn push_type_info_tokens(ty: &TypeInfo, symbols: &SymbolTable, tokens: &mut Vec<String>) {
+    match ty {
+        TypeInfo::Int => tokens.push("Int".to_string()),
+        TypeInfo::Bool => tokens.push("Bool".to_string()),
+        TypeInfo::String => tokens.push("String".to_string()),
+        TypeInfo::GenericParam(symbol) => {
+            tokens.push("GenericParam".to_string());
+            tokens.push(symbols.resolve(*symbol).to_string());
+        }
+        TypeInfo::Record(symbol) => {
+            tokens.push("Record".to_string());
+            tokens.push(symbols.resolve(*symbol).to_string());
+        }
+        TypeInfo::PackageRecord { symbol, item } => {
+            tokens.push("PackageRecord".to_string());
+            tokens.push(symbols.resolve(*symbol).to_string());
+            tokens.push(item.as_u32().to_string());
+        }
+        TypeInfo::Enum { symbol, args } => {
+            tokens.push("Enum".to_string());
+            tokens.push(symbols.resolve(*symbol).to_string());
+            push_type_args(args, symbols, tokens);
+        }
+        TypeInfo::PackageEnum { symbol, item, args } => {
+            tokens.push("PackageEnum".to_string());
+            tokens.push(symbols.resolve(*symbol).to_string());
+            tokens.push(item.as_u32().to_string());
+            push_type_args(args, symbols, tokens);
+        }
+        TypeInfo::List(item) => {
+            tokens.push("List".to_string());
+            push_type_info_tokens(item, symbols, tokens);
+        }
+        TypeInfo::Map(key, value) => {
+            tokens.push("Map".to_string());
+            push_type_info_tokens(key, symbols, tokens);
+            push_type_info_tokens(value, symbols, tokens);
+        }
+        TypeInfo::Option(item) => {
+            tokens.push("Option".to_string());
+            push_type_info_tokens(item, symbols, tokens);
+        }
+        TypeInfo::Result(ok, err) => {
+            tokens.push("Result".to_string());
+            push_type_info_tokens(ok, symbols, tokens);
+            push_type_info_tokens(err, symbols, tokens);
+        }
+        TypeInfo::EnumConstructor {
+            enum_symbol,
+            enum_item,
+            variant,
+        } => {
+            tokens.push("EnumConstructor".to_string());
+            tokens.push(symbols.resolve(*enum_symbol).to_string());
+            tokens.push(
+                enum_item
+                    .map(|item| item.as_u32().to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+            );
+            tokens.push(symbols.resolve(*variant).to_string());
+        }
+        TypeInfo::Function(function) => {
+            tokens.push("Function".to_string());
+            tokens.push(function.params.len().to_string());
+            for param in &function.params {
+                push_type_info_tokens(param, symbols, tokens);
+            }
+            push_type_info_tokens(&function.ret, symbols, tokens);
+        }
+        TypeInfo::Builtin(builtin) => {
+            tokens.push("Builtin".to_string());
+            tokens.push(prelude::builtin_name(*builtin).to_string());
+        }
+        TypeInfo::Unknown => tokens.push("Unknown".to_string()),
+        TypeInfo::Error => tokens.push("Error".to_string()),
+    }
+}
+
+fn push_type_args(args: &[TypeInfo], symbols: &SymbolTable, tokens: &mut Vec<String>) {
+    tokens.push(args.len().to_string());
+    for arg in args {
+        push_type_info_tokens(arg, symbols, tokens);
+    }
 }
 
 impl Program {

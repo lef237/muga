@@ -22,6 +22,7 @@ Implemented language surface:
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for compiler-known `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
 - enum diagnostics, package enum visibility coverage, imported `alias::Enum::Variant` constructors/patterns, package enum call-target identity, and stale enum interface validation
+- deterministic v1 package interface text persistence and file round-trip for public records/functions/enums
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -32,7 +33,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - package compilation still flattens packages before checking/execution
-- package interfaces exist only in memory; no persisted interface files, hashes, cache, or downstream interface consumption
+- package interface hashes, artifact path conventions, cache integration, and downstream interface consumption are not implemented
 - VM bytecode still lowers from the older HIR path, not from typed HIR/MIR
 
 ## Settled Direction
@@ -62,13 +63,13 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice is package interface persistence:
+The next code slice is interface hashes and downstream checking from loaded package interfaces:
 
-1. Choose a deterministic serialized format for public package interface summaries.
-2. Persist public records/functions/enums, resolved `TypeInfo`, item identity, enum variants, payload types, and interface hashes.
-3. Load persisted interfaces back into the existing in-memory `PackageInterfaces` shape.
-4. Validate stale persisted interfaces with actionable diagnostics and regeneration guidance.
-5. Keep downstream checking-from-interface, package caching, MIR, native backend work, wildcard enum patterns, and `try expr` deferred until the serialized interface format is stable.
+1. Add deterministic interface hashes that cover public records/functions/enums and resolved `TypeInfo`.
+2. Define artifact path conventions for generated package interface files.
+3. Validate stale persisted interfaces with actionable diagnostics and regeneration guidance.
+4. Add the first downstream checking path that consumes loaded interface summaries instead of dependency implementation bodies.
+5. Keep package caching, MIR, native backend work, wildcard enum patterns, and `try expr` deferred until loaded-interface checking agrees with current body-based checking.
 
 ## Compiler Architecture Path
 

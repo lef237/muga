@@ -266,7 +266,7 @@ Public function signatures may then mention enum types such as:
 pub fn read_file(path: String): Result[String, IOError]
 ```
 
-In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. Persisted interfaces should carry the same resolved enum identity, type parameters, variants, payload types, and public signatures from the start.
+In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. The v1 persisted interface text format round-trips the same resolved enum identity, type parameters, variants, payload types, public signatures, and source spans. Interface hashes and downstream checking from loaded artifacts are the next package-interface steps.
 
 ## 9. Runtime Representation
 
@@ -307,7 +307,7 @@ Performance-specific representations can be handled later in MIR/native lowering
 
 ## 11. Recommended Phasing
 
-1. Extend persisted package interfaces and cache formats now that enum/result signatures have source-level identity.
+1. Add interface hashes and artifact path conventions for persisted package interfaces.
 2. Start checking downstream packages against loaded interface artifacts.
 3. Revisit `try expr` propagation syntax.
 4. Continue toward MIR/native lowering once package boundaries are real inputs.
