@@ -1,13 +1,13 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-13.
+Status: current implementation ledger for 2026-05-13 after the first package-aware checking scaffold.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after unflattened package graph loader support: 227 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after unflattened package graph loader support.
+- [x] `cargo test` passed after package-aware checking scaffold support: 232 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after package-aware checking scaffold support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -94,6 +94,8 @@ Ada
 - [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
 - [x] `muga emit-interface` and `muga emit-check-cache` write `.mgi` and `.mgc` artifacts for explicit artifact-backed checks.
 - [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
+- [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before delegating valid programs to the legacy typed checking path.
+- [ ] full module-aware package typechecking without the flattened typed path is not implemented.
 - [ ] default CLI checking/execution still uses package flattening and dependency source loading.
 
 ### Diagnostics
@@ -155,13 +157,14 @@ Ada
 - CLI `emit-interface` can emit all reachable interfaces without manually naming each dependency package.
 - CLI `emit-artifacts` emits reachable `.mgi` interfaces and the entry `.mgc` check cache in one explicit artifact-root workflow.
 - The package loader can now return unflattened package files with the same package graph/export metadata used by the legacy flattening path.
+- A library-only package-aware check entrypoint validates package boundary, import, visibility, and public-signature rules directly over the unflattened package graph before delegating valid programs to the legacy typed checking path.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
-- Full incremental artifact reuse and package-aware checking without flattening are still not implemented.
+- Full incremental artifact reuse and full module-aware typechecking without the flattened typed path are still not implemented.
 
 ## Recommended Next Implementation
 
-The next implementation theme is package-aware checking without flattening while keeping artifact roots explicit on the CLI.
+The next implementation theme remains package-aware checking without flattening while keeping artifact roots explicit on the CLI. The first scaffold now validates package boundary rules from the unflattened graph, but full typechecking still delegates to the legacy flattened typed path.
 
 Reasoning:
 
@@ -181,7 +184,7 @@ Reasoning:
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
-- The remaining boundary pieces are real artifact storage/reuse, dependency/lockfile-driven project configuration, and eventually making interface-backed checking the normal package path.
+- The remaining boundary pieces are module-aware type environments, loaded-interface signatures as semantic inputs instead of AST stubs, real artifact storage/reuse, dependency/lockfile-driven project configuration, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 
@@ -245,10 +248,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
 | 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
-| 15. Package-aware checking without flattening | Start replacing package flattening with package-aware checking boundaries while keeping artifact semantics explicit. | package/resolver/typing/lib/tests | 4-8 days | High |
+| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking now runs over the unflattened package graph and keeps artifact semantics explicit. Remaining work is to move module typechecking and loaded-interface signatures off the flattened typed path. | package/resolver/typing/lib/tests | 4-8 days | High |
 | 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 15: begin using the unflattened package graph for package-aware checking while preserving the explicit `.mgi` / `.mgc` workflow. This may require a design checkpoint before larger edits.
+The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should build module-aware type environments instead of expanding the legacy AST flattening path.
 
 ## Test Plan For The Next Code Slice
 
@@ -256,16 +259,16 @@ Add tests around these behavioral anchors before enabling artifact-backed packag
 
 Package-aware checking:
 
-- `package_aware_checking_preserves_public_import_resolution`
-- `package_aware_checking_rejects_private_cross_package_references`
-- `package_aware_checking_reports_package_qualified_type_errors`
-- `package_aware_checking_reuses_unflattened_package_graph`
-- `artifact_workflow_rejects_missing_or_stale_artifacts_without_source_fallback`
+- [x] `package_aware_checking_preserves_public_import_resolution`
+- [x] `package_aware_checking_rejects_private_cross_package_references`
+- [x] `package_aware_checking_reports_package_qualified_type_errors`
+- [x] `package_aware_checking_reuses_unflattened_package_graph`
+- [x] `artifact_workflow_rejects_missing_artifacts_without_source_fallback`
 
 Compatibility:
 
-- `default_cli_check_keeps_existing_body_based_behavior`
-- `artifact_generation_does_not_change_default_run_behavior`
+- [x] `default_cli_check_keeps_existing_body_based_behavior`
+- [x] `artifact_generation_does_not_change_default_run_behavior`
 
 ## Definition Of Done For The Next Code Slice
 
