@@ -24,7 +24,6 @@ pub mod typing;
 use ast::Program;
 use bytecode::Program as BytecodeProgram;
 use diagnostic::Diagnostic;
-use hir::Program as HirProgram;
 use interface::PackageInterfaceGraph;
 use mir::Program as MirProgram;
 use runtime::RunOutcome;
@@ -92,18 +91,12 @@ pub fn check_path(path: &Path) -> Result<Program, Vec<Diagnostic>> {
     }
 }
 
-pub fn compile_source(source: &str) -> Result<HirProgram, Vec<Diagnostic>> {
-    let program = check_source(source)?;
-    Ok(hir::lower(&program))
+pub fn compile_source(source: &str) -> Result<MirProgram, Vec<Diagnostic>> {
+    compile_mir_source(source)
 }
 
-pub fn compile_path(path: &Path) -> Result<HirProgram, Vec<Diagnostic>> {
-    if package::entry_package_path_from_entry(path)?.is_some() {
-        let check = check_package_aware_path(path)?;
-        return Ok(hir::lower_typed(&check.typed_program));
-    }
-    let program = check_path(path)?;
-    Ok(hir::lower(&program))
+pub fn compile_path(path: &Path) -> Result<MirProgram, Vec<Diagnostic>> {
+    compile_mir_path(path)
 }
 
 pub fn compile_mir_source(source: &str) -> Result<MirProgram, Vec<Diagnostic>> {

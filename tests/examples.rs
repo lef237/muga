@@ -3753,7 +3753,7 @@ fn package_imports_are_resolved_through_export_surface() {
 }
 
 #[test]
-fn compile_source_lowers_functions_into_hir_table() {
+fn compile_source_lowers_functions_into_mir_table() {
     let source = r#"
 fn main(): Int {
   add = fn(x: Int): Int {
@@ -3868,7 +3868,7 @@ fn main(): Int {
     let program = muga::compile_source(source).unwrap();
     let function = &program.functions[0];
     let value_symbol = match &function.body.statements[0] {
-        muga::hir::Stmt::Assign(stmt) => stmt.name,
+        muga::mir::Stmt::Assign(stmt) => stmt.name,
         _ => panic!("expected assign statement"),
     };
     let final_symbol = match function
@@ -3877,7 +3877,7 @@ fn main(): Int {
         .as_deref()
         .expect("function body should have a result")
     {
-        muga::hir::Expr::Ident(expr) => expr.name,
+        muga::mir::Expr::Ident(expr) => expr.name,
         _ => panic!("expected final identifier"),
     };
     assert_eq!(value_symbol, final_symbol);
