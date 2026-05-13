@@ -76,6 +76,7 @@ impl Stmt {
 #[derive(Clone, Debug)]
 pub struct AssignStmt {
     pub mutable: bool,
+    pub is_update: bool,
     pub binding: BindingId,
     pub name: Symbol,
     pub value: Expr,
@@ -395,6 +396,7 @@ impl TypedLowerer<'_> {
         Some(match statement {
             typed_hir::Stmt::Assign(stmt) => Stmt::Assign(AssignStmt {
                 mutable: stmt.mutable,
+                is_update: stmt.is_update,
                 binding: stmt.binding,
                 name: self.symbol(&stmt.name),
                 value: self.lower_expr(&stmt.value),

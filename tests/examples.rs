@@ -5854,6 +5854,55 @@ fn main(): Int {
 }
 
 #[test]
+fn compile_mir_source_marks_mutable_updates() {
+    let source = r#"
+fn main(): Int {
+  mut value = 1
+  value = 2
+  value
+}
+"#;
+    let program = muga::compile_mir_source(source).unwrap();
+    let main = &program.functions[0];
+    let first = match &main.body.statements[0] {
+        muga::mir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected first assignment"),
+    };
+    let second = match &main.body.statements[1] {
+        muga::mir::Stmt::Assign(assign) => assign,
+        _ => panic!("expected second assignment"),
+    };
+
+    assert!(!first.is_update);
+    assert!(second.is_update);
+    assert_eq!(first.binding, second.binding);
+}
+
+#[test]
+fn compile_bytecode_source_marks_mutable_updates() {
+    let source = r#"
+fn main(): Int {
+  mut value = 1
+  value = 2
+  value
+}
+"#;
+    let program = muga::compile_bytecode_source(source).unwrap();
+    let main = &program.functions[0];
+    let update_modes = main
+        .chunk
+        .instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            Instruction::Assign { is_update, .. } => Some(*is_update),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(update_modes, vec![false, true]);
+}
+
+#[test]
 fn compile_typed_path_preserves_package_symbol_graph() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
         .expect("typed package compilation should pass");
