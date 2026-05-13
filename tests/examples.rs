@@ -1186,6 +1186,86 @@ fn package_aware_checking_exposes_module_type_outputs() {
 }
 
 #[test]
+fn package_module_typed_hir_lowering_preserves_package_binding_identity() {
+    let result = muga::check_package_aware_path(Path::new(
+        "samples/packages/app/module_visibility/main.muga",
+    ))
+    .expect("package-aware checking should pass");
+    let package = result
+        .packages
+        .package_graph
+        .package_id("app::module_visibility")
+        .expect("package should exist");
+    let helper_module = result
+        .packages
+        .package_graph
+        .module_id(package, "helper.muga")
+        .expect("helper module should exist");
+    let helper_item = result
+        .packages
+        .package_graph
+        .item_id_in_module(
+            helper_module,
+            "helper",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("helper item should exist");
+    let main_file = result
+        .packages
+        .packages
+        .iter()
+        .find(|package| package.path == "app::module_visibility")
+        .and_then(|package| {
+            package
+                .files
+                .iter()
+                .find(|file| file.module_path == "main.muga")
+        })
+        .expect("main file should exist");
+    let main_check = result
+        .module_checks
+        .iter()
+        .find(|check| check.module_path == "main.muga")
+        .expect("main module check should exist");
+    let program = muga::typed_hir::lower(
+        &main_file.program,
+        &main_check.type_output,
+        result.packages.package_graph.clone(),
+    );
+    let helper_binding = program
+        .bindings
+        .iter()
+        .find(|binding| {
+            program.symbols.resolve(binding.symbol) == "helper"
+                && binding.package_item == Some(helper_item)
+        })
+        .map(|binding| binding.id)
+        .expect("helper binding should retain package item identity");
+    let calls = collect_typed_calls(&program);
+
+    assert!(
+        calls.iter().any(|call| {
+            call.resolved_callee
+                == muga::typing::TypedCalleeInfo::PackageItem {
+                    binding: helper_binding,
+                    item: helper_item,
+                }
+                && matches!(
+                    &call.callee.kind,
+                    muga::typed_hir::ExprKind::Ident(muga::typed_hir::IdentExpr {
+                        target: muga::typed_hir::IdentTarget::PackageItem {
+                            binding,
+                            item,
+                        },
+                        ..
+                    }) if *binding == helper_binding && *item == helper_item
+                )
+        }),
+        "{calls:#?}"
+    );
+}
+
+#[test]
 fn package_symbol_graph_exposes_module_identity() {
     let loaded = muga::package::load_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",
