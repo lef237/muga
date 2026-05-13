@@ -3817,13 +3817,13 @@ fn main(): Int {
     assert_eq!(program.functions.len(), 2);
     assert!(matches!(
         program.entry.instructions.first(),
-        Some(Instruction::DefineFunction { name, .. })
-            if program.symbols.resolve(*name) == "helper"
+        Some(Instruction::DefineFunction { target, .. })
+            if program.symbols.resolve(target.name) == "helper"
     ));
     assert!(matches!(
         program.entry.instructions.get(1),
-        Some(Instruction::DefineFunction { name, .. })
-            if program.symbols.resolve(*name) == "main"
+        Some(Instruction::DefineFunction { target, .. })
+            if program.symbols.resolve(target.name) == "main"
     ));
 }
 
@@ -3882,8 +3882,8 @@ fn main(): Int {
 
     assert!(matches!(
         main.chunk.instructions.first(),
-        Some(Instruction::DefineFunction { name, .. })
-            if program.symbols.resolve(*name) == "local"
+        Some(Instruction::DefineFunction { target, .. })
+            if program.symbols.resolve(target.name) == "local"
     ));
     assert!(matches!(
         main.chunk.instructions.get(1),
@@ -5900,6 +5900,107 @@ fn main(): Int {
         .collect::<Vec<_>>();
 
     assert_eq!(update_modes, vec![false, true]);
+}
+
+#[test]
+fn compile_bytecode_source_uses_binding_refs_for_runtime_names() {
+    let source = r#"
+fn main(): Int {
+  mut value = 1
+  value = 2
+  value
+}
+"#;
+    let program = muga::compile_bytecode_source(source).unwrap();
+    let main = &program.functions[0];
+    let assign_targets = main
+        .chunk
+        .instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            Instruction::Assign { target, .. } => Some(*target),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let load_targets = main
+        .chunk
+        .instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            Instruction::LoadName { target, .. } => Some(*target),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(assign_targets.len(), 2);
+    assert_eq!(load_targets.len(), 1);
+    assert_eq!(assign_targets[0], assign_targets[1]);
+    assert_eq!(assign_targets[0], load_targets[0]);
+    assert_eq!(program.symbols.resolve(assign_targets[0].name), "value");
+    assert!(
+        program
+            .bindings
+            .iter()
+            .any(|binding| binding.id == assign_targets[0].binding)
+    );
+}
+
+#[test]
+fn compile_bytecode_path_uses_package_definition_binding_for_runtime_names() {
+    let program =
+        muga::compile_bytecode_path(Path::new("samples/packages/app/main/main.muga")).unwrap();
+    let package_name = "__muga_pkg__util__numbers__inc_twice";
+    let mut definition_targets = Vec::new();
+    let mut load_targets = Vec::new();
+
+    for instruction in &program.entry.instructions {
+        match instruction {
+            Instruction::DefineFunction { target, .. }
+                if program.symbols.resolve(target.name) == package_name =>
+            {
+                definition_targets.push(*target);
+            }
+            Instruction::LoadName { target, .. }
+                if program.symbols.resolve(target.name) == package_name =>
+            {
+                load_targets.push(*target);
+            }
+            _ => {}
+        }
+    }
+    for function in &program.functions {
+        for instruction in &function.chunk.instructions {
+            match instruction {
+                Instruction::DefineFunction { target, .. }
+                    if program.symbols.resolve(target.name) == package_name =>
+                {
+                    definition_targets.push(*target);
+                }
+                Instruction::LoadName { target, .. }
+                    if program.symbols.resolve(target.name) == package_name =>
+                {
+                    load_targets.push(*target);
+                }
+                _ => {}
+            }
+        }
+    }
+    let import_binding = program
+        .bindings
+        .iter()
+        .find(|binding| program.symbols.resolve(binding.name) == "numbers::inc_twice")
+        .expect("import binding should be preserved")
+        .id;
+
+    assert_eq!(definition_targets.len(), 1, "{definition_targets:#?}");
+    assert!(!load_targets.is_empty(), "{load_targets:#?}");
+    assert!(
+        load_targets
+            .iter()
+            .all(|target| target.binding == definition_targets[0].binding),
+        "{load_targets:#?}"
+    );
+    assert_ne!(definition_targets[0].binding, import_binding);
 }
 
 #[test]
