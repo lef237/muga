@@ -137,7 +137,7 @@ Done:
 - `interface::PackageExportGraph` can be derived from either package identity data or typed package interface summaries
 - local binding annotations, generic type expression syntax, `List[T]` / `Option[T]` / `Result[T, E]` / `Map[K, V]` `TypeInfo` cases, typed prelude list and map operations, direct list indexing, typed Option/Result construction, typed Option/Result `match`, enum-variant-shaped match patterns, and compiler-known enum metadata for Option/Result variants are in place
 - resolver, typechecker output, runtime, and package builtin filtering share `prelude::BuiltinId` as the single builtin identity
-- MIR is the backend boundary for default compile APIs, and bytecode/runtime name references now carry semantic `BindingId`, lowered `LocalId`, and display symbols for diagnostics
+- MIR is the backend boundary for default compile APIs, and bytecode/runtime name references now carry semantic `BindingId`, lowered `LocalId`, and display symbols for diagnostics; runtime environments are slot-backed by `LocalId`
 
 Remaining:
 

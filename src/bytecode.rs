@@ -15,6 +15,7 @@ pub struct Program {
     pub functions: Vec<Function>,
     pub bindings: Vec<BindingDef>,
     pub main: Option<NameRef>,
+    pub local_count: usize,
     pub symbols: SymbolTable,
 }
 
@@ -163,11 +164,13 @@ pub fn compile(program: mir::Program) -> Program {
     for function in &functions {
         compiler.compile_function(function);
     }
+    let local_count = compiler.next_synthetic_local as usize;
     Program {
         entry,
         functions: compiler.functions,
         bindings,
         main,
+        local_count,
         symbols: compiler.symbols,
     }
 }
