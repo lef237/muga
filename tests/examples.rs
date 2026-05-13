@@ -1210,28 +1210,12 @@ fn package_module_typed_hir_lowering_preserves_package_binding_identity() {
             muga::package::PackageItemKind::Function,
         )
         .expect("helper item should exist");
-    let main_file = result
-        .packages
-        .packages
-        .iter()
-        .find(|package| package.path == "app::module_visibility")
-        .and_then(|package| {
-            package
-                .files
-                .iter()
-                .find(|file| file.module_path == "main.muga")
-        })
-        .expect("main file should exist");
     let main_check = result
         .module_checks
         .iter()
         .find(|check| check.module_path == "main.muga")
         .expect("main module check should exist");
-    let program = muga::typed_hir::lower(
-        &main_file.program,
-        &main_check.type_output,
-        result.packages.package_graph.clone(),
-    );
+    let program = &main_check.typed_program;
     let helper_binding = program
         .bindings
         .iter()
@@ -1241,7 +1225,7 @@ fn package_module_typed_hir_lowering_preserves_package_binding_identity() {
         })
         .map(|binding| binding.id)
         .expect("helper binding should retain package item identity");
-    let calls = collect_typed_calls(&program);
+    let calls = collect_typed_calls(program);
 
     assert!(
         calls.iter().any(|call| {

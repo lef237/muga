@@ -43,6 +43,7 @@ pub struct PackageModuleCheck {
     pub module: identity::ModuleId,
     pub module_path: String,
     pub type_output: typing::TypeCheckOutput,
+    pub typed_program: TypedHirProgram,
 }
 
 pub fn check_source(source: &str) -> Result<Program, Vec<Diagnostic>> {
@@ -155,12 +156,19 @@ fn typecheck_loaded_package_modules(
             };
             let type_output =
                 typing::typecheck_package_module(&file.program, signatures, module_id);
+            let has_diagnostics = !type_output.diagnostics.is_empty();
             diagnostics.extend(type_output.diagnostics.clone());
+            if has_diagnostics {
+                continue;
+            }
+            let typed_program =
+                typed_hir::lower(&file.program, &type_output, packages.package_graph.clone());
             module_checks.push(PackageModuleCheck {
                 package: package_id,
                 module: module_id,
                 module_path: file.module_path.clone(),
                 type_output,
+                typed_program,
             });
         }
     }
