@@ -79,7 +79,7 @@ pub fn check_path(path: &Path) -> Result<Program, Vec<Diagnostic>> {
             )]
         });
     }
-    let program = package::load_program_from_entry(path)?;
+    let program = package::load_flattened_program_from_entry(path)?;
     let mut diagnostics = resolver::resolve(&program);
     diagnostics.extend(typing::typecheck(&program));
 
@@ -134,7 +134,7 @@ pub fn compile_typed_path(path: &Path) -> Result<TypedHirProgram, Vec<Diagnostic
     if package::entry_package_path_from_entry(path)?.is_some() {
         return check_package_aware_path(path).map(|check| check.typed_program);
     }
-    let loaded = package::load_from_entry(path)?;
+    let loaded = package::load_flattened_from_entry(path)?;
     compile_loaded_typed_program(loaded)
 }
 
@@ -462,7 +462,7 @@ pub fn check_package_aware_path_against_cached_artifact_root(
 }
 
 fn compile_loaded_typed_program(
-    loaded: package::LoadedProgram,
+    loaded: package::LoadedFlattenedProgram,
 ) -> Result<TypedHirProgram, Vec<Diagnostic>> {
     let resolve_output = resolver::resolve_program(&loaded.program);
     let type_output = typing::typecheck_program(&loaded.program);

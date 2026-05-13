@@ -106,6 +106,7 @@ Ada
 - [x] package-aware check results expose package-wide typed HIR aggregated from per-module outputs without using the legacy flattened typed path.
 - [x] default package `check` runs package-aware validation and no longer reloads a flattened package AST after validation.
 - [x] default package `compile_typed_path` returns the package-aware typed HIR aggregate instead of the legacy flattened typed HIR.
+- [x] flattened package loader APIs are explicitly named `load_flattened_*` so compatibility AST use is visible at call sites.
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
 - [x] the legacy `compile_typed_path_against_interfaces` / interface-stub flattened compilation path has been removed.
@@ -182,6 +183,7 @@ Ada
 - The legacy interface-stub flattened typed compilation path has been removed; loaded/interface-artifact typed compilation now has one package-aware semantic path.
 - Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
 - CLI default package `check`, default package `compile_typed_path`, `check --artifact-root`, interface artifact emission, and loaded/interface-artifact typed compilation now use package-aware paths; default package `check` no longer reloads a flattened AST after validation.
+- Remaining flattened package loader APIs now use explicit `load_flattened_*` names.
 - Package-aware typed HIR can now lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls.
 - Default package execution now lowers package-aware typed HIR through the existing HIR/bytecode path, while still reading dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.

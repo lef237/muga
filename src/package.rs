@@ -9,8 +9,8 @@ use crate::interface::{PackageExportGraph, PackageInterface, PackageInterfaceGra
 use crate::span::Span;
 use crate::symbol::SymbolTable;
 
-pub fn load_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> {
-    Ok(load_from_entry(path)?.program)
+pub fn load_flattened_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> {
+    Ok(load_flattened_from_entry(path)?.program)
 }
 
 pub fn import_paths_from_entry(path: &Path) -> Result<Vec<String>, Vec<Diagnostic>> {
@@ -45,10 +45,10 @@ pub fn source_fingerprint_input_from_entry(path: &Path) -> Result<String, Vec<Di
     loader.entry_package_source_fingerprint_input()
 }
 
-pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
+pub fn load_flattened_from_entry(path: &Path) -> Result<LoadedFlattenedProgram, Vec<Diagnostic>> {
     let (entry_program, manifest) = parse_entry_program(path)?;
     if entry_program.package.is_none() {
-        return Ok(LoadedProgram {
+        return Ok(LoadedFlattenedProgram {
             program: entry_program,
             package_graph: PackageSymbolGraph::default(),
             package_exports: PackageExportGraph::default(),
@@ -135,7 +135,7 @@ fn parse_entry_program(path: &Path) -> Result<(Program, Option<ProjectManifest>)
 }
 
 #[derive(Clone, Debug)]
-pub struct LoadedProgram {
+pub struct LoadedFlattenedProgram {
     pub program: Program,
     pub package_graph: PackageSymbolGraph,
     pub package_exports: PackageExportGraph,
@@ -1052,7 +1052,7 @@ impl PackageLoader {
         }
     }
 
-    fn load_and_flatten(&mut self) -> Result<LoadedProgram, Vec<Diagnostic>> {
+    fn load_and_flatten(&mut self) -> Result<LoadedFlattenedProgram, Vec<Diagnostic>> {
         if let Err(diagnostic) = self.ensure_source_root() {
             self.diagnostics.push(diagnostic);
             return Err(std::mem::take(&mut self.diagnostics));
@@ -1233,7 +1233,7 @@ impl PackageLoader {
         package_paths: &[String],
         package_graph: PackageSymbolGraph,
         package_exports: PackageExportGraph,
-    ) -> Result<LoadedProgram, Vec<Diagnostic>> {
+    ) -> Result<LoadedFlattenedProgram, Vec<Diagnostic>> {
         let mut statements = Vec::new();
         for package_path in package_paths {
             let Some(package) = self.packages.get(package_path) else {
@@ -1267,7 +1267,7 @@ impl PackageLoader {
                 statements,
             };
             renumber_node_ids(&mut program);
-            Ok(LoadedProgram {
+            Ok(LoadedFlattenedProgram {
                 program,
                 package_graph,
                 package_exports,
