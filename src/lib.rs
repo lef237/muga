@@ -28,6 +28,12 @@ use runtime::RunOutcome;
 use std::path::{Path, PathBuf};
 use typed_hir::Program as TypedHirProgram;
 
+#[derive(Clone, Debug)]
+pub struct PackageAwareCheck {
+    pub packages: package::LoadedPackageGraph,
+    pub typed_program: TypedHirProgram,
+}
+
 pub fn check_source(source: &str) -> Result<Program, Vec<Diagnostic>> {
     let tokens = lexer::lex(source)?;
     let program = parser::parse(tokens)?;
@@ -100,6 +106,19 @@ pub fn compile_typed_source(source: &str) -> Result<TypedHirProgram, Vec<Diagnos
 pub fn compile_typed_path(path: &Path) -> Result<TypedHirProgram, Vec<Diagnostic>> {
     let loaded = package::load_from_entry(path)?;
     compile_loaded_typed_program(loaded, None)
+}
+
+pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Diagnostic>> {
+    let packages = package::load_package_graph_from_entry(path)?;
+    let diagnostics = package::validate_loaded_package_graph(&packages);
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    let typed_program = compile_typed_path(path)?;
+    Ok(PackageAwareCheck {
+        packages,
+        typed_program,
+    })
 }
 
 pub fn compile_typed_path_against_interfaces(

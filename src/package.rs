@@ -262,6 +262,684 @@ pub enum PackageItemKind {
     Function,
 }
 
+pub fn validate_loaded_package_graph(loaded: &LoadedPackageGraph) -> Vec<Diagnostic> {
+    let mut checker = PackageAwareChecker::new(loaded);
+    checker.check();
+    checker.diagnostics
+}
+
+struct PackageAwareChecker<'a> {
+    loaded: &'a LoadedPackageGraph,
+    diagnostics: Vec<Diagnostic>,
+    imports: HashMap<String, String>,
+    current_package: PackageId,
+    current_module: ModuleId,
+    scopes: Vec<HashSet<String>>,
+}
+
+impl<'a> PackageAwareChecker<'a> {
+    fn new(loaded: &'a LoadedPackageGraph) -> Self {
+        Self {
+            loaded,
+            diagnostics: Vec::new(),
+            imports: HashMap::new(),
+            current_package: PackageId::new(0),
+            current_module: ModuleId::new(0),
+            scopes: Vec::new(),
+        }
+    }
+
+    fn check(&mut self) {
+        for package in &self.loaded.packages {
+            let Some(package_id) = self.loaded.package_graph.package_id(&package.path) else {
+                continue;
+            };
+            for file in &package.files {
+                let Some(module_id) = self
+                    .loaded
+                    .package_graph
+                    .module_id(package_id, &file.module_path)
+                else {
+                    continue;
+                };
+                self.current_package = package_id;
+                self.current_module = module_id;
+                self.imports = file_import_aliases(&file.program.imports, &mut self.diagnostics);
+                for statement in &file.program.statements {
+                    self.check_top_level_stmt(statement);
+                }
+            }
+        }
+    }
+
+    fn check_top_level_stmt(&mut self, statement: &Stmt) {
+        match statement {
+            Stmt::RecordDecl(record) => {
+                if matches!(record.visibility, Visibility::Public | Visibility::Package) {
+                    for field in &record.fields {
+                        self.validate_visible_type(&field.type_name, record.visibility, field.span);
+                    }
+                }
+                self.scan_record_decl(record);
+            }
+            Stmt::EnumDecl(enumeration) => {
+                if matches!(
+                    enumeration.visibility,
+                    Visibility::Public | Visibility::Package
+                ) {
+                    for variant in &enumeration.variants {
+                        if let Some(payload) = &variant.payload {
+                            self.validate_visible_type(
+                                payload,
+                                enumeration.visibility,
+                                variant.span,
+                            );
+                        }
+                    }
+                }
+                self.scan_enum_decl(enumeration);
+            }
+            Stmt::FuncDecl(function) => {
+                if function.visibility == Visibility::Public {
+                    let has_full_signature = function
+                        .params
+                        .iter()
+                        .all(|param| param.type_name.is_some())
+                        && function.return_type.is_some();
+                    if !has_full_signature {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                "PK011",
+                                "public functions must annotate every parameter and the return type",
+                                function.span,
+                            )
+                            .with_suggestion(
+                                "add parameter type annotations and an explicit return type",
+                            ),
+                        );
+                    }
+                }
+                if matches!(
+                    function.visibility,
+                    Visibility::Public | Visibility::Package
+                ) {
+                    for param in &function.params {
+                        if let Some(type_name) = &param.type_name {
+                            self.validate_visible_type(type_name, function.visibility, param.span);
+                        }
+                    }
+                    if let Some(type_name) = &function.return_type {
+                        self.validate_visible_type(type_name, function.visibility, function.span);
+                    }
+                }
+                self.scan_func_decl(function);
+            }
+            _ => self.scan_stmt(statement),
+        }
+    }
+
+    fn scan_stmt(&mut self, statement: &Stmt) {
+        match statement {
+            Stmt::Assign(stmt) => {
+                if let Some(type_name) = &stmt.type_name {
+                    self.scan_type_expr(type_name, stmt.span);
+                }
+                self.scan_expr(&stmt.value);
+                self.insert_local(stmt.name.clone());
+            }
+            Stmt::RecordDecl(record) => self.scan_record_decl(record),
+            Stmt::EnumDecl(enumeration) => self.scan_enum_decl(enumeration),
+            Stmt::FuncDecl(function) => self.scan_func_decl(function),
+            Stmt::If(stmt) => {
+                self.scan_expr(&stmt.condition);
+                self.scan_block(&stmt.then_branch);
+                if let Some(else_branch) = &stmt.else_branch {
+                    self.scan_block(else_branch);
+                }
+            }
+            Stmt::While(stmt) => {
+                self.scan_expr(&stmt.condition);
+                self.scan_block(&stmt.body);
+            }
+            Stmt::Expr(stmt) => self.scan_expr(&stmt.expr),
+        }
+    }
+
+    fn scan_record_decl(&mut self, record: &RecordDecl) {
+        for field in &record.fields {
+            self.scan_type_expr(&field.type_name, field.span);
+        }
+    }
+
+    fn scan_enum_decl(&mut self, enumeration: &EnumDecl) {
+        for variant in &enumeration.variants {
+            if let Some(payload) = &variant.payload {
+                self.scan_type_expr(payload, variant.span);
+            }
+        }
+    }
+
+    fn scan_func_decl(&mut self, function: &FuncDecl) {
+        for param in &function.params {
+            if let Some(type_name) = &param.type_name {
+                self.scan_type_expr(type_name, param.span);
+            }
+        }
+        if let Some(type_name) = &function.return_type {
+            self.scan_type_expr(type_name, function.span);
+        }
+
+        self.push_scope();
+        for param in &function.params {
+            self.insert_local(param.name.clone());
+        }
+        self.predeclare_nested_functions(&function.body.statements);
+        for statement in &function.body.statements {
+            self.scan_stmt(statement);
+        }
+        self.scan_expr(&function.body.expr);
+        self.pop_scope();
+    }
+
+    fn scan_block(&mut self, block: &Block) {
+        self.push_scope();
+        self.predeclare_nested_functions(&block.statements);
+        for statement in &block.statements {
+            self.scan_stmt(statement);
+        }
+        self.pop_scope();
+    }
+
+    fn scan_value_block(&mut self, block: &ValueBlock) {
+        self.push_scope();
+        self.predeclare_nested_functions(&block.statements);
+        for statement in &block.statements {
+            self.scan_stmt(statement);
+        }
+        self.scan_expr(&block.expr);
+        self.pop_scope();
+    }
+
+    fn scan_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Int(_) | Expr::Bool(_) | Expr::String(_) => {}
+            Expr::Ident(expr) => {
+                if !self.lookup_local(&expr.name) {
+                    self.check_value_name(&expr.name, expr.span);
+                }
+            }
+            Expr::ListLit(expr) => {
+                for item in &expr.items {
+                    self.scan_expr(item);
+                }
+            }
+            Expr::Index(expr) => {
+                self.scan_expr(&expr.base);
+                self.scan_expr(&expr.index);
+            }
+            Expr::RecordLit(expr) => {
+                self.check_type_name(&expr.type_name, expr.span);
+                for field in &expr.fields {
+                    self.scan_expr(&field.value);
+                }
+            }
+            Expr::Field(expr) => self.scan_expr(&expr.base),
+            Expr::RecordUpdate(expr) => {
+                self.scan_expr(&expr.base);
+                for field in &expr.fields {
+                    self.scan_expr(&field.value);
+                }
+            }
+            Expr::Unary(expr) => self.scan_expr(&expr.expr),
+            Expr::Binary(expr) => {
+                self.scan_expr(&expr.left);
+                self.scan_expr(&expr.right);
+            }
+            Expr::Call(expr) => {
+                self.scan_expr(&expr.callee);
+                for arg in &expr.args {
+                    self.scan_expr(arg);
+                }
+            }
+            Expr::If(expr) => {
+                self.scan_expr(&expr.condition);
+                self.scan_value_block(&expr.then_branch);
+                self.scan_value_block(&expr.else_branch);
+            }
+            Expr::Match(expr) => {
+                self.scan_expr(&expr.value);
+                for arm in &expr.arms {
+                    let MatchPattern::Variant(pattern) = &arm.pattern;
+                    self.check_type_name(&pattern.enum_name, pattern.span);
+                    self.push_scope();
+                    if let Some(binding) = &pattern.binding {
+                        self.insert_local(binding.clone());
+                    }
+                    self.scan_expr(&arm.value);
+                    self.pop_scope();
+                }
+            }
+            Expr::Fn(expr) => {
+                for param in &expr.params {
+                    if let Some(type_name) = &param.type_name {
+                        self.scan_type_expr(type_name, param.span);
+                    }
+                }
+                if let Some(type_name) = &expr.return_type {
+                    self.scan_type_expr(type_name, expr.span);
+                }
+                self.push_scope();
+                for param in &expr.params {
+                    self.insert_local(param.name.clone());
+                }
+                self.scan_value_block(&expr.body);
+                self.pop_scope();
+            }
+        }
+    }
+
+    fn scan_type_expr(&mut self, type_expr: &TypeExpr, span: Span) {
+        match type_expr {
+            TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
+            TypeExpr::Named(name) => self.check_type_name(name, span),
+            TypeExpr::Generic(generic) => {
+                if !is_known_generic_type_name(&generic.name) {
+                    self.check_type_name(&generic.name, span);
+                }
+                for arg in &generic.args {
+                    self.scan_type_expr(arg, span);
+                }
+            }
+            TypeExpr::Function(function) => {
+                for param in &function.params {
+                    self.scan_type_expr(param, span);
+                }
+                self.scan_type_expr(&function.ret, span);
+            }
+        }
+    }
+
+    fn validate_visible_type(
+        &mut self,
+        type_expr: &TypeExpr,
+        api_visibility: Visibility,
+        span: Span,
+    ) {
+        match type_expr {
+            TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
+            TypeExpr::Named(name) => self.validate_visible_type_name(name, api_visibility, span),
+            TypeExpr::Generic(generic) => {
+                if !is_known_generic_type_name(&generic.name) {
+                    self.validate_visible_type_name(&generic.name, api_visibility, span);
+                }
+                for arg in &generic.args {
+                    self.validate_visible_type(arg, api_visibility, span);
+                }
+            }
+            TypeExpr::Function(function) => {
+                for param in &function.params {
+                    self.validate_visible_type(param, api_visibility, span);
+                }
+                self.validate_visible_type(&function.ret, api_visibility, span);
+            }
+        }
+    }
+
+    fn validate_visible_type_name(&mut self, name: &str, api_visibility: Visibility, span: Span) {
+        if let Some((alias, item)) = split_qualified_name(name) {
+            let _ = self.resolve_imported_type_item(alias, item, span);
+            return;
+        }
+
+        for kind in [PackageItemKind::Record, PackageItemKind::Enum] {
+            if let Some(item) = self.visible_same_package_item(name, kind)
+                && !visibility_can_expose(item.visibility, api_visibility)
+            {
+                let api = visibility_label(api_visibility);
+                let item_visibility = visibility_label(item.visibility);
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "PK012",
+                        format!(
+                            "{api} API may not expose {item_visibility} {} `{name}`",
+                            package_item_kind_label(kind)
+                        ),
+                        span,
+                    )
+                    .with_related(
+                        format!(
+                            "{} `{name}` is declared here",
+                            package_item_kind_label(kind)
+                        ),
+                        item.span,
+                    ),
+                );
+                return;
+            }
+        }
+    }
+
+    fn check_type_name(&mut self, name: &str, span: Span) {
+        if let Some((alias, item)) = split_qualified_name(name) {
+            let _ = self.resolve_imported_type_item(alias, item, span);
+            return;
+        }
+        if self
+            .visible_same_package_item(name, PackageItemKind::Record)
+            .is_some()
+            || self
+                .visible_same_package_item(name, PackageItemKind::Enum)
+                .is_some()
+        {
+            return;
+        }
+        if let Some(item) = self
+            .inaccessible_same_package_item(name, PackageItemKind::Record)
+            .cloned()
+        {
+            self.push_inaccessible_same_package_diagnostic(name, &item, "record", span);
+        } else if let Some(item) = self
+            .inaccessible_same_package_item(name, PackageItemKind::Enum)
+            .cloned()
+        {
+            self.push_inaccessible_same_package_diagnostic(name, &item, "enum", span);
+        }
+    }
+
+    fn check_value_name(&mut self, name: &str, span: Span) {
+        if name.contains("::") && is_builtin_name(name) {
+            return;
+        }
+        if let Some((enum_name, _variant_name)) = split_variant_name(name) {
+            if let Some((alias, item)) = split_qualified_name(enum_name) {
+                let _ = self.resolve_imported_item(alias, item, PackageItemKind::Enum, span);
+                return;
+            }
+            if self
+                .visible_same_package_item(enum_name, PackageItemKind::Enum)
+                .is_some()
+            {
+                return;
+            }
+            if let Some(item) = self
+                .inaccessible_same_package_item(enum_name, PackageItemKind::Enum)
+                .cloned()
+            {
+                self.push_inaccessible_same_package_diagnostic(enum_name, &item, "enum", span);
+                return;
+            }
+        }
+        if let Some((alias, item)) = split_qualified_name(name) {
+            let _ = self.resolve_imported_item(alias, item, PackageItemKind::Function, span);
+            return;
+        }
+        if self
+            .visible_same_package_item(name, PackageItemKind::Function)
+            .is_some()
+        {
+            return;
+        }
+        if let Some(item) = self
+            .inaccessible_same_package_item(name, PackageItemKind::Function)
+            .cloned()
+        {
+            self.push_inaccessible_same_package_diagnostic(name, &item, "function", span);
+        }
+    }
+
+    fn resolve_imported_type_item(&mut self, alias: &str, item: &str, span: Span) -> bool {
+        let Some(package_id) = self.imported_package(alias, span) else {
+            return false;
+        };
+        if self
+            .loaded
+            .package_exports
+            .record_by_name(package_id, item)
+            .is_some()
+            || self
+                .loaded
+                .package_exports
+                .enum_by_name(package_id, item)
+                .is_some()
+        {
+            return true;
+        }
+        if let Some(record) = self
+            .package_item(package_id, item, PackageItemKind::Record)
+            .cloned()
+        {
+            self.push_missing_export_diagnostic(&record, "record", span);
+        } else if let Some(enumeration) = self
+            .package_item(package_id, item, PackageItemKind::Enum)
+            .cloned()
+        {
+            self.push_missing_export_diagnostic(&enumeration, "enum", span);
+        } else {
+            self.push_missing_export_name_diagnostic(package_id, item, "type", span);
+        }
+        false
+    }
+
+    fn resolve_imported_item(
+        &mut self,
+        alias: &str,
+        item: &str,
+        kind: PackageItemKind,
+        span: Span,
+    ) -> bool {
+        let Some(package_id) = self.imported_package(alias, span) else {
+            return false;
+        };
+        let exported = match kind {
+            PackageItemKind::Record => self.loaded.package_exports.record_by_name(package_id, item),
+            PackageItemKind::Enum => self.loaded.package_exports.enum_by_name(package_id, item),
+            PackageItemKind::Function => self
+                .loaded
+                .package_exports
+                .function_by_name(package_id, item),
+        };
+        if exported.is_some() {
+            return true;
+        }
+        if let Some(declaration) = self.package_item(package_id, item, kind).cloned() {
+            self.push_missing_export_diagnostic(&declaration, package_item_kind_label(kind), span);
+        } else {
+            self.push_missing_export_name_diagnostic(
+                package_id,
+                item,
+                package_item_kind_label(kind),
+                span,
+            );
+        }
+        false
+    }
+
+    fn imported_package(&mut self, alias: &str, span: Span) -> Option<PackageId> {
+        let Some(package_path) = self.imports.get(alias).cloned() else {
+            self.diagnostics.push(Diagnostic::new(
+                "PK009",
+                format!("unknown import alias `{alias}`"),
+                span,
+            ));
+            return None;
+        };
+        let Some(package_id) = self.loaded.package_graph.package_id(&package_path) else {
+            self.diagnostics.push(Diagnostic::new(
+                "PK010",
+                format!("unknown imported package `{package_path}`"),
+                span,
+            ));
+            return None;
+        };
+        Some(package_id)
+    }
+
+    fn visible_same_package_item(
+        &self,
+        name: &str,
+        kind: PackageItemKind,
+    ) -> Option<&PackageItemInfo> {
+        self.loaded
+            .package_graph
+            .items
+            .iter()
+            .find(|item| {
+                item.package == self.current_package
+                    && item.module == self.current_module
+                    && item.name == name
+                    && item.kind == kind
+            })
+            .or_else(|| {
+                self.loaded.package_graph.items.iter().find(|item| {
+                    item.package == self.current_package
+                        && item.name == name
+                        && item.kind == kind
+                        && matches!(item.visibility, Visibility::Package | Visibility::Public)
+                })
+            })
+    }
+
+    fn inaccessible_same_package_item(
+        &self,
+        name: &str,
+        kind: PackageItemKind,
+    ) -> Option<&PackageItemInfo> {
+        self.loaded.package_graph.items.iter().find(|item| {
+            item.package == self.current_package
+                && item.module != self.current_module
+                && item.name == name
+                && item.kind == kind
+                && item.visibility == Visibility::Private
+        })
+    }
+
+    fn package_item(
+        &self,
+        package_id: PackageId,
+        name: &str,
+        kind: PackageItemKind,
+    ) -> Option<&PackageItemInfo> {
+        self.loaded
+            .package_graph
+            .items
+            .iter()
+            .find(|item| item.package == package_id && item.name == name && item.kind == kind)
+    }
+
+    fn push_missing_export_diagnostic(
+        &mut self,
+        declaration: &PackageItemInfo,
+        kind: &str,
+        span: Span,
+    ) {
+        let package_path = self
+            .loaded
+            .package_graph
+            .package(declaration.package)
+            .map(|package| package.path.as_str())
+            .unwrap_or("<unknown>");
+        self.diagnostics.push(
+            Diagnostic::new(
+                "PK010",
+                format!(
+                    "package `{package_path}` does not export {kind} `{}`",
+                    declaration.name
+                ),
+                span,
+            )
+            .with_related(
+                format!(
+                    "{kind} `{}` is declared here but is not public",
+                    declaration.name
+                ),
+                declaration.span,
+            )
+            .with_suggestion(format!(
+                "mark the {kind} declaration as `pub` to export it from the package"
+            )),
+        );
+    }
+
+    fn push_missing_export_name_diagnostic(
+        &mut self,
+        package_id: PackageId,
+        item: &str,
+        kind: &str,
+        span: Span,
+    ) {
+        let package_path = self
+            .loaded
+            .package_graph
+            .package(package_id)
+            .map(|package| package.path.as_str())
+            .unwrap_or("<unknown>");
+        self.diagnostics.push(Diagnostic::new(
+            "PK010",
+            format!("package `{package_path}` does not export {kind} `{item}`"),
+            span,
+        ));
+    }
+
+    fn push_inaccessible_same_package_diagnostic(
+        &mut self,
+        name: &str,
+        item: &PackageItemInfo,
+        kind: &str,
+        span: Span,
+    ) {
+        let module = self
+            .loaded
+            .package_graph
+            .module(self.current_module)
+            .map(|module| module.path.as_str())
+            .unwrap_or("<unknown>");
+        let private_module = self
+            .loaded
+            .package_graph
+            .module(item.module)
+            .map(|module| module.path.as_str())
+            .unwrap_or("<unknown>");
+        self.diagnostics.push(
+            Diagnostic::new(
+                "PK015",
+                format!("{kind} `{name}` is not visible from module `{module}`"),
+                span,
+            )
+            .with_related(
+                format!("{kind} `{name}` is module-private to `{private_module}`"),
+                item.span,
+            )
+            .with_suggestion("mark the declaration as `pkg` to share it within the package"),
+        );
+    }
+
+    fn predeclare_nested_functions(&mut self, statements: &[Stmt]) {
+        for statement in statements {
+            if let Stmt::FuncDecl(function) = statement {
+                self.insert_local(function.name.clone());
+            }
+        }
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(HashSet::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn insert_local(&mut self, name: String) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name);
+        }
+    }
+
+    fn lookup_local(&self, name: &str) -> bool {
+        self.scopes.iter().rev().any(|scope| scope.contains(name))
+    }
+}
+
 struct ParsedFile {
     program: Program,
     module_path: String,
@@ -2780,6 +3458,20 @@ fn visibility_label(visibility: Visibility) -> &'static str {
         Visibility::Package => "package-visible",
         Visibility::Public => "public",
     }
+}
+
+fn package_item_kind_label(kind: PackageItemKind) -> &'static str {
+    match kind {
+        PackageItemKind::Record => "record",
+        PackageItemKind::Enum => "enum",
+        PackageItemKind::Function => "function",
+    }
+}
+
+fn is_known_generic_type_name(name: &str) -> bool {
+    matches!(name, "List" | "Map")
+        || name == crate::known_enum::OPTION_NAME
+        || name == crate::known_enum::RESULT_NAME
 }
 
 fn infer_source_root(entry_file: &Path, package_path: &str) -> Result<PathBuf, Diagnostic> {

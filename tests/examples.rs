@@ -565,6 +565,118 @@ fn package_loader_can_return_unflattened_package_graph() {
 }
 
 #[test]
+fn package_aware_checking_preserves_public_import_resolution() {
+    let result = muga::check_package_aware_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("package-aware checking should pass");
+
+    assert!(
+        result
+            .packages
+            .package_graph
+            .package_id("app::main")
+            .is_some(),
+        "{:#?}",
+        result.packages.package_graph.packages
+    );
+    assert!(
+        result
+            .packages
+            .package_graph
+            .package_id("util::numbers")
+            .is_some(),
+        "{:#?}",
+        result.packages.package_graph.packages
+    );
+    assert_eq!(
+        main_return_type(&result.typed_program),
+        Some(muga::types::TypeInfo::Int)
+    );
+}
+
+#[test]
+fn package_aware_checking_rejects_private_cross_package_references() {
+    let diagnostics = muga::check_package_aware_path(Path::new(
+        "samples/packages_invalid/app/import_pkg_item/main.muga",
+    ))
+    .unwrap_err();
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK010"
+                && diagnostic
+                    .message
+                    .contains("does not export function `helper`")
+        }),
+        "{diagnostics:#?}"
+    );
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK010"
+                && diagnostic
+                    .message
+                    .contains("does not export record `PackageValue`")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn package_aware_checking_reports_package_qualified_type_errors() {
+    let root = temp_package_root("package-aware-type-error");
+    let entry = write_package_file(
+        &root,
+        "app/type_error/main.muga",
+        r#"
+package app::type_error
+
+import util::numbers
+
+fn main(): Int {
+  numbers::inc("not an int")
+}
+"#,
+    );
+    write_package_file(
+        &root,
+        "util/numbers/main.muga",
+        r#"
+package util::numbers
+
+pub fn inc(value: Int): Int {
+  value + 1
+}
+"#,
+    );
+
+    let diagnostics = muga::check_package_aware_path(&entry).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn package_aware_checking_reuses_unflattened_package_graph() {
+    let result =
+        muga::check_package_aware_path(Path::new("samples/packages/app/split_main/main.muga"))
+            .expect("package-aware checking should pass");
+    let app = result
+        .packages
+        .packages
+        .iter()
+        .find(|package| package.path == "app::split_main")
+        .expect("entry package should be loaded");
+
+    assert_eq!(app.files.len(), 2, "{app:#?}");
+    assert!(
+        app.files.iter().all(|file| file.program.package.is_some()),
+        "{app:#?}"
+    );
+}
+
+#[test]
 fn package_symbol_graph_exposes_module_identity() {
     let loaded = muga::package::load_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",
@@ -1260,6 +1372,48 @@ fn main(): Int {
                     .message
                     .contains("missing package interface artifact")
                 && diagnostic.message.contains("util::numbers")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn artifact_workflow_rejects_missing_artifacts_without_source_fallback() {
+    let artifact_root = temp_package_root("artifact-missing-no-source-fallback");
+    let root = temp_package_root("artifact-source-present");
+    let entry = write_package_file(
+        &root,
+        "app/source_present/main.muga",
+        r#"
+package app::source_present
+
+import util::numbers
+
+fn main(): Int {
+  numbers::inc(1)
+}
+"#,
+    );
+    write_package_file(
+        &root,
+        "util/numbers/main.muga",
+        r#"
+package util::numbers
+
+pub fn inc(value: Int): Int {
+  value + 1
+}
+"#,
+    );
+
+    let diagnostics =
+        muga::compile_typed_path_against_interface_artifacts(&entry, &artifact_root).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK016"
+                && diagnostic
+                    .message
+                    .contains("missing package interface artifact")
         }),
         "{diagnostics:#?}"
     );

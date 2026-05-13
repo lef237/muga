@@ -177,18 +177,19 @@ Implemented:
 - `muga check --artifact-root <dir>` validates package entries against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
 - `muga emit-artifacts` writes reachable `.mgi` interfaces and the entry `.mgc` check cache; lower-level `emit-interface` and `emit-check-cache` commands remain available
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
+- library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before handing valid programs to the legacy typed checking path
 
 Not implemented yet:
 
 - user-defined generic records and generic functions
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
-- project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, MIR, and native code generation
+- full package-aware typechecking without the legacy flattened typed path, project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, MIR, and native code generation
 - error propagation syntax such as `try expr`
 
 ## Planned Priority
 
-The next implementation slice is using the unflattened package graph for package-aware checking.
+The next implementation slice is continuing the package-aware checking migration: move module type environments and loaded-interface signatures into semantic analysis instead of expanding the legacy flattened AST rewrite path.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 

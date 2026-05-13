@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, and a minimal `muga.toml` project mode that infers package paths from `name` and `source`. Dependency manifests, registries, selective imports, package-level caching, and any future per-field record visibility are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, a minimal `muga.toml` project mode that infers package paths from `name` and `source`, explicit `.mgi` / `.mgc` artifact workflows, and a library-only package-aware check scaffold that validates package boundary rules over the unflattened package graph before using the legacy typed checking path. Dependency manifests, registries, selective imports, full package-aware typechecking without flattening, package-level caching, and any future per-field record visibility are still deferred.
 
 ## 1. Design Goals
 
@@ -125,7 +125,7 @@ Current implementation note:
 - the compiler currently implements top-level module-private, `pkg`, and `pub` visibility before flattening
 - imports expose only `pub` items
 - per-field record visibility is not part of the committed v1 package model
-- package-level flattening still exists; typed HIR package references now carry package item identity, but interface consumption, persisted interface format, and the remaining mangled-name transition should be handled before flattening is removed
+- package-level flattening still exists for normal checking/execution; typed HIR package references now carry package item identity, and the first package-aware check scaffold validates boundary rules over the unflattened graph, but module-aware typechecking still needs to move off the flattened path
 
 Example:
 
