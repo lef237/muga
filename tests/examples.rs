@@ -520,6 +520,51 @@ fn package_loader_exposes_package_export_graph() {
 }
 
 #[test]
+fn package_loader_can_return_unflattened_package_graph() {
+    let unflattened = muga::package::load_package_graph_from_entry(Path::new(
+        "samples/packages/app/main/main.muga",
+    ))
+    .expect("package graph should load without flattening");
+    let flattened =
+        muga::package::load_from_entry(Path::new("samples/packages/app/main/main.muga")).unwrap();
+
+    assert_eq!(
+        unflattened.package_graph.packages,
+        flattened.package_graph.packages
+    );
+    assert_eq!(
+        unflattened.package_graph.items,
+        flattened.package_graph.items
+    );
+    assert_eq!(unflattened.package_exports, flattened.package_exports);
+    assert_eq!(
+        unflattened
+            .packages
+            .iter()
+            .map(|package| package.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["app::main", "util::numbers", "util::users"]
+    );
+    let app = unflattened
+        .packages
+        .iter()
+        .find(|package| package.path == "app::main")
+        .expect("app package should be loaded");
+    assert!(app.files.iter().any(|file| {
+        file.module_path == "main.muga"
+            && file
+                .program
+                .package
+                .as_ref()
+                .is_some_and(|package| package.path == "app::main")
+    }));
+    assert!(
+        flattened.program.package.is_none(),
+        "existing load path should still return a flattened program"
+    );
+}
+
+#[test]
 fn package_symbol_graph_exposes_module_identity() {
     let loaded = muga::package::load_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",
