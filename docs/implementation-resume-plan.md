@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after package cache key support: 214 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after package cache key support.
+- [x] `cargo test` passed after CLI artifact-root support: 218 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after CLI artifact-root support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -89,7 +89,8 @@ Ada
 - [x] missing and hash-mismatched interface artifacts are rejected with regeneration guidance.
 - [x] package check cache keys include entry package source hashes and dependency interface hashes.
 - [x] missing or stale `.mgc` package check artifacts are rejected with regeneration guidance.
-- [ ] normal CLI checking/execution still uses package flattening and dependency source loading.
+- [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
+- [ ] default CLI checking/execution still uses package flattening and dependency source loading.
 
 ### Diagnostics
 
@@ -144,12 +145,13 @@ Ada
 - Loaded package interface summaries can now act as the downstream dependency boundary for typed checking.
 - A library API can discover dependency `.mgi` artifacts from an explicit interface root for typed checking.
 - A library API can compute package check cache keys and validate `.mgc` artifacts against source/dependency interface hashes.
-- Normal CLI package checking and execution still read and flatten dependency bodies.
-- CLI/project-mode artifact-root wiring and full incremental artifact reuse are still not implemented.
+- CLI `check --artifact-root` can consume `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
+- Default CLI package checking and execution still read and flatten dependency bodies.
+- CLI artifact generation, project-mode artifact-root config, and full incremental artifact reuse are still not implemented.
 
 ## Recommended Next Implementation
 
-The next implementation theme is CLI/project-mode wiring for interface and package-check cache artifacts.
+The next implementation theme is artifact generation/project wiring for package interface and check-cache artifacts.
 
 Reasoning:
 
@@ -163,7 +165,8 @@ Reasoning:
 - Loaded package interfaces can now be used for downstream signature/type checking without dependency implementation bodies.
 - Interface artifacts can now be discovered from an explicit root, with missing/hash-mismatched artifacts rejected before checking.
 - Package check cache keys now include entry source content and dependency interface hashes.
-- The remaining boundary pieces are CLI/project wiring, real artifact storage/reuse, and eventually making interface-backed checking the normal package path.
+- CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
+- The remaining boundary pieces are artifact generation, project configuration, real artifact storage/reuse, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 
@@ -222,33 +225,34 @@ Estimates are in focused engineering days for someone already familiar with this
 | 7. Downstream checking without dependency bodies | Load dependency interfaces as the checking boundary, synthesize or otherwise expose only public signatures, and avoid reading dependency implementation bodies for downstream checks. | `src/package.rs`, `src/interface.rs`, `src/lib.rs`, tests | Done | High |
 | 8. Interface artifact discovery | Teach package checking to find persisted interface artifacts from an explicit interface root and reject missing/hash-mismatched/stale artifacts. | `src/interface.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
 | 9. Package cache keys and invalidation | Define source/interface/dependency hash inputs, persist checked-package metadata, reject missing/stale cache artifacts, and keep cache-backed checking aligned with body checking. | `src/cache.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
-| 10. CLI/project artifact-root wiring | Expose a narrow CLI/project path for artifact-backed checking using `.mgi` and `.mgc` artifacts. | CLI/lib/tests/docs | 1-3 days | Medium |
-| 11. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 10. CLI artifact-root checking | Expose a narrow CLI path for artifact-backed checking using `.mgi` and `.mgc` artifacts. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Medium |
+| 11. Artifact generation and project wiring | Add CLI/library artifact generation and decide whether `muga.toml` should name an artifact root before dependency declarations exist. | CLI/package/interface/cache/docs | 2-4 days | Medium |
+| 12. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 10: wire artifact-backed checking into an explicit CLI/project path without replacing normal checking/execution yet.
+The safest immediate code slice is now Slice 11: add artifact generation/project wiring around the existing `.mgi` and `.mgc` readers before replacing normal checking/execution.
 
 ## Test Plan For The Next Code Slice
 
 Add tests around these behavioral anchors before enabling artifact-backed package checking by default.
 
-CLI/project wiring:
+Artifact generation/project wiring:
 
-- `cli_check_uses_interface_artifact_root_without_dependency_source`
-- `cli_check_reports_missing_interface_artifact`
-- `cli_check_reports_stale_package_check_artifact`
+- `cli_emit_interface_writes_requested_package_artifacts`
+- `cli_emit_check_cache_writes_entry_package_mgc`
+- `generated_artifacts_can_drive_cli_artifact_check`
 - `project_check_uses_configured_artifact_root_if_project_mode_gets_config`
 
 Compatibility:
 
-- `cli_or_project_artifact_check_reports_same_errors_as_library_api`
 - `default_cli_check_keeps_existing_body_based_behavior`
+- `artifact_generation_does_not_change_default_run_behavior`
 
 ## Definition Of Done For The Next Code Slice
 
 - [ ] Existing `cargo test` remains green.
 - [ ] Existing package-body checking remains source-compatible.
-- [ ] CLI/project artifact checking uses explicit artifact roots and does not silently fall back to dependency implementation bodies.
-- [ ] Missing interface artifacts and stale package check artifacts surface the same diagnostics as the library API.
+- [ ] CLI/library can write `.mgi` and `.mgc` artifacts for the explicit package workflow.
+- [ ] Generated artifacts can be consumed by `muga check --artifact-root`.
 - [ ] Default CLI checking/execution remains unchanged when no artifact root is provided.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
@@ -260,7 +264,7 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is CLI artifact-root wiring.
+5. [ ] Confirm whether the intended next code slice is artifact generation/project wiring.
 6. [ ] Keep package flattening unchanged for normal execution unless the task explicitly changes package checking.
 7. [ ] After every compiler-core change, verify at least:
 

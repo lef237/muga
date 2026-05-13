@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs, path::Path};
+use std::{collections::HashSet, fs, path::Path, process::Command};
 
 use muga::bytecode::Instruction;
 
@@ -1528,6 +1528,152 @@ fn cache_backed_checking_and_body_checking_agree_for_existing_samples() {
     let body = muga::compile_typed_path(path).expect("body-based package checking should pass");
 
     assert_eq!(main_return_type(&cached), main_return_type(&body));
+}
+
+#[test]
+fn cli_check_uses_artifact_root_without_dependency_source() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = provider.package_interfaces();
+    let artifact_root = temp_package_root("cli-artifact-root");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["util::states"],
+    );
+    let root = temp_package_root("cli-artifact-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/cli_artifact/main.muga",
+        r#"
+package app::cli_artifact
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(9))
+}
+"#,
+    );
+    let key = muga::package_check_cache_key(&entry, &artifact_root)
+        .expect("cache key should be computed");
+    let artifact_path = muga::package_check_cache_artifact_path(&artifact_root, &entry)
+        .expect("check cache path should be derived");
+    muga::write_package_check_cache_artifact(&artifact_path, &key)
+        .expect("check cache artifact should be written");
+
+    assert!(!root.join("util/states/model.muga").exists());
+    let output = muga_command()
+        .arg("check")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
+fn cli_check_reports_missing_interface_artifact() {
+    let artifact_root = temp_package_root("cli-missing-interface-artifact");
+    let root = temp_package_root("cli-missing-interface-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/cli_missing_interface/main.muga",
+        r#"
+package app::cli_missing_interface
+
+import util::numbers
+
+fn main(): Int {
+  numbers::inc_twice(1)
+}
+"#,
+    );
+    let output = muga_command()
+        .arg("check")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert!(stderr.contains("PK016"), "{stderr}");
+    assert!(
+        stderr.contains("missing package interface artifact"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("util::numbers"), "{stderr}");
+}
+
+#[test]
+fn cli_check_reports_stale_package_check_artifact() {
+    let root = temp_package_root("cli-stale-check-artifact");
+    let entry = write_package_file(
+        &root,
+        "app/cli_stale/main.muga",
+        r#"
+package app::cli_stale
+
+fn main(): Int {
+  1
+}
+"#,
+    );
+    let artifact_root = temp_package_root("cli-stale-artifacts");
+    let key = muga::package_check_cache_key(&entry, &artifact_root)
+        .expect("cache key should be computed");
+    let artifact_path = muga::package_check_cache_artifact_path(&artifact_root, &entry)
+        .expect("check cache path should be derived");
+    muga::write_package_check_cache_artifact(&artifact_path, &key)
+        .expect("check cache artifact should be written");
+    fs::write(
+        &entry,
+        r#"
+package app::cli_stale
+
+fn main(): Int {
+  2
+}
+"#
+        .trim_start(),
+    )
+    .expect("package file should be rewritten");
+
+    let output = muga_command()
+        .arg("check")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert!(stderr.contains("PK021"), "{stderr}");
+    assert!(
+        stderr.contains("stale package check cache artifact"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn default_cli_check_keeps_existing_body_based_behavior() {
+    let output = muga_command()
+        .arg("check")
+        .arg("samples/packages/app/main/main.muga")
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "ok\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
 #[test]
@@ -4811,6 +4957,10 @@ fn write_interface_artifacts(
             .write_persisted_file(&path, symbols)
             .expect("interface artifact should be written");
     }
+}
+
+fn muga_command() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_muga"))
 }
 
 fn main_return_type(program: &muga::typed_hir::Program) -> Option<muga::types::TypeInfo> {

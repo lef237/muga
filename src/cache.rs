@@ -1,4 +1,7 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     diagnostic::Diagnostic,
@@ -194,6 +197,28 @@ pub fn compute_package_check_cache_key(
         })
     } else {
         Err(diagnostics)
+    }
+}
+
+pub fn package_check_artifact_path(root: &Path, package_path: &str) -> PathBuf {
+    root.join(format!("{}.mgc", package_path.replace("::", "__")))
+}
+
+pub fn package_check_artifact_path_from_entry(
+    root: &Path,
+    entry_path: &Path,
+) -> Result<PathBuf, Vec<Diagnostic>> {
+    let package_path = package::entry_package_path_from_entry(entry_path)?;
+    match package_path {
+        Some(package_path) => Ok(package_check_artifact_path(root, &package_path)),
+        None => Err(vec![
+            Diagnostic::new(
+                "PK001",
+                "artifact-backed checking requires a package-mode entrypoint",
+                Span::default(),
+            )
+            .with_suggestion("remove `--artifact-root` or check a package entrypoint"),
+        ]),
     }
 }
 
