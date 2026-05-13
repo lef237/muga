@@ -567,27 +567,11 @@ fn execute_assign(
         return execute_update(program, env, target, value, span);
     }
 
-    if env.borrow().bindings.contains_key(&target.binding)
-        || env
-            .borrow()
-            .bindings
-            .values()
-            .any(|binding| binding.name == target.name)
-    {
+    if env.borrow().bindings.contains_key(&target.binding) {
         return Err(vec![Diagnostic::new(
             "R004",
             format!(
                 "duplicate binding `{}` in the current scope",
-                symbol_name(program, target.name)
-            ),
-            span,
-        )]);
-    }
-    if lookup_name_enclosing(env, target.name).is_some() {
-        return Err(vec![Diagnostic::new(
-            "R005",
-            format!(
-                "shadowing is prohibited for `{}`",
                 symbol_name(program, target.name)
             ),
             span,
@@ -1221,22 +1205,6 @@ fn lookup_name_in_current(env: &EnvRef, name: Symbol) -> Option<Binding> {
         .values()
         .find(|binding| binding.name == name)
         .cloned()
-}
-
-fn lookup_name_enclosing(env: &EnvRef, name: Symbol) -> Option<Binding> {
-    let mut current = env.borrow().parent.clone();
-    while let Some(candidate) = current {
-        let borrowed = candidate.borrow();
-        if let Some(binding) = borrowed
-            .bindings
-            .values()
-            .find(|binding| binding.name == name)
-        {
-            return Some(binding.clone());
-        }
-        current = borrowed.parent.clone();
-    }
-    None
 }
 
 fn lookup_in_current_function_env(env: &EnvRef, binding: BindingId) -> Option<EnvRef> {

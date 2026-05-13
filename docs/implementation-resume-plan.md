@@ -116,6 +116,7 @@ Ada
 - [x] MIR preserves typed HIR binding and package-item identity on function definitions, parameters, assignments, and identifier uses while bytecode still emits symbol-based VM instructions.
 - [x] MIR and bytecode preserve typed assignment mode (`new binding` vs `update`) so runtime no longer infers assignment semantics from name lookup alone.
 - [x] bytecode and runtime name references now carry `BindingId` plus display symbol, runtime environments are keyed by binding identity instead of symbol text, and package function item references are canonicalized to the defining function binding while preserving import bindings in metadata.
+- [x] runtime new-binding assignment trusts checked `BindingId` semantics and no longer re-runs shadowing checks through display-name parent-scope lookup.
 - [x] default package `run` lowers package-aware typed HIR through MIR before bytecode generation.
 - [x] package-aware typed HIR can lower through the MIR/bytecode VM path for package records/enums/functions.
 - [ ] package execution still reads dependency source bodies.
