@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after interface artifact discovery support: 209 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after interface artifact discovery support.
+- [x] `cargo test` passed after package cache key support: 214 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after package cache key support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -87,7 +87,8 @@ Ada
 - [x] loaded package interfaces can be used as the dependency boundary for downstream typed checking without reading dependency implementation bodies.
 - [x] package interface artifacts can be discovered from an explicit interface root for downstream typed checking.
 - [x] missing and hash-mismatched interface artifacts are rejected with regeneration guidance.
-- [ ] package cache integration and invalidation are not implemented.
+- [x] package check cache keys include entry package source hashes and dependency interface hashes.
+- [x] missing or stale `.mgc` package check artifacts are rejected with regeneration guidance.
 - [ ] normal CLI checking/execution still uses package flattening and dependency source loading.
 
 ### Diagnostics
@@ -142,12 +143,13 @@ Ada
 - Package interfaces now have a deterministic v1 text format and file round-trip helpers.
 - Loaded package interface summaries can now act as the downstream dependency boundary for typed checking.
 - A library API can discover dependency `.mgi` artifacts from an explicit interface root for typed checking.
+- A library API can compute package check cache keys and validate `.mgc` artifacts against source/dependency interface hashes.
 - Normal CLI package checking and execution still read and flatten dependency bodies.
-- There is no package cache integration or incremental invalidation yet.
+- CLI/project-mode artifact-root wiring and full incremental artifact reuse are still not implemented.
 
 ## Recommended Next Implementation
 
-The next implementation theme is package cache integration and invalidation.
+The next implementation theme is CLI/project-mode wiring for interface and package-check cache artifacts.
 
 Reasoning:
 
@@ -160,7 +162,8 @@ Reasoning:
 - Persisted package interfaces now round-trip record/function/enum identity, type parameters, variants, payload types, public signatures, and source spans.
 - Loaded package interfaces can now be used for downstream signature/type checking without dependency implementation bodies.
 - Interface artifacts can now be discovered from an explicit root, with missing/hash-mismatched artifacts rejected before checking.
-- The remaining boundary pieces are cache keys, invalidation, CLI/project wiring, and eventually making interface-backed checking the normal package path.
+- Package check cache keys now include entry source content and dependency interface hashes.
+- The remaining boundary pieces are CLI/project wiring, real artifact storage/reuse, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 
@@ -218,35 +221,35 @@ Estimates are in focused engineering days for someone already familiar with this
 | 6. Interface hashes and loaded-interface validation | Add interface hashes, artifact path conventions, and a typed checking path that validates against loaded interface summaries. | `src/interface.rs`, `src/lib.rs`, tests | Done | Medium |
 | 7. Downstream checking without dependency bodies | Load dependency interfaces as the checking boundary, synthesize or otherwise expose only public signatures, and avoid reading dependency implementation bodies for downstream checks. | `src/package.rs`, `src/interface.rs`, `src/lib.rs`, tests | Done | High |
 | 8. Interface artifact discovery | Teach package checking to find persisted interface artifacts from an explicit interface root and reject missing/hash-mismatched/stale artifacts. | `src/interface.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
-| 9. Package cache integration and invalidation | Define source/interface/dependency hash inputs, cache checked package artifacts, and expose a narrow CLI/project path for artifact-backed checking. | package/interface/lib/CLI/tests | 4-8 days | High |
-| 10. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 9. Package cache keys and invalidation | Define source/interface/dependency hash inputs, persist checked-package metadata, reject missing/stale cache artifacts, and keep cache-backed checking aligned with body checking. | `src/cache.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
+| 10. CLI/project artifact-root wiring | Expose a narrow CLI/project path for artifact-backed checking using `.mgi` and `.mgc` artifacts. | CLI/lib/tests/docs | 1-3 days | Medium |
+| 11. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 9: add cache keys and invalidation around interface artifacts without replacing normal CLI checking/execution yet.
+The safest immediate code slice is now Slice 10: wire artifact-backed checking into an explicit CLI/project path without replacing normal checking/execution yet.
 
 ## Test Plan For The Next Code Slice
 
-Add tests around these behavioral anchors before enabling cache-backed package checking by default.
+Add tests around these behavioral anchors before enabling artifact-backed package checking by default.
 
-Cache boundary:
+CLI/project wiring:
 
-- `package_cache_key_changes_when_source_changes`
-- `package_cache_key_changes_when_dependency_interface_hash_changes`
-- `package_cache_rejects_missing_checked_artifact`
-- `package_cache_rejects_stale_checked_artifact`
+- `cli_check_uses_interface_artifact_root_without_dependency_source`
+- `cli_check_reports_missing_interface_artifact`
+- `cli_check_reports_stale_package_check_artifact`
+- `project_check_uses_configured_artifact_root_if_project_mode_gets_config`
 
 Compatibility:
 
-- `cache_backed_checking_and_body_checking_agree_for_existing_samples`
 - `cli_or_project_artifact_check_reports_same_errors_as_library_api`
+- `default_cli_check_keeps_existing_body_based_behavior`
 
 ## Definition Of Done For The Next Code Slice
 
 - [ ] Existing `cargo test` remains green.
 - [ ] Existing package-body checking remains source-compatible.
-- [ ] Package cache keys include source content and dependency interface hashes.
-- [ ] Stale checked package artifacts are rejected with regeneration guidance.
-- [ ] Cache-backed checking and current body-based checking agree for existing package samples.
-- [ ] CLI/project artifact checking does not silently fall back to dependency implementation bodies.
+- [ ] CLI/project artifact checking uses explicit artifact roots and does not silently fall back to dependency implementation bodies.
+- [ ] Missing interface artifacts and stale package check artifacts surface the same diagnostics as the library API.
+- [ ] Default CLI checking/execution remains unchanged when no artifact root is provided.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
 ## Resume Checklist
@@ -257,7 +260,7 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is package cache keys/invalidation or CLI artifact-root wiring.
+5. [ ] Confirm whether the intended next code slice is CLI artifact-root wiring.
 6. [ ] Keep package flattening unchanged for normal execution unless the task explicitly changes package checking.
 7. [ ] After every compiler-core change, verify at least:
 

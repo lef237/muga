@@ -24,6 +24,23 @@ pub fn import_paths_from_entry(path: &Path) -> Result<Vec<String>, Vec<Diagnosti
     loader.load_entry_import_paths()
 }
 
+pub fn source_fingerprint_input_from_entry(path: &Path) -> Result<String, Vec<Diagnostic>> {
+    let (entry_program, manifest) = parse_entry_program(path)?;
+    if entry_program.package.is_none() {
+        let source = fs::read_to_string(path).map_err(|error| {
+            vec![Diagnostic::new(
+                "PK002",
+                format!("failed to read {}: {error}", path.display()),
+                Span::default(),
+            )]
+        })?;
+        return Ok(format!("script\t{}\n{source}\n", source.len()));
+    }
+
+    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest);
+    loader.entry_package_source_fingerprint_input()
+}
+
 pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
     let (entry_program, manifest) = parse_entry_program(path)?;
     if entry_program.package.is_none() {
@@ -207,6 +224,12 @@ struct ParsedFile {
 }
 
 #[derive(Clone, Debug)]
+struct PackageSourceFile {
+    module_path: String,
+    source: String,
+}
+
+#[derive(Clone, Debug)]
 struct ProjectManifest {
     source_root: PathBuf,
     name: String,
@@ -355,6 +378,30 @@ impl PackageLoader {
         } else {
             Err(std::mem::take(&mut self.diagnostics))
         }
+    }
+
+    fn entry_package_source_fingerprint_input(&mut self) -> Result<String, Vec<Diagnostic>> {
+        if let Err(diagnostic) = self.ensure_source_root() {
+            self.diagnostics.push(diagnostic);
+            return Err(std::mem::take(&mut self.diagnostics));
+        }
+
+        let entry_package = self.entry_package.clone();
+        let files = self.load_package_source_files(&entry_package);
+        if !self.diagnostics.is_empty() {
+            return Err(std::mem::take(&mut self.diagnostics));
+        }
+
+        let mut input = format!("package\t{entry_package}\n");
+        for file in files {
+            input.push_str(&format!(
+                "file\t{}\t{}\n{}\n",
+                file.module_path,
+                file.source.len(),
+                file.source
+            ));
+        }
+        Ok(input)
     }
 
     fn ensure_source_root(&mut self) -> Result<(), Diagnostic> {
@@ -520,6 +567,59 @@ impl PackageLoader {
             files.push(ParsedFile {
                 program,
                 module_path,
+            });
+        }
+        files
+    }
+
+    fn load_package_source_files(&mut self, package_path: &str) -> Vec<PackageSourceFile> {
+        let package_dir = self.package_dir(package_path);
+        let read_dir = match fs::read_dir(&package_dir) {
+            Ok(read_dir) => read_dir,
+            Err(error) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "PK002",
+                    format!(
+                        "failed to read package directory {}: {error}",
+                        package_dir.display()
+                    ),
+                    Span::default(),
+                ));
+                return Vec::new();
+            }
+        };
+
+        let mut file_paths: Vec<PathBuf> = read_dir
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.extension().is_some_and(|ext| ext == "muga"))
+            .collect();
+        file_paths.sort();
+
+        if file_paths.is_empty() {
+            self.diagnostics.push(Diagnostic::new(
+                "PK004",
+                format!("package `{package_path}` does not contain any `.muga` files"),
+                Span::default(),
+            ));
+            return Vec::new();
+        }
+
+        let mut files = Vec::new();
+        for file_path in file_paths {
+            let source = match fs::read_to_string(&file_path) {
+                Ok(source) => source,
+                Err(error) => {
+                    self.diagnostics.push(Diagnostic::new(
+                        "PK002",
+                        format!("failed to read {}: {error}", file_path.display()),
+                        Span::default(),
+                    ));
+                    continue;
+                }
+            };
+            files.push(PackageSourceFile {
+                module_path: module_path_for_file(&file_path),
+                source,
             });
         }
         files

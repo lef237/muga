@@ -1333,6 +1333,204 @@ fn artifact_interface_checking_and_loaded_interface_checking_agree() {
 }
 
 #[test]
+fn package_cache_key_changes_when_source_changes() {
+    let root = temp_package_root("cache-source");
+    let entry = write_package_file(
+        &root,
+        "app/cache_source/main.muga",
+        r#"
+package app::cache_source
+
+fn main(): Int {
+  1
+}
+"#,
+    );
+    let artifact_root = temp_package_root("cache-source-artifacts");
+    let before = muga::package_check_cache_key(&entry, &artifact_root)
+        .expect("cache key should be computed");
+
+    fs::write(
+        &entry,
+        r#"
+package app::cache_source
+
+fn main(): Int {
+  2
+}
+"#
+        .trim_start(),
+    )
+    .expect("package file should be rewritten");
+    let after = muga::package_check_cache_key(&entry, &artifact_root)
+        .expect("cache key should be recomputed");
+
+    assert_ne!(before.stable_hash(), after.stable_hash());
+}
+
+#[test]
+fn package_cache_key_changes_when_dependency_interface_hash_changes() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let numbers = provider
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let mut interfaces = provider.package_interfaces();
+    let artifact_root = temp_package_root("cache-dependency-artifacts");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["util::numbers"],
+    );
+    let root = temp_package_root("cache-dependency-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/cache_dependency/main.muga",
+        r#"
+package app::cache_dependency
+
+import util::numbers
+
+fn main(): Int {
+  numbers::inc_twice(1)
+}
+"#,
+    );
+    let before = muga::package_check_cache_key(&entry, &artifact_root)
+        .expect("cache key should be computed");
+
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .iter_mut()
+        .find(|function| function.name == "inc_twice")
+        .expect("inc_twice should be exported")
+        .ret = muga::types::TypeInfo::String;
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["util::numbers"],
+    );
+    let after = muga::package_check_cache_key(&entry, &artifact_root)
+        .expect("cache key should be recomputed");
+
+    assert_ne!(before.stable_hash(), after.stable_hash());
+}
+
+#[test]
+fn package_cache_rejects_missing_checked_artifact() {
+    let root = temp_package_root("cache-missing-artifact");
+    let entry = write_package_file(
+        &root,
+        "app/cache_missing/main.muga",
+        r#"
+package app::cache_missing
+
+fn main(): Int {
+  1
+}
+"#,
+    );
+    let artifact_root = temp_package_root("cache-missing-artifacts");
+    let diagnostics = muga::compile_typed_path_against_cached_interface_artifacts(
+        &entry,
+        &artifact_root,
+        &artifact_root.join("missing.mgc"),
+    )
+    .unwrap_err();
+
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "PK020"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn package_cache_rejects_stale_checked_artifact() {
+    let root = temp_package_root("cache-stale-artifact");
+    let entry = write_package_file(
+        &root,
+        "app/cache_stale/main.muga",
+        r#"
+package app::cache_stale
+
+fn main(): Int {
+  1
+}
+"#,
+    );
+    let artifact_root = temp_package_root("cache-stale-artifacts");
+    let artifact_path = artifact_root.join("app__cache_stale.mgc");
+    let key = muga::package_check_cache_key(&entry, &artifact_root)
+        .expect("cache key should be computed");
+    muga::write_package_check_cache_artifact(&artifact_path, &key)
+        .expect("check cache artifact should be written");
+
+    fs::write(
+        &entry,
+        r#"
+package app::cache_stale
+
+fn main(): Int {
+  2
+}
+"#
+        .trim_start(),
+    )
+    .expect("package file should be rewritten");
+    let diagnostics = muga::compile_typed_path_against_cached_interface_artifacts(
+        &entry,
+        &artifact_root,
+        &artifact_path,
+    )
+    .unwrap_err();
+
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "PK021"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn cache_backed_checking_and_body_checking_agree_for_existing_samples() {
+    let path = Path::new("samples/packages/app/main/main.muga");
+    let provider = muga::compile_typed_path(path).expect("typed package compilation should pass");
+    let (interfaces, symbols) = persisted_interfaces_from_program(&provider);
+    let artifact_root = temp_package_root("cache-artifact-agree");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &symbols,
+        &["util::numbers", "util::users"],
+    );
+    let artifact_path = artifact_root.join("app__main.mgc");
+    let key =
+        muga::package_check_cache_key(path, &artifact_root).expect("cache key should be computed");
+    muga::write_package_check_cache_artifact(&artifact_path, &key)
+        .expect("check cache artifact should be written");
+
+    let cached = muga::compile_typed_path_against_cached_interface_artifacts(
+        path,
+        &artifact_root,
+        &artifact_path,
+    )
+    .expect("cache-backed checking should pass");
+    let body = muga::compile_typed_path(path).expect("body-based package checking should pass");
+
+    assert_eq!(main_return_type(&cached), main_return_type(&body));
+}
+
+#[test]
 fn typed_hir_rejects_reloaded_stale_enum_interface_shape() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
         .expect("typed package compilation should pass");
