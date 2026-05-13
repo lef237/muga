@@ -1137,19 +1137,6 @@ impl PackageLoader {
             }
         }
 
-        for interface in &interfaces.packages {
-            if interface.path == entry_package {
-                continue;
-            }
-            let package_data = stub_package_data_from_interface(
-                interface,
-                interfaces,
-                interface_symbols,
-                &mut self.diagnostics,
-            );
-            self.packages.insert(interface.path.clone(), package_data);
-        }
-
         if !self.diagnostics.is_empty() {
             return Err(std::mem::take(&mut self.diagnostics));
         }
@@ -1855,6 +1842,107 @@ impl PackageLoader {
                         _ => {}
                     }
                 }
+            }
+        }
+
+        for interface in &interfaces.packages {
+            if self.packages.contains_key(&interface.path) {
+                continue;
+            }
+            let package_id = package_ids[&interface.path];
+            let module_id = ModuleId::new(modules.len() as u32);
+            modules.push(PackageModuleInfo {
+                id: module_id,
+                package: package_id,
+                path: INTERFACE_STUB_MODULE.to_string(),
+            });
+            let imports = interface
+                .dependencies
+                .iter()
+                .filter_map(|dependency| {
+                    package_ids
+                        .get(dependency)
+                        .map(|package| PackageImportInfo {
+                            alias: dependency
+                                .rsplit("::")
+                                .next()
+                                .unwrap_or(dependency)
+                                .to_string(),
+                            package: *package,
+                            path: dependency.clone(),
+                            span: Span::default(),
+                        })
+                })
+                .collect();
+            package_slots[package_id.as_u32() as usize] = Some(PackageInfo {
+                id: package_id,
+                path: interface.path.clone(),
+                modules: vec![module_id],
+                imports,
+            });
+            for record in &interface.records {
+                insert_package_graph_item(
+                    &mut item_slots,
+                    PackageItemInfo {
+                        id: record.item,
+                        package: package_id,
+                        module: module_id,
+                        name: record.name.clone(),
+                        kind: PackageItemKind::Record,
+                        visibility: Visibility::Public,
+                        span: record.span,
+                        mangled_name: mangle_record_name_for_visibility(
+                            &interface.path,
+                            INTERFACE_STUB_MODULE,
+                            &record.name,
+                            Visibility::Public,
+                        ),
+                    },
+                    &mut self.diagnostics,
+                );
+            }
+            for enumeration in &interface.enums {
+                insert_package_graph_item(
+                    &mut item_slots,
+                    PackageItemInfo {
+                        id: enumeration.item,
+                        package: package_id,
+                        module: module_id,
+                        name: enumeration.name.clone(),
+                        kind: PackageItemKind::Enum,
+                        visibility: Visibility::Public,
+                        span: enumeration.span,
+                        mangled_name: mangle_enum_name_for_visibility(
+                            &interface.path,
+                            INTERFACE_STUB_MODULE,
+                            &enumeration.name,
+                            Visibility::Public,
+                        ),
+                    },
+                    &mut self.diagnostics,
+                );
+            }
+            for function in &interface.functions {
+                insert_package_graph_item(
+                    &mut item_slots,
+                    PackageItemInfo {
+                        id: function.item,
+                        package: package_id,
+                        module: module_id,
+                        name: function.name.clone(),
+                        kind: PackageItemKind::Function,
+                        visibility: Visibility::Public,
+                        span: function.span,
+                        mangled_name: mangle_function_name_for_visibility(
+                            &interface.path,
+                            INTERFACE_STUB_MODULE,
+                            &function.name,
+                            Visibility::Public,
+                            &self.entry_package,
+                        ),
+                    },
+                    &mut self.diagnostics,
+                );
             }
         }
 

@@ -1884,6 +1884,15 @@ fn main(): Int {
         .package_graph
         .package_id("app::package_aware_interface_signatures")
         .expect("entry package should exist");
+    assert!(
+        result
+            .packages
+            .packages
+            .iter()
+            .all(|package| package.path != "util::numbers"),
+        "{:#?}",
+        result.packages.packages
+    );
     let numbers = result
         .packages
         .package_graph
@@ -2148,6 +2157,15 @@ fn main(): Int {
         .package_graph
         .package_id("app::package_aware_artifact")
         .expect("entry package should exist");
+    assert!(
+        result
+            .packages
+            .packages
+            .iter()
+            .all(|package| package.path != "util::numbers"),
+        "{:#?}",
+        result.packages.packages
+    );
     let numbers = result
         .packages
         .package_graph
