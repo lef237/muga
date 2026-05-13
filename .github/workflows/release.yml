@@ -20,6 +20,8 @@ jobs:
           rustup default stable
       - name: Check formatting
         run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test --locked
       - name: Verify package
