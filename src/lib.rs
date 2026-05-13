@@ -129,7 +129,7 @@ pub fn compile_typed_path(path: &Path) -> Result<TypedHirProgram, Vec<Diagnostic
         return check_package_aware_path(path).map(|check| check.typed_program);
     }
     let loaded = package::load_from_entry(path)?;
-    compile_loaded_typed_program(loaded, None)
+    compile_loaded_typed_program(loaded)
 }
 
 pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Diagnostic>> {
@@ -295,14 +295,6 @@ fn attach_package_items_to_module_typed_program(
     }
 }
 
-pub fn compile_typed_path_against_interfaces(
-    path: &Path,
-    interfaces: &PackageInterfaceGraph,
-) -> Result<TypedHirProgram, Vec<Diagnostic>> {
-    let loaded = package::load_from_entry(path)?;
-    compile_loaded_typed_program(loaded, Some(interfaces))
-}
-
 pub fn compile_typed_path_against_loaded_interfaces(
     path: &Path,
     interfaces: &PackageInterfaceGraph,
@@ -465,14 +457,6 @@ pub fn check_package_aware_path_against_cached_artifact_root(
 
 fn compile_loaded_typed_program(
     loaded: package::LoadedProgram,
-    interfaces: Option<&PackageInterfaceGraph>,
-) -> Result<TypedHirProgram, Vec<Diagnostic>> {
-    compile_loaded_typed_program_inner(loaded, interfaces)
-}
-
-fn compile_loaded_typed_program_inner(
-    loaded: package::LoadedProgram,
-    interfaces: Option<&PackageInterfaceGraph>,
 ) -> Result<TypedHirProgram, Vec<Diagnostic>> {
     let resolve_output = resolver::resolve_program(&loaded.program);
     let type_output = typing::typecheck_program(&loaded.program);
@@ -480,14 +464,8 @@ fn compile_loaded_typed_program_inner(
     diagnostics.extend(type_output.diagnostics.clone());
     if diagnostics.is_empty() {
         let program = typed_hir::lower(&loaded.program, &type_output, loaded.package_graph);
-        let generated_interfaces;
-        let interfaces = if let Some(interfaces) = interfaces {
-            interfaces
-        } else {
-            generated_interfaces = program.package_interfaces();
-            &generated_interfaces
-        };
-        diagnostics.extend(program.validate_package_references_against_interfaces(interfaces));
+        let interfaces = program.package_interfaces();
+        diagnostics.extend(program.validate_package_references_against_interfaces(&interfaces));
         if diagnostics.is_empty() {
             Ok(program)
         } else {

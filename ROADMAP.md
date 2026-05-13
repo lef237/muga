@@ -39,6 +39,7 @@ Implemented language surface:
 - default package `check` runs the package-aware validation path instead of rechecking the legacy flattened AST
 - default package `compile_typed_path` returns the package-aware typed HIR aggregate instead of the legacy flattened typed HIR
 - package-aware checking and loaded/interface-artifact typed compilation collect dependency signatures and build dependency graph metadata directly from loaded interfaces without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
+- the legacy interface-stub flattened typed compilation path has been removed; loaded/interface-artifact typed compilation now uses the package-aware semantic path only
 - package-aware typed HIR can lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
@@ -47,7 +48,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package execution still reads dependency source bodies; dependency-body-free execution is not implemented
-- package-aware checking still needs broader module body coverage plus normal project/artifact integration, but it is now the default package validation path
+- remaining package work is compatibility HIR/VM migration plus normal project/artifact integration; package-aware checking is now the default package validation path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
 - VM bytecode execution still uses the compatibility HIR as its immediate input; package-aware typed HIR adapts into that path, but MIR/native lowering is not implemented
 
@@ -86,7 +87,7 @@ The next code slice should keep artifact roots explicit on the CLI and move towa
 4. Use the unflattened package graph as the migration point for package-aware checking.
 5. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
 6. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
-7. Continue the package-aware checker by broadening module body typechecking and feeding loaded-interface signatures into semantic analysis, not by expanding the flattened AST rewrite path.
+7. Continue removing remaining compatibility flattened AST/HIR usage around execution and public APIs; loaded-interface signatures should stay semantic inputs, not synthesized AST.
 
 ## Compiler Architecture Path
 

@@ -625,8 +625,8 @@ The current codebase should move toward the ideal in this order:
 3. Introduce stable `VariantRef` and include variants in the interface model.
 4. Define public API hash vs recheck fingerprint before writing persisted interfaces.
 5. Replace compiler-known `Option` / `Result` special cases with prelude enum metadata where possible.
-6. Continue replacing the remaining compatibility uses of flattened AST/HIR now that default package `check_path` and `compile_typed_path` use the package-aware graph.
-7. Generate interfaces from per-package typed HIR, not from flattened statements.
+6. Continue replacing the remaining compatibility uses of flattened AST/HIR now that default package `check_path`, `compile_typed_path`, and loaded-interface typed compilation use the package-aware graph.
+7. Keep interface generation on package-aware typed HIR and move the serialized interface model toward first-class `InterfaceTypeRef` / `ItemRef` data.
 8. Make package import lookup consume interfaces as its primary input.
 9. Introduce MIR and lower VM bytecode from MIR.
 10. Remove the old untyped HIR path once VM execution no longer needs it.
@@ -638,11 +638,12 @@ Completed structural steps:
 - shared public type summaries now live in `types`, not only inside `typing`
 - resolver, typechecker output, runtime, and package builtin lookup share `prelude::BuiltinId`
 - typed HIR lowering reads package item identity from AST declarations instead of recovering it from mangled names
+- loaded-interface typed compilation no longer synthesizes dependency interface AST stubs or routes them through the legacy flattened typed path
 
 Critical current risks to eliminate:
 
 - resolver and typechecker still build scopes independently
-- `run` compiles through old untyped HIR while `compile_typed_*` produces a separate typed HIR product
+- VM bytecode still consumes compatibility HIR adapted from typed HIR instead of MIR
 - package interfaces still use session-local IDs and compiler-owned type structs in memory, even though `.mgi` v2 maps stable artifact identities back into fresh session IDs when loaded
 - builtin type rules and runtime behavior are still implemented separately
 - bytecode match lowering still assumes compiler-known enum shapes
