@@ -203,6 +203,20 @@ impl PackageInterfaceGraph {
         stable_hash_hex(&self.persisted_body_text(symbols))
     }
 
+    pub fn stable_hash_for_package(
+        &self,
+        package_path: &str,
+        symbols: &SymbolTable,
+    ) -> Option<String> {
+        let package = self.package_by_path(package_path)?.clone();
+        Some(
+            Self {
+                packages: vec![package],
+            }
+            .stable_hash(symbols),
+        )
+    }
+
     fn persisted_body_text(&self, symbols: &SymbolTable) -> String {
         let mut out = String::new();
         for package in &self.packages {
@@ -1002,7 +1016,7 @@ fn parse_u32_token(value: &str, label: &str) -> Result<u32, String> {
     value.parse().map_err(|_| format!("invalid {label}"))
 }
 
-fn stable_hash_hex(text: &str) -> String {
+pub(crate) fn stable_hash_hex(text: &str) -> String {
     let mut hash = FNV_OFFSET_BASIS;
     for byte in text.as_bytes() {
         hash ^= u64::from(*byte);

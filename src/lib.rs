@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod bytecode;
+pub mod cache;
 pub mod diagnostic;
 pub mod hir;
 pub mod identity;
@@ -130,6 +131,30 @@ pub fn compile_typed_path_against_interface_artifacts(
         &mut symbols,
     )?;
     compile_typed_path_against_loaded_interfaces(path, &interfaces, &symbols)
+}
+
+pub fn package_check_cache_key(
+    path: &Path,
+    interface_root: &Path,
+) -> Result<cache::PackageCheckCacheKey, Vec<Diagnostic>> {
+    cache::compute_package_check_cache_key(path, interface_root)
+}
+
+pub fn write_package_check_cache_artifact(
+    path: &Path,
+    key: &cache::PackageCheckCacheKey,
+) -> Result<(), Diagnostic> {
+    cache::write_package_check_artifact(path, key)
+}
+
+pub fn compile_typed_path_against_cached_interface_artifacts(
+    path: &Path,
+    interface_root: &Path,
+    checked_artifact_path: &Path,
+) -> Result<TypedHirProgram, Vec<Diagnostic>> {
+    let key = cache::compute_package_check_cache_key(path, interface_root)?;
+    cache::validate_package_check_artifact(checked_artifact_path, &key)?;
+    compile_typed_path_against_interface_artifacts(path, interface_root)
 }
 
 fn compile_loaded_typed_program(

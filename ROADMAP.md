@@ -24,6 +24,7 @@ Implemented language surface:
 - enum diagnostics, package enum visibility coverage, imported `alias::Enum::Variant` constructors/patterns, package enum call-target identity, and stale enum interface validation
 - deterministic v1 package interface text persistence, content hashes, artifact path naming, file round-trip, and loaded-interface validation for public records/functions/enums
 - loaded package interfaces and discovered `.mgi` artifacts can act as the dependency boundary for downstream typed checking without reading dependency implementation bodies
+- package check cache keys combine entry package source hashes with dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -34,7 +35,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package checking/execution still flattens packages and reads dependency source
-- package cache integration, CLI artifact-root wiring, and incremental invalidation are not implemented
+- CLI artifact-root wiring and full incremental package artifact reuse are not implemented
 - VM bytecode still lowers from the older HIR path, not from typed HIR/MIR
 
 ## Settled Direction
@@ -64,13 +65,13 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice is package cache integration and invalidation:
+The next code slice is CLI/project-mode wiring for interface and package-check cache artifacts:
 
-1. Define source hash, interface hash, and dependency-interface hash inputs for package cache decisions.
-2. Add a narrow artifact-backed package check entrypoint that can be wired to CLI/project mode later.
-3. Reject stale cached artifacts with regeneration guidance and without silently falling back to dependency implementation bodies.
-4. Keep interface-backed typed checking aligned with current body-based checking on existing package samples.
-5. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until cache invalidation is stable.
+1. Add a narrow CLI flag or project-mode option for an explicit interface/cache artifact root.
+2. Route `muga check` through artifact-backed typed checking when that option is present.
+3. Keep artifact-backed checks from silently falling back to dependency implementation bodies.
+4. Keep diagnostics for missing, hash-mismatched, and stale artifacts actionable.
+5. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact wiring is stable.
 
 ## Compiler Architecture Path
 
@@ -118,8 +119,8 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- interface cache keys and invalidation
 - CLI/project-mode artifact-root wiring
+- full package artifact storage/reuse after check cache metadata
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported
 
