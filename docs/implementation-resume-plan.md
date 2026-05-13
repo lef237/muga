@@ -110,7 +110,7 @@ Ada
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
 - [x] the legacy `compile_typed_path_against_interfaces` / interface-stub flattened compilation path has been removed.
-- [x] bytecode generation consumes `mir::Program`; `hir` remains a compatibility re-export.
+- [x] bytecode generation consumes `mir::Program`; `hir` remains a compatibility module for legacy AST lowering and re-exports.
 - [x] default package `run` lowers package-aware typed HIR through MIR before bytecode generation.
 - [x] package-aware typed HIR can lower through the MIR/bytecode VM path for package records/enums/functions.
 - [ ] package execution still reads dependency source bodies.
@@ -159,7 +159,7 @@ Ada
 
 - The VM/bytecode path is the current execution backend and should remain a reference backend.
 - typed HIR is the semantic boundary for package interfaces and MIR lowering.
-- The bytecode backend now consumes an initial expression-shaped MIR. `hir` remains as a compatibility re-export while MIR is matured toward a control-flow-oriented backend IR.
+- The bytecode backend now consumes an initial expression-shaped MIR. `hir` remains as a compatibility module for legacy AST lowering and re-exports while MIR is matured toward a control-flow-oriented backend IR.
 - `Option[T]` and `Result[T, E]` remain compiler-known enum-like types for now; user-defined enums use a parallel source-level enum model.
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.
