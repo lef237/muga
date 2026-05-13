@@ -5948,7 +5948,38 @@ fn main(): Int {
         .find(|binding| binding.id == assign_targets[0].binding)
         .expect("value binding should be preserved");
     assert_eq!(binding.local, assign_targets[0].local);
+    assert!(program.locals.iter().any(|local| {
+        local.id == assign_targets[0].local && local.binding == Some(assign_targets[0].binding)
+    }));
     assert!(program.local_count > assign_targets[0].local.as_u32() as usize);
+}
+
+#[test]
+fn compile_bytecode_source_records_synthetic_match_locals() {
+    let source = r#"
+fn main(): Int {
+  value: Option[Int] = Option::Some(1)
+  match value {
+    Option::Some(x) => x
+    Option::None => 0
+  }
+}
+"#;
+    let program = muga::compile_bytecode_source(source).unwrap();
+    let local = program
+        .locals
+        .iter()
+        .find(|local| matches!(local.kind, muga::bytecode::LocalKind::Synthetic))
+        .expect("match temporary should be recorded as a synthetic local");
+
+    assert!(
+        program
+            .symbols
+            .resolve(local.name)
+            .starts_with("__muga_match_value_")
+    );
+    assert_eq!(local.binding, None);
+    assert!(program.local_count > local.id.as_u32() as usize);
 }
 
 #[test]
@@ -6019,6 +6050,10 @@ fn compile_bytecode_path_uses_package_definition_binding_for_runtime_names() {
     );
     assert_ne!(definition_targets[0].binding, import.id);
     assert_ne!(definition_targets[0].local, import.local);
+    assert!(program.locals.iter().any(|local| {
+        local.id == definition_targets[0].local
+            && local.binding == Some(definition_targets[0].binding)
+    }));
     assert!(program.local_count > definition_targets[0].local.as_u32() as usize);
 }
 

@@ -14,6 +14,7 @@ pub struct Program {
     pub entry: Chunk,
     pub functions: Vec<Function>,
     pub bindings: Vec<BindingDef>,
+    pub locals: Vec<LocalDef>,
     pub main: Option<NameRef>,
     pub local_count: usize,
     pub symbols: SymbolTable,
@@ -27,6 +28,22 @@ pub struct BindingDef {
     pub kind: BindingKind,
     pub package_item: Option<PackageItemId>,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct LocalDef {
+    pub id: LocalId,
+    pub binding: Option<BindingId>,
+    pub name: Symbol,
+    pub kind: LocalKind,
+    pub package_item: Option<PackageItemId>,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocalKind {
+    Binding(BindingKind),
+    Synthetic,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -159,26 +176,29 @@ pub fn compile(program: mir::Program) -> Program {
     } = program;
     let main = entry_main_ref(&entry, &symbols);
     let bindings: Vec<_> = bindings.into_iter().map(BindingDef::from).collect();
-    let mut compiler = Compiler::new(symbols, next_synthetic_local(&bindings));
+    let locals: Vec<_> = bindings.iter().map(LocalDef::from).collect();
+    let mut compiler = Compiler::new(symbols, next_synthetic_local(&locals), locals);
     let entry = compiler.compile_entry_body(&entry);
     for function in &functions {
         compiler.compile_function(function);
     }
     let local_count = compiler.next_synthetic_local as usize;
+    let locals = compiler.locals;
     Program {
         entry,
         functions: compiler.functions,
         bindings,
+        locals,
         main,
         local_count,
         symbols: compiler.symbols,
     }
 }
 
-fn next_synthetic_local(bindings: &[BindingDef]) -> u32 {
-    bindings
+fn next_synthetic_local(locals: &[LocalDef]) -> u32 {
+    locals
         .iter()
-        .map(|binding| binding.local.as_u32())
+        .map(|local| local.id.as_u32())
         .max()
         .map_or(0, |id| id + 1)
 }
@@ -228,19 +248,34 @@ impl From<mir::BindingDef> for BindingDef {
     }
 }
 
+impl From<&BindingDef> for LocalDef {
+    fn from(binding: &BindingDef) -> Self {
+        Self {
+            id: binding.local,
+            binding: Some(binding.id),
+            name: binding.name,
+            kind: LocalKind::Binding(binding.kind),
+            package_item: binding.package_item,
+            span: binding.span,
+        }
+    }
+}
+
 struct Compiler {
     functions: Vec<Function>,
     symbols: SymbolTable,
+    locals: Vec<LocalDef>,
     package_function_bindings: HashMap<PackageItemId, BindingId>,
     next_match_temp: usize,
     next_synthetic_local: u32,
 }
 
 impl Compiler {
-    fn new(symbols: SymbolTable, next_synthetic_local: u32) -> Self {
+    fn new(symbols: SymbolTable, next_synthetic_local: u32, locals: Vec<LocalDef>) -> Self {
         Self {
             functions: Vec::new(),
             symbols,
+            locals,
             package_function_bindings: HashMap::new(),
             next_match_temp: 0,
             next_synthetic_local,
@@ -602,6 +637,14 @@ impl Compiler {
         let local = LocalId::new(self.next_synthetic_local);
         let binding = BindingId::new(self.next_synthetic_local);
         self.next_synthetic_local += 1;
+        self.locals.push(LocalDef {
+            id: local,
+            binding: None,
+            name,
+            kind: LocalKind::Synthetic,
+            package_item: None,
+            span: Span::default(),
+        });
         NameRef {
             binding,
             local,
