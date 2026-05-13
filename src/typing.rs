@@ -29,6 +29,7 @@ pub struct TypedBindingInfo {
     pub symbol: Symbol,
     pub kind: BindingKind,
     pub ty: TypeInfo,
+    pub package_item: Option<PackageItemId>,
     pub span: Span,
 }
 
@@ -275,6 +276,7 @@ impl TypeChecker {
                 symbol: binding.symbol,
                 kind: binding.kind,
                 ty: self.type_info_for(&binding.ty),
+                package_item: self.package_items_by_binding.get(&binding.id).copied(),
                 span: binding.span,
             })
             .collect();

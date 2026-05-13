@@ -352,10 +352,13 @@ struct Lowerer<'a> {
 
 impl<'a> Lowerer<'a> {
     fn new(program: &ast::Program, analysis: &'a TypeCheckOutput) -> Self {
-        let package_items_by_binding = program
-            .statements
+        let mut package_items_by_binding: HashMap<_, _> = analysis
+            .bindings
             .iter()
-            .filter_map(|statement| match statement {
+            .filter_map(|binding| Some((binding.id, binding.package_item?)))
+            .collect();
+        package_items_by_binding.extend(program.statements.iter().filter_map(|statement| {
+            match statement {
                 ast::Stmt::FuncDecl(func) => {
                     let item = func.package_item?;
                     let binding = Self::binding_for_decl_in_analysis(
@@ -367,8 +370,8 @@ impl<'a> Lowerer<'a> {
                     Some((binding, item))
                 }
                 _ => None,
-            })
-            .collect();
+            }
+        }));
         let package_items_by_symbol = program
             .statements
             .iter()
@@ -431,6 +434,9 @@ impl<'a> Lowerer<'a> {
                 symbol: binding.symbol,
                 kind: binding.kind,
                 ty: self.package_target_for_type(binding.ty.clone()),
+                package_item: binding
+                    .package_item
+                    .or_else(|| self.package_items_by_binding.get(&binding.id).copied()),
                 span: binding.span,
             })
             .collect()
