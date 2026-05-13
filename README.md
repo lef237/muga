@@ -17,6 +17,7 @@ Run a source file with:
 ```bash
 muga path/to/file.muga
 muga check path/to/file.muga
+muga emit-artifacts --artifact-root path/to/artifacts path/to/package/main.muga
 muga emit-interface --artifact-root path/to/artifacts --package util::numbers path/to/package/main.muga
 muga emit-check-cache --artifact-root path/to/artifacts path/to/package/main.muga
 muga check --artifact-root path/to/artifacts path/to/package/main.muga
@@ -62,11 +63,10 @@ cargo run -- check samples/packages/app/main/main.muga
 cargo run -- samples/packages/app/main/main.muga
 ```
 
-For artifact-backed package checking, first emit `.mgi` interface files, then emit the entry package `.mgc` check cache file. `--package` can restrict interface emission to one package; without it, reachable package interfaces from the entrypoint are emitted.
+For artifact-backed package checking, `emit-artifacts` writes reachable `.mgi` interface files plus the entry package `.mgc` check cache file. Use `emit-interface` with `--package` only when you want to restrict interface emission to one package.
 
 ```bash
-cargo run -- emit-interface --artifact-root path/to/artifacts --package util::numbers samples/packages/app/main/main.muga
-cargo run -- emit-check-cache --artifact-root path/to/artifacts path/to/package/main.muga
+cargo run -- emit-artifacts --artifact-root path/to/artifacts path/to/package/main.muga
 cargo run -- check --artifact-root path/to/artifacts path/to/package/main.muga
 ```
 
@@ -174,7 +174,7 @@ Implemented:
 - downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts without reading dependency implementation bodies
 - package check cache keys combine entry package source content with dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` validates package entries against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
-- `muga emit-interface` and `muga emit-check-cache` write `.mgi` and `.mgc` artifacts for the explicit artifact-backed package workflow
+- `muga emit-artifacts` writes reachable `.mgi` interfaces and the entry `.mgc` check cache; lower-level `emit-interface` and `emit-check-cache` commands remain available
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 
 Not implemented yet:
@@ -187,7 +187,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is project-mode artifact-root config and full package artifact reuse.
+The next implementation slice is full package artifact reuse and package-aware checking without flattening.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 

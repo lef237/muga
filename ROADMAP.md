@@ -26,7 +26,7 @@ Implemented language surface:
 - loaded package interfaces and discovered `.mgi` artifacts can act as the dependency boundary for downstream typed checking without reading dependency implementation bodies
 - package check cache keys combine entry package source hashes with dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts for dependency-body-free package checking
-- `muga emit-interface` and `muga emit-check-cache` write `.mgi` and `.mgc` artifacts for the explicit package artifact workflow
+- `muga emit-artifacts` writes reachable `.mgi` interfaces and the entry `.mgc` check cache, with lower-level `emit-interface` and `emit-check-cache` commands still available
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -67,13 +67,14 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice should keep artifact roots explicit on the CLI and avoid adding project-mode artifact-root config to `muga.toml` for now:
+The next code slice should keep artifact roots explicit on the CLI and move toward full package artifact reuse:
 
 1. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist.
-2. Keep `muga check --artifact-root`, `muga emit-interface`, and `muga emit-check-cache` as the explicit artifact workflow.
+2. Keep `muga emit-artifacts` and `muga check --artifact-root` as the explicit artifact workflow.
 3. Improve full package artifact reuse around the existing `.mgi` and `.mgc` files without silently falling back to dependency implementation bodies.
-4. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
-5. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
+4. Start replacing package flattening with a package-aware checking boundary once artifact reuse semantics are clear.
+5. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
+6. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
 
 ## Compiler Architecture Path
 

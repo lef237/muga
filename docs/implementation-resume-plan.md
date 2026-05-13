@@ -6,7 +6,7 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after CLI artifact generation support: 222 tests, 0 failures.
+- [x] `cargo test` passed after combined CLI artifact emission support: 224 tests, 0 failures.
 - [x] `cargo clippy --all-targets -- -D warnings` passed after CLI artifact generation support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
@@ -150,13 +150,14 @@ Ada
 - CLI `check --artifact-root` can consume `.mgi` and `.mgc` artifacts without reading dependency implementation bodies.
 - CLI `emit-interface` and `emit-check-cache` can produce the artifacts consumed by `check --artifact-root`.
 - CLI `emit-interface` can emit all reachable interfaces without manually naming each dependency package.
+- CLI `emit-artifacts` emits reachable `.mgi` interfaces and the entry `.mgc` check cache in one explicit artifact-root workflow.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
 - Full incremental artifact reuse is still not implemented.
 
 ## Recommended Next Implementation
 
-The next implementation theme is fuller package artifact reuse while keeping artifact roots explicit on the CLI.
+The next implementation theme is full package artifact reuse and package-aware checking while keeping artifact roots explicit on the CLI.
 
 Reasoning:
 
@@ -172,6 +173,7 @@ Reasoning:
 - Package check cache keys now include entry source content and dependency interface hashes.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
+- `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
 - The remaining boundary pieces are real artifact storage/reuse, dependency/lockfile-driven project configuration, and eventually making interface-backed checking the normal package path.
 
@@ -234,10 +236,11 @@ Estimates are in focused engineering days for someone already familiar with this
 | 9. Package cache keys and invalidation | Define source/interface/dependency hash inputs, persist checked-package metadata, reject missing/stale cache artifacts, and keep cache-backed checking aligned with body checking. | `src/cache.rs`, `src/package.rs`, `src/lib.rs`, tests | Done | High |
 | 10. CLI artifact-root checking | Expose a narrow CLI path for artifact-backed checking using `.mgi` and `.mgc` artifacts. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Medium |
 | 11. CLI artifact generation | Add CLI/library artifact generation for `.mgi` and `.mgc`, and verify generated artifacts drive `check --artifact-root`. | `src/main.rs`, `src/lib.rs`, `src/interface.rs`, tests/docs | Done | Medium |
-| 12. Package artifact reuse | Keep artifact roots explicit on the CLI, avoid adding `muga.toml` artifact-root config for now, and improve reuse around the existing `.mgi` / `.mgc` workflow. | package/CLI/docs/tests | 2-4 days | Medium |
-| 13. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
+| 13. Package artifact reuse and package-aware checking | Improve reuse around existing `.mgi` / `.mgc`, then start replacing package flattening with package-aware checking boundaries. | package/lib/typing/docs/tests | 4-8 days | High |
+| 14. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 12: improve package artifact reuse without adding artifact-root config to `muga.toml`.
+The safest immediate code slice is now Slice 13: improve artifact reuse around `.mgi` / `.mgc`, then move package checking away from flattening. This may require a design checkpoint before larger edits.
 
 ## Test Plan For The Next Code Slice
 
@@ -248,6 +251,7 @@ Project/artifact reuse:
 - `artifact_reuse_keeps_cli_artifact_root_explicit`
 - `artifact_workflow_rejects_missing_or_stale_artifacts_without_source_fallback`
 - `manifest_project_without_artifact_config_keeps_body_based_checking`
+- `emit_artifacts_outputs_interfaces_and_check_cache`
 
 Compatibility:
 
