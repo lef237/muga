@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after enum integration hardening: 189 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after enum integration hardening.
+- [x] `cargo test` passed after package interface persistence round-trip support: 192 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after package interface persistence round-trip support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -79,8 +79,10 @@ Ada
 - [x] resolver, typechecker output, runtime, and package builtin filtering share `prelude::BuiltinId`.
 - [x] package rewriting attaches `PackageItemId` to flattened AST record/function declarations so typed HIR no longer recovers item identity from mangled names.
 - [x] package enum constructor call targets carry enum `PackageItemId` when the enum comes from package mode.
-- [ ] persisted package interface files are not implemented.
+- [x] package interfaces have a deterministic v1 text format with file write/read helpers.
+- [x] persisted package interface round-trip preserves public records, functions, enums, `TypeInfo`, item identity, enum variants, and payload types.
 - [ ] downstream package checking does not yet consume stored interface artifacts.
+- [ ] interface hashes, artifact path conventions, and cache invalidation are not implemented.
 - [ ] package flattening is still the execution/checking pipeline.
 
 ### Diagnostics
@@ -132,11 +134,12 @@ Ada
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
-- The public package interface model is in memory only; there is no serialized format, cache key, downstream interface consumption, or incremental invalidation yet.
+- Package interfaces now have a deterministic v1 text format and file round-trip helpers.
+- There is no interface hash, artifact path convention, downstream interface consumption, or incremental invalidation yet.
 
 ## Recommended Next Implementation
 
-The next implementation theme is persisted package interfaces.
+The next implementation theme is interface hashes and downstream checking from loaded package interfaces.
 
 Reasoning:
 
@@ -146,7 +149,8 @@ Reasoning:
 - General IO, process, HTTP, time, and concurrency APIs can use explicit `Result` before any propagation sugar is added.
 - User-defined enum declarations, runtime values, typed HIR, and in-memory public interface summaries are now represented.
 - Enum integration hardening now covers diagnostics, imported constructors/patterns, visibility errors, package enum call-target identity, and stale interface validation.
-- Persisted package interfaces should now include record/function/enum identity, type parameters, variants, payload types, public signatures, hashes, and enough source references for diagnostics from the start.
+- Persisted package interfaces now round-trip record/function/enum identity, type parameters, variants, payload types, public signatures, and source spans.
+- The next missing boundary pieces are interface hashes, artifact path conventions, and checking downstream packages against loaded interface summaries instead of dependency bodies.
 
 ## Requirement Decisions For The Next Slice
 
@@ -200,32 +204,28 @@ Estimates are in focused engineering days for someone already familiar with this
 | 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
 | 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | Done | High |
 | 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | Done | Medium |
-| 5. Package interface persistence | Serialize public records/functions/enums, type identities, and hashes. Start consuming stored summaries for downstream checking. | `src/package.rs`, `src/typed_hir.rs`, new interface/cache modules, tests | 5-10 days | High |
-| 6. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 5. Package interface persistence format | Serialize public records/functions/enums and resolved type identities in a deterministic v1 text format. Load the format back into `PackageInterfaceGraph` and validate the reloaded summaries. | `src/interface.rs`, `tests/examples.rs` | Done | Medium |
+| 6. Interface hashes and downstream consumption | Add interface hashes, artifact path conventions, and the first downstream checking path that consumes loaded interface summaries. | `src/package.rs`, `src/interface.rs`, `src/lib.rs`, tests | 4-8 days | High |
+| 7. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 5: persist package interfaces and start treating interface artifacts as the stable dependency boundary. The first persistence slice should serialize generated in-memory interfaces and validate that loading the serialized form preserves the same public records/functions/enums and type identities.
+The safest immediate code slice is now Slice 6: add interface hashes and start treating loaded interface artifacts as the stable dependency boundary. Keep package flattening as the execution path until checking against loaded summaries is proven equivalent on existing samples.
 
 ## Test Plan For The Next Code Slice
 
 Add tests around these behavioral anchors before replacing package-body checking.
 
-Interface serialization:
+Interface hashes:
 
-- `package_interfaces_round_trip_public_records_functions_and_enums`
-- `package_interface_round_trip_preserves_type_info_identities`
-- `package_interface_round_trip_preserves_enum_variants_and_payloads`
-
-Interface validation:
-
-- `typed_hir_validates_reloaded_package_interfaces`
-- `typed_hir_rejects_reloaded_stale_interface_hash`
-- `typed_hir_rejects_reloaded_stale_enum_shape`
+- `package_interface_hash_is_stable_for_same_interface`
+- `package_interface_hash_changes_when_public_signature_changes`
+- `package_interface_hash_changes_when_public_enum_shape_changes`
 
 Dependency boundary:
 
 - `downstream_package_can_check_against_loaded_interface_summary`
 - `downstream_package_does_not_require_dependency_function_body_for_signature_checking`
 - `interface_artifact_excludes_private_and_pkg_items`
+- `typed_hir_rejects_reloaded_stale_interface_hash`
 
 Compatibility:
 
@@ -236,11 +236,11 @@ Compatibility:
 
 - [ ] Existing `cargo test` remains green.
 - [ ] Existing package-body checking remains source-compatible.
-- [ ] In-memory interfaces serialize to a deterministic file format.
-- [ ] Serialized interfaces load back into the same `PackageInterfaces` data shape.
-- [ ] Public record/function/enum identities and `TypeInfo` values survive round trip.
-- [ ] Private and `pkg` items stay out of persisted public interfaces.
-- [ ] Stale serialized interfaces produce package diagnostics with regeneration guidance.
+- [ ] Interface hashes are deterministic and cover public records/functions/enums.
+- [ ] Hash changes are detected for public signature and enum-shape changes.
+- [ ] Loaded interfaces can be used for downstream signature/type validation.
+- [ ] Dependency implementation bodies can be skipped for at least one signature-only downstream check.
+- [ ] Package-body checking and loaded-interface checking agree for existing package samples.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
 ## Resume Checklist
@@ -251,7 +251,7 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is package-interface persistence or downstream interface consumption.
+5. [ ] Confirm whether the intended next code slice is interface hashing or downstream interface consumption.
 6. [ ] Keep package flattening unchanged unless the task is explicitly package-interface persistence.
 7. [ ] After every compiler-core change, verify at least:
 

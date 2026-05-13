@@ -776,6 +776,98 @@ fn package_export_graph_can_be_derived_from_typed_interfaces() {
 }
 
 #[test]
+fn package_interfaces_round_trip_public_records_functions_and_enums() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let text = interfaces.to_persisted_text(&program.symbols);
+    assert!(text.starts_with("muga-package-interface-v1\n"), "{text}");
+
+    let mut symbols = program.symbols.clone();
+    let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
+        .expect("persisted interfaces should parse");
+    assert_eq!(loaded, interfaces);
+
+    let diagnostics = program.validate_package_references_against_interfaces(&loaded);
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
+fn package_interface_file_round_trip_preserves_type_info_identities() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = program.package_interfaces();
+    let path = std::env::temp_dir().join(format!(
+        "muga-package-interface-round-trip-{}.mgi",
+        std::process::id()
+    ));
+    interfaces
+        .write_persisted_file(&path, &program.symbols)
+        .expect("interface file should be written");
+
+    let mut symbols = program.symbols.clone();
+    let loaded = muga::interface::PackageInterfaceGraph::read_persisted_file(&path, &mut symbols)
+        .expect("interface file should load");
+    let _ = fs::remove_file(&path);
+
+    assert_eq!(loaded, interfaces);
+    let users = program
+        .package_graph
+        .package_id("util::users")
+        .expect("users package should exist");
+    let user_item = program
+        .package_graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User item should exist");
+    let birthday = loaded
+        .function_by_name(users, "birthday")
+        .expect("birthday should be exported");
+    assert!(
+        matches!(
+            &birthday.ret,
+            muga::types::TypeInfo::PackageRecord { item, .. } if *item == user_item
+        ),
+        "{birthday:#?}"
+    );
+}
+
+#[test]
+fn typed_hir_rejects_reloaded_stale_enum_interface_shape() {
+    let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let states = program
+        .package_graph
+        .package_id("util::states")
+        .expect("states package should exist");
+    let mut interfaces = program.package_interfaces();
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == states)
+        .expect("states interface should exist")
+        .enums
+        .iter_mut()
+        .find(|enumeration| enumeration.name == "Status")
+        .expect("Status should be exported")
+        .variants
+        .iter_mut()
+        .find(|variant| variant.name == "Ready")
+        .expect("Ready variant should exist")
+        .payload = Some(muga::types::TypeInfo::String);
+
+    let text = interfaces.to_persisted_text(&program.symbols);
+    let mut symbols = program.symbols.clone();
+    let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
+        .expect("persisted interfaces should parse");
+    let diagnostics = program.validate_package_references_against_interfaces(&loaded);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK017")
+        .expect("stale interface diagnostic should exist");
+    assert!(diagnostic.message.contains("enum shape"), "{diagnostic:#?}");
+}
+
+#[test]
 fn typed_hir_validates_package_references_against_interfaces() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
         .expect("typed package compilation should pass");
