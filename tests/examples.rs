@@ -637,6 +637,30 @@ fn package_aware_typed_hir_lowers_to_mir_bytecode_runtime() {
 }
 
 #[test]
+fn package_aware_typed_hir_lowers_package_item_identity_to_mir() {
+    let result = muga::check_package_aware_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("package-aware checking should pass");
+    let package = result
+        .packages
+        .package_graph
+        .package_id("app::main")
+        .expect("app::main package should be loaded");
+    let main_item = result
+        .packages
+        .package_graph
+        .item_id(package, "main", muga::package::PackageItemKind::Function)
+        .expect("main package item should be known");
+    let mir = muga::mir::lower_typed(&result.typed_program);
+
+    assert!(
+        mir.entry
+            .function_defs
+            .iter()
+            .any(|function| function.package_item == Some(main_item))
+    );
+}
+
+#[test]
 fn package_aware_typed_hir_lowers_imported_enum_to_mir_runtime() {
     let result =
         muga::check_package_aware_path(Path::new("samples/packages/app/enum_demo/main.muga"))
@@ -3771,6 +3795,11 @@ fn main(): Int {
         Some("main")
     );
     assert_eq!(program.functions[1].name, None);
+    assert_eq!(program.functions[1].params.len(), 1);
+    assert_eq!(
+        program.symbols.resolve(program.functions[1].params[0].name),
+        "x"
+    );
 }
 
 #[test]
@@ -3872,18 +3901,24 @@ fn main(): Int {
 "#;
     let program = muga::compile_source(source).unwrap();
     let function = &program.functions[0];
-    let value_symbol = match &function.body.statements[0] {
-        muga::mir::Stmt::Assign(stmt) => stmt.name,
+    let (value_symbol, value_binding) = match &function.body.statements[0] {
+        muga::mir::Stmt::Assign(stmt) => (stmt.name, stmt.binding),
         _ => panic!("expected assign statement"),
     };
-    let final_symbol = match &function.body.terminator {
+    let (final_symbol, final_binding) = match &function.body.terminator {
         muga::mir::BodyTerminator::Return(result) => match result.as_ref() {
-            muga::mir::Expr::Ident(expr) => expr.name,
+            muga::mir::Expr::Ident(expr) => match expr.target {
+                muga::mir::IdentTarget::Binding(binding) => (expr.name, binding),
+                muga::mir::IdentTarget::PackageItem { .. } => {
+                    panic!("expected local binding target")
+                }
+            },
             _ => panic!("expected final identifier"),
         },
         muga::mir::BodyTerminator::Effect => panic!("function body should return a value"),
     };
     assert_eq!(value_symbol, final_symbol);
+    assert_eq!(value_binding, final_binding);
     assert_eq!(program.symbols.resolve(value_symbol), "value");
 }
 

@@ -645,7 +645,7 @@ Completed structural steps:
 Critical current risks to eliminate:
 
 - resolver and typechecker still build scopes independently
-- MIR is still expression-shaped, though it now has explicit execution bodies, body terminators, and hoisted body-local function definitions, and is not yet a control-flow-oriented backend IR
+- MIR is still expression-shaped, though it now has explicit execution bodies, body terminators, hoisted body-local function definitions, and typed binding/package-item identity, and is not yet a control-flow-oriented backend IR
 - package interfaces still use session-local IDs and compiler-owned type structs in memory, even though `.mgi` v2 maps stable artifact identities back into fresh session IDs when loaded
 - builtin type rules and runtime behavior are still implemented separately
 - bytecode match lowering still assumes compiler-known enum shapes
