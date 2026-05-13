@@ -352,10 +352,19 @@ fn execute_chunk(
             Instruction::Assign {
                 name,
                 mutable,
+                is_update,
                 span,
             } => {
                 let value = pop_value(&mut stack, *span, "R015", "missing value for assignment")?;
-                execute_assign(program, &current_env, *name, *mutable, value, *span)?;
+                execute_assign(
+                    program,
+                    &current_env,
+                    *name,
+                    *mutable,
+                    *is_update,
+                    value,
+                    *span,
+                )?;
             }
             Instruction::DefineFunction {
                 name,
@@ -544,41 +553,53 @@ fn execute_assign(
     env: &EnvRef,
     name: Symbol,
     mutable: bool,
+    is_update: bool,
     value: Value,
     span: Span,
 ) -> Result<(), Vec<Diagnostic>> {
-    if mutable {
-        if env.borrow().bindings.contains_key(&name) {
-            return Err(vec![Diagnostic::new(
-                "R004",
-                format!(
-                    "duplicate binding `{}` in the current scope",
-                    symbol_name(program, name)
-                ),
-                span,
-            )]);
-        }
-        if lookup_any_enclosing(env, name).is_some() {
-            return Err(vec![Diagnostic::new(
-                "R005",
-                format!(
-                    "shadowing is prohibited for `{}`",
-                    symbol_name(program, name)
-                ),
-                span,
-            )]);
-        }
-        env.borrow_mut().bindings.insert(
-            name,
-            Binding {
-                mutable: true,
-                value,
-                span,
-            },
-        );
-        return Ok(());
+    if is_update {
+        return execute_update(program, env, name, value, span);
     }
 
+    if env.borrow().bindings.contains_key(&name) {
+        return Err(vec![Diagnostic::new(
+            "R004",
+            format!(
+                "duplicate binding `{}` in the current scope",
+                symbol_name(program, name)
+            ),
+            span,
+        )]);
+    }
+    if lookup_any_enclosing(env, name).is_some() {
+        return Err(vec![Diagnostic::new(
+            "R005",
+            format!(
+                "shadowing is prohibited for `{}`",
+                symbol_name(program, name)
+            ),
+            span,
+        )]);
+    }
+
+    env.borrow_mut().bindings.insert(
+        name,
+        Binding {
+            mutable,
+            value,
+            span,
+        },
+    );
+    Ok(())
+}
+
+fn execute_update(
+    program: &Program,
+    env: &EnvRef,
+    name: Symbol,
+    value: Value,
+    span: Span,
+) -> Result<(), Vec<Diagnostic>> {
     if let Some(target_env) = lookup_in_current_function_env(env, name) {
         let mut target = target_env.borrow_mut();
         let binding = target.bindings.get_mut(&name).expect("binding must exist");
@@ -613,15 +634,11 @@ fn execute_assign(
         return Err(vec![Diagnostic::new(code, message, span)]);
     }
 
-    env.borrow_mut().bindings.insert(
-        name,
-        Binding {
-            mutable: false,
-            value,
-            span,
-        },
-    );
-    Ok(())
+    Err(vec![Diagnostic::new(
+        "R008",
+        format!("unresolved runtime name `{}`", symbol_name(program, name)),
+        span,
+    )])
 }
 
 fn call_value(

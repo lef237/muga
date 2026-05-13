@@ -65,6 +65,7 @@ pub enum Instruction {
     Assign {
         name: Symbol,
         mutable: bool,
+        is_update: bool,
         span: Span,
     },
     DefineFunction {
@@ -218,6 +219,7 @@ impl Compiler {
                 chunk.instructions.push(Instruction::Assign {
                     name: stmt.name,
                     mutable: stmt.mutable,
+                    is_update: stmt.is_update,
                     span: stmt.span,
                 });
             }
@@ -404,6 +406,7 @@ impl Compiler {
         chunk.instructions.push(Instruction::Assign {
             name: temp,
             mutable: false,
+            is_update: false,
             span: expr.value.span(),
         });
 
@@ -446,6 +449,7 @@ impl Compiler {
             chunk.instructions.push(Instruction::Assign {
                 name: binding,
                 mutable: false,
+                is_update: false,
                 span,
             });
         }
