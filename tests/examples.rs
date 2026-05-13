@@ -1152,6 +1152,187 @@ fn package_body_checking_and_interface_checking_agree_for_existing_samples() {
 }
 
 #[test]
+fn package_check_finds_dependency_interface_artifact() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = provider.package_interfaces();
+    let artifact_root = temp_package_root("interface-artifact-found");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["util::states"],
+    );
+    let root = temp_package_root("artifact-downstream-enum");
+    let entry = write_package_file(
+        &root,
+        "app/artifact_enum/main.muga",
+        r#"
+package app::artifact_enum
+
+import util::states
+
+fn main(): Int {
+  status: states::Status[Int] = states::ready(7)
+  match status {
+    states::Status::Ready(value) => value
+    states::Status::Waiting => 0
+    states::Status::Failed(message) => 0
+  }
+}
+"#,
+    );
+
+    assert!(!root.join("util/states/model.muga").exists());
+    muga::compile_typed_path_against_interface_artifacts(&entry, &artifact_root)
+        .expect("package should check against discovered interface artifact");
+}
+
+#[test]
+fn package_check_reports_missing_interface_artifact() {
+    let artifact_root = temp_package_root("interface-artifact-missing");
+    let root = temp_package_root("artifact-missing-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/missing_artifact/main.muga",
+        r#"
+package app::missing_artifact
+
+import util::numbers
+
+fn main(): Int {
+  numbers::inc_twice(10)
+}
+"#,
+    );
+
+    let diagnostics =
+        muga::compile_typed_path_against_interface_artifacts(&entry, &artifact_root).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK016"
+                && diagnostic
+                    .message
+                    .contains("missing package interface artifact")
+                && diagnostic.message.contains("util::numbers")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn package_check_reports_hash_mismatched_interface_artifact() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+        .expect("typed package compilation should pass");
+    let interfaces = provider.package_interfaces();
+    let artifact_root = temp_package_root("interface-artifact-hash");
+    let artifact_path =
+        muga::interface::PackageInterfaceGraph::persisted_file_path(&artifact_root, "util::states");
+    fs::create_dir_all(artifact_path.parent().expect("artifact should have parent"))
+        .expect("artifact directory should be created");
+    let tampered = interfaces
+        .to_persisted_text(&provider.symbols)
+        .replacen("Ready", "Done", 1);
+    fs::write(&artifact_path, tampered).expect("tampered artifact should be written");
+    let root = temp_package_root("artifact-hash-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/hash_mismatch/main.muga",
+        r#"
+package app::hash_mismatch
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(1))
+}
+"#,
+    );
+
+    let diagnostics =
+        muga::compile_typed_path_against_interface_artifacts(&entry, &artifact_root).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "PK019"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn package_check_rejects_stale_interface_signature() {
+    let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("typed package compilation should pass");
+    let numbers = provider
+        .package_graph
+        .package_id("util::numbers")
+        .expect("numbers package should exist");
+    let mut interfaces = provider.package_interfaces();
+    interfaces
+        .packages
+        .iter_mut()
+        .find(|interface| interface.package == numbers)
+        .expect("numbers interface should exist")
+        .functions
+        .iter_mut()
+        .find(|function| function.name == "maybe_positive")
+        .expect("maybe_positive should be exported")
+        .ret = muga::types::TypeInfo::String;
+    let artifact_root = temp_package_root("interface-artifact-stale");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &provider.symbols,
+        &["util::numbers"],
+    );
+    let root = temp_package_root("artifact-stale-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/stale_artifact/main.muga",
+        r#"
+package app::stale_artifact
+
+import util::numbers
+
+fn main(): Int {
+  maybe: Option[Int] = numbers::maybe_positive(3)
+  numbers::value_or_zero(maybe)
+}
+"#,
+    );
+
+    let diagnostics =
+        muga::compile_typed_path_against_interface_artifacts(&entry, &artifact_root).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn artifact_interface_checking_and_loaded_interface_checking_agree() {
+    let path = Path::new("samples/packages/app/main/main.muga");
+    let provider = muga::compile_typed_path(path).expect("typed package compilation should pass");
+    let (interfaces, symbols) = persisted_interfaces_from_program(&provider);
+    let artifact_root = temp_package_root("interface-artifact-agree");
+    write_interface_artifacts(
+        &artifact_root,
+        &interfaces,
+        &symbols,
+        &["util::numbers", "util::users"],
+    );
+
+    let loaded = muga::compile_typed_path_against_loaded_interfaces(path, &interfaces, &symbols)
+        .expect("loaded-interface checking should pass");
+    let artifact = muga::compile_typed_path_against_interface_artifacts(path, &artifact_root)
+        .expect("artifact-interface checking should pass");
+
+    assert_eq!(main_return_type(&artifact), main_return_type(&loaded));
+}
+
+#[test]
 fn typed_hir_rejects_reloaded_stale_enum_interface_shape() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
         .expect("typed package compilation should pass");
@@ -4417,6 +4598,21 @@ fn write_package_file(root: &Path, relative: &str, source: &str) -> std::path::P
         .expect("package directory should be created");
     fs::write(&path, source.trim_start()).expect("package file should be written");
     path
+}
+
+fn write_interface_artifacts(
+    root: &Path,
+    interfaces: &muga::interface::PackageInterfaceGraph,
+    symbols: &muga::symbol::SymbolTable,
+    package_paths: &[&str],
+) {
+    fs::create_dir_all(root).expect("interface artifact root should be created");
+    for package_path in package_paths {
+        let path = muga::interface::PackageInterfaceGraph::persisted_file_path(root, package_path);
+        interfaces
+            .write_persisted_file(&path, symbols)
+            .expect("interface artifact should be written");
+    }
 }
 
 fn main_return_type(program: &muga::typed_hir::Program) -> Option<muga::types::TypeInfo> {

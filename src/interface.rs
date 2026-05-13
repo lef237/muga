@@ -16,7 +16,7 @@ use crate::{
         Block, EnumStmt, Expr, ExprKind, FunctionStmt, IdentTarget, Program, RecordStmt, Stmt,
         ValueBlock,
     },
-    types::TypeInfo,
+    types::{FunctionTypeInfo, TypeInfo},
 };
 
 const PERSISTED_INTERFACE_HEADER: &str = "muga-package-interface-v1";
@@ -335,8 +335,140 @@ impl PackageInterfaceGraph {
         Self::from_persisted_text(&text, symbols)
     }
 
+    pub fn read_persisted_artifacts(
+        root: &Path,
+        package_paths: &[String],
+        symbols: &mut SymbolTable,
+    ) -> Result<Self, Vec<Diagnostic>> {
+        let mut packages = Vec::new();
+        let mut seen_paths = HashSet::new();
+        let mut diagnostics = Vec::new();
+
+        for package_path in package_paths {
+            let artifact_path = Self::persisted_file_path(root, package_path);
+            if !artifact_path.is_file() {
+                diagnostics.push(
+                    Diagnostic::new(
+                        "PK016",
+                        format!(
+                            "missing package interface artifact `{}` for `{package_path}`",
+                            artifact_path.display()
+                        ),
+                        Span::default(),
+                    )
+                    .with_suggestion("regenerate the package interface artifact"),
+                );
+                continue;
+            }
+
+            let graph = match Self::read_persisted_file(&artifact_path, symbols) {
+                Ok(graph) => graph,
+                Err(mut errors) => {
+                    diagnostics.append(&mut errors);
+                    continue;
+                }
+            };
+            if graph.package_by_path(package_path).is_none() {
+                diagnostics.push(
+                    Diagnostic::new(
+                        "PK016",
+                        format!(
+                            "package interface artifact `{}` does not contain `{package_path}`",
+                            artifact_path.display()
+                        ),
+                        Span::default(),
+                    )
+                    .with_suggestion("regenerate the package interface artifact"),
+                );
+            }
+            for package in graph.packages {
+                if seen_paths.insert(package.path.clone()) {
+                    packages.push(package);
+                }
+            }
+        }
+
+        if diagnostics.is_empty() {
+            Ok(Self { packages })
+        } else {
+            Err(diagnostics)
+        }
+    }
+
     pub fn persisted_file_path(root: &Path, package_path: &str) -> PathBuf {
         root.join(format!("{}.mgi", package_path.replace("::", "__")))
+    }
+
+    pub fn reintern_symbols(&self, from: &SymbolTable, to: &mut SymbolTable) -> Self {
+        Self {
+            packages: self
+                .packages
+                .iter()
+                .map(|package| PackageInterface {
+                    package: package.package,
+                    path: package.path.clone(),
+                    records: package
+                        .records
+                        .iter()
+                        .map(|record| PackageInterfaceRecord {
+                            item: record.item,
+                            name: record.name.clone(),
+                            fields: record
+                                .fields
+                                .iter()
+                                .map(|field| PackageInterfaceField {
+                                    name: field.name.clone(),
+                                    ty: reintern_type_info(&field.ty, from, to),
+                                    span: field.span,
+                                })
+                                .collect(),
+                            span: record.span,
+                        })
+                        .collect(),
+                    enums: package
+                        .enums
+                        .iter()
+                        .map(|enumeration| PackageInterfaceEnum {
+                            item: enumeration.item,
+                            name: enumeration.name.clone(),
+                            type_params: enumeration.type_params.clone(),
+                            variants: enumeration
+                                .variants
+                                .iter()
+                                .map(|variant| PackageInterfaceEnumVariant {
+                                    name: variant.name.clone(),
+                                    payload: variant
+                                        .payload
+                                        .as_ref()
+                                        .map(|payload| reintern_type_info(payload, from, to)),
+                                    span: variant.span,
+                                })
+                                .collect(),
+                            span: enumeration.span,
+                        })
+                        .collect(),
+                    functions: package
+                        .functions
+                        .iter()
+                        .map(|function| PackageInterfaceFunction {
+                            item: function.item,
+                            name: function.name.clone(),
+                            params: function
+                                .params
+                                .iter()
+                                .map(|param| PackageInterfaceParam {
+                                    name: param.name.clone(),
+                                    ty: reintern_type_info(&param.ty, from, to),
+                                    span: param.span,
+                                })
+                                .collect(),
+                            ret: reintern_type_info(&function.ret, from, to),
+                            span: function.span,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
     }
 
     pub fn package(&self, id: PackageId) -> Option<&PackageInterface> {
@@ -979,6 +1111,79 @@ fn push_type_args(args: &[TypeInfo], symbols: &SymbolTable, tokens: &mut Vec<Str
     tokens.push(args.len().to_string());
     for arg in args {
         push_type_info_tokens(arg, symbols, tokens);
+    }
+}
+
+fn reintern_type_info(ty: &TypeInfo, from: &SymbolTable, to: &mut SymbolTable) -> TypeInfo {
+    match ty {
+        TypeInfo::GenericParam(symbol) => {
+            TypeInfo::GenericParam(reintern_symbol(*symbol, from, to))
+        }
+        TypeInfo::Record(symbol) => TypeInfo::Record(reintern_symbol(*symbol, from, to)),
+        TypeInfo::PackageRecord { symbol, item } => TypeInfo::PackageRecord {
+            symbol: reintern_symbol(*symbol, from, to),
+            item: *item,
+        },
+        TypeInfo::Enum { symbol, args } => TypeInfo::Enum {
+            symbol: reintern_symbol(*symbol, from, to),
+            args: args
+                .iter()
+                .map(|arg| reintern_type_info(arg, from, to))
+                .collect(),
+        },
+        TypeInfo::PackageEnum { symbol, item, args } => TypeInfo::PackageEnum {
+            symbol: reintern_symbol(*symbol, from, to),
+            item: *item,
+            args: args
+                .iter()
+                .map(|arg| reintern_type_info(arg, from, to))
+                .collect(),
+        },
+        TypeInfo::List(item) => TypeInfo::List(Box::new(reintern_type_info(item, from, to))),
+        TypeInfo::Map(key, value) => TypeInfo::Map(
+            Box::new(reintern_type_info(key, from, to)),
+            Box::new(reintern_type_info(value, from, to)),
+        ),
+        TypeInfo::Option(item) => TypeInfo::Option(Box::new(reintern_type_info(item, from, to))),
+        TypeInfo::Result(ok, err) => TypeInfo::Result(
+            Box::new(reintern_type_info(ok, from, to)),
+            Box::new(reintern_type_info(err, from, to)),
+        ),
+        TypeInfo::EnumConstructor {
+            enum_symbol,
+            enum_item,
+            variant,
+        } => TypeInfo::EnumConstructor {
+            enum_symbol: reintern_symbol(*enum_symbol, from, to),
+            enum_item: *enum_item,
+            variant: reintern_symbol(*variant, from, to),
+        },
+        TypeInfo::Function(function) => TypeInfo::Function(FunctionTypeInfo {
+            params: function
+                .params
+                .iter()
+                .map(|param| reintern_type_info(param, from, to))
+                .collect(),
+            ret: Box::new(reintern_type_info(&function.ret, from, to)),
+        }),
+        TypeInfo::Int
+        | TypeInfo::Bool
+        | TypeInfo::String
+        | TypeInfo::Builtin(_)
+        | TypeInfo::Unknown
+        | TypeInfo::Error => ty.clone(),
+    }
+}
+
+fn reintern_symbol(
+    symbol: crate::symbol::Symbol,
+    from: &SymbolTable,
+    to: &mut SymbolTable,
+) -> crate::symbol::Symbol {
+    if symbol.as_u32() < from.len() as u32 {
+        to.intern(from.resolve(symbol))
+    } else {
+        symbol
     }
 }
 
