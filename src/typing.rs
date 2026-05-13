@@ -2725,7 +2725,7 @@ impl TypeChecker {
             {
                 let args = left_args
                     .into_iter()
-                    .zip(right_args.into_iter())
+                    .zip(right_args)
                     .map(|(left, right)| self.unify(left, right))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Type::Enum(left_name, args))
