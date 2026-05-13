@@ -3499,7 +3499,7 @@ fn package_imported_enum_constructor_and_pattern_are_rewritten() {
                 variant_name,
                 ..
             }
-                if program.symbols.resolve(enum_name) == "__muga_pkg__util__states__Status"
+                if program.symbols.resolve(enum_name) == "states::Status"
                     && enum_item == status_item
                     && program.symbols.resolve(variant_name) == "Ready"
         )
@@ -3526,7 +3526,7 @@ fn package_imported_enum_constructor_and_pattern_are_rewritten() {
             matches!(
                 &arm.pattern,
                 muga::typed_hir::MatchPattern::Variant(pattern)
-                    if pattern.enum_name == "__muga_pkg__util__states__Status"
+                    if pattern.enum_name == "states::Status"
                         && pattern.variant_name == "Ready"
             )
         }),
@@ -6027,7 +6027,7 @@ fn main(): Int {
 fn typed_hir_preserves_package_qualified_call_callee() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
         .expect("typed package compilation should pass");
-    let inc_twice = typed_binding_id(&program, "__muga_pkg__util__numbers__inc_twice");
+    let inc_twice = typed_binding_id(&program, "numbers::inc_twice");
     let numbers = program
         .package_graph
         .package_id("util::numbers")

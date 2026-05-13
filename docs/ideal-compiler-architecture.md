@@ -625,7 +625,7 @@ The current codebase should move toward the ideal in this order:
 3. Introduce stable `VariantRef` and include variants in the interface model.
 4. Define public API hash vs recheck fingerprint before writing persisted interfaces.
 5. Replace compiler-known `Option` / `Result` special cases with prelude enum metadata where possible.
-6. Continue replacing the remaining compatibility uses of flattened AST/HIR now that default package `check_path` validates through the package-aware graph.
+6. Continue replacing the remaining compatibility uses of flattened AST/HIR now that default package `check_path` and `compile_typed_path` use the package-aware graph.
 7. Generate interfaces from per-package typed HIR, not from flattened statements.
 8. Make package import lookup consume interfaces as its primary input.
 9. Introduce MIR and lower VM bytecode from MIR.

@@ -125,6 +125,9 @@ pub fn compile_typed_source(source: &str) -> Result<TypedHirProgram, Vec<Diagnos
 }
 
 pub fn compile_typed_path(path: &Path) -> Result<TypedHirProgram, Vec<Diagnostic>> {
+    if package::entry_package_path_from_entry(path)?.is_some() {
+        return check_package_aware_path(path).map(|check| check.typed_program);
+    }
     let loaded = package::load_from_entry(path)?;
     compile_loaded_typed_program(loaded, None)
 }
