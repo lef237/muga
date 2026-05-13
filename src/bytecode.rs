@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    identity::{BindingId, BindingKind, PackageItemId},
+    identity::{BindingId, BindingKind, LocalId, PackageItemId},
     mir,
     span::Span,
     symbol::{Symbol, SymbolTable},
@@ -21,6 +21,7 @@ pub struct Program {
 #[derive(Clone, Debug)]
 pub struct BindingDef {
     pub id: BindingId,
+    pub local: LocalId,
     pub name: Symbol,
     pub kind: BindingKind,
     pub package_item: Option<PackageItemId>,
@@ -30,6 +31,7 @@ pub struct BindingDef {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NameRef {
     pub binding: BindingId,
+    pub local: LocalId,
     pub name: Symbol,
 }
 
@@ -156,7 +158,7 @@ pub fn compile(program: mir::Program) -> Program {
     } = program;
     let main = entry_main_ref(&entry, &symbols);
     let bindings: Vec<_> = bindings.into_iter().map(BindingDef::from).collect();
-    let mut compiler = Compiler::new(symbols, next_synthetic_binding(&bindings));
+    let mut compiler = Compiler::new(symbols, next_synthetic_local(&bindings));
     let entry = compiler.compile_entry_body(&entry);
     for function in &functions {
         compiler.compile_function(function);
@@ -170,10 +172,10 @@ pub fn compile(program: mir::Program) -> Program {
     }
 }
 
-fn next_synthetic_binding(bindings: &[BindingDef]) -> u32 {
+fn next_synthetic_local(bindings: &[BindingDef]) -> u32 {
     bindings
         .iter()
-        .map(|binding| binding.id.as_u32())
+        .map(|binding| binding.local.as_u32())
         .max()
         .map_or(0, |id| id + 1)
 }
@@ -185,6 +187,7 @@ fn entry_main_ref(entry: &mir::Body, symbols: &SymbolTable) -> Option<NameRef> {
         .find_map(|function| {
             (symbols.resolve(function.name) == "main").then_some(NameRef {
                 binding: function.binding,
+                local: local_for_binding(function.binding),
                 name: function.name,
             })
         })
@@ -196,6 +199,7 @@ fn entry_main_ref(entry: &mir::Body, symbols: &SymbolTable) -> Option<NameRef> {
                     mir::Stmt::Assign(statement) if symbols.resolve(statement.name) == "main" => {
                         Some(NameRef {
                             binding: statement.binding,
+                            local: local_for_binding(statement.binding),
                             name: statement.name,
                         })
                     }
@@ -204,10 +208,15 @@ fn entry_main_ref(entry: &mir::Body, symbols: &SymbolTable) -> Option<NameRef> {
         })
 }
 
+fn local_for_binding(binding: BindingId) -> LocalId {
+    LocalId::new(binding.as_u32())
+}
+
 impl From<mir::BindingDef> for BindingDef {
     fn from(binding: mir::BindingDef) -> Self {
         Self {
             id: binding.id,
+            local: local_for_binding(binding.id),
             name: binding.name,
             kind: binding.kind,
             package_item: binding.package_item,
@@ -221,17 +230,17 @@ struct Compiler {
     symbols: SymbolTable,
     package_function_bindings: HashMap<PackageItemId, BindingId>,
     next_match_temp: usize,
-    next_synthetic_binding: u32,
+    next_synthetic_local: u32,
 }
 
 impl Compiler {
-    fn new(symbols: SymbolTable, next_synthetic_binding: u32) -> Self {
+    fn new(symbols: SymbolTable, next_synthetic_local: u32) -> Self {
         Self {
             functions: Vec::new(),
             symbols,
             package_function_bindings: HashMap::new(),
             next_match_temp: 0,
-            next_synthetic_binding,
+            next_synthetic_local,
         }
     }
 
@@ -567,7 +576,11 @@ impl Compiler {
     }
 
     fn name_ref(&self, binding: BindingId, name: Symbol) -> NameRef {
-        NameRef { binding, name }
+        NameRef {
+            binding,
+            local: local_for_binding(binding),
+            name,
+        }
     }
 
     fn name_ref_for_ident_target(&self, target: mir::IdentTarget, name: Symbol) -> NameRef {
@@ -583,9 +596,14 @@ impl Compiler {
     }
 
     fn synthetic_name_ref(&mut self, name: Symbol) -> NameRef {
-        let binding = BindingId::new(self.next_synthetic_binding);
-        self.next_synthetic_binding += 1;
-        self.name_ref(binding, name)
+        let local = LocalId::new(self.next_synthetic_local);
+        let binding = BindingId::new(self.next_synthetic_local);
+        self.next_synthetic_local += 1;
+        NameRef {
+            binding,
+            local,
+            name,
+        }
     }
 
     fn emit_jump_if_false(&self, chunk: &mut Chunk, span: Span) -> usize {

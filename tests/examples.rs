@@ -5942,12 +5942,12 @@ fn main(): Int {
     assert_eq!(assign_targets[0], assign_targets[1]);
     assert_eq!(assign_targets[0], load_targets[0]);
     assert_eq!(program.symbols.resolve(assign_targets[0].name), "value");
-    assert!(
-        program
-            .bindings
-            .iter()
-            .any(|binding| binding.id == assign_targets[0].binding)
-    );
+    let binding = program
+        .bindings
+        .iter()
+        .find(|binding| binding.id == assign_targets[0].binding)
+        .expect("value binding should be preserved");
+    assert_eq!(binding.local, assign_targets[0].local);
 }
 
 #[test]
@@ -6001,22 +6001,23 @@ fn compile_bytecode_path_uses_package_definition_binding_for_runtime_names() {
             }
         }
     }
-    let import_binding = program
+    let import = program
         .bindings
         .iter()
         .find(|binding| program.symbols.resolve(binding.name) == "numbers::inc_twice")
-        .expect("import binding should be preserved")
-        .id;
+        .expect("import binding should be preserved");
 
     assert_eq!(definition_targets.len(), 1, "{definition_targets:#?}");
     assert!(!load_targets.is_empty(), "{load_targets:#?}");
     assert!(
         load_targets
             .iter()
-            .all(|target| target.binding == definition_targets[0].binding),
+            .all(|target| target.binding == definition_targets[0].binding
+                && target.local == definition_targets[0].local),
         "{load_targets:#?}"
     );
-    assert_ne!(definition_targets[0].binding, import_binding);
+    assert_ne!(definition_targets[0].binding, import.id);
+    assert_ne!(definition_targets[0].local, import.local);
 }
 
 #[test]

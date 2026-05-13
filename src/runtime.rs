@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 use crate::{
     bytecode::*,
     diagnostic::Diagnostic,
-    identity::BindingId,
+    identity::LocalId,
     known_enum::{self, KnownEnum, KnownEnumVariant},
     prelude::{self, BuiltinId},
     span::Span,
@@ -192,7 +192,7 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
     let _ = execute_chunk(program, &program.entry, root.clone())?;
 
     match program.main {
-        Some(main) => match lookup_any(&root, main.binding) {
+        Some(main) => match lookup_any(&root, main.local) {
             None => Ok(RunOutcome {
                 main_result: None,
                 output_text: output.borrow().clone(),
@@ -253,7 +253,7 @@ struct Binding {
 
 #[derive(Debug)]
 struct Env {
-    bindings: HashMap<BindingId, Binding>,
+    bindings: HashMap<LocalId, Binding>,
     parent: Option<EnvRef>,
     function_boundary: bool,
     output: Rc<RefCell<String>>,
@@ -315,7 +315,7 @@ fn execute_chunk(
                 stack.push(Value::List(values));
             }
             Instruction::LoadName { target, span } => {
-                let Some(binding) = lookup_any(&current_env, target.binding) else {
+                let Some(binding) = lookup_any(&current_env, target.local) else {
                     return Err(vec![Diagnostic::new(
                         "R008",
                         format!(
@@ -372,7 +372,7 @@ fn execute_chunk(
                 span,
             } => {
                 current_env.borrow_mut().bindings.insert(
-                    target.binding,
+                    target.local,
                     Binding {
                         mutable: false,
                         value: Value::Function(Rc::new(ClosureValue {
@@ -561,7 +561,7 @@ fn execute_assign(
         return execute_update(program, env, target, value, span);
     }
 
-    if env.borrow().bindings.contains_key(&target.binding) {
+    if env.borrow().bindings.contains_key(&target.local) {
         return Err(vec![Diagnostic::new(
             "R004",
             format!(
@@ -573,7 +573,7 @@ fn execute_assign(
     }
 
     env.borrow_mut().bindings.insert(
-        target.binding,
+        target.local,
         Binding {
             mutable,
             value,
@@ -590,11 +590,11 @@ fn execute_update(
     value: Value,
     span: Span,
 ) -> Result<(), Vec<Diagnostic>> {
-    if let Some(target_env) = lookup_in_current_function_env(env, target.binding) {
+    if let Some(target_env) = lookup_in_current_function_env(env, target.local) {
         let mut env = target_env.borrow_mut();
         let binding = env
             .bindings
-            .get_mut(&target.binding)
+            .get_mut(&target.local)
             .expect("binding must exist");
         if binding.mutable {
             binding.value = value;
@@ -611,7 +611,7 @@ fn execute_update(
         )]);
     }
 
-    if let Some(binding) = lookup_beyond_current_function(env, target.binding) {
+    if let Some(binding) = lookup_beyond_current_function(env, target.local) {
         let code = if binding.mutable { "R007" } else { "R005" };
         let message = if binding.mutable {
             format!(
@@ -676,7 +676,7 @@ fn call_function(
     )));
     for (param, arg) in definition.params.iter().zip(args) {
         env.borrow_mut().bindings.insert(
-            param.binding,
+            param.local,
             Binding {
                 mutable: false,
                 value: arg,
@@ -1160,7 +1160,7 @@ fn install_prelude(program: &Program, env: &EnvRef) {
             Value::Builtin(builtin.id)
         };
         env.borrow_mut().bindings.insert(
-            binding.id,
+            binding.local,
             Binding {
                 mutable: false,
                 value,
@@ -1178,11 +1178,11 @@ fn child_env(parent: &EnvRef, function_boundary: bool) -> EnvRef {
     )))
 }
 
-fn lookup_any(env: &EnvRef, binding: BindingId) -> Option<Binding> {
+fn lookup_any(env: &EnvRef, local: LocalId) -> Option<Binding> {
     let mut current = Some(env.clone());
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
-        if let Some(found) = borrowed.bindings.get(&binding) {
+        if let Some(found) = borrowed.bindings.get(&local) {
             return Some(found.clone());
         }
         current = borrowed.parent.clone();
@@ -1190,11 +1190,11 @@ fn lookup_any(env: &EnvRef, binding: BindingId) -> Option<Binding> {
     None
 }
 
-fn lookup_in_current_function_env(env: &EnvRef, binding: BindingId) -> Option<EnvRef> {
+fn lookup_in_current_function_env(env: &EnvRef, local: LocalId) -> Option<EnvRef> {
     let mut current = Some(env.clone());
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
-        if borrowed.bindings.contains_key(&binding) {
+        if borrowed.bindings.contains_key(&local) {
             return Some(candidate.clone());
         }
         let stop = borrowed.function_boundary;
@@ -1208,13 +1208,13 @@ fn lookup_in_current_function_env(env: &EnvRef, binding: BindingId) -> Option<En
     None
 }
 
-fn lookup_beyond_current_function(env: &EnvRef, binding: BindingId) -> Option<Binding> {
+fn lookup_beyond_current_function(env: &EnvRef, local: LocalId) -> Option<Binding> {
     let mut first_boundary_seen = false;
     let mut current = Some(env.clone());
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
         if first_boundary_seen {
-            if let Some(found) = borrowed.bindings.get(&binding) {
+            if let Some(found) = borrowed.bindings.get(&local) {
                 return Some(found.clone());
             }
         }
