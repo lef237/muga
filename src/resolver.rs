@@ -52,6 +52,12 @@ struct Binding {
     span: Span,
 }
 
+#[derive(Clone, Debug)]
+struct EnumResolveInfo {
+    span: Span,
+    variants: HashMap<Symbol, Span>,
+}
+
 struct ScopeFrame {
     bindings: HashMap<Symbol, BindingId>,
     function_boundary: bool,
@@ -69,7 +75,7 @@ impl ScopeFrame {
 struct Resolver {
     scopes: Vec<ScopeFrame>,
     records: HashMap<Symbol, Span>,
-    enums: HashMap<Symbol, Span>,
+    enums: HashMap<Symbol, EnumResolveInfo>,
     bindings: Vec<Binding>,
     identifier_refs: Vec<ResolvedIdentifier>,
     symbols: SymbolTable,
@@ -297,6 +303,8 @@ impl Resolver {
                         span: expr.span,
                         binding: binding.id,
                     });
+                } else if let Some((enum_name, variant_name)) = split_variant_name(&expr.name) {
+                    self.push_unresolved_variant_diagnostic(enum_name, variant_name, expr.span);
                 } else {
                     self.diagnostics.push(Diagnostic::new(
                         "N001",
@@ -407,6 +415,41 @@ impl Resolver {
         self.insert_current(symbol, BindingKind::Immutable, span);
     }
 
+    fn push_unresolved_variant_diagnostic(
+        &mut self,
+        enum_name: &str,
+        variant_name: &str,
+        span: Span,
+    ) {
+        let enum_symbol = self.symbol(enum_name);
+        let variant_symbol = self.symbol(variant_name);
+        if let Some(enumeration) = self.enums.get(&enum_symbol) {
+            if enumeration.variants.contains_key(&variant_symbol) {
+                self.diagnostics.push(Diagnostic::new(
+                    "N001",
+                    format!("unresolved name `{enum_name}::{variant_name}`"),
+                    span,
+                ));
+                return;
+            }
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "N001",
+                    format!("unknown variant `{variant_name}` for enum `{enum_name}`"),
+                    span,
+                )
+                .with_related("enum is declared here", enumeration.span),
+            );
+            return;
+        }
+
+        self.diagnostics.push(Diagnostic::new(
+            "N001",
+            format!("unknown enum `{enum_name}` in variant reference"),
+            span,
+        ));
+    }
+
     fn predeclare_functions(&mut self, statements: &[Stmt]) {
         for statement in statements {
             if let Stmt::FuncDecl(func) = statement {
@@ -460,14 +503,14 @@ impl Resolver {
         for statement in statements {
             if let Stmt::EnumDecl(enumeration) = statement {
                 let name = self.symbol(&enumeration.name);
-                if let Some(span) = self.enums.get(&name).copied() {
+                if let Some(existing) = self.enums.get(&name) {
                     self.diagnostics.push(
                         Diagnostic::new(
                             "E002",
                             format!("duplicate enum `{}` in the current scope", enumeration.name),
                             enumeration.span,
                         )
-                        .with_related("previous enum declaration is here", span),
+                        .with_related("previous enum declaration is here", existing.span),
                     );
                 } else if let Some(span) = self.records.get(&name).copied() {
                     self.diagnostics.push(
@@ -479,8 +522,10 @@ impl Resolver {
                         .with_related("previous type declaration is here", span),
                     );
                 } else {
-                    self.enums.insert(name, enumeration.span);
+                    let mut variants = HashMap::new();
                     for variant in &enumeration.variants {
+                        let variant_name = self.symbol(&variant.name);
+                        variants.insert(variant_name, variant.span);
                         let qualified =
                             self.symbol(&format!("{}::{}", enumeration.name, variant.name));
                         let kind = if variant.payload.is_some() {
@@ -490,6 +535,13 @@ impl Resolver {
                         };
                         self.insert_current(qualified, kind, variant.span);
                     }
+                    self.enums.insert(
+                        name,
+                        EnumResolveInfo {
+                            span: enumeration.span,
+                            variants,
+                        },
+                    );
                 }
             }
         }
@@ -568,5 +620,14 @@ impl Resolver {
 
     fn symbol(&mut self, name: &str) -> Symbol {
         self.symbols.intern(name)
+    }
+}
+
+fn split_variant_name(name: &str) -> Option<(&str, &str)> {
+    let (enum_name, variant_name) = name.rsplit_once("::")?;
+    if enum_name.is_empty() || variant_name.is_empty() {
+        None
+    } else {
+        Some((enum_name, variant_name))
     }
 }

@@ -21,6 +21,7 @@ Implemented language surface:
 - list literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for compiler-known `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
+- enum diagnostics, package enum visibility coverage, imported `alias::Enum::Variant` constructors/patterns, package enum call-target identity, and stale enum interface validation
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -61,47 +62,41 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice is enum integration hardening:
+The next code slice is package interface persistence:
 
-1. Add focused diagnostics for unknown enum types, unknown variants, duplicate arms, missing arms, constructor arity, and expected-type failures.
-2. Expand package visibility coverage for public, package-visible, and module-private enum declarations.
-3. Add tests for imported enum constructors and imported enum patterns such as `alias::Enum::Variant`.
-4. Validate stale in-memory package interfaces for enum identity, type parameters, variants, and payload types.
-5. Keep wildcard patterns, nested destructuring, multi-payload variants, named-field variants, and `try expr` deferred.
-
-After that, the priority returns to persisted package interfaces, package-interface consumption, caching, MIR, and native backend work.
+1. Choose a deterministic serialized format for public package interface summaries.
+2. Persist public records/functions/enums, resolved `TypeInfo`, item identity, enum variants, payload types, and interface hashes.
+3. Load persisted interfaces back into the existing in-memory `PackageInterfaces` shape.
+4. Validate stale persisted interfaces with actionable diagnostics and regeneration guidance.
+5. Keep downstream checking-from-interface, package caching, MIR, native backend work, wildcard enum patterns, and `try expr` deferred until the serialized interface format is stable.
 
 ## Compiler Architecture Path
 
-1. **User-defined enums**
-
-   Generalize the current compiler-known `Option` / `Result` path into a source-level enum model.
-
-2. **Package interfaces as real inputs**
+1. **Package interfaces as real inputs**
 
    Persist public records/functions/enums, resolved signatures, item identity, and hashes. Downstream packages should check against interface artifacts instead of dependency bodies.
 
-3. **Remove package flattening**
+2. **Remove package flattening**
 
    Use package graph and interface data as the normal checking/compilation boundary. Keep package-aware diagnostics useful across that boundary.
 
-4. **Build cache and incremental compilation**
+3. **Build cache and incremental compilation**
 
    Reuse unchanged package interface and implementation artifacts. Invalidate by source hash, interface hash, and dependency graph.
 
-5. **MIR**
+4. **MIR**
 
    Lower typed HIR into a compiler-oriented MIR that makes control flow, evaluation order, temporaries, and locals explicit.
 
-6. **Native backend**
+5. **Native backend**
 
    Add a fast native backend after the semantic boundary and package model are stable. Cranelift remains the likely first backend candidate; LLVM can be reconsidered later if its tradeoffs become useful.
 
-7. **Structured concurrency**
+6. **Structured concurrency**
 
    Design `group` / `spawn` / `join` first, then typed channels, then `select`-style coordination and timeouts. Do not make `async fn` / `await` the primary concurrency model unless later evidence justifies it.
 
-8. **Standard library**
+7. **Standard library**
 
    Add IO, HTTP, strings, richer collections, process/time APIs, and web-oriented packages after package compilation and error handling are stable enough to support them cleanly.
 
@@ -156,11 +151,10 @@ These should stay deferred unless the active implementation slice requires them:
 
 The coherent path is:
 
-1. enum integration hardening
-2. persisted package interfaces
-3. package checking without flattening
-4. cache and incremental compilation
-5. MIR
-6. native backend
-7. structured concurrency
-8. practical standard library
+1. persisted package interfaces
+2. package checking without flattening
+3. cache and incremental compilation
+4. MIR
+5. native backend
+6. structured concurrency
+7. practical standard library

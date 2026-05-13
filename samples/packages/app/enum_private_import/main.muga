@@ -1,0 +1,8 @@
+package app::enum_private_import
+
+import util::private_states
+
+fn main(): Int {
+  value: private_states::Secret = private_states::Secret::Hidden
+  1
+}

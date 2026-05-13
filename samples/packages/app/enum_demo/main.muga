@@ -3,6 +3,10 @@ package app::enum_demo
 import util::states
 
 fn main(): Int {
-  status: states::Status[Int] = states::ready(7)
-  states::value_or_zero(status)
+  status: states::Status[Int] = states::Status::Ready(7)
+  match status {
+    states::Status::Ready(value) => value
+    states::Status::Waiting => 0
+    states::Status::Failed(message) => 0
+  }
 }

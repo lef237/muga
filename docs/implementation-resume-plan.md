@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after user-defined enum MVP support: 171 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after user-defined enum MVP support.
+- [x] `cargo test` passed after enum integration hardening: 189 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after enum integration hardening.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -25,6 +25,7 @@ Ada
 ```
 
 - [x] `target/debug/muga samples/packages/app/enum_demo/main.muga` printed `7`.
+- [x] `target/debug/muga check samples/packages/app/enum_demo/main.muga` printed `ok`.
 
 ## Current Implementation Ledger
 
@@ -77,6 +78,7 @@ Ada
 - [x] `interface` validates typed package compilation references against generated in-memory interfaces.
 - [x] resolver, typechecker output, runtime, and package builtin filtering share `prelude::BuiltinId`.
 - [x] package rewriting attaches `PackageItemId` to flattened AST record/function declarations so typed HIR no longer recovers item identity from mangled names.
+- [x] package enum constructor call targets carry enum `PackageItemId` when the enum comes from package mode.
 - [ ] persisted package interface files are not implemented.
 - [ ] downstream package checking does not yet consume stored interface artifacts.
 - [ ] package flattening is still the execution/checking pipeline.
@@ -88,6 +90,7 @@ Ada
 - [x] duplicate declarations can point at previous declarations.
 - [x] package visibility diagnostics can point at private declarations and suggest `pkg` or `pub`.
 - [x] record literal/update and field diagnostics include declaration-site context in selected cases.
+- [x] user enum diagnostics cover unknown enum/variant constructor references, generic expected-type failures, constructor arity, missing arms, duplicate arms, and foreign arms.
 - [ ] cross-package diagnostics for persisted interfaces and caches are not implemented.
 
 ### Collections And Enum-Like Standard Types
@@ -112,6 +115,9 @@ Ada
 - [x] qualified user enum construction and patterns with exhaustive `match`.
 - [x] user-defined enum runtime values use the same generic `EnumValue` display shape.
 - [x] typed HIR and in-memory package interface summaries preserve public user enum declarations and public signatures containing user enum types.
+- [x] imported package enum constructors and patterns such as `alias::Enum::Variant` are covered.
+- [x] public, `pkg`, and module-private enum visibility cases are covered.
+- [x] in-memory package interface validation catches stale enum identity, type parameter, variant, and payload mismatches.
 - [ ] map literals are deferred.
 - [ ] arbitrary map key types are deferred.
 - [ ] `Set[T]` is deferred.
@@ -126,11 +132,11 @@ Ada
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
-- The public package interface model is in memory only; there is no serialized format, cache key, or incremental invalidation yet.
+- The public package interface model is in memory only; there is no serialized format, cache key, downstream interface consumption, or incremental invalidation yet.
 
 ## Recommended Next Implementation
 
-The next implementation theme is enum integration hardening before persisted package-interface work.
+The next implementation theme is persisted package interfaces.
 
 Reasoning:
 
@@ -139,8 +145,8 @@ Reasoning:
 - `Result[T, E]` now proves the same enum metadata, runtime value, typed HIR, and package-interface path for a second generic enum.
 - General IO, process, HTTP, time, and concurrency APIs can use explicit `Result` before any propagation sugar is added.
 - User-defined enum declarations, runtime values, typed HIR, and in-memory public interface summaries are now represented.
-- Persisted package interfaces should now include enum identity, type parameters, variants, payload types, and public signatures from the start.
-- Before persistence, the remaining enum edge cases should be hardened: diagnostics, imported constructors/patterns, visibility errors, and stale interface validation.
+- Enum integration hardening now covers diagnostics, imported constructors/patterns, visibility errors, package enum call-target identity, and stale interface validation.
+- Persisted package interfaces should now include record/function/enum identity, type parameters, variants, payload types, public signatures, hashes, and enough source references for diagnostics from the start.
 
 ## Requirement Decisions For The Next Slice
 
@@ -193,60 +199,48 @@ Estimates are in focused engineering days for someone already familiar with this
 | 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. AST/HIR/typed HIR pattern shape, runtime enum value shape, compiler-known enum metadata, and generic two-variant bytecode/runtime branching are in place. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | Done | Low |
 | 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
 | 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | Done | High |
-| 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | 2-4 days | Medium |
+| 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | Done | Medium |
 | 5. Package interface persistence | Serialize public records/functions/enums, type identities, and hashes. Start consuming stored summaries for downstream checking. | `src/package.rs`, `src/typed_hir.rs`, new interface/cache modules, tests | 5-10 days | High |
 | 6. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 4: harden the enum MVP before package interfaces become persisted artifacts. The main goal is to close edge-case gaps around diagnostics, package visibility, imported qualified variants, stale interface validation, and compatibility with compiler-known `Option` / `Result`.
+The safest immediate code slice is now Slice 5: persist package interfaces and start treating interface artifacts as the stable dependency boundary. The first persistence slice should serialize generated in-memory interfaces and validate that loading the serialized form preserves the same public records/functions/enums and type identities.
 
 ## Test Plan For The Next Code Slice
 
-Add or rename tests around these behavioral anchors before moving on to persisted interfaces.
+Add tests around these behavioral anchors before replacing package-body checking.
 
-Parser and AST:
+Interface serialization:
 
-- `parser_rejects_multi_payload_enum_variants`
-- `parser_rejects_named_field_enum_variants`
-- `parser_rejects_duplicate_enum_variant_names`
+- `package_interfaces_round_trip_public_records_functions_and_enums`
+- `package_interface_round_trip_preserves_type_info_identities`
+- `package_interface_round_trip_preserves_enum_variants_and_payloads`
 
-Typechecking and diagnostics:
+Interface validation:
 
-- `user_enum_unknown_variant_has_targeted_diagnostic`
-- `user_enum_match_rejects_duplicate_variant_arm`
-- `user_enum_match_rejects_foreign_variant`
-- `user_enum_payload_binding_is_arm_local`
-- `user_enum_generic_arity_mismatch_has_targeted_diagnostic`
-- `user_enum_zero_payload_expected_type_diagnostic_is_clear`
+- `typed_hir_validates_reloaded_package_interfaces`
+- `typed_hir_rejects_reloaded_stale_interface_hash`
+- `typed_hir_rejects_reloaded_stale_enum_shape`
 
-Runtime and lowering:
+Dependency boundary:
 
-- `user_enum_runtime_display_uses_enum_value_shape`
-- `user_enum_three_variant_match_lowering_remains_stable`
-
-Typed HIR and package interfaces:
-
-- `typed_hir_preserves_user_enum_variant_call_callee`
-- `typed_hir_preserves_user_enum_match_patterns`
-- `package_private_enum_from_import_is_rejected`
-- `typed_hir_rejects_stale_package_interface_enum_variants`
-- `public_function_signature_can_use_public_enum`
-- `imported_enum_constructor_uses_package_item_identity`
-- `imported_enum_pattern_uses_package_item_identity`
+- `downstream_package_can_check_against_loaded_interface_summary`
+- `downstream_package_does_not_require_dependency_function_body_for_signature_checking`
+- `interface_artifact_excludes_private_and_pkg_items`
 
 Compatibility:
 
-- `option_and_result_samples_remain_source_compatible`
-- `prelude_catalog_still_uses_builtin_ids_for_compiler_known_variants`
-- `user_enum_names_do_not_shadow_prelude_enum_variants`
+- `package_body_checking_and_interface_checking_agree_for_existing_samples`
+- `option_result_and_user_enum_signatures_survive_interface_round_trip`
 
 ## Definition Of Done For The Next Code Slice
 
 - [ ] Existing `cargo test` remains green.
-- [ ] Existing Option, List, Map, package, and typed HIR behavior remains source-compatible.
-- [ ] Enum diagnostics include unknown enum, unknown variant, missing arm, duplicate arm, foreign arm, constructor arity, and expected-type cases.
-- [ ] Imported enum constructors and match patterns are covered with package aliases such as `alias::Enum::Variant`.
-- [ ] Public, `pkg`, and module-private enum visibility cases are covered.
-- [ ] Stale in-memory interface validation catches enum name, type parameter, variant, and payload mismatches.
+- [ ] Existing package-body checking remains source-compatible.
+- [ ] In-memory interfaces serialize to a deterministic file format.
+- [ ] Serialized interfaces load back into the same `PackageInterfaces` data shape.
+- [ ] Public record/function/enum identities and `TypeInfo` values survive round trip.
+- [ ] Private and `pkg` items stay out of persisted public interfaces.
+- [ ] Stale serialized interfaces produce package diagnostics with regeneration guidance.
 - [ ] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
 ## Resume Checklist
@@ -257,7 +251,7 @@ When resuming implementation:
 2. [ ] Read this file.
 3. [ ] Read [ROADMAP.md](../ROADMAP.md).
 4. [ ] Read [spec/013-enums-results.md](../spec/013-enums-results.md).
-5. [ ] Confirm whether the intended next code slice is enum integration hardening or package-interface persistence.
+5. [ ] Confirm whether the intended next code slice is package-interface persistence or downstream interface consumption.
 6. [ ] Keep package flattening unchanged unless the task is explicitly package-interface persistence.
 7. [ ] After every compiler-core change, verify at least:
 

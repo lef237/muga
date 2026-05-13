@@ -1,6 +1,6 @@
 # Enums, Result, And Error Propagation Draft
 
-Status: design draft with an implemented MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, and in-memory package interface summaries. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching. Error propagation syntax is not implemented yet.
+Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, in-memory package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, and stale enum interface validation. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching. Error propagation syntax is not implemented yet.
 
 ## 1. Goals
 
@@ -307,7 +307,7 @@ Performance-specific representations can be handled later in MIR/native lowering
 
 ## 11. Recommended Phasing
 
-1. Harden enum diagnostics, package visibility, imported qualified variants, and in-memory interface validation.
-2. Extend persisted package interfaces and cache formats now that enum/result signatures have source-level identity.
+1. Extend persisted package interfaces and cache formats now that enum/result signatures have source-level identity.
+2. Start checking downstream packages against loaded interface artifacts.
 3. Revisit `try expr` propagation syntax.
 4. Continue toward MIR/native lowering once package boundaries are real inputs.
