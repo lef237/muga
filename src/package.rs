@@ -301,7 +301,7 @@ pub struct PackageItemInfo {
     pub mangled_name: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PackageItemKind {
     Record,
     Enum,
