@@ -60,6 +60,45 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Mode::EmitInterface => {
+            let artifact_root = cli.artifact_root.expect("validated artifact root");
+            match muga::write_package_interface_artifacts(
+                Path::new(&cli.path),
+                Path::new(&artifact_root),
+                &cli.packages,
+            ) {
+                Ok(paths) => {
+                    for path in paths {
+                        println!("{}", path.display());
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(diagnostics) => {
+                    for diagnostic in diagnostics {
+                        eprintln!("{diagnostic}");
+                    }
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Mode::EmitCheckCache => {
+            let artifact_root = cli.artifact_root.expect("validated artifact root");
+            match muga::write_package_check_cache_artifact_for_root(
+                Path::new(&cli.path),
+                Path::new(&artifact_root),
+            ) {
+                Ok(path) => {
+                    println!("{}", path.display());
+                    ExitCode::SUCCESS
+                }
+                Err(diagnostics) => {
+                    for diagnostic in diagnostics {
+                        eprintln!("{diagnostic}");
+                    }
+                    ExitCode::from(1)
+                }
+            }
+        }
     }
 }
 
@@ -67,6 +106,8 @@ fn main() -> ExitCode {
 enum Mode {
     Check,
     Run,
+    EmitInterface,
+    EmitCheckCache,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +115,7 @@ struct Cli {
     mode: Mode,
     path: String,
     artifact_root: Option<String>,
+    packages: Vec<String>,
 }
 
 impl Cli {
@@ -82,10 +124,15 @@ impl Cli {
             return Err("missing source file".to_string());
         }
 
-        let mode = if matches!(args.first().map(String::as_str), Some("check" | "run")) {
+        let mode = if matches!(
+            args.first().map(String::as_str),
+            Some("check" | "run" | "emit-interface" | "emit-check-cache")
+        ) {
             match args.remove(0).as_str() {
                 "check" => Mode::Check,
                 "run" => Mode::Run,
+                "emit-interface" => Mode::EmitInterface,
+                "emit-check-cache" => Mode::EmitCheckCache,
                 _ => unreachable!("mode was already checked"),
             }
         } else {
@@ -93,6 +140,7 @@ impl Cli {
         };
 
         let mut artifact_root = None;
+        let mut packages = Vec::new();
         let mut path = None;
         let mut index = 0;
         while index < args.len() {
@@ -112,6 +160,17 @@ impl Cli {
                 if artifact_root.replace(root.to_string()).is_some() {
                     return Err("--artifact-root was provided more than once".to_string());
                 }
+            } else if arg == "--package" {
+                index += 1;
+                let Some(package) = args.get(index) else {
+                    return Err("missing value for --package".to_string());
+                };
+                packages.push(package.clone());
+            } else if let Some(package) = arg.strip_prefix("--package=") {
+                if package.is_empty() {
+                    return Err("missing value for --package".to_string());
+                }
+                packages.push(package.to_string());
             } else if arg.starts_with('-') {
                 return Err(format!("unknown option `{arg}`"));
             } else if path.replace(arg.clone()).is_some() {
@@ -120,8 +179,22 @@ impl Cli {
             index += 1;
         }
 
-        if artifact_root.is_some() && mode != Mode::Check {
-            return Err("--artifact-root is only supported with `check`".to_string());
+        if artifact_root.is_some()
+            && !matches!(
+                mode,
+                Mode::Check | Mode::EmitInterface | Mode::EmitCheckCache
+            )
+        {
+            return Err(
+                "--artifact-root is only supported with `check`, `emit-interface`, or `emit-check-cache`"
+                    .to_string(),
+            );
+        }
+        if matches!(mode, Mode::EmitInterface | Mode::EmitCheckCache) && artifact_root.is_none() {
+            return Err(format!("{} requires --artifact-root", mode.name()));
+        }
+        if !packages.is_empty() && mode != Mode::EmitInterface {
+            return Err("--package is only supported with `emit-interface`".to_string());
         }
 
         let Some(path) = path else {
@@ -132,10 +205,22 @@ impl Cli {
             mode,
             path,
             artifact_root,
+            packages,
         })
     }
 }
 
+impl Mode {
+    fn name(self) -> &'static str {
+        match self {
+            Mode::Check => "check",
+            Mode::Run => "run",
+            Mode::EmitInterface => "emit-interface",
+            Mode::EmitCheckCache => "emit-check-cache",
+        }
+    }
+}
+
 fn usage() -> &'static str {
-    "usage: muga [check|run] [--artifact-root <dir>] <source-file>"
+    "usage: muga [check|run|emit-interface|emit-check-cache] [--artifact-root <dir>] [--package <package>] <source-file>"
 }

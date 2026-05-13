@@ -25,7 +25,7 @@ use diagnostic::Diagnostic;
 use hir::Program as HirProgram;
 use interface::PackageInterfaceGraph;
 use runtime::RunOutcome;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use typed_hir::Program as TypedHirProgram;
 
 pub fn check_source(source: &str) -> Result<Program, Vec<Diagnostic>> {
@@ -147,11 +147,55 @@ pub fn write_package_check_cache_artifact(
     cache::write_package_check_artifact(path, key)
 }
 
+pub fn write_package_check_cache_artifact_for_root(
+    path: &Path,
+    artifact_root: &Path,
+) -> Result<PathBuf, Vec<Diagnostic>> {
+    let key = cache::compute_package_check_cache_key(path, artifact_root)?;
+    let artifact_path = cache::package_check_artifact_path_from_entry(artifact_root, path)?;
+    cache::write_package_check_artifact(&artifact_path, &key)
+        .map_err(|diagnostic| vec![diagnostic])?;
+    Ok(artifact_path)
+}
+
 pub fn package_check_cache_artifact_path(
     root: &Path,
     entry_path: &Path,
 ) -> Result<std::path::PathBuf, Vec<Diagnostic>> {
     cache::package_check_artifact_path_from_entry(root, entry_path)
+}
+
+pub fn write_package_interface_artifacts(
+    path: &Path,
+    artifact_root: &Path,
+    package_paths: &[String],
+) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
+    let program = compile_typed_path(path)?;
+    let interfaces = program.package_interfaces();
+    let requested_packages = if package_paths.is_empty() {
+        interfaces
+            .packages
+            .iter()
+            .map(|package| package.path.clone())
+            .collect::<Vec<_>>()
+    } else {
+        package_paths.to_vec()
+    };
+
+    let mut written = Vec::new();
+    let mut diagnostics = Vec::new();
+    for package_path in requested_packages {
+        match interfaces.write_persisted_artifact(artifact_root, &package_path, &program.symbols) {
+            Ok(path) => written.push(path),
+            Err(diagnostic) => diagnostics.push(diagnostic),
+        }
+    }
+
+    if diagnostics.is_empty() {
+        Ok(written)
+    } else {
+        Err(diagnostics)
+    }
 }
 
 pub fn compile_typed_path_against_cached_interface_artifacts(
