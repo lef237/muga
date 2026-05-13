@@ -175,7 +175,7 @@ Implemented:
 - downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts, including transitive public-signature type dependencies, without reading dependency implementation bodies
 - package check cache keys combine entry package source content with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` validates package entries through package-aware checks against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
-- `muga emit-artifacts` writes reachable `.mgi` interfaces and the entry `.mgc` check cache; lower-level `emit-interface` and `emit-check-cache` commands remain available
+- `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes the entry `.mgc` check cache; lower-level `emit-check-cache` remains available
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 - library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before handing valid programs to the legacy typed checking path
 - package-aware source and per-module signature environments derived from the unflattened package graph, preserving package item identity, module/same-package/import visibility, and generic enum signature arity

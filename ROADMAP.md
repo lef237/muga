@@ -26,7 +26,7 @@ Implemented language surface:
 - loaded package interfaces and discovered `.mgi` artifacts can act as the dependency boundary for downstream typed checking, including transitive public-signature type dependencies, without reading dependency implementation bodies
 - package check cache keys combine entry package source hashes with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts for dependency-body-free package checking
-- `muga emit-artifacts` writes reachable `.mgi` interfaces and the entry `.mgc` check cache, with lower-level `emit-interface` and `emit-check-cache` commands still available
+- `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes the entry `.mgc` check cache; lower-level `emit-check-cache` remains available
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -35,7 +35,7 @@ Implemented language surface:
 - package-aware source and per-module signature environments resolve record/enum/function signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility
 - initial package-aware module body checking consumes those module signature environments before the legacy typed HIR path runs, and the package-aware API retains per-module typecheck outputs plus typed HIR programs
 - package-aware check results aggregate per-module typed HIR from unflattened module check outputs with remapped local IDs and symbols instead of using the legacy flattened typed path
-- package-aware checking can consume loaded in-memory or persisted package interfaces as dependency signatures without reading dependency source bodies, and `muga check --artifact-root` uses that package-aware artifact path
+- package-aware checking can consume loaded in-memory or persisted package interfaces as dependency signatures without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:
