@@ -24,6 +24,11 @@ pub fn import_paths_from_entry(path: &Path) -> Result<Vec<String>, Vec<Diagnosti
     loader.load_entry_import_paths()
 }
 
+pub fn entry_package_path_from_entry(path: &Path) -> Result<Option<String>, Vec<Diagnostic>> {
+    let (entry_program, _) = parse_entry_program(path)?;
+    Ok(entry_program.package.map(|package| package.path))
+}
+
 pub fn source_fingerprint_input_from_entry(path: &Path) -> Result<String, Vec<Diagnostic>> {
     let (entry_program, manifest) = parse_entry_program(path)?;
     if entry_program.package.is_none() {

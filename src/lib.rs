@@ -147,6 +147,13 @@ pub fn write_package_check_cache_artifact(
     cache::write_package_check_artifact(path, key)
 }
 
+pub fn package_check_cache_artifact_path(
+    root: &Path,
+    entry_path: &Path,
+) -> Result<std::path::PathBuf, Vec<Diagnostic>> {
+    cache::package_check_artifact_path_from_entry(root, entry_path)
+}
+
 pub fn compile_typed_path_against_cached_interface_artifacts(
     path: &Path,
     interface_root: &Path,
@@ -155,6 +162,18 @@ pub fn compile_typed_path_against_cached_interface_artifacts(
     let key = cache::compute_package_check_cache_key(path, interface_root)?;
     cache::validate_package_check_artifact(checked_artifact_path, &key)?;
     compile_typed_path_against_interface_artifacts(path, interface_root)
+}
+
+pub fn compile_typed_path_against_cached_artifact_root(
+    path: &Path,
+    artifact_root: &Path,
+) -> Result<TypedHirProgram, Vec<Diagnostic>> {
+    let checked_artifact_path = cache::package_check_artifact_path_from_entry(artifact_root, path)?;
+    compile_typed_path_against_cached_interface_artifacts(
+        path,
+        artifact_root,
+        &checked_artifact_path,
+    )
 }
 
 fn compile_loaded_typed_program(

@@ -17,6 +17,7 @@ Run a source file with:
 ```bash
 muga path/to/file.muga
 muga check path/to/file.muga
+muga check --artifact-root path/to/artifacts path/to/package/main.muga
 ```
 
 ## Quickstart
@@ -57,6 +58,12 @@ Package mode is also available through a file entrypoint:
 ```bash
 cargo run -- check samples/packages/app/main/main.muga
 cargo run -- samples/packages/app/main/main.muga
+```
+
+For artifact-backed package checking, pass an artifact root containing dependency `.mgi` interface files and the entry package `.mgc` check cache file:
+
+```bash
+cargo run -- check --artifact-root path/to/artifacts path/to/package/main.muga
 ```
 
 Run your own file by pointing `cargo run` at any `.muga` source. `run` is the default subcommand, so it can be omitted:
@@ -162,6 +169,7 @@ Implemented:
 - deterministic v1 package interface text persistence with content hashes, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
 - downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts without reading dependency implementation bodies
 - package check cache keys combine entry package source content with dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
+- `muga check --artifact-root <dir>` validates package entries against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 
 Not implemented yet:
@@ -169,12 +177,12 @@ Not implemented yet:
 - user-defined generic records and generic functions
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
-- CLI/project-mode interface/cache artifact flags, dependency declarations, registries, full incremental package artifact reuse, MIR, and native code generation
+- CLI artifact generation, project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, MIR, and native code generation
 - error propagation syntax such as `try expr`
 
 ## Planned Priority
 
-The next implementation slice is CLI/project-mode wiring for interface and package-check cache artifacts.
+The next implementation slice is artifact generation/project wiring for package interface and check-cache artifacts.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 
@@ -231,7 +239,7 @@ Package layout note:
 - Source files import logical package paths such as `my_service::users`, not filesystem paths such as `../users`.
 - In manifest project mode, `name = "my_service"` and `source = "src"` let `src/users/` map to `my_service::users` without nesting another `my_service/` directory under `src/`.
 - Without a nearby `muga.toml`, a package file must start with an explicit `package ...` declaration before it can use `import`, `pub`, or `pkg`.
-- The target distribution model is manifest-based and should use cached package interfaces for fast rebuilds. The compiler library can typecheck against loaded interface summaries or a supplied interface artifact root, and can validate package-check cache artifacts against source/dependency hashes. The CLI does not yet expose artifact-backed checking.
+- The target distribution model is manifest-based and should use cached package interfaces for fast rebuilds. The compiler library can typecheck against loaded interface summaries or a supplied interface artifact root, and can validate package-check cache artifacts against source/dependency hashes. The CLI can consume existing artifacts with `check --artifact-root`, but does not yet generate them.
 - See [spec/006-packages.md](./spec/006-packages.md) for the large-project layout and distribution model.
 
 ## License

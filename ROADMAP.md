@@ -25,6 +25,7 @@ Implemented language surface:
 - deterministic v1 package interface text persistence, content hashes, artifact path naming, file round-trip, and loaded-interface validation for public records/functions/enums
 - loaded package interfaces and discovered `.mgi` artifacts can act as the dependency boundary for downstream typed checking without reading dependency implementation bodies
 - package check cache keys combine entry package source hashes with dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
+- `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts for dependency-body-free package checking
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -35,7 +36,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package checking/execution still flattens packages and reads dependency source
-- CLI artifact-root wiring and full incremental package artifact reuse are not implemented
+- CLI artifact generation, project-mode artifact-root config, and full incremental package artifact reuse are not implemented
 - VM bytecode still lowers from the older HIR path, not from typed HIR/MIR
 
 ## Settled Direction
@@ -65,13 +66,13 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice is CLI/project-mode wiring for interface and package-check cache artifacts:
+The next code slice is artifact generation/project wiring for package interface and check-cache artifacts:
 
-1. Add a narrow CLI flag or project-mode option for an explicit interface/cache artifact root.
-2. Route `muga check` through artifact-backed typed checking when that option is present.
-3. Keep artifact-backed checks from silently falling back to dependency implementation bodies.
-4. Keep diagnostics for missing, hash-mismatched, and stale artifacts actionable.
-5. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact wiring is stable.
+1. Add a narrow CLI or library entrypoint that writes `.mgi` package interfaces for selected packages.
+2. Add an entrypoint that writes the entry package `.mgc` check cache after dependency interfaces are available.
+3. Decide whether `muga.toml` should name an artifact root now or remain CLI-only until dependency declarations exist.
+4. Keep artifact-backed checks from silently falling back to dependency implementation bodies.
+5. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
 
 ## Compiler Architecture Path
 
@@ -119,7 +120,7 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- CLI/project-mode artifact-root wiring
+- CLI/project-mode artifact generation and artifact-root config
 - full package artifact storage/reuse after check cache metadata
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported
