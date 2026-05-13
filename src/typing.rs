@@ -234,6 +234,7 @@ struct TypeChecker {
     substitutions: HashMap<u32, Type>,
     package_records: HashMap<PackageItemId, Symbol>,
     package_enums: HashMap<PackageItemId, Symbol>,
+    package_items_by_binding: HashMap<BindingId, PackageItemId>,
 }
 
 impl TypeChecker {
@@ -253,6 +254,7 @@ impl TypeChecker {
             substitutions: HashMap::new(),
             package_records: HashMap::new(),
             package_enums: HashMap::new(),
+            package_items_by_binding: HashMap::new(),
         };
         checker.install_prelude();
         checker
@@ -430,12 +432,13 @@ impl TypeChecker {
                         .unwrap_or(Type::Unknown(self.fresh_unknown())),
                 ),
             };
-            self.insert_current(
+            let binding = self.insert_current(
                 symbol,
                 BindingKind::Function,
                 Type::Function(sig),
                 function.span,
             );
+            self.package_items_by_binding.insert(binding, visible.item);
         }
     }
 
@@ -2450,7 +2453,15 @@ impl TypeChecker {
                     ret: Box::new(ret),
                 };
                 functions.insert(name, sig.clone());
-                self.insert_current(name, BindingKind::Function, Type::Function(sig), func.span);
+                let binding = self.insert_current(
+                    name,
+                    BindingKind::Function,
+                    Type::Function(sig),
+                    func.span,
+                );
+                if let Some(item) = func.package_item {
+                    self.package_items_by_binding.insert(binding, item);
+                }
             }
         }
         functions
@@ -2914,7 +2925,13 @@ impl TypeChecker {
                 .unwrap_or(TypedCalleeInfo::Error),
             Type::Function(_) | Type::Unknown(_) => self
                 .binding_for_expr(callee.id())
-                .map(TypedCalleeInfo::Binding)
+                .map(|binding| {
+                    self.package_items_by_binding
+                        .get(&binding)
+                        .copied()
+                        .map(|item| TypedCalleeInfo::PackageItem { binding, item })
+                        .unwrap_or(TypedCalleeInfo::Binding(binding))
+                })
                 .unwrap_or(TypedCalleeInfo::Value),
             Type::Error => TypedCalleeInfo::Error,
             _ => TypedCalleeInfo::Error,
