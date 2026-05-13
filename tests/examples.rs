@@ -860,6 +860,169 @@ pub fn ready(value: Int): Status[Int] {
 }
 
 #[test]
+fn package_module_signature_environment_tracks_module_visibility() {
+    let root = temp_package_root("package-module-signature-visibility");
+    let entry = write_package_file(
+        &root,
+        "app/env/main.muga",
+        r#"
+package app::env
+
+fn local(): Int {
+  1
+}
+
+fn main(): Int {
+  helper() + local()
+}
+"#,
+    );
+    write_package_file(
+        &root,
+        "app/env/helper.muga",
+        r#"
+package app::env
+
+record Hidden {
+  value: Int
+}
+
+pkg record Visible {
+  value: Int
+}
+
+pkg fn helper(): Int {
+  41
+}
+"#,
+    );
+
+    let result =
+        muga::check_package_aware_path(&entry).expect("package-aware checking should pass");
+    let package = result
+        .packages
+        .package_graph
+        .package_id("app::env")
+        .expect("package should exist");
+    let main_module = result
+        .packages
+        .package_graph
+        .module_id(package, "main.muga")
+        .expect("main module should exist");
+    let helper_module = result
+        .packages
+        .package_graph
+        .module_id(package, "helper.muga")
+        .expect("helper module should exist");
+    let local_item = result
+        .packages
+        .package_graph
+        .item_id_in_module(
+            main_module,
+            "local",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("local item should exist");
+    let helper_item = result
+        .packages
+        .package_graph
+        .item_id_in_module(
+            helper_module,
+            "helper",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("helper item should exist");
+    let visible_item = result
+        .packages
+        .package_graph
+        .item_id_in_module(
+            helper_module,
+            "Visible",
+            muga::package::PackageItemKind::Record,
+        )
+        .expect("Visible item should exist");
+    let main_env = result
+        .signatures
+        .module(main_module)
+        .expect("main module signature environment should exist");
+
+    let local = main_env
+        .function("local")
+        .expect("local function should be visible");
+    assert_eq!(local.item, local_item);
+    assert_eq!(
+        local.source,
+        muga::package_signature::PackageSignatureSource::ModuleLocal
+    );
+
+    let helper = main_env
+        .function("helper")
+        .expect("pkg helper should be visible");
+    assert_eq!(helper.item, helper_item);
+    assert_eq!(
+        helper.source,
+        muga::package_signature::PackageSignatureSource::SamePackage
+    );
+
+    let visible = main_env
+        .record("Visible")
+        .expect("pkg record should be visible");
+    assert_eq!(visible.item, visible_item);
+    assert_eq!(
+        visible.source,
+        muga::package_signature::PackageSignatureSource::SamePackage
+    );
+    assert!(
+        main_env.record("Hidden").is_none(),
+        "module-private helper record should not be visible from main"
+    );
+}
+
+#[test]
+fn package_module_signature_environment_tracks_imported_exports() {
+    let root = temp_package_root("package-module-signature-imports");
+    let entry = write_transitive_interface_provider(&root);
+    let result =
+        muga::check_package_aware_path(&entry).expect("package-aware checking should pass");
+    let users = result
+        .packages
+        .package_graph
+        .package_id("model::users")
+        .expect("users package should exist");
+    let user_item = result
+        .packages
+        .package_graph
+        .item_id(users, "User", muga::package::PackageItemKind::Record)
+        .expect("User item should exist");
+    let facade = result
+        .packages
+        .package_graph
+        .package_id("api::facade")
+        .expect("facade package should exist");
+    let facade_module = result
+        .packages
+        .package_graph
+        .module_id(facade, "main.muga")
+        .expect("facade module should exist");
+    let facade_env = result
+        .signatures
+        .module(facade_module)
+        .expect("facade module signature environment should exist");
+    let user = facade_env
+        .record("users::User")
+        .expect("imported User should be visible by alias");
+
+    assert_eq!(user.item, user_item);
+    assert_eq!(
+        user.source,
+        muga::package_signature::PackageSignatureSource::Imported {
+            alias: "users".to_string(),
+            package: users,
+        }
+    );
+}
+
+#[test]
 fn package_symbol_graph_exposes_module_identity() {
     let loaded = muga::package::load_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{EnumDecl, FuncDecl, RecordDecl, TypeExpr, Visibility},
+    ast::{EnumDecl, FuncDecl, ImportDecl, RecordDecl, TypeExpr, Visibility},
     diagnostic::Diagnostic,
     identity::{ModuleId, PackageId, PackageItemId},
     known_enum,
@@ -17,6 +17,7 @@ pub struct PackageSignatureEnvironment {
     pub records: Vec<PackageRecordSignature>,
     pub enums: Vec<PackageEnumSignature>,
     pub functions: Vec<PackageFunctionSignature>,
+    pub modules: Vec<PackageModuleSignatureEnvironment>,
 }
 
 impl PackageSignatureEnvironment {
@@ -38,6 +39,12 @@ impl PackageSignatureEnvironment {
 
     pub fn function(&self, item: PackageItemId) -> Option<&PackageFunctionSignature> {
         self.functions.iter().find(|function| function.item == item)
+    }
+
+    pub fn module(&self, module: ModuleId) -> Option<&PackageModuleSignatureEnvironment> {
+        self.modules
+            .iter()
+            .find(|environment| environment.module == module)
     }
 }
 
@@ -97,6 +104,46 @@ pub struct PackageParamSignature {
     pub span: Span,
 }
 
+#[derive(Clone, Debug)]
+pub struct PackageModuleSignatureEnvironment {
+    pub package: PackageId,
+    pub module: ModuleId,
+    pub module_path: String,
+    pub records: Vec<PackageVisibleSignature>,
+    pub enums: Vec<PackageVisibleSignature>,
+    pub functions: Vec<PackageVisibleSignature>,
+}
+
+impl PackageModuleSignatureEnvironment {
+    pub fn record(&self, name: &str) -> Option<&PackageVisibleSignature> {
+        self.records.iter().find(|record| record.name == name)
+    }
+
+    pub fn enumeration(&self, name: &str) -> Option<&PackageVisibleSignature> {
+        self.enums
+            .iter()
+            .find(|enumeration| enumeration.name == name)
+    }
+
+    pub fn function(&self, name: &str) -> Option<&PackageVisibleSignature> {
+        self.functions.iter().find(|function| function.name == name)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageVisibleSignature {
+    pub name: String,
+    pub item: PackageItemId,
+    pub source: PackageSignatureSource,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PackageSignatureSource {
+    ModuleLocal,
+    SamePackage,
+    Imported { alias: String, package: PackageId },
+}
+
 struct SignatureCollector<'a> {
     loaded: &'a LoadedPackageGraph,
     symbols: SymbolTable,
@@ -108,6 +155,7 @@ struct SignatureCollector<'a> {
     records: Vec<PackageRecordSignature>,
     enums: Vec<PackageEnumSignature>,
     functions: Vec<PackageFunctionSignature>,
+    modules: Vec<PackageModuleSignatureEnvironment>,
 }
 
 impl<'a> SignatureCollector<'a> {
@@ -123,6 +171,7 @@ impl<'a> SignatureCollector<'a> {
             records: Vec::new(),
             enums: Vec::new(),
             functions: Vec::new(),
+            modules: Vec::new(),
         }
     }
 
@@ -148,6 +197,7 @@ impl<'a> SignatureCollector<'a> {
                     .iter()
                     .map(|import| (import.alias.clone(), import.path.clone()))
                     .collect();
+                self.collect_module_environment(&file.module_path, &file.program.imports);
 
                 for statement in &file.program.statements {
                     match statement {
@@ -168,10 +218,92 @@ impl<'a> SignatureCollector<'a> {
                 records: self.records,
                 enums: self.enums,
                 functions: self.functions,
+                modules: self.modules,
             })
         } else {
             Err(self.diagnostics)
         }
+    }
+
+    fn collect_module_environment(&mut self, module_path: &str, imports: &[ImportDecl]) {
+        let mut environment = PackageModuleSignatureEnvironment {
+            package: self.current_package,
+            module: self.current_module,
+            module_path: module_path.to_string(),
+            records: Vec::new(),
+            enums: Vec::new(),
+            functions: Vec::new(),
+        };
+
+        for item in &self.loaded.package_graph.items {
+            let Some(source) = self.same_package_source(item) else {
+                continue;
+            };
+            let visible = PackageVisibleSignature {
+                name: item.name.clone(),
+                item: item.id,
+                source,
+            };
+            match item.kind {
+                PackageItemKind::Record => environment.records.push(visible),
+                PackageItemKind::Enum => environment.enums.push(visible),
+                PackageItemKind::Function => environment.functions.push(visible),
+            }
+        }
+
+        for import in imports {
+            let Some(package_id) = self.loaded.package_graph.package_id(&import.path) else {
+                continue;
+            };
+            let Some(exports) = self.loaded.package_exports.package(package_id) else {
+                continue;
+            };
+            for record in &exports.records {
+                environment.records.push(PackageVisibleSignature {
+                    name: format!("{}::{}", import.alias, record.name),
+                    item: record.item,
+                    source: PackageSignatureSource::Imported {
+                        alias: import.alias.clone(),
+                        package: package_id,
+                    },
+                });
+            }
+            for enumeration in &exports.enums {
+                environment.enums.push(PackageVisibleSignature {
+                    name: format!("{}::{}", import.alias, enumeration.name),
+                    item: enumeration.item,
+                    source: PackageSignatureSource::Imported {
+                        alias: import.alias.clone(),
+                        package: package_id,
+                    },
+                });
+            }
+            for function in &exports.functions {
+                environment.functions.push(PackageVisibleSignature {
+                    name: format!("{}::{}", import.alias, function.name),
+                    item: function.item,
+                    source: PackageSignatureSource::Imported {
+                        alias: import.alias.clone(),
+                        package: package_id,
+                    },
+                });
+            }
+        }
+
+        self.modules.push(environment);
+    }
+
+    fn same_package_source(&self, item: &PackageItemInfo) -> Option<PackageSignatureSource> {
+        if item.package != self.current_package {
+            return None;
+        }
+        if item.module == self.current_module {
+            return Some(PackageSignatureSource::ModuleLocal);
+        }
+        if matches!(item.visibility, Visibility::Package | Visibility::Public) {
+            return Some(PackageSignatureSource::SamePackage);
+        }
+        None
     }
 
     fn collect_enum_headers(&mut self) {
