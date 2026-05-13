@@ -3454,6 +3454,134 @@ fn main(): Int {
 }
 
 #[test]
+fn implementation_artifact_rejects_invalid_bytecode_symbol_ref() {
+    let (_artifact_root, artifact_path) =
+        write_tampered_states_implementation_artifact("invalid-bytecode-symbol", |artifact| {
+            artifact.program.bindings[0].name = muga::symbol::Symbol::new(999_999);
+        });
+
+    let diagnostics = muga::implementation_artifact::read_persisted_file(&artifact_path)
+        .expect_err("invalid symbol reference should be rejected");
+    let text = diagnostics_text(&diagnostics);
+    assert!(text.contains("PK022"), "{text}");
+    assert!(
+        text.contains("invalid package implementation bytecode"),
+        "{text}"
+    );
+    assert!(text.contains("symbol"), "{text}");
+}
+
+#[test]
+fn implementation_artifact_rejects_invalid_bytecode_local_count() {
+    let (_artifact_root, artifact_path) =
+        write_tampered_states_implementation_artifact("invalid-bytecode-local-count", |artifact| {
+            artifact.program.local_count = 0;
+        });
+
+    let diagnostics = muga::implementation_artifact::read_persisted_file(&artifact_path)
+        .expect_err("invalid local_count should be rejected");
+    let text = diagnostics_text(&diagnostics);
+    assert!(text.contains("PK022"), "{text}");
+    assert!(
+        text.contains("invalid package implementation bytecode"),
+        "{text}"
+    );
+    assert!(text.contains("local_count"), "{text}");
+}
+
+#[test]
+fn implementation_artifact_rejects_invalid_bytecode_jump_target() {
+    let (_artifact_root, artifact_path) =
+        write_tampered_states_implementation_artifact("invalid-bytecode-jump", |artifact| {
+            let mut found = false;
+            for function in &mut artifact.program.functions {
+                for instruction in &mut function.chunk.instructions {
+                    if let Instruction::JumpIfNotEnumVariant { target, .. }
+                    | Instruction::JumpIfFalse { target, .. }
+                    | Instruction::Jump { target } = instruction
+                    {
+                        *target = usize::MAX;
+                        found = true;
+                        break;
+                    }
+                }
+                if found {
+                    break;
+                }
+            }
+            assert!(
+                found,
+                "states implementation should contain a bytecode jump"
+            );
+        });
+
+    let diagnostics = muga::implementation_artifact::read_persisted_file(&artifact_path)
+        .expect_err("invalid jump target should be rejected");
+    let text = diagnostics_text(&diagnostics);
+    assert!(text.contains("PK022"), "{text}");
+    assert!(
+        text.contains("invalid package implementation bytecode"),
+        "{text}"
+    );
+    assert!(text.contains("jump target"), "{text}");
+}
+
+#[test]
+fn cli_run_reports_invalid_dependency_implementation_bytecode() {
+    let (artifact_root, _artifact_path) =
+        write_tampered_states_implementation_artifact("invalid-bytecode-cli", |artifact| {
+            for instruction in &mut artifact.program.entry.instructions {
+                if let Instruction::DefineFunction { function, .. } = instruction {
+                    *function = usize::MAX;
+                    return;
+                }
+            }
+            panic!("states implementation should define functions in the entry chunk");
+        });
+
+    let root = temp_package_root("cli-run-invalid-implementation-bytecode-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/invalid_impl/main.muga",
+        r#"
+package app::invalid_impl
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(8))
+}
+"#,
+    );
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert!(stderr.contains("PK022"), "{stderr}");
+    assert!(
+        stderr.contains("invalid package implementation bytecode"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("function id"), "{stderr}");
+    assert!(stderr.contains("util::states"), "{stderr}");
+}
+
+#[test]
 fn typed_hir_rejects_reloaded_stale_enum_interface_shape() {
     let program = muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
         .expect("typed package compilation should pass");
@@ -7068,6 +7196,40 @@ fn write_interface_artifacts(
             .write_persisted_artifact(root, package_path, symbols)
             .expect("interface artifact should be written");
     }
+}
+
+fn write_tampered_states_implementation_artifact(
+    name: &str,
+    tamper: impl FnOnce(&mut muga::implementation_artifact::PackageImplementationArtifact),
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let artifact_root = temp_package_root(name);
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+
+    let artifact_path =
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "util::states");
+    let mut artifact = muga::implementation_artifact::read_persisted_file(&artifact_path)
+        .expect("implementation artifact should parse before tampering");
+    tamper(&mut artifact);
+    artifact
+        .write_persisted_artifact(&artifact_root)
+        .expect("tampered implementation artifact should be rewritten");
+
+    (artifact_root, artifact_path)
+}
+
+fn diagnostics_text(diagnostics: &[muga::diagnostic::Diagnostic]) -> String {
+    diagnostics
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn write_transitive_interface_provider(root: &Path) -> std::path::PathBuf {

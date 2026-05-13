@@ -14,7 +14,7 @@ Recommended order:
 2. Harden dependency-body-free package execution. Artifact-backed `check` avoids dependency implementation bodies; artifact-backed `run` now consumes MIR-lowered bytecode `.mgb` implementation artifacts without dependency source-tree fallback.
 3. Keep the artifact root explicit on the CLI. Extend the explicit workflow before adding any `muga.toml` artifact-root configuration.
 4. Preserve `.mgi` as the public interface artifact, `.mgc` as the check-cache proof, and `.mgb` as the package implementation artifact. Do not stretch `.mgc` into an executable body store.
-5. Keep missing, stale, or hash-mismatched execution artifacts as hard errors under `--artifact-root`; do not silently read dependency source bodies in artifact-backed execution.
+5. Keep missing, stale, hash-mismatched, or structurally invalid execution artifacts as hard errors under `--artifact-root`; do not silently read dependency source bodies in artifact-backed execution.
 6. Continue hardening samples, README/spec notes, and diagnostics. Keep generic records/functions, wildcard enum patterns, `try expr`, native backend work, broad stdlib effects, and full incremental reuse deferred unless one is required to finish the v1 package/artifact path.
 
 ## Verification Snapshot
@@ -138,6 +138,7 @@ Ada
 - [x] default package `run` lowers package-aware typed HIR through MIR before bytecode generation.
 - [x] package-aware typed HIR can lower through the MIR/bytecode VM path for package records/enums/functions.
 - [x] explicit artifact-backed package execution reads dependency bytecode bodies from `.mgb` artifacts and does not fall back to dependency source files.
+- [x] `.mgb` bytecode bodies are structurally validated on read before bytecode merge/runtime execution, including symbol, local, binding, function, package item, and jump-target references.
 
 ### Diagnostics
 
@@ -223,7 +224,7 @@ Reasoning:
 - The package-aware semantic boundary is now real enough for `check`; v1 risk has moved from name resolution/flattening to execution and artifact workflow closure.
 - The reference VM now consumes MIR-lowered bytecode with binding/local identity metadata and slot-backed locals, so persisted dependency implementations can be keyed by compiler-owned identity instead of display-name lookup.
 - `.mgi` should remain a public-signature artifact, `.mgc` should remain a check-cache proof, and `.mgb` should remain a separate implementation/execution artifact that stores bytecode bodies generated through MIR rather than overloading either existing format or persisting dependency source.
-- Artifact-backed `run` fails loudly when required dependency execution artifacts are missing, stale, or inconsistent with loaded interfaces. It should continue to avoid silently falling back to dependency source bodies under `--artifact-root`.
+- Artifact-backed `run` fails loudly when required dependency execution artifacts are missing, stale, hash-mismatched, structurally invalid, or inconsistent with loaded interfaces. It should continue to avoid silently falling back to dependency source bodies under `--artifact-root`.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` and `run` semantics ambiguous.
 - Control-flow MIR, native lowering, broad stdlib effects, `try expr`, wildcard-heavy matching, and generic records/functions should remain out of the v1 path unless they become necessary to make artifact-backed execution correct.
 
@@ -235,7 +236,7 @@ Closed before coding artifact-backed execution:
 - [x] Keep `.mgc` as the check-cache proof keyed by entry source and dependency interface hashes.
 - [x] Add `.mgb` as the separate implementation/execution artifact; store MIR-lowered bytecode bodies, not source bodies, and do not overload `.mgi` or `.mgc` for executable code.
 - [x] Keep `--artifact-root` explicit for v1; do not add `muga.toml` artifact-root configuration before dependency declarations, lockfiles, and a package-aware project driver.
-- [x] Artifact-backed `run` must reject missing, stale, or mismatched execution artifacts instead of falling back to dependency source bodies.
+- [x] Artifact-backed `run` must reject missing, stale, hash-mismatched, structurally invalid, or mismatched execution artifacts instead of falling back to dependency source bodies.
 - [x] Default `run` without `--artifact-root` should remain source-compatible while v1 artifact execution is introduced.
 - [x] Control-flow MIR and native lowering are deferred unless expression-shaped MIR cannot correctly represent the first execution artifact.
 
@@ -327,7 +328,7 @@ Compatibility:
 - [x] Artifact-root behavior remains explicit through CLI flags.
 - [x] Default CLI checking/execution remains unchanged when no artifact root is provided.
 - [x] Artifact-backed package execution can run dependencies from artifacts without reading dependency implementation source files from the source tree.
-- [x] Artifact-backed package execution rejects missing, stale, or hash-mismatched execution artifacts without source fallback.
+- [x] Artifact-backed package execution rejects missing, stale, hash-mismatched, or structurally invalid execution artifacts without source fallback.
 - [x] Docs are updated in `README.md`, `ROADMAP.md`, relevant `spec/*.md`, and this file.
 
 ## Resume Checklist

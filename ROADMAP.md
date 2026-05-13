@@ -28,7 +28,7 @@ Implemented language surface:
 - package check cache keys combine entry package source hashes with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts for dependency-body-free package checking
 - `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes reachable `.mgb` implementation artifacts containing MIR-lowered bytecode programs plus the entry `.mgc` check cache; lower-level `emit-check-cache` validates against `.mgi` artifacts before writing `.mgc`
-- `muga run --artifact-root <dir>` validates `.mgi` / `.mgc` / `.mgb` artifacts and executes dependencies without reading dependency source files from the source tree
+- `muga run --artifact-root <dir>` validates `.mgi` / `.mgc` / structurally checked `.mgb` artifacts and executes dependencies without reading dependency source files from the source tree
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -141,7 +141,7 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 Package-interface queue:
 
 - hardening the MIR-lowered bytecode `.mgb` implementation artifact format into the final v1 execution artifact contract
-- broader `run --artifact-root` diagnostics for missing, stale, or mismatched dependency artifacts
+- broader `run --artifact-root` diagnostics for missing, stale, hash-mismatched, structurally invalid, or otherwise mismatched dependency artifacts
 - eventual project-mode artifact-root config after dependency declarations and lockfiles
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported
