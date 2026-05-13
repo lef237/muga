@@ -71,13 +71,13 @@ impl Lowerer {
         }
     }
 
-    fn lower_statements(&mut self, statements: &[ast::Stmt]) -> (Vec<FunctionStmt>, Vec<Stmt>) {
+    fn lower_statements(&mut self, statements: &[ast::Stmt]) -> (Vec<FunctionDef>, Vec<Stmt>) {
         let mut function_defs = Vec::new();
         let mut lowered_statements = Vec::new();
         for statement in statements {
             match statement {
                 ast::Stmt::FuncDecl(stmt) => {
-                    function_defs.push(FunctionStmt {
+                    function_defs.push(FunctionDef {
                         name: self.symbol(&stmt.name),
                         function: self.lower_function_decl(stmt),
                         span: stmt.span,

@@ -35,7 +35,7 @@ pub struct Function {
 
 #[derive(Clone, Debug)]
 pub struct Body {
-    pub function_defs: Vec<FunctionStmt>,
+    pub function_defs: Vec<FunctionDef>,
     pub statements: Vec<Stmt>,
     pub result: Option<Box<Expr>>,
     pub span: Span,
@@ -69,11 +69,13 @@ pub struct AssignStmt {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionStmt {
+pub struct FunctionDef {
     pub name: Symbol,
     pub function: FunctionId,
     pub span: Span,
 }
+
+pub type FunctionStmt = FunctionDef;
 
 #[derive(Clone, Debug)]
 pub struct IfStmt {
@@ -98,14 +100,14 @@ pub struct ExprStmt {
 
 #[derive(Clone, Debug)]
 pub struct Block {
-    pub function_defs: Vec<FunctionStmt>,
+    pub function_defs: Vec<FunctionDef>,
     pub statements: Vec<Stmt>,
     pub span: Span,
 }
 
 #[derive(Clone, Debug)]
 pub struct ValueBlock {
-    pub function_defs: Vec<FunctionStmt>,
+    pub function_defs: Vec<FunctionDef>,
     pub statements: Vec<Stmt>,
     pub expr: Box<Expr>,
     pub span: Span,
@@ -341,13 +343,13 @@ impl TypedLowerer<'_> {
     fn lower_statements(
         &mut self,
         statements: &[typed_hir::Stmt],
-    ) -> (Vec<FunctionStmt>, Vec<Stmt>) {
+    ) -> (Vec<FunctionDef>, Vec<Stmt>) {
         let mut function_defs = Vec::new();
         let mut lowered_statements = Vec::new();
         for statement in statements {
             match statement {
                 typed_hir::Stmt::Function(stmt) => {
-                    function_defs.push(FunctionStmt {
+                    function_defs.push(FunctionDef {
                         name: self.function_name(stmt),
                         function: self.lower_function(stmt),
                         span: stmt.span,
