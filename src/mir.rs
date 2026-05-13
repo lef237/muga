@@ -35,6 +35,7 @@ pub struct Function {
 
 #[derive(Clone, Debug)]
 pub struct Body {
+    pub function_defs: Vec<FunctionStmt>,
     pub statements: Vec<Stmt>,
     pub result: Option<Box<Expr>>,
     pub span: Span,
@@ -43,7 +44,6 @@ pub struct Body {
 #[derive(Clone, Debug)]
 pub enum Stmt {
     Assign(AssignStmt),
-    Function(FunctionStmt),
     If(IfStmt),
     While(WhileStmt),
     Expr(ExprStmt),
@@ -53,7 +53,6 @@ impl Stmt {
     pub fn span(&self) -> Span {
         match self {
             Self::Assign(stmt) => stmt.span,
-            Self::Function(stmt) => stmt.span,
             Self::If(stmt) => stmt.span,
             Self::While(stmt) => stmt.span,
             Self::Expr(stmt) => stmt.span,
@@ -99,12 +98,14 @@ pub struct ExprStmt {
 
 #[derive(Clone, Debug)]
 pub struct Block {
+    pub function_defs: Vec<FunctionStmt>,
     pub statements: Vec<Stmt>,
     pub span: Span,
 }
 
 #[derive(Clone, Debug)]
 pub struct ValueBlock {
+    pub function_defs: Vec<FunctionStmt>,
     pub statements: Vec<Stmt>,
     pub expr: Box<Expr>,
     pub span: Span,
@@ -316,13 +317,10 @@ pub fn lower_typed(program: &typed_hir::Program) -> Program {
         source_symbols: &program.symbols,
         package_graph: &program.package_graph,
     };
-    let statements = program
-        .statements
-        .iter()
-        .filter_map(|statement| lowerer.lower_stmt(statement))
-        .collect();
+    let (function_defs, statements) = lowerer.lower_statements(&program.statements);
     Program {
         entry: Body {
+            function_defs,
             statements,
             result: None,
             span: Span::default(),
@@ -340,6 +338,31 @@ struct TypedLowerer<'a> {
 }
 
 impl TypedLowerer<'_> {
+    fn lower_statements(
+        &mut self,
+        statements: &[typed_hir::Stmt],
+    ) -> (Vec<FunctionStmt>, Vec<Stmt>) {
+        let mut function_defs = Vec::new();
+        let mut lowered_statements = Vec::new();
+        for statement in statements {
+            match statement {
+                typed_hir::Stmt::Function(stmt) => {
+                    function_defs.push(FunctionStmt {
+                        name: self.function_name(stmt),
+                        function: self.lower_function(stmt),
+                        span: stmt.span,
+                    });
+                }
+                other => {
+                    if let Some(stmt) = self.lower_stmt(other) {
+                        lowered_statements.push(stmt);
+                    }
+                }
+            }
+        }
+        (function_defs, lowered_statements)
+    }
+
     fn lower_stmt(&mut self, statement: &typed_hir::Stmt) -> Option<Stmt> {
         Some(match statement {
             typed_hir::Stmt::Assign(stmt) => Stmt::Assign(AssignStmt {
@@ -348,12 +371,11 @@ impl TypedLowerer<'_> {
                 value: self.lower_expr(&stmt.value),
                 span: stmt.span,
             }),
-            typed_hir::Stmt::Record(_) | typed_hir::Stmt::Enum(_) => return None,
-            typed_hir::Stmt::Function(stmt) => Stmt::Function(FunctionStmt {
-                name: self.function_name(stmt),
-                function: self.lower_function(stmt),
-                span: stmt.span,
-            }),
+            typed_hir::Stmt::Record(_)
+            | typed_hir::Stmt::Enum(_)
+            | typed_hir::Stmt::Function(_) => {
+                return None;
+            }
             typed_hir::Stmt::If(stmt) => Stmt::If(IfStmt {
                 condition: self.lower_expr(&stmt.condition),
                 then_branch: self.lower_block(&stmt.then_branch),
@@ -376,23 +398,19 @@ impl TypedLowerer<'_> {
     }
 
     fn lower_block(&mut self, block: &typed_hir::Block) -> Block {
+        let (function_defs, statements) = self.lower_statements(&block.statements);
         Block {
-            statements: block
-                .statements
-                .iter()
-                .filter_map(|statement| self.lower_stmt(statement))
-                .collect(),
+            function_defs,
+            statements,
             span: block.span,
         }
     }
 
     fn lower_value_block(&mut self, block: &typed_hir::ValueBlock) -> ValueBlock {
+        let (function_defs, statements) = self.lower_statements(&block.statements);
         ValueBlock {
-            statements: block
-                .statements
-                .iter()
-                .filter_map(|statement| self.lower_stmt(statement))
-                .collect(),
+            function_defs,
+            statements,
             expr: Box::new(self.lower_expr(&block.expr)),
             span: block.span,
         }
@@ -677,6 +695,7 @@ impl TypedLowerer<'_> {
 
 fn body_from_value_block(block: ValueBlock) -> Body {
     Body {
+        function_defs: block.function_defs,
         statements: block.statements,
         result: Some(block.expr),
         span: block.span,
@@ -685,6 +704,7 @@ fn body_from_value_block(block: ValueBlock) -> Body {
 
 fn placeholder_body(span: Span) -> Body {
     Body {
+        function_defs: Vec::new(),
         statements: Vec::new(),
         result: Some(Box::new(Expr::Int(IntExpr { value: 0, span }))),
         span,

@@ -3799,6 +3799,65 @@ fn main(): Int {
 }
 
 #[test]
+fn compile_mir_source_hoists_function_definitions_into_bodies() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  fn local(): Int {
+    2
+  }
+  local() + value
+}
+"#;
+    let program = muga::compile_mir_source(source).unwrap();
+    assert_eq!(program.entry.statements.len(), 0);
+    assert_eq!(program.entry.function_defs.len(), 1);
+    let main_def = &program.entry.function_defs[0];
+    assert_eq!(program.symbols.resolve(main_def.name), "main");
+
+    let main = &program.functions[main_def.function];
+    assert_eq!(main.body.function_defs.len(), 1);
+    assert_eq!(main.body.statements.len(), 1);
+    assert_eq!(
+        program.symbols.resolve(main.body.function_defs[0].name),
+        "local"
+    );
+    assert!(matches!(
+        main.body.statements[0],
+        muga::mir::Stmt::Assign(_)
+    ));
+    assert!(matches!(
+        main.body.result.as_deref(),
+        Some(muga::mir::Expr::Binary(_))
+    ));
+}
+
+#[test]
+fn compile_bytecode_source_emits_function_definitions_in_function_chunks() {
+    let source = r#"
+fn main(): Int {
+  value = 1
+  fn local(): Int {
+    2
+  }
+  local() + value
+}
+"#;
+    let program = muga::compile_bytecode_source(source).unwrap();
+    let main = &program.functions[0];
+
+    assert!(matches!(
+        main.chunk.instructions.first(),
+        Some(Instruction::DefineFunction { name, .. })
+            if program.symbols.resolve(*name) == "local"
+    ));
+    assert!(matches!(
+        main.chunk.instructions.get(1),
+        Some(Instruction::LoadInt(1))
+    ));
+}
+
+#[test]
 fn compile_source_reuses_one_symbol_for_repeated_name() {
     let source = r#"
 fn main(): Int {

@@ -20,13 +20,10 @@ pub fn lower(program: &ast::Program) -> Program {
         enum_variants: HashMap::new(),
     };
     lowerer.collect_enum_variants(program);
-    let statements = program
-        .statements
-        .iter()
-        .filter_map(|statement| lowerer.lower_stmt(statement))
-        .collect();
+    let (function_defs, statements) = lowerer.lower_statements(&program.statements);
     Program {
         entry: Body {
+            function_defs,
             statements,
             result: None,
             span: Span::default(),
@@ -74,6 +71,28 @@ impl Lowerer {
         }
     }
 
+    fn lower_statements(&mut self, statements: &[ast::Stmt]) -> (Vec<FunctionStmt>, Vec<Stmt>) {
+        let mut function_defs = Vec::new();
+        let mut lowered_statements = Vec::new();
+        for statement in statements {
+            match statement {
+                ast::Stmt::FuncDecl(stmt) => {
+                    function_defs.push(FunctionStmt {
+                        name: self.symbol(&stmt.name),
+                        function: self.lower_function_decl(stmt),
+                        span: stmt.span,
+                    });
+                }
+                other => {
+                    if let Some(stmt) = self.lower_stmt(other) {
+                        lowered_statements.push(stmt);
+                    }
+                }
+            }
+        }
+        (function_defs, lowered_statements)
+    }
+
     fn lower_stmt(&mut self, statement: &ast::Stmt) -> Option<Stmt> {
         Some(match statement {
             ast::Stmt::Assign(stmt) => Stmt::Assign(AssignStmt {
@@ -82,13 +101,8 @@ impl Lowerer {
                 value: self.lower_expr(&stmt.value),
                 span: stmt.span,
             }),
-            ast::Stmt::RecordDecl(_) => return None,
+            ast::Stmt::RecordDecl(_) | ast::Stmt::FuncDecl(_) => return None,
             ast::Stmt::EnumDecl(_) => return None,
-            ast::Stmt::FuncDecl(stmt) => Stmt::Function(FunctionStmt {
-                name: self.symbol(&stmt.name),
-                function: self.lower_function_decl(stmt),
-                span: stmt.span,
-            }),
             ast::Stmt::If(stmt) => Stmt::If(IfStmt {
                 condition: self.lower_expr(&stmt.condition),
                 then_branch: self.lower_block(&stmt.then_branch),
@@ -111,23 +125,19 @@ impl Lowerer {
     }
 
     fn lower_block(&mut self, block: &ast::Block) -> Block {
+        let (function_defs, statements) = self.lower_statements(&block.statements);
         Block {
-            statements: block
-                .statements
-                .iter()
-                .filter_map(|statement| self.lower_stmt(statement))
-                .collect(),
+            function_defs,
+            statements,
             span: block.span,
         }
     }
 
     fn lower_value_block(&mut self, block: &ast::ValueBlock) -> ValueBlock {
+        let (function_defs, statements) = self.lower_statements(&block.statements);
         ValueBlock {
-            statements: block
-                .statements
-                .iter()
-                .filter_map(|statement| self.lower_stmt(statement))
-                .collect(),
+            function_defs,
+            statements,
             expr: Box::new(self.lower_expr(&block.expr)),
             span: block.span,
         }
@@ -345,6 +355,7 @@ impl Lowerer {
 
 fn body_from_value_block(block: ValueBlock) -> Body {
     Body {
+        function_defs: block.function_defs,
         statements: block.statements,
         result: Some(block.expr),
         span: block.span,
@@ -353,6 +364,7 @@ fn body_from_value_block(block: ValueBlock) -> Body {
 
 fn placeholder_body(span: Span) -> Body {
     Body {
+        function_defs: Vec::new(),
         statements: Vec::new(),
         result: Some(Box::new(Expr::Int(IntExpr { value: 0, span }))),
         span,

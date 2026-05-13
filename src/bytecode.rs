@@ -161,6 +161,7 @@ impl Compiler {
 
     fn compile_entry_body(&mut self, body: &mir::Body) -> Chunk {
         let mut chunk = Chunk::default();
+        self.compile_function_defs(&body.function_defs, &mut chunk);
         self.compile_scope_statements(&body.statements, &mut chunk);
         if let Some(result) = &body.result {
             self.compile_expr(result, &mut chunk);
@@ -175,6 +176,7 @@ impl Compiler {
                 .resize_with(function.id + 1, placeholder_function);
         }
         let mut chunk = Chunk::default();
+        self.compile_function_defs(&function.body.function_defs, &mut chunk);
         self.compile_scope_statements(&function.body.statements, &mut chunk);
         let Some(result) = &function.body.result else {
             unreachable!("function MIR body should have a result expression");
@@ -190,17 +192,17 @@ impl Compiler {
         };
     }
 
-    fn compile_scope_statements(&mut self, statements: &[mir::Stmt], chunk: &mut Chunk) {
-        for statement in statements {
-            if let mir::Stmt::Function(func) = statement {
-                chunk.instructions.push(Instruction::DefineFunction {
-                    name: func.name,
-                    function: func.function,
-                    span: func.span,
-                });
-            }
+    fn compile_function_defs(&mut self, function_defs: &[mir::FunctionStmt], chunk: &mut Chunk) {
+        for func in function_defs {
+            chunk.instructions.push(Instruction::DefineFunction {
+                name: func.name,
+                function: func.function,
+                span: func.span,
+            });
         }
+    }
 
+    fn compile_scope_statements(&mut self, statements: &[mir::Stmt], chunk: &mut Chunk) {
         for statement in statements {
             self.compile_stmt(statement, chunk);
         }
@@ -216,7 +218,6 @@ impl Compiler {
                     span: stmt.span,
                 });
             }
-            mir::Stmt::Function(_) => {}
             mir::Stmt::If(stmt) => self.compile_if_stmt(stmt, chunk),
             mir::Stmt::While(stmt) => self.compile_while_stmt(stmt, chunk),
             mir::Stmt::Expr(stmt) => {
@@ -256,12 +257,14 @@ impl Compiler {
 
     fn compile_block(&mut self, block: &mir::Block, chunk: &mut Chunk) {
         chunk.instructions.push(Instruction::PushScope);
+        self.compile_function_defs(&block.function_defs, chunk);
         self.compile_scope_statements(&block.statements, chunk);
         chunk.instructions.push(Instruction::PopScope);
     }
 
     fn compile_value_block(&mut self, block: &mir::ValueBlock, chunk: &mut Chunk) {
         chunk.instructions.push(Instruction::PushScope);
+        self.compile_function_defs(&block.function_defs, chunk);
         self.compile_scope_statements(&block.statements, chunk);
         self.compile_expr(&block.expr, chunk);
         chunk.instructions.push(Instruction::PopScope);
