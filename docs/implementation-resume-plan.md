@@ -1,13 +1,13 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-13 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, and removal of the legacy interface-stub typed path.
+Status: current implementation ledger for 2026-05-13 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, and an initial MIR bytecode boundary.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
 ## Verification Snapshot
 
-- [x] `cargo test --locked` passed after removing the legacy interface-stub typed path: 249 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after package-aware default checking/typed compilation and stable interface artifact ID remapping.
+- [x] `cargo test --locked` passed after introducing the initial MIR bytecode boundary: 249 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after introducing the initial MIR bytecode boundary.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -110,8 +110,9 @@ Ada
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
 - [x] the legacy `compile_typed_path_against_interfaces` / interface-stub flattened compilation path has been removed.
-- [x] default package `run` lowers package-aware typed HIR through the existing HIR/bytecode path.
-- [x] package-aware typed HIR can lower through the existing HIR/bytecode VM path for package records/enums/functions.
+- [x] bytecode generation consumes `mir::Program`; `hir` remains a compatibility re-export.
+- [x] default package `run` lowers package-aware typed HIR through MIR before bytecode generation.
+- [x] package-aware typed HIR can lower through the MIR/bytecode VM path for package records/enums/functions.
 - [ ] package execution still reads dependency source bodies.
 
 ### Diagnostics
@@ -157,8 +158,8 @@ Ada
 ## Architecture Facts To Keep In Mind
 
 - The VM/bytecode path is the current execution backend and should remain a reference backend.
-- typed HIR is the intended semantic boundary for future MIR, package interfaces, and native backend work.
-- The bytecode backend still uses the compatibility HIR as its immediate input, but package-aware typed HIR can now adapt into that path.
+- typed HIR is the semantic boundary for package interfaces and MIR lowering.
+- The bytecode backend now consumes an initial expression-shaped MIR. `hir` remains as a compatibility re-export while MIR is matured toward a control-flow-oriented backend IR.
 - `Option[T]` and `Result[T, E]` remain compiler-known enum-like types for now; user-defined enums use a parallel source-level enum model.
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.
@@ -184,14 +185,14 @@ Ada
 - Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
 - CLI default package `check`, default package `compile_typed_path`, `check --artifact-root`, interface artifact emission, and loaded/interface-artifact typed compilation now use package-aware paths; default package `check` no longer reloads a flattened AST after validation.
 - Remaining flattened package loader APIs now use explicit `load_flattened_*` names.
-- Package-aware typed HIR can now lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls.
-- Default package execution now lowers package-aware typed HIR through the existing HIR/bytecode path, while still reading dependency bodies.
+- Package-aware typed HIR can now lower through the MIR/bytecode VM path for package records, enums, functions, and calls.
+- Default package execution now lowers package-aware typed HIR through MIR before bytecode generation, while still reading dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
 - Full incremental artifact reuse and dependency-body-free package execution are still not implemented.
 
 ## Recommended Next Implementation
 
-The next implementation theme is removing the remaining compatibility uses of flattened AST/HIR while keeping artifact roots explicit on the CLI. The current package-aware path validates package boundary rules, builds source/module signatures from the unflattened graph, runs module body checks, backs default package `check` and package typed compilation, and exposes per-module plus package-wide typed HIR without flattening. The remaining execution work is moving the VM backend beyond the compatibility HIR path.
+The next implementation theme is maturing MIR while keeping artifact roots explicit on the CLI. The current package-aware path validates package boundary rules, builds source/module signatures from the unflattened graph, runs module body checks, backs default package `check` and package typed compilation, exposes per-module plus package-wide typed HIR without flattening, and lowers execution through an initial expression-shaped MIR before bytecode generation.
 
 Reasoning:
 
@@ -216,7 +217,7 @@ Reasoning:
 - CLI artifact generation can now produce `.mgi` and checked `.mgc` artifacts for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
-- The remaining boundary pieces are compatibility HIR/VM migration, fuller artifact storage/reuse, dependency/lockfile-driven project configuration, and dependency-body-free execution.
+- The remaining boundary pieces are control-flow-oriented MIR, fuller artifact storage/reuse, dependency/lockfile-driven project configuration, and dependency-body-free execution.
 
 ## Requirement Decisions For The Next Slice
 
@@ -280,10 +281,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
 | 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
-| 15. Package-aware checking without flattening | Done for the current package checking surface: library-only package-aware boundary checking, source/module signature collection, retained module resolver/typecheck outputs, package-wide typed HIR aggregation, default package `check` and `compile_typed_path`, direct interface-backed dependency signatures/graph metadata, and removal of the interface-stub flattened typed path now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is compatibility HIR/VM migration and fuller artifact reuse. | package/resolver/typing/lib/tests | Done | High |
+| 15. Package-aware checking without flattening | Done for the current package checking surface: library-only package-aware boundary checking, source/module signature collection, retained module resolver/typecheck outputs, package-wide typed HIR aggregation, default package `check` and `compile_typed_path`, direct interface-backed dependency signatures/graph metadata, and removal of the interface-stub flattened typed path now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is MIR maturation and fuller artifact reuse. | package/resolver/typing/lib/tests | Done | High |
 | 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now the post-Slice-15 cleanup: continue removing compatibility flattened AST/HIR usage from execution and public APIs while preserving the explicit `.mgi` / `.mgc` workflow and keeping default script execution unchanged.
+The safest immediate code slice is now MIR maturation: make the initial expression-shaped MIR more explicit and backend-oriented while preserving the explicit `.mgi` / `.mgc` workflow and keeping default script execution unchanged.
 
 ## Test Plan For The Next Code Slice
 

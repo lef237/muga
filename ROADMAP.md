@@ -6,7 +6,7 @@ This roadmap is the source of truth for the next implementation priority and the
 
 Implemented compiler/runtime pieces:
 
-- lexer, parser, resolver, typechecker, HIR lowering, bytecode compiler, and VM runtime
+- lexer, parser, resolver, typechecker, typed HIR, initial MIR lowering, bytecode compiler, and VM runtime
 - `check` and `run` entrypoints
 - symbol-based local binding identity and package item identity
 - typed HIR carrying expression types, local binding targets, call targets, call origin, and package item references
@@ -41,7 +41,7 @@ Implemented language surface:
 - flattened package loader APIs are explicitly named `load_flattened_*` so compatibility AST use is visible at call sites
 - package-aware checking and loaded/interface-artifact typed compilation collect dependency signatures and build dependency graph metadata directly from loaded interfaces without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
 - the legacy interface-stub flattened typed compilation path has been removed; loaded/interface-artifact typed compilation now uses the package-aware semantic path only
-- package-aware typed HIR can lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls
+- package-aware typed HIR lowers through the initial MIR module before VM bytecode generation for package records, enums, functions, and calls
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:
@@ -49,9 +49,9 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package execution still reads dependency source bodies; dependency-body-free execution is not implemented
-- remaining package work is compatibility HIR/VM migration plus normal project/artifact integration; package-aware checking is now the default package validation path
+- remaining package work is MIR maturation plus normal project/artifact integration; package-aware checking is now the default package validation path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
-- VM bytecode execution still uses the compatibility HIR as its immediate input; package-aware typed HIR adapts into that path, but MIR/native lowering is not implemented
+- VM bytecode execution now consumes an initial expression-shaped MIR; control-flow-oriented MIR and native lowering are not implemented
 
 ## Settled Direction
 
@@ -87,8 +87,8 @@ The next code slice should keep artifact roots explicit on the CLI and move towa
 3. Preserve the existing `.mgi` / `.mgc` artifact reuse semantics without silently falling back to dependency implementation bodies.
 4. Use the unflattened package graph as the migration point for package-aware checking.
 5. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
-6. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
-7. Continue removing remaining compatibility flattened AST/HIR usage around execution and public APIs; loaded-interface signatures should stay semantic inputs, not synthesized AST.
+6. Keep native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production and MIR are stable.
+7. Continue maturing MIR away from the expression-shaped compatibility model; loaded-interface signatures should stay semantic inputs, not synthesized AST.
 
 ## Compiler Architecture Path
 

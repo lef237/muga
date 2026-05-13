@@ -74,7 +74,7 @@ Current implementation:
 - module records keep package membership and source file/module path
 - item records keep source name, kind, visibility, declaring module, source span, and current mangled name
 - package rewriting attaches `PackageItemId` to flattened top-level AST record/function declarations
-- package execution now uses package-aware typed HIR adapted into compatibility HIR; the remaining flattened program path is a compatibility loader/API surface
+- package execution now uses package-aware typed HIR lowered through MIR; the remaining flattened program path is a compatibility loader/API surface
 
 Module-private visibility is now enforced for top-level package items during package rewriting. Unmodified top-level items are visible only inside their declaring source file, `pkg` items are visible to sibling files in the same package, and imports expose only `pub` items. Per-field record visibility is not a required v1 slice; if public hidden representations become necessary, opaque records or opaque types should be evaluated first.
 

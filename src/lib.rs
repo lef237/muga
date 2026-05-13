@@ -7,6 +7,7 @@ pub mod identity;
 pub mod interface;
 pub mod known_enum;
 pub mod lexer;
+pub mod mir;
 pub mod package;
 pub mod package_signature;
 pub mod parser;
@@ -25,6 +26,7 @@ use bytecode::Program as BytecodeProgram;
 use diagnostic::Diagnostic;
 use hir::Program as HirProgram;
 use interface::PackageInterfaceGraph;
+use mir::Program as MirProgram;
 use runtime::RunOutcome;
 use std::path::{Path, PathBuf};
 use typed_hir::Program as TypedHirProgram;
@@ -102,6 +104,16 @@ pub fn compile_path(path: &Path) -> Result<HirProgram, Vec<Diagnostic>> {
     }
     let program = check_path(path)?;
     Ok(hir::lower(&program))
+}
+
+pub fn compile_mir_source(source: &str) -> Result<MirProgram, Vec<Diagnostic>> {
+    let program = compile_typed_source(source)?;
+    Ok(mir::lower_typed(&program))
+}
+
+pub fn compile_mir_path(path: &Path) -> Result<MirProgram, Vec<Diagnostic>> {
+    let program = compile_typed_path(path)?;
+    Ok(mir::lower_typed(&program))
 }
 
 pub fn compile_typed_source(source: &str) -> Result<TypedHirProgram, Vec<Diagnostic>> {
@@ -483,12 +495,12 @@ fn compile_flattened_typed_program(
 }
 
 pub fn compile_bytecode_source(source: &str) -> Result<BytecodeProgram, Vec<Diagnostic>> {
-    let program = compile_source(source)?;
+    let program = compile_mir_source(source)?;
     Ok(bytecode::compile(program))
 }
 
 pub fn compile_bytecode_path(path: &Path) -> Result<BytecodeProgram, Vec<Diagnostic>> {
-    let program = compile_path(path)?;
+    let program = compile_mir_path(path)?;
     Ok(bytecode::compile(program))
 }
 

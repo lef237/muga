@@ -628,8 +628,8 @@ The current codebase should move toward the ideal in this order:
 6. Continue replacing the remaining compatibility uses of flattened AST/HIR now that default package `check_path`, `compile_typed_path`, and loaded-interface typed compilation use the package-aware graph.
 7. Keep interface generation on package-aware typed HIR and move the serialized interface model toward first-class `InterfaceTypeRef` / `ItemRef` data.
 8. Make package import lookup consume interfaces as its primary input.
-9. Introduce MIR and lower VM bytecode from MIR.
-10. Remove the old untyped HIR path once VM execution no longer needs it.
+9. Mature MIR from the current expression-shaped backend IR into a control-flow-oriented IR, then lower VM bytecode from that form.
+10. Remove the old untyped HIR compatibility API once external callers no longer need it.
 11. Split large files by responsibility before splitting into workspace crates.
 
 Completed structural steps:
@@ -639,11 +639,12 @@ Completed structural steps:
 - resolver, typechecker output, runtime, and package builtin lookup share `prelude::BuiltinId`
 - typed HIR lowering reads package item identity from AST declarations instead of recovering it from mangled names
 - loaded-interface typed compilation no longer synthesizes dependency interface AST stubs or routes them through the legacy flattened typed path
+- VM bytecode now consumes `mir::Program`; `hir` remains a compatibility re-export
 
 Critical current risks to eliminate:
 
 - resolver and typechecker still build scopes independently
-- VM bytecode still consumes compatibility HIR adapted from typed HIR instead of MIR
+- MIR is still expression-shaped and not yet a control-flow-oriented backend IR
 - package interfaces still use session-local IDs and compiler-owned type structs in memory, even though `.mgi` v2 maps stable artifact identities back into fresh session IDs when loaded
 - builtin type rules and runtime behavior are still implemented separately
 - bytecode match lowering still assumes compiler-known enum shapes
