@@ -939,7 +939,7 @@ It currently:
 - routes public import lookup through `PackageExportGraph`
 - can return an unflattened package graph containing package files plus package/module/item/export metadata
 - can build source and module package signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility for records, enums, and functions
-- can run and retain an initial package-aware module body typecheck pass against those source/module signatures, including per-module typed HIR outputs lowered with package binding identity
+- can run package-aware module body resolver/typecheck passes against those source/module signatures, including per-module typed HIR outputs lowered with package binding identity
 - exposes package-wide typed HIR aggregated from unflattened module check outputs with remapped local IDs and symbols
 - can collect dependency signatures directly from loaded in-memory or persisted package interfaces for package-aware module checks without reading dependency implementation source
 - can build loaded-interface dependency package graph metadata directly from package interfaces without dependency AST stubs
