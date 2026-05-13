@@ -125,7 +125,7 @@ Current implementation note:
 - the compiler currently implements top-level module-private, `pkg`, and `pub` visibility before flattening
 - imports expose only `pub` items
 - per-field record visibility is not part of the committed v1 package model
-- package-level flattening still exists for normal checking/execution; typed HIR package references now carry package item identity, and the package-aware check scaffold validates boundary rules plus an initial module body pass over the unflattened graph, but typed HIR generation still needs to move off the flattened path
+- package-level flattening still exists for normal checking/execution; package-aware typed HIR now carries package item identity and is generated from unflattened module checks, but execution still needs to move off the flattened path
 
 Example:
 
@@ -944,6 +944,7 @@ It currently:
 - can use loaded in-memory or persisted package interfaces as dependency signatures for package-aware module checks without reading dependency implementation source
 - routes `muga check --artifact-root` through the package-aware artifact path
 - emits `.mgi` interface artifacts from the package-aware typed HIR aggregate
+- returns package-aware typed HIR from loaded/interface-artifact typed compilation paths
 - generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
 - validates typed package references against generated summaries
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces

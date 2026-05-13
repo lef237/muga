@@ -31,11 +31,11 @@ Implemented language surface:
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
 - unflattened package graph loading preserves package files plus package/module/item/export metadata before the legacy flattening path
-- a library-only package-aware check path validates package boundary, import, visibility, and public-signature rules from the unflattened package graph before delegating valid programs to the legacy typed checking path
+- a library-only package-aware check path validates package boundary, import, visibility, and public-signature rules from the unflattened package graph before package-aware module checking
 - package-aware source and per-module signature environments resolve record/enum/function signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility
-- initial package-aware module body checking consumes those module signature environments before the legacy typed HIR path runs, and the package-aware API retains per-module typecheck outputs plus typed HIR programs
+- initial package-aware module body checking consumes those module signature environments, and the package-aware API retains per-module typecheck outputs plus typed HIR programs
 - package-aware check results aggregate per-module typed HIR from unflattened module check outputs with remapped local IDs and symbols instead of using the legacy flattened typed path
-- package-aware checking can consume loaded in-memory or persisted package interfaces as dependency signatures without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
+- package-aware checking and loaded/interface-artifact typed compilation can consume dependency signatures without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:

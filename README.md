@@ -177,11 +177,11 @@ Implemented:
 - `muga check --artifact-root <dir>` validates package entries through package-aware checks against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
 - `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes the entry `.mgc` check cache; lower-level `emit-check-cache` remains available
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
-- library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before handing valid programs to the legacy typed checking path
+- library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking
 - package-aware source and per-module signature environments derived from the unflattened package graph, preserving package item identity, module/same-package/import visibility, and generic enum signature arity
 - initial package-aware module body typechecking against those module signature environments, with per-module typecheck outputs and typed HIR programs retained by the package-aware API
 - package-aware checks aggregate per-module typed HIR from the unflattened module check outputs instead of the legacy flattened typed path
-- package-aware checking can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies
+- package-aware checking and loaded/interface-artifact typed compilation can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies
 
 Not implemented yet:
 
