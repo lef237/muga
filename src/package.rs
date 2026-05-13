@@ -168,6 +168,8 @@ pub struct LoadedPackageGraph {
     pub packages: Vec<LoadedPackage>,
     pub package_graph: PackageSymbolGraph,
     pub package_exports: PackageExportGraph,
+    pub entry_package: PackageId,
+    pub entry_module: ModuleId,
 }
 
 #[derive(Clone, Debug)]
@@ -1071,11 +1073,14 @@ impl PackageLoader {
         let package_graph = self.build_symbol_graph(&package_paths);
         let package_exports = PackageExportGraph::from_symbol_graph(&package_graph);
         let packages = self.loaded_packages_from_paths(&package_paths);
+        let (entry_package, entry_module) = self.entry_ids(&package_graph);
 
         Ok(LoadedPackageGraph {
             packages,
             package_graph,
             package_exports,
+            entry_package,
+            entry_module,
         })
     }
 
@@ -1129,11 +1134,14 @@ impl PackageLoader {
         let package_graph = self.build_symbol_graph_against_interfaces(&package_paths, interfaces);
         let package_exports = PackageExportGraph::from_interfaces(interfaces, &package_graph);
         let packages = self.loaded_packages_from_paths(&package_paths);
+        let (entry_package, entry_module) = self.entry_ids(&package_graph);
 
         Ok(LoadedPackageGraph {
             packages,
             package_graph,
             package_exports,
+            entry_package,
+            entry_module,
         })
     }
 
@@ -1207,6 +1215,17 @@ impl PackageLoader {
                 })
             })
             .collect()
+    }
+
+    fn entry_ids(&self, package_graph: &PackageSymbolGraph) -> (PackageId, ModuleId) {
+        let package = package_graph
+            .package_id(&self.entry_package)
+            .expect("entry package should exist in loaded package graph");
+        let module_path = module_path_for_file(&self.entry_file);
+        let module = package_graph
+            .module_id(package, &module_path)
+            .expect("entry module should exist in loaded package graph");
+        (package, module)
     }
 
     fn load_entry_import_paths(&mut self) -> Result<Vec<String>, Vec<Diagnostic>> {

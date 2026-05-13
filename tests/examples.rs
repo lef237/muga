@@ -591,6 +591,77 @@ fn package_aware_checking_preserves_public_import_resolution() {
         main_return_type(&result.typed_program),
         Some(muga::types::TypeInfo::Int)
     );
+    let function_names: Vec<_> = result
+        .typed_program
+        .statements
+        .iter()
+        .filter_map(|statement| match statement {
+            muga::typed_hir::Stmt::Function(function) => Some(function.name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(function_names, vec!["main"]);
+}
+
+#[test]
+fn package_aware_entry_typed_program_preserves_public_interface_items() {
+    let root = temp_package_root("package-aware-entry-interface-items");
+    let entry = write_package_file(
+        &root,
+        "app/entry_interface/main.muga",
+        r#"
+package app::entry_interface
+
+pub record User {
+  name: String
+}
+
+pub fn make_user(name: String): User {
+  User {
+    name: name
+  }
+}
+
+fn main(): Int {
+  1
+}
+"#,
+    );
+    let result =
+        muga::check_package_aware_path(&entry).expect("package-aware checking should pass");
+    let package = result
+        .packages
+        .package_graph
+        .package_id("app::entry_interface")
+        .expect("entry package should exist");
+    let user_item = result
+        .packages
+        .package_graph
+        .item_id(package, "User", muga::package::PackageItemKind::Record)
+        .expect("User item should exist");
+    let make_user_item = result
+        .packages
+        .package_graph
+        .item_id(
+            package,
+            "make_user",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("make_user item should exist");
+    let interfaces = result.typed_program.package_interfaces();
+
+    assert!(
+        interfaces
+            .record_by_name(package, "User")
+            .is_some_and(|record| record.item == user_item),
+        "{interfaces:#?}"
+    );
+    assert!(
+        interfaces
+            .function_by_name(package, "make_user")
+            .is_some_and(|function| function.item == make_user_item),
+        "{interfaces:#?}"
+    );
 }
 
 #[test]
