@@ -176,6 +176,9 @@ fn typecheck_loaded_package_modules(
     let mut module_checks = Vec::new();
     let mut diagnostics = Vec::new();
     for package in &packages.packages {
+        if packages.is_loaded_interface_package_path(&package.path) {
+            continue;
+        }
         let Some(package_id) = packages.package_graph.package_id(&package.path) else {
             continue;
         };

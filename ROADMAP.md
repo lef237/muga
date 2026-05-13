@@ -35,7 +35,7 @@ Implemented language surface:
 - package-aware source and per-module signature environments resolve record/enum/function signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility
 - initial package-aware module body checking consumes those module signature environments, and the package-aware API retains per-module typecheck outputs plus typed HIR programs
 - package-aware check results aggregate per-module typed HIR from unflattened module check outputs with remapped local IDs and symbols instead of using the legacy flattened typed path
-- package-aware checking and loaded/interface-artifact typed compilation can consume dependency signatures without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
+- package-aware checking and loaded/interface-artifact typed compilation collect dependency signatures directly from loaded interfaces without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
 - package-aware typed HIR can lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
@@ -44,7 +44,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package execution still reads dependency source bodies; dependency-body-free execution is not implemented
-- package-aware checking now has boundary validation plus source/module signature environments, loaded/artifact interface dependency signatures, an initial body-check pass, per-module typed HIR outputs, and a package-wide typed HIR aggregate, and package execution lowers that typed HIR through the existing HIR/bytecode path
+- package-aware checking now has boundary validation plus source/module signature environments, loaded/artifact interface dependency signatures collected directly from interfaces, an initial body-check pass, per-module typed HIR outputs, and a package-wide typed HIR aggregate, and package execution lowers that typed HIR through the existing HIR/bytecode path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
 - VM bytecode execution still uses the compatibility HIR as its immediate input; package-aware typed HIR adapts into that path, but MIR/native lowering is not implemented
 
