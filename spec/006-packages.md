@@ -943,6 +943,7 @@ It currently:
 - exposes package-wide typed HIR aggregated from unflattened module check outputs with remapped local IDs and symbols
 - can use loaded in-memory or persisted package interfaces as dependency signatures for package-aware module checks without reading dependency implementation source
 - routes `muga check --artifact-root` through the package-aware artifact path
+- emits `.mgi` interface artifacts from the package-aware typed HIR aggregate
 - generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
 - validates typed package references against generated summaries
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces

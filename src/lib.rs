@@ -354,7 +354,8 @@ pub fn write_package_interface_artifacts(
     artifact_root: &Path,
     package_paths: &[String],
 ) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
-    let program = compile_typed_path(path)?;
+    let check = check_package_aware_path(path)?;
+    let program = check.typed_program;
     let interfaces = program.package_interfaces();
     let requested_packages = if package_paths.is_empty() {
         interfaces

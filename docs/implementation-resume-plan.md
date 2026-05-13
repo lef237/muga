@@ -101,6 +101,7 @@ Ada
 - [x] package-aware checking exposes per-module typed HIR outputs lowered from retained module typecheck outputs.
 - [x] package-aware checking can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies.
 - [x] package-aware check results expose package-wide typed HIR aggregated from per-module outputs without using the legacy flattened typed path.
+- [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [ ] default CLI checking/execution still uses package flattening and dependency source loading.
 
 ### Diagnostics
@@ -169,7 +170,7 @@ Ada
 - The package-aware API now exposes those lowered per-module typed HIR programs alongside each module typecheck output.
 - The package-aware API can now load dependency signatures from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source.
 - Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
-- CLI `check --artifact-root` now uses that package-aware artifact path.
+- CLI `check --artifact-root` and interface artifact emission now use package-aware paths.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
 - Full incremental artifact reuse and package-aware execution without the flattened typed path are still not implemented.
