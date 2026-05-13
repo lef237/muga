@@ -67,12 +67,13 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slice is project-mode artifact-root config and fuller package artifact reuse:
+The next code slice should keep artifact roots explicit on the CLI and avoid adding project-mode artifact-root config to `muga.toml` for now:
 
-1. Decide whether `muga.toml` should name an artifact root before dependency declarations exist.
-2. If yes, route project-mode `check` through the configured artifact root while keeping CLI flags as an override.
-3. Keep artifact-backed checks from silently falling back to dependency implementation bodies.
-4. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
+1. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist.
+2. Keep `muga check --artifact-root`, `muga emit-interface`, and `muga emit-check-cache` as the explicit artifact workflow.
+3. Improve full package artifact reuse around the existing `.mgi` and `.mgc` files without silently falling back to dependency implementation bodies.
+4. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
+5. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
 
 ## Compiler Architecture Path
 
@@ -120,8 +121,8 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- project-mode artifact-root config
 - full package artifact storage/reuse after check cache metadata
+- eventual project-mode artifact-root config after dependency declarations and lockfiles
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported
 
