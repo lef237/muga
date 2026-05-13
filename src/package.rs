@@ -63,6 +63,23 @@ pub fn load_from_entry(path: &Path) -> Result<LoadedProgram, Vec<Diagnostic>> {
     loader.load_and_flatten()
 }
 
+pub fn load_package_graph_from_entry(path: &Path) -> Result<LoadedPackageGraph, Vec<Diagnostic>> {
+    let (entry_program, manifest) = parse_entry_program(path)?;
+    if entry_program.package.is_none() {
+        return Err(vec![
+            Diagnostic::new(
+                "PK001",
+                "package graph loading requires a package-mode entrypoint",
+                Span::default(),
+            )
+            .with_suggestion("use a file that starts with `package`, or check scripts directly"),
+        ]);
+    }
+
+    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest);
+    loader.load_unflattened_graph()
+}
+
 pub fn load_from_entry_against_interfaces(
     path: &Path,
     interfaces: &PackageInterfaceGraph,
@@ -123,6 +140,25 @@ pub struct LoadedProgram {
     pub program: Program,
     pub package_graph: PackageSymbolGraph,
     pub package_exports: PackageExportGraph,
+}
+
+#[derive(Clone, Debug)]
+pub struct LoadedPackageGraph {
+    pub packages: Vec<LoadedPackage>,
+    pub package_graph: PackageSymbolGraph,
+    pub package_exports: PackageExportGraph,
+}
+
+#[derive(Clone, Debug)]
+pub struct LoadedPackage {
+    pub path: String,
+    pub files: Vec<LoadedPackageFile>,
+}
+
+#[derive(Clone, Debug)]
+pub struct LoadedPackageFile {
+    pub module_path: String,
+    pub program: Program,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -318,6 +354,46 @@ impl PackageLoader {
         let package_graph = self.build_symbol_graph(&package_paths);
         let package_exports = PackageExportGraph::from_symbol_graph(&package_graph);
         self.flatten_packages(&package_paths, package_graph, package_exports)
+    }
+
+    fn load_unflattened_graph(&mut self) -> Result<LoadedPackageGraph, Vec<Diagnostic>> {
+        if let Err(diagnostic) = self.ensure_source_root() {
+            self.diagnostics.push(diagnostic);
+            return Err(std::mem::take(&mut self.diagnostics));
+        }
+
+        self.load_package(self.entry_package.clone());
+
+        if !self.diagnostics.is_empty() {
+            return Err(std::mem::take(&mut self.diagnostics));
+        }
+
+        let package_paths = self.sorted_package_paths();
+        let package_graph = self.build_symbol_graph(&package_paths);
+        let package_exports = PackageExportGraph::from_symbol_graph(&package_graph);
+        let packages = package_paths
+            .iter()
+            .filter_map(|package_path| {
+                let package = self.packages.get(package_path)?;
+                Some(LoadedPackage {
+                    path: package_path.clone(),
+                    files: package
+                        .files
+                        .iter()
+                        .map(|file| LoadedPackageFile {
+                            module_path: file.module_path.clone(),
+                            program: file.program.clone(),
+                        })
+                        .collect(),
+                })
+            })
+            .collect();
+
+        Ok(LoadedPackageGraph {
+            packages,
+            package_graph,
+            package_exports,
+        })
     }
 
     fn load_and_flatten_against_interfaces(

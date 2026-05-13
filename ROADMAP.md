@@ -30,6 +30,7 @@ Implemented language surface:
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
+- unflattened package graph loading preserves package files plus package/module/item/export metadata before the legacy flattening path
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:
@@ -72,7 +73,7 @@ The next code slice should keep artifact roots explicit on the CLI and move towa
 1. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist.
 2. Keep `muga emit-artifacts` and `muga check --artifact-root` as the explicit artifact workflow.
 3. Preserve the existing `.mgi` / `.mgc` artifact reuse semantics without silently falling back to dependency implementation bodies.
-4. Start replacing package flattening with a package-aware checking boundary.
+4. Use the unflattened package graph as the migration point for package-aware checking.
 5. Revisit project-level artifact-root config later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
 6. Keep MIR, native backend work, wildcard enum patterns, and `try expr` deferred until package artifact production is stable.
 

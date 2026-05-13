@@ -6,8 +6,8 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after transitive interface artifact reuse support: 226 tests, 0 failures.
-- [x] `cargo clippy --all-targets -- -D warnings` passed after transitive interface artifact reuse support.
+- [x] `cargo test` passed after unflattened package graph loader support: 227 tests, 0 failures.
+- [x] `cargo clippy --all-targets -- -D warnings` passed after unflattened package graph loader support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
 ```text
@@ -78,6 +78,7 @@ Ada
 - [x] `interface` validates typed package compilation references against generated in-memory interfaces.
 - [x] resolver, typechecker output, runtime, and package builtin filtering share `prelude::BuiltinId`.
 - [x] package rewriting attaches `PackageItemId` to flattened AST record/function declarations so typed HIR no longer recovers item identity from mangled names.
+- [x] the package loader can return an unflattened package graph with original package files plus package/module/item/export metadata.
 - [x] package enum constructor call targets carry enum `PackageItemId` when the enum comes from package mode.
 - [x] package interfaces have a deterministic v1 text format with file write/read helpers.
 - [x] persisted package interface round-trip preserves direct dependency metadata, public records, functions, enums, `TypeInfo`, item identity, enum variants, and payload types.
@@ -153,6 +154,7 @@ Ada
 - CLI `emit-interface` and `emit-check-cache` can produce the artifacts consumed by `check --artifact-root`.
 - CLI `emit-interface` can emit all reachable interfaces without manually naming each dependency package.
 - CLI `emit-artifacts` emits reachable `.mgi` interfaces and the entry `.mgc` check cache in one explicit artifact-root workflow.
+- The package loader can now return unflattened package files with the same package graph/export metadata used by the legacy flattening path.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
 - Full incremental artifact reuse and package-aware checking without flattening are still not implemented.
@@ -174,6 +176,7 @@ Reasoning:
 - Interface artifacts can now be discovered from an explicit root, with missing/hash-mismatched artifacts rejected before checking.
 - Interface artifacts now persist direct dependency paths, and artifact loading follows those paths for transitive public-signature type dependencies.
 - Package check cache keys now include entry source content and loaded direct/transitive dependency interface hashes.
+- Unflattened package graph loading now preserves package files plus package/module/item/export metadata before flattening.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
@@ -241,10 +244,11 @@ Estimates are in focused engineering days for someone already familiar with this
 | 11. CLI artifact generation | Add CLI/library artifact generation for `.mgi` and `.mgc`, and verify generated artifacts drive `check --artifact-root`. | `src/main.rs`, `src/lib.rs`, `src/interface.rs`, tests/docs | Done | Medium |
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
-| 14. Package-aware checking without flattening | Start replacing package flattening with package-aware checking boundaries while keeping artifact semantics explicit. | package/resolver/typing/lib/tests | 4-8 days | High |
-| 15. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
+| 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
+| 15. Package-aware checking without flattening | Start replacing package flattening with package-aware checking boundaries while keeping artifact semantics explicit. | package/resolver/typing/lib/tests | 4-8 days | High |
+| 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice is now Slice 14: begin moving package checking away from flattening while preserving the explicit `.mgi` / `.mgc` workflow. This may require a design checkpoint before larger edits.
+The safest immediate code slice is now Slice 15: begin using the unflattened package graph for package-aware checking while preserving the explicit `.mgi` / `.mgc` workflow. This may require a design checkpoint before larger edits.
 
 ## Test Plan For The Next Code Slice
 
@@ -255,6 +259,7 @@ Package-aware checking:
 - `package_aware_checking_preserves_public_import_resolution`
 - `package_aware_checking_rejects_private_cross_package_references`
 - `package_aware_checking_reports_package_qualified_type_errors`
+- `package_aware_checking_reuses_unflattened_package_graph`
 - `artifact_workflow_rejects_missing_or_stale_artifacts_without_source_fallback`
 
 Compatibility:

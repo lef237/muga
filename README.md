@@ -167,6 +167,7 @@ Implemented:
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
+- unflattened package graph loading for package/module/item/export metadata, used as the next package-aware checking migration point
 - typed HIR with resolved call shape, call origin, expression types, local binding identity, and package item identity
 - in-memory package interface summaries for public records/enums/functions plus validation of public package references against those summaries
 - hardened enum diagnostics, package enum visibility checks, imported `alias::Enum::Variant` constructors/patterns, and package enum call-target identity
@@ -187,7 +188,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is package-aware checking without flattening the checked package graph.
+The next implementation slice is using the unflattened package graph for package-aware checking.
 
 After that, the priority moves to package checking without flattening, package caching, MIR, and native backend work. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md).
 

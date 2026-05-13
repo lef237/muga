@@ -937,6 +937,7 @@ It currently:
 - enforces module-private, `pkg`, and `pub` top-level visibility before flattening
 - records package, module, and item identity in `PackageSymbolGraph`
 - routes public import lookup through `PackageExportGraph`
+- can return an unflattened package graph containing package files plus package/module/item/export metadata
 - generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
 - validates typed package references against generated summaries
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
