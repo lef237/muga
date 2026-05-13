@@ -137,6 +137,32 @@ pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Di
     })
 }
 
+pub fn check_package_aware_path_against_loaded_interfaces(
+    path: &Path,
+    interfaces: &PackageInterfaceGraph,
+    interface_symbols: &symbol::SymbolTable,
+) -> Result<PackageAwareCheck, Vec<Diagnostic>> {
+    let packages = package::load_package_graph_from_entry_against_interfaces(
+        path,
+        interfaces,
+        interface_symbols,
+    )?;
+    let diagnostics = package::validate_loaded_package_graph(&packages);
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
+    let module_checks = typecheck_loaded_package_modules(&packages, &signatures)?;
+    let typed_program =
+        compile_typed_path_against_loaded_interfaces(path, interfaces, interface_symbols)?;
+    Ok(PackageAwareCheck {
+        packages,
+        signatures,
+        module_checks,
+        typed_program,
+    })
+}
+
 fn typecheck_loaded_package_modules(
     packages: &package::LoadedPackageGraph,
     signatures: &package_signature::PackageSignatureEnvironment,

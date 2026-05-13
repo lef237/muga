@@ -80,6 +80,27 @@ pub fn load_package_graph_from_entry(path: &Path) -> Result<LoadedPackageGraph, 
     loader.load_unflattened_graph()
 }
 
+pub fn load_package_graph_from_entry_against_interfaces(
+    path: &Path,
+    interfaces: &PackageInterfaceGraph,
+    interface_symbols: &SymbolTable,
+) -> Result<LoadedPackageGraph, Vec<Diagnostic>> {
+    let (entry_program, manifest) = parse_entry_program(path)?;
+    if entry_program.package.is_none() {
+        return Err(vec![
+            Diagnostic::new(
+                "PK001",
+                "package graph loading requires a package-mode entrypoint",
+                Span::default(),
+            )
+            .with_suggestion("use a file that starts with `package`, or check scripts directly"),
+        ]);
+    }
+
+    let mut loader = PackageLoader::new(path.to_path_buf(), entry_program, manifest);
+    loader.load_unflattened_graph_against_interfaces(interfaces, interface_symbols)
+}
+
 pub fn load_from_entry_against_interfaces(
     path: &Path,
     interfaces: &PackageInterfaceGraph,
@@ -1049,23 +1070,65 @@ impl PackageLoader {
         let package_paths = self.sorted_package_paths();
         let package_graph = self.build_symbol_graph(&package_paths);
         let package_exports = PackageExportGraph::from_symbol_graph(&package_graph);
-        let packages = package_paths
-            .iter()
-            .filter_map(|package_path| {
-                let package = self.packages.get(package_path)?;
-                Some(LoadedPackage {
-                    path: package_path.clone(),
-                    files: package
-                        .files
-                        .iter()
-                        .map(|file| LoadedPackageFile {
-                            module_path: file.module_path.clone(),
-                            program: file.program.clone(),
-                        })
-                        .collect(),
-                })
-            })
-            .collect();
+        let packages = self.loaded_packages_from_paths(&package_paths);
+
+        Ok(LoadedPackageGraph {
+            packages,
+            package_graph,
+            package_exports,
+        })
+    }
+
+    fn load_unflattened_graph_against_interfaces(
+        &mut self,
+        interfaces: &PackageInterfaceGraph,
+        interface_symbols: &SymbolTable,
+    ) -> Result<LoadedPackageGraph, Vec<Diagnostic>> {
+        if let Err(diagnostic) = self.ensure_source_root() {
+            self.diagnostics.push(diagnostic);
+            return Err(std::mem::take(&mut self.diagnostics));
+        }
+
+        let entry_package = self.entry_package.clone();
+        let files = self.load_package_files(&entry_package);
+        let entry_data = collect_package_data(&entry_package, files, &mut self.diagnostics);
+        let imported_paths = package_import_paths(&entry_data);
+        self.packages.insert(entry_package.clone(), entry_data);
+
+        for import_path in &imported_paths {
+            if interfaces.package_by_path(import_path).is_none() {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "PK016",
+                        format!("missing loaded package interface for `{import_path}`"),
+                        Span::default(),
+                    )
+                    .with_suggestion("load or regenerate the package interface before checking"),
+                );
+            }
+        }
+
+        for interface in &interfaces.packages {
+            if interface.path == entry_package {
+                continue;
+            }
+            let package_data = stub_package_data_from_interface(
+                interface,
+                interfaces,
+                interface_symbols,
+                &mut self.diagnostics,
+            );
+            self.packages.insert(interface.path.clone(), package_data);
+        }
+
+        if !self.diagnostics.is_empty() {
+            return Err(std::mem::take(&mut self.diagnostics));
+        }
+
+        let package_paths = self.sorted_package_paths();
+        let package_graph = self.build_symbol_graph_against_interfaces(&package_paths, interfaces);
+        let package_exports = PackageExportGraph::from_interfaces(interfaces, &package_graph);
+        let packages = self.loaded_packages_from_paths(&package_paths);
 
         Ok(LoadedPackageGraph {
             packages,
@@ -1124,6 +1187,26 @@ impl PackageLoader {
         let package_graph = self.build_symbol_graph_against_interfaces(&package_paths, interfaces);
         let package_exports = PackageExportGraph::from_interfaces(interfaces, &package_graph);
         self.flatten_packages(&package_paths, package_graph, package_exports)
+    }
+
+    fn loaded_packages_from_paths(&self, package_paths: &[String]) -> Vec<LoadedPackage> {
+        package_paths
+            .iter()
+            .filter_map(|package_path| {
+                let package = self.packages.get(package_path)?;
+                Some(LoadedPackage {
+                    path: package_path.clone(),
+                    files: package
+                        .files
+                        .iter()
+                        .map(|file| LoadedPackageFile {
+                            module_path: file.module_path.clone(),
+                            program: file.program.clone(),
+                        })
+                        .collect(),
+                })
+            })
+            .collect()
     }
 
     fn load_entry_import_paths(&mut self) -> Result<Vec<String>, Vec<Diagnostic>> {
