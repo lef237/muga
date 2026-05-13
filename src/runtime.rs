@@ -191,8 +191,8 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
     install_prelude(program, &root);
     let _ = execute_chunk(program, &program.entry, root.clone())?;
 
-    match main_symbol(program) {
-        Some(main_symbol) => match lookup_name_in_current(&root, main_symbol) {
+    match program.main {
+        Some(main) => match lookup_any(&root, main.binding) {
             None => Ok(RunOutcome {
                 main_result: None,
                 output_text: output.borrow().clone(),
@@ -228,10 +228,6 @@ pub fn run(program: &Program) -> Result<RunOutcome, Vec<Diagnostic>> {
     }
 }
 
-fn main_symbol(program: &Program) -> Option<Symbol> {
-    program.symbols.lookup("main")
-}
-
 fn symbol_name(program: &Program, symbol: Symbol) -> &str {
     program.symbols.resolve(symbol)
 }
@@ -250,7 +246,6 @@ impl ClosureValue {
 
 #[derive(Clone, Debug)]
 struct Binding {
-    name: Symbol,
     mutable: bool,
     value: Value,
     span: Span,
@@ -379,7 +374,6 @@ fn execute_chunk(
                 current_env.borrow_mut().bindings.insert(
                     target.binding,
                     Binding {
-                        name: target.name,
                         mutable: false,
                         value: Value::Function(Rc::new(ClosureValue {
                             function: *function,
@@ -581,7 +575,6 @@ fn execute_assign(
     env.borrow_mut().bindings.insert(
         target.binding,
         Binding {
-            name: target.name,
             mutable,
             value,
             span,
@@ -685,7 +678,6 @@ fn call_function(
         env.borrow_mut().bindings.insert(
             param.binding,
             Binding {
-                name: param.name,
                 mutable: false,
                 value: arg,
                 span: definition.span,
@@ -1170,7 +1162,6 @@ fn install_prelude(program: &Program, env: &EnvRef) {
         env.borrow_mut().bindings.insert(
             binding.id,
             Binding {
-                name: binding.name,
                 mutable: false,
                 value,
                 span: Span::default(),
@@ -1197,14 +1188,6 @@ fn lookup_any(env: &EnvRef, binding: BindingId) -> Option<Binding> {
         current = borrowed.parent.clone();
     }
     None
-}
-
-fn lookup_name_in_current(env: &EnvRef, name: Symbol) -> Option<Binding> {
-    env.borrow()
-        .bindings
-        .values()
-        .find(|binding| binding.name == name)
-        .cloned()
 }
 
 fn lookup_in_current_function_env(env: &EnvRef, binding: BindingId) -> Option<EnvRef> {

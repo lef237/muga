@@ -3825,6 +3825,11 @@ fn main(): Int {
         Some(Instruction::DefineFunction { target, .. })
             if program.symbols.resolve(target.name) == "main"
     ));
+    let main_target = match program.entry.instructions.get(1) {
+        Some(Instruction::DefineFunction { target, .. }) => *target,
+        _ => panic!("expected main function definition"),
+    };
+    assert_eq!(program.main, Some(main_target));
 }
 
 #[test]
@@ -5942,6 +5947,17 @@ fn main(): Int {
             .bindings
             .iter()
             .any(|binding| binding.id == assign_targets[0].binding)
+    );
+}
+
+#[test]
+fn runtime_reports_non_function_top_level_main_from_bytecode_entrypoint() {
+    let diagnostics = muga::run_source("main = 1").expect_err("main value should not be callable");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R002"),
+        "{diagnostics:#?}"
     );
 }
 
