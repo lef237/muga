@@ -2427,6 +2427,55 @@ fn artifact_interface_checking_and_loaded_interface_checking_agree() {
 }
 
 #[test]
+fn interface_artifact_checking_handles_independently_generated_package_ids() {
+    let numbers_provider =
+        muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
+            .expect("numbers provider should typecheck");
+    let states_provider =
+        muga::compile_typed_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+            .expect("states provider should typecheck");
+    let artifact_root = temp_package_root("interface-artifact-independent-ids");
+    write_interface_artifacts(
+        &artifact_root,
+        &numbers_provider.package_interfaces(),
+        &numbers_provider.symbols,
+        &["util::numbers"],
+    );
+    write_interface_artifacts(
+        &artifact_root,
+        &states_provider.package_interfaces(),
+        &states_provider.symbols,
+        &["util::states"],
+    );
+    let consumer_root = temp_package_root("interface-artifact-independent-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import util::numbers
+import util::states
+
+fn main(): Int {
+  value = numbers::inc_twice(10)
+  status: states::Status[Int] = states::ready(value)
+  match status {
+    states::Status::Ready(x) => x
+    states::Status::Waiting => 0
+    states::Status::Failed(message) => 0
+  }
+}
+"#,
+    );
+
+    assert!(!consumer_root.join("util/numbers/main.muga").exists());
+    assert!(!consumer_root.join("util/states/model.muga").exists());
+    muga::check_package_aware_path_against_interface_artifacts(&consumer_entry, &artifact_root)
+        .expect("independently generated package interfaces should check together");
+}
+
+#[test]
 fn interface_artifact_checking_loads_transitive_public_type_interfaces() {
     let provider_root = temp_package_root("interface-artifact-transitive-provider");
     let provider_entry = write_transitive_interface_provider(&provider_root);

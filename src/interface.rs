@@ -458,7 +458,7 @@ impl PackageInterfaceGraph {
         }
 
         if diagnostics.is_empty() {
-            Ok(Self { packages })
+            remap_persisted_artifact_ids(packages, symbols)
         } else {
             Err(diagnostics)
         }
@@ -594,6 +594,412 @@ impl PackageInterfaceGraph {
             .functions
             .iter()
             .find(|function| function.name == name)
+    }
+}
+
+type ArtifactItemNameKey = (PackageItemKind, PackageItemId, String);
+type ArtifactItemIdKey = (PackageItemKind, PackageItemId);
+type ArtifactDeclKey = (String, PackageItemKind, PackageItemId, String);
+
+#[derive(Clone, Debug)]
+struct ArtifactItemCandidate {
+    package_path: String,
+    item: PackageItemId,
+}
+
+fn remap_persisted_artifact_ids(
+    mut packages: Vec<PackageInterface>,
+    symbols: &SymbolTable,
+) -> Result<PackageInterfaceGraph, Vec<Diagnostic>> {
+    packages.sort_by(|left, right| left.path.cmp(&right.path));
+
+    let mut package_ids = HashMap::new();
+    for (index, package) in packages.iter().enumerate() {
+        package_ids.insert(package.path.clone(), PackageId::new(index as u32));
+    }
+
+    let mut registry = ArtifactItemRegistry::default();
+
+    for package in &packages {
+        for record in &package.records {
+            registry.register(package, PackageItemKind::Record, record.item, &record.name);
+        }
+        for enumeration in &package.enums {
+            registry.register(
+                package,
+                PackageItemKind::Enum,
+                enumeration.item,
+                &enumeration.name,
+            );
+        }
+        for function in &package.functions {
+            registry.register(
+                package,
+                PackageItemKind::Function,
+                function.item,
+                &function.name,
+            );
+        }
+    }
+
+    let mut remapper = PersistedArtifactIdRemapper {
+        symbols,
+        decl_items: registry.decl_items,
+        candidates_by_name: registry.candidates_by_name,
+        candidates_by_id: registry.candidates_by_id,
+        diagnostics: Vec::new(),
+    };
+
+    for package in &mut packages {
+        let current_package = package.path.clone();
+        let dependencies = package.dependencies.clone();
+        if let Some(package_id) = package_ids.get(&package.path).copied() {
+            package.package = package_id;
+        }
+
+        for record in &mut package.records {
+            record.item = remapper.declaration_item(
+                &current_package,
+                PackageItemKind::Record,
+                record.item,
+                &record.name,
+                record.span,
+            );
+            for field in &mut record.fields {
+                remapper.type_info(&mut field.ty, &current_package, &dependencies, field.span);
+            }
+        }
+
+        for enumeration in &mut package.enums {
+            enumeration.item = remapper.declaration_item(
+                &current_package,
+                PackageItemKind::Enum,
+                enumeration.item,
+                &enumeration.name,
+                enumeration.span,
+            );
+            for variant in &mut enumeration.variants {
+                if let Some(payload) = &mut variant.payload {
+                    remapper.type_info(payload, &current_package, &dependencies, variant.span);
+                }
+            }
+        }
+
+        for function in &mut package.functions {
+            function.item = remapper.declaration_item(
+                &current_package,
+                PackageItemKind::Function,
+                function.item,
+                &function.name,
+                function.span,
+            );
+            for param in &mut function.params {
+                remapper.type_info(&mut param.ty, &current_package, &dependencies, param.span);
+            }
+            remapper.type_info(
+                &mut function.ret,
+                &current_package,
+                &dependencies,
+                function.span,
+            );
+        }
+    }
+
+    if remapper.diagnostics.is_empty() {
+        Ok(PackageInterfaceGraph { packages })
+    } else {
+        Err(remapper.diagnostics)
+    }
+}
+
+#[derive(Default)]
+struct ArtifactItemRegistry {
+    next_item: u32,
+    decl_items: HashMap<ArtifactDeclKey, PackageItemId>,
+    candidates_by_name: HashMap<ArtifactItemNameKey, Vec<ArtifactItemCandidate>>,
+    candidates_by_id: HashMap<ArtifactItemIdKey, Vec<ArtifactItemCandidate>>,
+}
+
+impl ArtifactItemRegistry {
+    fn register(
+        &mut self,
+        package: &PackageInterface,
+        kind: PackageItemKind,
+        old_item: PackageItemId,
+        name: &str,
+    ) {
+        let new_item = PackageItemId::new(self.next_item);
+        self.next_item += 1;
+        let candidate = ArtifactItemCandidate {
+            package_path: package.path.clone(),
+            item: new_item,
+        };
+        self.decl_items.insert(
+            (package.path.clone(), kind, old_item, name.to_string()),
+            new_item,
+        );
+        self.candidates_by_name
+            .entry((kind, old_item, name.to_string()))
+            .or_default()
+            .push(candidate.clone());
+        self.candidates_by_id
+            .entry((kind, old_item))
+            .or_default()
+            .push(candidate);
+    }
+}
+
+struct PersistedArtifactIdRemapper<'a> {
+    symbols: &'a SymbolTable,
+    decl_items: HashMap<ArtifactDeclKey, PackageItemId>,
+    candidates_by_name: HashMap<ArtifactItemNameKey, Vec<ArtifactItemCandidate>>,
+    candidates_by_id: HashMap<ArtifactItemIdKey, Vec<ArtifactItemCandidate>>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl PersistedArtifactIdRemapper<'_> {
+    fn declaration_item(
+        &mut self,
+        package_path: &str,
+        kind: PackageItemKind,
+        old_item: PackageItemId,
+        name: &str,
+        span: Span,
+    ) -> PackageItemId {
+        self.decl_items
+            .get(&(package_path.to_string(), kind, old_item, name.to_string()))
+            .copied()
+            .unwrap_or_else(|| {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "PK019",
+                        format!(
+                            "package interface could not remap {} `{name}` from `{package_path}`",
+                            package_item_kind_label(kind)
+                        ),
+                        span,
+                    )
+                    .with_suggestion("regenerate the package interface artifact"),
+                );
+                old_item
+            })
+    }
+
+    fn type_info(
+        &mut self,
+        ty: &mut TypeInfo,
+        current_package: &str,
+        dependencies: &[String],
+        span: Span,
+    ) {
+        match ty {
+            TypeInfo::PackageRecord { symbol, item } => {
+                let name = self.symbols.resolve(*symbol).to_string();
+                if let Some(remapped) = self.reference_item(
+                    PackageItemKind::Record,
+                    *item,
+                    &name,
+                    current_package,
+                    dependencies,
+                    span,
+                ) {
+                    *item = remapped;
+                }
+            }
+            TypeInfo::PackageEnum { symbol, item, args } => {
+                let name = self.symbols.resolve(*symbol).to_string();
+                if let Some(remapped) = self.reference_item(
+                    PackageItemKind::Enum,
+                    *item,
+                    &name,
+                    current_package,
+                    dependencies,
+                    span,
+                ) {
+                    *item = remapped;
+                }
+                for arg in args {
+                    self.type_info(arg, current_package, dependencies, span);
+                }
+            }
+            TypeInfo::EnumConstructor {
+                enum_symbol,
+                enum_item: Some(item),
+                ..
+            } => {
+                let name = self.symbols.resolve(*enum_symbol).to_string();
+                if let Some(remapped) = self.reference_item(
+                    PackageItemKind::Enum,
+                    *item,
+                    &name,
+                    current_package,
+                    dependencies,
+                    span,
+                ) {
+                    *item = remapped;
+                }
+            }
+            TypeInfo::Enum { args, .. } => {
+                for arg in args {
+                    self.type_info(arg, current_package, dependencies, span);
+                }
+            }
+            TypeInfo::List(item) | TypeInfo::Option(item) => {
+                self.type_info(item, current_package, dependencies, span);
+            }
+            TypeInfo::Map(key, value) | TypeInfo::Result(key, value) => {
+                self.type_info(key, current_package, dependencies, span);
+                self.type_info(value, current_package, dependencies, span);
+            }
+            TypeInfo::Function(function) => {
+                for param in &mut function.params {
+                    self.type_info(param, current_package, dependencies, span);
+                }
+                self.type_info(&mut function.ret, current_package, dependencies, span);
+            }
+            TypeInfo::GenericParam(_)
+            | TypeInfo::Record(_)
+            | TypeInfo::EnumConstructor {
+                enum_item: None, ..
+            }
+            | TypeInfo::Int
+            | TypeInfo::Bool
+            | TypeInfo::String
+            | TypeInfo::Builtin(_)
+            | TypeInfo::Unknown
+            | TypeInfo::Error => {}
+        }
+    }
+
+    fn reference_item(
+        &mut self,
+        kind: PackageItemKind,
+        old_item: PackageItemId,
+        name: &str,
+        current_package: &str,
+        dependencies: &[String],
+        span: Span,
+    ) -> Option<PackageItemId> {
+        let reference = ArtifactReference {
+            kind,
+            old_item,
+            name,
+            current_package,
+            dependencies,
+            span,
+        };
+        let exact = self
+            .candidates_by_name
+            .get(&(kind, old_item, name.to_string()))
+            .cloned()
+            .unwrap_or_default();
+        match self.choose_candidate(&exact, &reference) {
+            CandidateChoice::Resolved(item) => return Some(item),
+            CandidateChoice::Ambiguous => return None,
+            CandidateChoice::Missing => {}
+        }
+
+        let by_id = self
+            .candidates_by_id
+            .get(&(kind, old_item))
+            .cloned()
+            .unwrap_or_default();
+        match self.choose_candidate(&by_id, &reference) {
+            CandidateChoice::Resolved(item) => Some(item),
+            CandidateChoice::Ambiguous => None,
+            CandidateChoice::Missing => {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "PK019",
+                        format!(
+                            "package interface references unknown {} `{name}` identity {:?}",
+                            package_item_kind_label(reference.kind),
+                            reference.old_item
+                        ),
+                        reference.span,
+                    )
+                    .with_suggestion("regenerate the package interface artifacts together"),
+                );
+                None
+            }
+        }
+    }
+
+    fn choose_candidate(
+        &mut self,
+        candidates: &[ArtifactItemCandidate],
+        reference: &ArtifactReference<'_>,
+    ) -> CandidateChoice {
+        if candidates.is_empty() {
+            return CandidateChoice::Missing;
+        }
+        if candidates.len() == 1 {
+            return CandidateChoice::Resolved(candidates[0].item);
+        }
+
+        let current = candidates
+            .iter()
+            .filter(|candidate| candidate.package_path == reference.current_package)
+            .collect::<Vec<_>>();
+        if current.len() == 1 {
+            return CandidateChoice::Resolved(current[0].item);
+        }
+
+        let dependency = candidates
+            .iter()
+            .filter(|candidate| {
+                reference
+                    .dependencies
+                    .iter()
+                    .any(|dependency| dependency == &candidate.package_path)
+            })
+            .collect::<Vec<_>>();
+        if dependency.len() == 1 {
+            return CandidateChoice::Resolved(dependency[0].item);
+        }
+
+        let packages = candidates
+            .iter()
+            .map(|candidate| candidate.package_path.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.diagnostics.push(
+            Diagnostic::new(
+                "PK019",
+                format!(
+                    "package interface has ambiguous {} `{name}` identity {:?}: {packages}",
+                    package_item_kind_label(reference.kind),
+                    reference.old_item,
+                    name = reference.name
+                ),
+                reference.span,
+            )
+            .with_suggestion("regenerate the package interface artifacts together"),
+        );
+        CandidateChoice::Ambiguous
+    }
+}
+
+struct ArtifactReference<'a> {
+    kind: PackageItemKind,
+    old_item: PackageItemId,
+    name: &'a str,
+    current_package: &'a str,
+    dependencies: &'a [String],
+    span: Span,
+}
+
+enum CandidateChoice {
+    Resolved(PackageItemId),
+    Missing,
+    Ambiguous,
+}
+
+fn package_item_kind_label(kind: PackageItemKind) -> &'static str {
+    match kind {
+        PackageItemKind::Record => "record",
+        PackageItemKind::Enum => "enum",
+        PackageItemKind::Function => "function",
     }
 }
 

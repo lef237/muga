@@ -6,7 +6,7 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after package-aware module body checking support: 240 tests, 0 failures.
+- [x] `cargo test` passed after package-aware module body checking support and interface artifact ID remapping: 249 tests, 0 failures.
 - [x] `cargo clippy --all-targets -- -D warnings` passed after package-aware module body checking support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
@@ -92,6 +92,7 @@ Ada
 - [x] package check cache keys include entry package source hashes and loaded direct/transitive dependency interface hashes.
 - [x] missing or stale `.mgc` package check artifacts are rejected with regeneration guidance.
 - [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts through the package-aware check path without reading dependency implementation bodies.
+- [x] independently generated `.mgi` artifacts are remapped to fresh session-local package and item IDs when loaded together, avoiding artifact-root collisions between separate provider builds.
 - [x] `muga emit-interface` writes `.mgi` artifacts and `muga emit-check-cache` writes `.mgc` only after the package checks successfully against `.mgi` artifacts.
 - [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
 - [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking.
@@ -198,6 +199,7 @@ Reasoning:
 - Loaded package interfaces can now be used for downstream signature/type checking without dependency implementation bodies.
 - Interface artifacts can now be discovered from an explicit root, with missing/hash-mismatched artifacts rejected before checking.
 - Interface artifacts now persist direct dependency paths, and artifact loading follows those paths for transitive public-signature type dependencies.
+- Interface artifact loading remaps persisted package and item IDs into one fresh session namespace so separately generated artifacts can be consumed together.
 - Package check cache keys now include entry source content and loaded direct/transitive dependency interface hashes.
 - Unflattened package graph loading now preserves package files plus package/module/item/export metadata before flattening.
 - Package-aware checking now has source and per-module signature environments that resolve package record/enum/function types without flattening.
@@ -298,6 +300,7 @@ Package-aware checking:
 - [x] `package_module_signature_environment_tracks_imported_exports`
 - [x] `package_module_typechecking_uses_signature_environment_for_body_errors`
 - [x] `artifact_workflow_rejects_missing_artifacts_without_source_fallback`
+- [x] `interface_artifact_checking_handles_independently_generated_package_ids`
 
 Compatibility:
 
