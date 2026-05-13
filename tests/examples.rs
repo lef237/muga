@@ -419,9 +419,10 @@ fn manifest_project_infers_package_paths_from_directories() {
 
 #[test]
 fn package_loader_renumbers_statement_ids_after_flattening() {
-    let program =
-        muga::package::load_program_from_entry(Path::new("samples/packages/app/main/main.muga"))
-            .unwrap();
+    let program = muga::package::load_flattened_program_from_entry(Path::new(
+        "samples/packages/app/main/main.muga",
+    ))
+    .unwrap();
     let mut ids = HashSet::new();
     collect_stmt_ids(&program.statements, &mut ids);
     assert!(
@@ -433,7 +434,8 @@ fn package_loader_renumbers_statement_ids_after_flattening() {
 #[test]
 fn package_loader_exposes_package_symbol_graph() {
     let loaded =
-        muga::package::load_from_entry(Path::new("samples/packages/app/main/main.muga")).unwrap();
+        muga::package::load_flattened_from_entry(Path::new("samples/packages/app/main/main.muga"))
+            .unwrap();
     let graph = loaded.package_graph;
 
     let app = graph
@@ -485,7 +487,8 @@ fn package_loader_exposes_package_symbol_graph() {
 #[test]
 fn package_loader_exposes_package_export_graph() {
     let loaded =
-        muga::package::load_from_entry(Path::new("samples/packages/app/main/main.muga")).unwrap();
+        muga::package::load_flattened_from_entry(Path::new("samples/packages/app/main/main.muga"))
+            .unwrap();
     let graph = loaded.package_graph;
     let exports = loaded.package_exports;
     let numbers = graph
@@ -528,7 +531,8 @@ fn package_loader_can_return_unflattened_package_graph() {
     ))
     .expect("package graph should load without flattening");
     let flattened =
-        muga::package::load_from_entry(Path::new("samples/packages/app/main/main.muga")).unwrap();
+        muga::package::load_flattened_from_entry(Path::new("samples/packages/app/main/main.muga"))
+            .unwrap();
 
     assert_eq!(
         unflattened.package_graph.packages,
@@ -1401,7 +1405,7 @@ fn package_module_typed_hir_lowering_preserves_package_binding_identity() {
 
 #[test]
 fn package_symbol_graph_exposes_module_identity() {
-    let loaded = muga::package::load_from_entry(Path::new(
+    let loaded = muga::package::load_flattened_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",
     ))
     .unwrap();

@@ -69,7 +69,7 @@ Recommended model:
 
 Current implementation:
 
-- `load_from_entry` returns both the flattened program and `PackageSymbolGraph`
+- `load_flattened_from_entry` returns both the flattened program and `PackageSymbolGraph`; its name is intentionally explicit because flattened ASTs are a compatibility representation
 - `PackageSymbolGraph` stores package nodes, top-level item nodes, and import edges
 - module records keep package membership and source file/module path
 - item records keep source name, kind, visibility, declaring module, source span, and current mangled name

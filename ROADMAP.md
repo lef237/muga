@@ -38,6 +38,7 @@ Implemented language surface:
 - package-aware check results aggregate per-module typed HIR from unflattened module check outputs with remapped local IDs and symbols instead of using the legacy flattened typed path
 - default package `check` runs the package-aware validation path and no longer reloads a flattened package AST after validation
 - default package `compile_typed_path` returns the package-aware typed HIR aggregate instead of the legacy flattened typed HIR
+- flattened package loader APIs are explicitly named `load_flattened_*` so compatibility AST use is visible at call sites
 - package-aware checking and loaded/interface-artifact typed compilation collect dependency signatures and build dependency graph metadata directly from loaded interfaces without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
 - the legacy interface-stub flattened typed compilation path has been removed; loaded/interface-artifact typed compilation now uses the package-aware semantic path only
 - package-aware typed HIR can lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls
