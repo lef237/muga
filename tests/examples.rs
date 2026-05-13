@@ -5948,6 +5948,7 @@ fn main(): Int {
         .find(|binding| binding.id == assign_targets[0].binding)
         .expect("value binding should be preserved");
     assert_eq!(binding.local, assign_targets[0].local);
+    assert!(program.local_count > assign_targets[0].local.as_u32() as usize);
 }
 
 #[test]
@@ -6018,6 +6019,7 @@ fn compile_bytecode_path_uses_package_definition_binding_for_runtime_names() {
     );
     assert_ne!(definition_targets[0].binding, import.id);
     assert_ne!(definition_targets[0].local, import.local);
+    assert!(program.local_count > definition_targets[0].local.as_u32() as usize);
 }
 
 #[test]
