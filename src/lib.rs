@@ -22,6 +22,7 @@ use ast::Program;
 use bytecode::Program as BytecodeProgram;
 use diagnostic::Diagnostic;
 use hir::Program as HirProgram;
+use interface::PackageInterfaceGraph;
 use runtime::RunOutcome;
 use std::path::Path;
 use typed_hir::Program as TypedHirProgram;
@@ -97,14 +98,35 @@ pub fn compile_typed_source(source: &str) -> Result<TypedHirProgram, Vec<Diagnos
 
 pub fn compile_typed_path(path: &Path) -> Result<TypedHirProgram, Vec<Diagnostic>> {
     let loaded = package::load_from_entry(path)?;
+    compile_loaded_typed_program(loaded, None)
+}
+
+pub fn compile_typed_path_against_interfaces(
+    path: &Path,
+    interfaces: &PackageInterfaceGraph,
+) -> Result<TypedHirProgram, Vec<Diagnostic>> {
+    let loaded = package::load_from_entry(path)?;
+    compile_loaded_typed_program(loaded, Some(interfaces))
+}
+
+fn compile_loaded_typed_program(
+    loaded: package::LoadedProgram,
+    interfaces: Option<&PackageInterfaceGraph>,
+) -> Result<TypedHirProgram, Vec<Diagnostic>> {
     let resolve_output = resolver::resolve_program(&loaded.program);
     let type_output = typing::typecheck_program(&loaded.program);
     let mut diagnostics = resolve_output.diagnostics;
     diagnostics.extend(type_output.diagnostics.clone());
     if diagnostics.is_empty() {
         let program = typed_hir::lower(&loaded.program, &type_output, loaded.package_graph);
-        let interfaces = program.package_interfaces();
-        diagnostics.extend(program.validate_package_references_against_interfaces(&interfaces));
+        let generated_interfaces;
+        let interfaces = if let Some(interfaces) = interfaces {
+            interfaces
+        } else {
+            generated_interfaces = program.package_interfaces();
+            &generated_interfaces
+        };
+        diagnostics.extend(program.validate_package_references_against_interfaces(interfaces));
         if diagnostics.is_empty() {
             Ok(program)
         } else {
