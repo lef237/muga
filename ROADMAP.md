@@ -33,7 +33,7 @@ Implemented language surface:
 - unflattened package graph loading preserves package files plus package/module/item/export metadata before the legacy flattening path
 - a library-only package-aware check path validates package boundary, import, visibility, and public-signature rules from the unflattened package graph before delegating valid programs to the legacy typed checking path
 - package-aware source and per-module signature environments resolve record/enum/function signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility
-- initial package-aware module body checking consumes those module signature environments before the legacy typed HIR path runs
+- initial package-aware module body checking consumes those module signature environments before the legacy typed HIR path runs, and the package-aware API retains per-module typecheck outputs
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:

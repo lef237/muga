@@ -1130,6 +1130,46 @@ pkg fn helper(value: Int): Int {
 }
 
 #[test]
+fn package_aware_checking_exposes_module_type_outputs() {
+    let result = muga::check_package_aware_path(Path::new(
+        "samples/packages/app/module_visibility/main.muga",
+    ))
+    .expect("package-aware checking should pass");
+    let package = result
+        .packages
+        .package_graph
+        .package_id("app::module_visibility")
+        .expect("package should exist");
+    let helper_module = result
+        .packages
+        .package_graph
+        .module_id(package, "helper.muga")
+        .expect("helper module should exist");
+    let helper_item = result
+        .packages
+        .package_graph
+        .item_id_in_module(
+            helper_module,
+            "helper",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("helper item should exist");
+    let main_check = result
+        .module_checks
+        .iter()
+        .find(|check| check.module_path == "main.muga")
+        .expect("main module check should exist");
+
+    assert_eq!(main_check.package, package);
+    assert!(main_check.type_output.calls.iter().any(|call| {
+        matches!(
+            call.callee,
+            muga::typing::TypedCalleeInfo::PackageItem { item, .. } if item == helper_item
+        )
+    }));
+}
+
+#[test]
 fn package_symbol_graph_exposes_module_identity() {
     let loaded = muga::package::load_from_entry(Path::new(
         "samples/packages/app/module_visibility/main.muga",

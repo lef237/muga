@@ -6,7 +6,7 @@ Purpose: if prior conversation context is lost, read this file after [ROADMAP.md
 
 ## Verification Snapshot
 
-- [x] `cargo test` passed after package-aware module body checking support: 239 tests, 0 failures.
+- [x] `cargo test` passed after package-aware module body checking support: 240 tests, 0 failures.
 - [x] `cargo clippy --all-targets -- -D warnings` passed after package-aware module body checking support.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
@@ -96,7 +96,7 @@ Ada
 - [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
 - [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before delegating valid programs to the legacy typed checking path.
 - [x] package-aware checking builds source and per-module signature environments from the unflattened package graph, preserving package item identity for records/enums/functions, validating generic enum arity, and recording module/same-package/import visibility.
-- [x] package-aware checking runs an initial module body typecheck pass against the module signature environments before the legacy typed HIR path.
+- [x] package-aware checking runs an initial module body typecheck pass against the module signature environments before the legacy typed HIR path, and retains the per-module typecheck outputs.
 - [ ] full package-aware typed HIR generation without the flattened typed path is not implemented.
 - [ ] default CLI checking/execution still uses package flattening and dependency source loading.
 
@@ -161,7 +161,7 @@ Ada
 - The package loader can now return unflattened package files with the same package graph/export metadata used by the legacy flattening path.
 - A library-only package-aware check entrypoint validates package boundary, import, visibility, and public-signature rules directly over the unflattened package graph before delegating valid programs to the legacy typed checking path.
 - The package-aware source and module signature environments resolve same-package and imported public record/enum/function signatures from the unflattened graph while preserving `PackageItemId` identities and source-visible module names.
-- The package-aware check entrypoint now runs module body typechecking with those module signatures before falling through to the legacy typed HIR path.
+- The package-aware check entrypoint now runs module body typechecking with those module signatures and retains per-module typecheck outputs before falling through to the legacy typed HIR path.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
 - Full incremental artifact reuse and full typed HIR generation without the flattened typed path are still not implemented.
@@ -185,7 +185,7 @@ Reasoning:
 - Package check cache keys now include entry source content and loaded direct/transitive dependency interface hashes.
 - Unflattened package graph loading now preserves package files plus package/module/item/export metadata before flattening.
 - Package-aware checking now has source and per-module signature environments that resolve package record/enum/function types without flattening.
-- Package-aware checking now uses those module signatures for an initial body typecheck pass over each original package file.
+- Package-aware checking now uses those module signatures for an initial body typecheck pass over each original package file and exposes those outputs through the library API.
 - CLI artifact-backed checking can now consume existing `.mgi` and `.mgc` artifacts.
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
@@ -254,7 +254,7 @@ Estimates are in focused engineering days for someone already familiar with this
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
 | 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
-| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, and initial module body checking now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and move typed HIR generation plus loaded-interface signatures off the flattened typed path. | package/resolver/typing/lib/tests | 4-8 days | High |
+| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module typecheck outputs, and initial module body checking now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and move typed HIR generation plus loaded-interface signatures off the flattened typed path. | package/resolver/typing/lib/tests | 4-8 days | High |
 | 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
 The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should broaden module body checking coverage and prepare typed HIR lowering to consume package-aware outputs.
@@ -269,6 +269,7 @@ Package-aware checking:
 - [x] `package_aware_checking_rejects_private_cross_package_references`
 - [x] `package_aware_checking_reports_package_qualified_type_errors`
 - [x] `package_aware_checking_reuses_unflattened_package_graph`
+- [x] `package_aware_checking_exposes_module_type_outputs`
 - [x] `package_signature_environment_preserves_same_package_type_identities`
 - [x] `package_signature_environment_resolves_imported_public_types`
 - [x] `package_signature_environment_preserves_generic_enum_signatures`

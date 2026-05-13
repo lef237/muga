@@ -179,7 +179,7 @@ Implemented:
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 - library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before handing valid programs to the legacy typed checking path
 - package-aware source and per-module signature environments derived from the unflattened package graph, preserving package item identity, module/same-package/import visibility, and generic enum signature arity
-- initial package-aware module body typechecking against those module signature environments
+- initial package-aware module body typechecking against those module signature environments, with per-module typecheck outputs retained by the package-aware API
 
 Not implemented yet:
 
