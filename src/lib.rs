@@ -33,7 +33,16 @@ use typed_hir::Program as TypedHirProgram;
 pub struct PackageAwareCheck {
     pub packages: package::LoadedPackageGraph,
     pub signatures: package_signature::PackageSignatureEnvironment,
+    pub module_checks: Vec<PackageModuleCheck>,
     pub typed_program: TypedHirProgram,
+}
+
+#[derive(Clone, Debug)]
+pub struct PackageModuleCheck {
+    pub package: identity::PackageId,
+    pub module: identity::ModuleId,
+    pub module_path: String,
+    pub type_output: typing::TypeCheckOutput,
 }
 
 pub fn check_source(source: &str) -> Result<Program, Vec<Diagnostic>> {
@@ -117,14 +126,12 @@ pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Di
         return Err(diagnostics);
     }
     let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
-    let diagnostics = typecheck_loaded_package_modules(&packages, &signatures);
-    if !diagnostics.is_empty() {
-        return Err(diagnostics);
-    }
+    let module_checks = typecheck_loaded_package_modules(&packages, &signatures)?;
     let typed_program = compile_typed_path(path)?;
     Ok(PackageAwareCheck {
         packages,
         signatures,
+        module_checks,
         typed_program,
     })
 }
@@ -132,7 +139,8 @@ pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Di
 fn typecheck_loaded_package_modules(
     packages: &package::LoadedPackageGraph,
     signatures: &package_signature::PackageSignatureEnvironment,
-) -> Vec<Diagnostic> {
+) -> Result<Vec<PackageModuleCheck>, Vec<Diagnostic>> {
+    let mut module_checks = Vec::new();
     let mut diagnostics = Vec::new();
     for package in &packages.packages {
         let Some(package_id) = packages.package_graph.package_id(&package.path) else {
@@ -145,12 +153,22 @@ fn typecheck_loaded_package_modules(
             else {
                 continue;
             };
-            diagnostics.extend(
-                typing::typecheck_package_module(&file.program, signatures, module_id).diagnostics,
-            );
+            let type_output =
+                typing::typecheck_package_module(&file.program, signatures, module_id);
+            diagnostics.extend(type_output.diagnostics.clone());
+            module_checks.push(PackageModuleCheck {
+                package: package_id,
+                module: module_id,
+                module_path: file.module_path.clone(),
+                type_output,
+            });
         }
     }
-    diagnostics
+    if diagnostics.is_empty() {
+        Ok(module_checks)
+    } else {
+        Err(diagnostics)
+    }
 }
 
 pub fn compile_typed_path_against_interfaces(
