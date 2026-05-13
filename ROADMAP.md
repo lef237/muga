@@ -36,6 +36,7 @@ Implemented language surface:
 - initial package-aware module body checking consumes those module signature environments, and the package-aware API retains per-module typecheck outputs plus typed HIR programs
 - package-aware check results aggregate per-module typed HIR from unflattened module check outputs with remapped local IDs and symbols instead of using the legacy flattened typed path
 - package-aware checking and loaded/interface-artifact typed compilation can consume dependency signatures without reading dependency source bodies, and `muga check --artifact-root` plus interface artifact emission use package-aware paths
+- package-aware typed HIR can lower through the existing HIR/bytecode VM path for package records, enums, functions, and calls
 - in-memory package interface summaries for public records/enums/functions and validation of public package references against those summaries
 
 Current architectural gaps:
@@ -45,7 +46,7 @@ Current architectural gaps:
 - normal package execution still lowers from flattened packages and reads dependency source
 - package-aware checking now has boundary validation plus source/module signature environments, loaded/artifact interface dependency signatures, an initial body-check pass, per-module typed HIR outputs, and a package-wide typed HIR aggregate, but bytecode execution still defaults to the older flattened HIR path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
-- VM bytecode still lowers from the older HIR path, not from typed HIR/MIR
+- default VM bytecode execution still lowers from the compatibility HIR path; typed HIR has an adapter, but MIR/native lowering is not implemented
 
 ## Settled Direction
 

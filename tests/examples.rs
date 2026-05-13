@@ -618,6 +618,33 @@ fn package_aware_checking_preserves_public_import_resolution() {
 }
 
 #[test]
+fn package_aware_typed_hir_lowers_to_bytecode_runtime() {
+    let result = muga::check_package_aware_path(Path::new("samples/packages/app/main/main.muga"))
+        .expect("package-aware checking should pass");
+    let hir = muga::hir::lower_typed(&result.typed_program);
+    let bytecode = muga::bytecode::compile(hir);
+    let outcome = muga::runtime::run(&bytecode).expect("package-aware HIR should execute");
+    let value = outcome.main_result.expect("main result should exist");
+
+    assert_eq!(value.to_string(), "23");
+    assert_eq!(outcome.output_text, "");
+}
+
+#[test]
+fn package_aware_typed_hir_lowers_imported_enum_runtime() {
+    let result =
+        muga::check_package_aware_path(Path::new("samples/packages/app/enum_demo/main.muga"))
+            .expect("package-aware checking should pass");
+    let hir = muga::hir::lower_typed(&result.typed_program);
+    let bytecode = muga::bytecode::compile(hir);
+    let outcome = muga::runtime::run(&bytecode).expect("package-aware enum HIR should execute");
+    let value = outcome.main_result.expect("main result should exist");
+
+    assert_eq!(value.to_string(), "7");
+    assert_eq!(outcome.output_text, "");
+}
+
+#[test]
 fn package_aware_typed_program_preserves_public_interface_items() {
     let root = temp_package_root("package-aware-entry-interface-items");
     let entry = write_package_file(
