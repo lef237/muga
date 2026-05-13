@@ -52,7 +52,7 @@ Current architectural gaps:
 - remaining package work is MIR maturation plus normal project/artifact integration; package-aware checking is now the default package validation path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
 - VM bytecode execution now consumes an initial expression-shaped MIR with explicit execution bodies and hoisted body-local function definitions; control-flow-oriented MIR and native lowering are not implemented
-- default compile APIs lower typed HIR into MIR; the old AST-to-HIR lowering path is compatibility-only
+- default compile APIs lower typed HIR into MIR; the old untyped AST-to-HIR compatibility module has been removed
 
 ## Settled Direction
 
@@ -126,7 +126,7 @@ The next code slice should keep artifact roots explicit on the CLI and move towa
 Benchmarking and profiling should continue through every compiler step:
 
 - lex, parse, resolve, typecheck
-- HIR and typed HIR lowering
+- typed HIR lowering
 - package interface loading/validation
 - MIR lowering
 - bytecode/native codegen

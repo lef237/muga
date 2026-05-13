@@ -110,8 +110,8 @@ Ada
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
 - [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
 - [x] the legacy `compile_typed_path_against_interfaces` / interface-stub flattened compilation path has been removed.
-- [x] bytecode generation consumes `mir::Program`; `hir` remains a compatibility module for legacy AST lowering and re-exports.
-- [x] default `compile_source` / `compile_path` now lower typed HIR into MIR; legacy AST lowering is only available through the explicit `hir` compatibility module.
+- [x] bytecode generation consumes `mir::Program`; the legacy untyped AST-to-HIR compatibility module has been removed.
+- [x] default `compile_source` / `compile_path` now lower typed HIR into MIR.
 - [x] MIR now has explicit entry/function `Body` nodes with optional result expressions and body-local function definitions, so bytecode compiles execution bodies instead of reading top-level statements and function value blocks directly.
 - [x] default package `run` lowers package-aware typed HIR through MIR before bytecode generation.
 - [x] package-aware typed HIR can lower through the MIR/bytecode VM path for package records/enums/functions.
@@ -161,7 +161,7 @@ Ada
 
 - The VM/bytecode path is the current execution backend and should remain a reference backend.
 - typed HIR is the semantic boundary for package interfaces and MIR lowering.
-- The default compile APIs and bytecode backend now consume an initial expression-shaped MIR with explicit entry/function bodies and hoisted body-local function definitions. `hir` remains as a compatibility module for legacy AST lowering and re-exports while MIR is matured toward a control-flow-oriented backend IR.
+- The default compile APIs and bytecode backend now consume an initial expression-shaped MIR with explicit entry/function bodies and hoisted body-local function definitions. MIR is now the only backend-facing IR while it is matured toward a control-flow-oriented backend IR.
 - `Option[T]` and `Result[T, E]` remain compiler-known enum-like types for now; user-defined enums use a parallel source-level enum model.
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.
@@ -269,8 +269,8 @@ Estimates are in focused engineering days for someone already familiar with this
 
 | Slice | Scope | Main files | Estimate | Risk |
 |---|---|---|---:|---|
-| 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. AST/HIR/typed HIR pattern shape, runtime enum value shape, compiler-known enum metadata, and generic two-variant bytecode/runtime branching are in place. | `src/typing.rs`, `src/typed_hir.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | Done | Low |
-| 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/hir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
+| 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. AST/typed HIR/MIR pattern shape, runtime enum value shape, compiler-known enum metadata, and generic two-variant bytecode/runtime branching are in place. | `src/typing.rs`, `src/typed_hir.rs`, `src/mir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | Done | Low |
+| 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/mir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
 | 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | Done | High |
 | 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | Done | Medium |
 | 5. Package interface persistence format | Serialize public records/functions/enums and resolved type identities in a deterministic v2 text format with stable artifact package/item IDs. Load the format back into `PackageInterfaceGraph` and validate the reloaded summaries. | `src/interface.rs`, `tests/examples.rs` | Done | Medium |
