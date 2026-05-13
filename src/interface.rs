@@ -19,7 +19,8 @@ use crate::{
     types::{FunctionTypeInfo, TypeInfo},
 };
 
-const PERSISTED_INTERFACE_HEADER: &str = "muga-package-interface-v1";
+const PERSISTED_INTERFACE_HEADER: &str = "muga-package-interface-v2";
+const LEGACY_PERSISTED_INTERFACE_HEADER: &str = "muga-package-interface-v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
 const FNV_PRIME: u64 = 0x100000001b3;
 
@@ -209,22 +210,34 @@ impl PackageInterfaceGraph {
         symbols: &SymbolTable,
     ) -> Option<String> {
         let package = self.package_by_path(package_path)?.clone();
-        Some(
-            Self {
+        let context = PersistedInterfaceIdentityContext::from_graph(self);
+        Some(stable_hash_hex(
+            &Self {
                 packages: vec![package],
             }
-            .stable_hash(symbols),
-        )
+            .persisted_body_text_with_context(symbols, &context),
+        ))
     }
 
     fn persisted_body_text(&self, symbols: &SymbolTable) -> String {
+        let context = PersistedInterfaceIdentityContext::from_graph(self);
+        self.persisted_body_text_with_context(symbols, &context)
+    }
+
+    fn persisted_body_text_with_context(
+        &self,
+        symbols: &SymbolTable,
+        context: &PersistedInterfaceIdentityContext,
+    ) -> String {
         let mut out = String::new();
         for package in &self.packages {
             push_line(
                 &mut out,
                 &[
                     "package".to_string(),
-                    package.package.as_u32().to_string(),
+                    stable_artifact_package_id(&package.path)
+                        .as_u32()
+                        .to_string(),
                     package.path.clone(),
                     package.dependencies.len().to_string(),
                     package.records.len().to_string(),
@@ -240,7 +253,11 @@ impl PackageInterfaceGraph {
                     &mut out,
                     &[
                         "record".to_string(),
-                        record.item.as_u32().to_string(),
+                        context
+                            .item_id(PackageItemKind::Record, record.item)
+                            .unwrap_or(record.item)
+                            .as_u32()
+                            .to_string(),
                         record.name.clone(),
                         format_span(record.span),
                         record.fields.len().to_string(),
@@ -253,7 +270,7 @@ impl PackageInterfaceGraph {
                             "field".to_string(),
                             field.name.clone(),
                             format_span(field.span),
-                            format_type_info(&field.ty, symbols),
+                            format_type_info(&field.ty, symbols, context),
                         ],
                     );
                 }
@@ -261,7 +278,11 @@ impl PackageInterfaceGraph {
             for enumeration in &package.enums {
                 let mut parts = vec![
                     "enum".to_string(),
-                    enumeration.item.as_u32().to_string(),
+                    context
+                        .item_id(PackageItemKind::Enum, enumeration.item)
+                        .unwrap_or(enumeration.item)
+                        .as_u32()
+                        .to_string(),
                     enumeration.name.clone(),
                     format_span(enumeration.span),
                     enumeration.type_params.len().to_string(),
@@ -277,7 +298,7 @@ impl PackageInterfaceGraph {
                             variant.name.clone(),
                             format_span(variant.span),
                             match &variant.payload {
-                                Some(payload) => format_type_info(payload, symbols),
+                                Some(payload) => format_type_info(payload, symbols, context),
                                 None => "-".to_string(),
                             },
                         ],
@@ -289,11 +310,15 @@ impl PackageInterfaceGraph {
                     &mut out,
                     &[
                         "function".to_string(),
-                        function.item.as_u32().to_string(),
+                        context
+                            .item_id(PackageItemKind::Function, function.item)
+                            .unwrap_or(function.item)
+                            .as_u32()
+                            .to_string(),
                         function.name.clone(),
                         format_span(function.span),
                         function.params.len().to_string(),
-                        format_type_info(&function.ret, symbols),
+                        format_type_info(&function.ret, symbols, context),
                     ],
                 );
                 for param in &function.params {
@@ -303,7 +328,7 @@ impl PackageInterfaceGraph {
                             "param".to_string(),
                             param.name.clone(),
                             format_span(param.span),
-                            format_type_info(&param.ty, symbols),
+                            format_type_info(&param.ty, symbols, context),
                         ],
                     );
                 }
@@ -316,6 +341,14 @@ impl PackageInterfaceGraph {
         text: &str,
         symbols: &mut SymbolTable,
     ) -> Result<Self, Vec<Diagnostic>> {
+        let graph = Self::parse_persisted_text(text, symbols)?;
+        remap_persisted_artifact_ids(graph.packages, symbols)
+    }
+
+    fn parse_persisted_text(
+        text: &str,
+        symbols: &mut SymbolTable,
+    ) -> Result<Self, Vec<Diagnostic>> {
         PersistedInterfaceParser::new(text, symbols).parse()
     }
 
@@ -325,6 +358,29 @@ impl PackageInterfaceGraph {
         symbols: &SymbolTable,
     ) -> Result<(), Diagnostic> {
         fs::write(path, self.to_persisted_text(symbols)).map_err(|error| {
+            Diagnostic::new(
+                "PK018",
+                format!(
+                    "failed to write package interface `{}`: {error}",
+                    path.display()
+                ),
+                Span::default(),
+            )
+        })
+    }
+
+    fn write_persisted_file_with_context(
+        &self,
+        path: &Path,
+        symbols: &SymbolTable,
+        context: &PersistedInterfaceIdentityContext,
+    ) -> Result<(), Diagnostic> {
+        let body = self.persisted_body_text_with_context(symbols, context);
+        let text = format!(
+            "{PERSISTED_INTERFACE_HEADER}\nhash\t{}\n{body}",
+            stable_hash_hex(&body)
+        );
+        fs::write(path, text).map_err(|error| {
             Diagnostic::new(
                 "PK018",
                 format!(
@@ -370,7 +426,8 @@ impl PackageInterfaceGraph {
                 )
             })?;
         }
-        graph.write_persisted_file(&path, symbols)?;
+        let context = PersistedInterfaceIdentityContext::from_graph(self);
+        graph.write_persisted_file_with_context(&path, symbols, &context)?;
         Ok(path)
     }
 
@@ -388,7 +445,7 @@ impl PackageInterfaceGraph {
                 Span::default(),
             )]
         })?;
-        Self::from_persisted_text(&text, symbols)
+        Self::parse_persisted_text(&text, symbols)
     }
 
     pub fn read_persisted_artifacts(
@@ -595,6 +652,93 @@ impl PackageInterfaceGraph {
             .iter()
             .find(|function| function.name == name)
     }
+}
+
+#[derive(Clone, Debug)]
+struct PersistedItemIdentity {
+    stable_item: PackageItemId,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PersistedInterfaceIdentityContext {
+    items: HashMap<(PackageItemKind, PackageItemId), PersistedItemIdentity>,
+}
+
+impl PersistedInterfaceIdentityContext {
+    fn from_graph(graph: &PackageInterfaceGraph) -> Self {
+        let mut items = HashMap::new();
+        for package in &graph.packages {
+            for record in &package.records {
+                items.insert(
+                    (PackageItemKind::Record, record.item),
+                    PersistedItemIdentity {
+                        stable_item: stable_artifact_item_id(
+                            &package.path,
+                            PackageItemKind::Record,
+                            &record.name,
+                        ),
+                    },
+                );
+            }
+            for enumeration in &package.enums {
+                items.insert(
+                    (PackageItemKind::Enum, enumeration.item),
+                    PersistedItemIdentity {
+                        stable_item: stable_artifact_item_id(
+                            &package.path,
+                            PackageItemKind::Enum,
+                            &enumeration.name,
+                        ),
+                    },
+                );
+            }
+            for function in &package.functions {
+                items.insert(
+                    (PackageItemKind::Function, function.item),
+                    PersistedItemIdentity {
+                        stable_item: stable_artifact_item_id(
+                            &package.path,
+                            PackageItemKind::Function,
+                            &function.name,
+                        ),
+                    },
+                );
+            }
+        }
+        Self { items }
+    }
+
+    fn item_id(&self, kind: PackageItemKind, item: PackageItemId) -> Option<PackageItemId> {
+        self.items
+            .get(&(kind, item))
+            .map(|identity| identity.stable_item)
+    }
+}
+
+fn stable_artifact_package_id(package_path: &str) -> PackageId {
+    PackageId::new(stable_artifact_key_u32(&["package", package_path]))
+}
+
+fn stable_artifact_item_id(package_path: &str, kind: PackageItemKind, name: &str) -> PackageItemId {
+    PackageItemId::new(stable_artifact_key_u32(&[
+        "item",
+        package_path,
+        package_item_kind_label(kind),
+        name,
+    ]))
+}
+
+fn stable_artifact_key_u32(parts: &[&str]) -> u32 {
+    let mut hash = FNV_OFFSET_BASIS;
+    for part in parts {
+        for byte in part.as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    (hash ^ (hash >> 32)) as u32
 }
 
 type ArtifactItemNameKey = (PackageItemKind, PackageItemId, String);
@@ -1079,7 +1223,9 @@ impl<'a> PersistedInterfaceParser<'a> {
 
     fn parse(mut self) -> Result<PackageInterfaceGraph, Vec<Diagnostic>> {
         match self.next_parts() {
-            Some(parts) if parts == [PERSISTED_INTERFACE_HEADER] => {}
+            Some(parts)
+                if parts == [PERSISTED_INTERFACE_HEADER]
+                    || parts == [LEGACY_PERSISTED_INTERFACE_HEADER] => {}
             Some(_) => self.push_error("invalid package interface header"),
             None => self.push_error("empty package interface"),
         }
@@ -1522,13 +1668,22 @@ fn format_span(span: Span) -> String {
     )
 }
 
-fn format_type_info(ty: &TypeInfo, symbols: &SymbolTable) -> String {
+fn format_type_info(
+    ty: &TypeInfo,
+    symbols: &SymbolTable,
+    context: &PersistedInterfaceIdentityContext,
+) -> String {
     let mut tokens = Vec::new();
-    push_type_info_tokens(ty, symbols, &mut tokens);
+    push_type_info_tokens(ty, symbols, context, &mut tokens);
     tokens.join(" ")
 }
 
-fn push_type_info_tokens(ty: &TypeInfo, symbols: &SymbolTable, tokens: &mut Vec<String>) {
+fn push_type_info_tokens(
+    ty: &TypeInfo,
+    symbols: &SymbolTable,
+    context: &PersistedInterfaceIdentityContext,
+    tokens: &mut Vec<String>,
+) {
     match ty {
         TypeInfo::Int => tokens.push("Int".to_string()),
         TypeInfo::Bool => tokens.push("Bool".to_string()),
@@ -1544,36 +1699,48 @@ fn push_type_info_tokens(ty: &TypeInfo, symbols: &SymbolTable, tokens: &mut Vec<
         TypeInfo::PackageRecord { symbol, item } => {
             tokens.push("PackageRecord".to_string());
             tokens.push(symbols.resolve(*symbol).to_string());
-            tokens.push(item.as_u32().to_string());
+            tokens.push(
+                context
+                    .item_id(PackageItemKind::Record, *item)
+                    .unwrap_or(*item)
+                    .as_u32()
+                    .to_string(),
+            );
         }
         TypeInfo::Enum { symbol, args } => {
             tokens.push("Enum".to_string());
             tokens.push(symbols.resolve(*symbol).to_string());
-            push_type_args(args, symbols, tokens);
+            push_type_args(args, symbols, context, tokens);
         }
         TypeInfo::PackageEnum { symbol, item, args } => {
             tokens.push("PackageEnum".to_string());
             tokens.push(symbols.resolve(*symbol).to_string());
-            tokens.push(item.as_u32().to_string());
-            push_type_args(args, symbols, tokens);
+            tokens.push(
+                context
+                    .item_id(PackageItemKind::Enum, *item)
+                    .unwrap_or(*item)
+                    .as_u32()
+                    .to_string(),
+            );
+            push_type_args(args, symbols, context, tokens);
         }
         TypeInfo::List(item) => {
             tokens.push("List".to_string());
-            push_type_info_tokens(item, symbols, tokens);
+            push_type_info_tokens(item, symbols, context, tokens);
         }
         TypeInfo::Map(key, value) => {
             tokens.push("Map".to_string());
-            push_type_info_tokens(key, symbols, tokens);
-            push_type_info_tokens(value, symbols, tokens);
+            push_type_info_tokens(key, symbols, context, tokens);
+            push_type_info_tokens(value, symbols, context, tokens);
         }
         TypeInfo::Option(item) => {
             tokens.push("Option".to_string());
-            push_type_info_tokens(item, symbols, tokens);
+            push_type_info_tokens(item, symbols, context, tokens);
         }
         TypeInfo::Result(ok, err) => {
             tokens.push("Result".to_string());
-            push_type_info_tokens(ok, symbols, tokens);
-            push_type_info_tokens(err, symbols, tokens);
+            push_type_info_tokens(ok, symbols, context, tokens);
+            push_type_info_tokens(err, symbols, context, tokens);
         }
         TypeInfo::EnumConstructor {
             enum_symbol,
@@ -1584,7 +1751,13 @@ fn push_type_info_tokens(ty: &TypeInfo, symbols: &SymbolTable, tokens: &mut Vec<
             tokens.push(symbols.resolve(*enum_symbol).to_string());
             tokens.push(
                 enum_item
-                    .map(|item| item.as_u32().to_string())
+                    .map(|item| {
+                        context
+                            .item_id(PackageItemKind::Enum, item)
+                            .unwrap_or(item)
+                            .as_u32()
+                            .to_string()
+                    })
                     .unwrap_or_else(|| "-".to_string()),
             );
             tokens.push(symbols.resolve(*variant).to_string());
@@ -1593,9 +1766,9 @@ fn push_type_info_tokens(ty: &TypeInfo, symbols: &SymbolTable, tokens: &mut Vec<
             tokens.push("Function".to_string());
             tokens.push(function.params.len().to_string());
             for param in &function.params {
-                push_type_info_tokens(param, symbols, tokens);
+                push_type_info_tokens(param, symbols, context, tokens);
             }
-            push_type_info_tokens(&function.ret, symbols, tokens);
+            push_type_info_tokens(&function.ret, symbols, context, tokens);
         }
         TypeInfo::Builtin(builtin) => {
             tokens.push("Builtin".to_string());
@@ -1606,10 +1779,15 @@ fn push_type_info_tokens(ty: &TypeInfo, symbols: &SymbolTable, tokens: &mut Vec<
     }
 }
 
-fn push_type_args(args: &[TypeInfo], symbols: &SymbolTable, tokens: &mut Vec<String>) {
+fn push_type_args(
+    args: &[TypeInfo],
+    symbols: &SymbolTable,
+    context: &PersistedInterfaceIdentityContext,
+    tokens: &mut Vec<String>,
+) {
     tokens.push(args.len().to_string());
     for arg in args {
-        push_type_info_tokens(arg, symbols, tokens);
+        push_type_info_tokens(arg, symbols, context, tokens);
     }
 }
 

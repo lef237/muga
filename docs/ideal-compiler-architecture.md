@@ -621,7 +621,7 @@ emit executable/library
 The current codebase should move toward the ideal in this order:
 
 1. Add user-defined enum identity to the semantic model.
-2. Introduce stable `ItemRef` / `InterfaceTypeRef` for interface design, without persisting current session-local IDs.
+2. Complete stable `ItemRef` / `InterfaceTypeRef` for interface design. The current `.mgi` v2 text no longer writes session-local package/item IDs, but it still maps through the existing `TypeInfo` model instead of a first-class interface type model.
 3. Introduce stable `VariantRef` and include variants in the interface model.
 4. Define public API hash vs recheck fingerprint before writing persisted interfaces.
 5. Replace compiler-known `Option` / `Result` special cases with prelude enum metadata where possible.
@@ -643,7 +643,7 @@ Critical current risks to eliminate:
 
 - resolver and typechecker still build scopes independently
 - `run` compiles through old untyped HIR while `compile_typed_*` produces a separate typed HIR product
-- package interfaces currently contain session-local IDs and compiler-owned type structs
+- package interfaces still use session-local IDs and compiler-owned type structs in memory, even though `.mgi` v2 maps stable artifact identities back into fresh session IDs when loaded
 - builtin type rules and runtime behavior are still implemented separately
 - bytecode match lowering still assumes compiler-known enum shapes
 

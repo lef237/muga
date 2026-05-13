@@ -22,9 +22,9 @@ Implemented language surface:
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for compiler-known `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
 - enum diagnostics, package enum visibility coverage, imported `alias::Enum::Variant` constructors/patterns, package enum call-target identity, and stale enum interface validation
-- deterministic v1 package interface text persistence, content hashes, direct dependency metadata, artifact path naming, file round-trip, and loaded-interface validation for public records/functions/enums
+- deterministic v2 package interface text persistence with stable artifact package/item IDs, content hashes, direct dependency metadata, artifact path naming, file round-trip, and loaded-interface validation for public records/functions/enums
 - loaded package interfaces and discovered `.mgi` artifacts can act as the dependency boundary for downstream typed checking, including transitive public-signature type dependencies, without reading dependency implementation bodies
-- independently generated `.mgi` artifacts are remapped into a fresh session-local package/item identity namespace when loaded together, so one artifact root can safely contain artifacts from separate provider builds
+- independently generated `.mgi` artifacts are remapped from stable artifact identities into a fresh session-local package/item identity namespace when loaded together, so one artifact root can safely contain artifacts from separate provider builds
 - package check cache keys combine entry package source hashes with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts for dependency-body-free package checking
 - `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes the entry `.mgc` check cache; lower-level `emit-check-cache` validates against `.mgi` artifacts before writing `.mgc`

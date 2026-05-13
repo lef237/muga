@@ -1659,15 +1659,22 @@ fn package_interfaces_round_trip_public_records_functions_and_enums() {
         .expect("typed package compilation should pass");
     let interfaces = program.package_interfaces();
     let text = interfaces.to_persisted_text(&program.symbols);
-    assert!(text.starts_with("muga-package-interface-v1\n"), "{text}");
+    assert!(text.starts_with("muga-package-interface-v2\n"), "{text}");
     assert!(text.contains("\nhash\t"), "{text}");
 
     let mut symbols = program.symbols.clone();
     let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
         .expect("persisted interfaces should parse");
-    assert_eq!(loaded, interfaces);
+    assert_eq!(
+        loaded.stable_hash(&symbols),
+        interfaces.stable_hash(&program.symbols)
+    );
+    assert!(
+        loaded.package_by_path("util::states").is_some(),
+        "{loaded:#?}"
+    );
 
-    let diagnostics = program.validate_package_references_against_interfaces(&loaded);
+    let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
     assert!(diagnostics.is_empty(), "{diagnostics:#?}");
 }
 
@@ -1686,7 +1693,7 @@ fn package_interface_hash_is_stable_for_same_interface() {
     let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
         .expect("persisted interfaces should parse");
     assert_eq!(
-        loaded.stable_hash(&program.symbols),
+        loaded.stable_hash(&symbols),
         interfaces.stable_hash(&program.symbols)
     );
 }
@@ -1772,15 +1779,18 @@ fn package_interface_file_round_trip_preserves_type_info_identities() {
         .expect("interface file should load");
     let _ = fs::remove_file(&path);
 
-    assert_eq!(loaded, interfaces);
-    let users = program
-        .package_graph
-        .package_id("util::users")
-        .expect("users package should exist");
-    let user_item = program
-        .package_graph
-        .item_id(users, "User", muga::package::PackageItemKind::Record)
-        .expect("User item should exist");
+    assert_eq!(
+        loaded.stable_hash(&symbols),
+        interfaces.stable_hash(&program.symbols)
+    );
+    let users = loaded
+        .package_by_path("util::users")
+        .expect("users package should exist")
+        .package;
+    let user_item = loaded
+        .record_by_name(users, "User")
+        .expect("User record should exist")
+        .item;
     let birthday = loaded
         .function_by_name(users, "birthday")
         .expect("birthday should be exported");
@@ -1823,7 +1833,7 @@ fn typed_hir_validates_reloaded_package_interfaces() {
     let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
         .expect("persisted interfaces should parse");
 
-    muga::compile_typed_path_against_interfaces(path, &loaded)
+    muga::compile_typed_path_against_loaded_interfaces(path, &loaded, &symbols)
         .expect("typed package compilation against loaded interfaces should pass");
 }
 
@@ -2491,8 +2501,18 @@ fn interface_artifact_checking_loads_transitive_public_type_interfaces() {
     );
     let facade_artifact =
         muga::interface::PackageInterfaceGraph::persisted_file_path(&artifact_root, "api::facade");
-    let facade_text = fs::read_to_string(facade_artifact).expect("facade artifact should exist");
+    let facade_text = fs::read_to_string(&facade_artifact).expect("facade artifact should exist");
     assert!(facade_text.contains("\ndependency\tmodel::users\n"));
+    let mut single_symbols = muga::symbol::SymbolTable::default();
+    let single_artifact = muga::interface::PackageInterfaceGraph::read_persisted_file(
+        &facade_artifact,
+        &mut single_symbols,
+    )
+    .expect("single-package interface artifact should parse before dependency remapping");
+    assert!(
+        single_artifact.package_by_path("api::facade").is_some(),
+        "{single_artifact:#?}"
+    );
     let consumer_root = temp_package_root("interface-artifact-transitive-consumer");
     let consumer_entry = write_package_file(
         &consumer_root,
@@ -3179,9 +3199,9 @@ fn typed_hir_rejects_reloaded_stale_enum_interface_shape() {
 
     let text = interfaces.to_persisted_text(&program.symbols);
     let mut symbols = program.symbols.clone();
-    let loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
+    let _loaded = muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut symbols)
         .expect("persisted interfaces should parse");
-    let diagnostics = program.validate_package_references_against_interfaces(&loaded);
+    let diagnostics = program.validate_package_references_against_interfaces(&interfaces);
     let diagnostic = diagnostics
         .iter()
         .find(|diagnostic| diagnostic.code == "PK017")
