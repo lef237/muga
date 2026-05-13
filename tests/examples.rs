@@ -1084,6 +1084,18 @@ pkg fn helper(value: Int): Int {
         .package_graph
         .module_id(package, "main.muga")
         .expect("main module should exist");
+    let helper_module = loaded
+        .package_graph
+        .module_id(package, "helper.muga")
+        .expect("helper module should exist");
+    let helper_item = loaded
+        .package_graph
+        .item_id_in_module(
+            helper_module,
+            "helper",
+            muga::package::PackageItemKind::Function,
+        )
+        .expect("helper item should exist");
     let file = loaded
         .packages
         .iter()
@@ -1104,6 +1116,16 @@ pkg fn helper(value: Int): Int {
             .any(|diagnostic| diagnostic.code == "T002"),
         "{:#?}",
         output.diagnostics
+    );
+    assert!(
+        output.calls.iter().any(|call| {
+            matches!(
+                call.callee,
+                muga::typing::TypedCalleeInfo::PackageItem { item, .. } if item == helper_item
+            )
+        }),
+        "{:#?}",
+        output.calls
     );
 }
 
