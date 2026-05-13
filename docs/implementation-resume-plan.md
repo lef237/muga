@@ -94,14 +94,15 @@ Ada
 - [x] `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts through the package-aware check path without reading dependency implementation bodies.
 - [x] `muga emit-interface` and `muga emit-check-cache` write `.mgi` and `.mgc` artifacts for explicit artifact-backed checks.
 - [x] `muga emit-interface` emits all reachable package interfaces when `--package` is omitted, or one selected package when `--package` is supplied.
-- [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before delegating valid programs to the legacy typed checking path.
+- [x] library-only package-aware checking validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking.
 - [x] package-aware checking builds source and per-module signature environments from the unflattened package graph, preserving package item identity for records/enums/functions, validating generic enum arity, and recording module/same-package/import visibility.
-- [x] package-aware checking runs an initial module body typecheck pass against the module signature environments before the legacy typed HIR path, and retains the per-module typecheck outputs.
+- [x] package-aware checking runs an initial module body typecheck pass against the module signature environments and retains the per-module typecheck outputs.
 - [x] retained package-aware module typecheck outputs preserve package binding identity needed by typed HIR lowering.
 - [x] package-aware checking exposes per-module typed HIR outputs lowered from retained module typecheck outputs.
 - [x] package-aware checking can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies.
 - [x] package-aware check results expose package-wide typed HIR aggregated from per-module outputs without using the legacy flattened typed path.
 - [x] interface artifact emission uses the package-aware typed HIR aggregate instead of the legacy flattened typed path.
+- [x] loaded/interface-artifact typed compilation returns package-aware typed HIR without loading dependency implementation bodies.
 - [ ] default CLI checking/execution still uses package flattening and dependency source loading.
 
 ### Diagnostics
@@ -163,14 +164,14 @@ Ada
 - CLI `emit-interface` can emit all reachable interfaces without manually naming each dependency package.
 - CLI `emit-artifacts` emits reachable `.mgi` interfaces and the entry `.mgc` check cache in one explicit artifact-root workflow.
 - The package loader can now return unflattened package files with the same package graph/export metadata used by the legacy flattening path.
-- A library-only package-aware check entrypoint validates package boundary, import, visibility, and public-signature rules directly over the unflattened package graph before delegating valid programs to the legacy typed checking path.
+- A library-only package-aware check entrypoint validates package boundary, import, visibility, and public-signature rules directly over the unflattened package graph before package-aware module checking.
 - The package-aware source and module signature environments resolve same-package and imported public record/enum/function signatures from the unflattened graph while preserving `PackageItemId` identities and source-visible module names.
-- The package-aware check entrypoint now runs module body typechecking with those module signatures and retains per-module typecheck outputs before falling through to the legacy typed HIR path.
+- The package-aware check entrypoint now runs module body typechecking with those module signatures and retains per-module typecheck outputs.
 - Retained package-aware module typecheck outputs now carry package binding identity through typed HIR lowering, so module-local lowering can preserve package item call targets without relying on flattened AST metadata.
 - The package-aware API now exposes those lowered per-module typed HIR programs alongside each module typecheck output.
 - The package-aware API can now load dependency signatures from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source.
 - Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
-- CLI `check --artifact-root` and interface artifact emission now use package-aware paths.
+- CLI `check --artifact-root`, interface artifact emission, and loaded/interface-artifact typed compilation now use package-aware paths.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
 - Full incremental artifact reuse and package-aware execution without the flattened typed path are still not implemented.
@@ -199,7 +200,7 @@ Reasoning:
 - CLI artifact generation can now produce `.mgi` and `.mgc` for the explicit workflow.
 - `muga emit-artifacts` now combines reachable interface emission and entry check-cache emission.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` semantics ambiguous.
-- The remaining boundary pieces are broadening package-aware body typechecking coverage, producing typed HIR without flattening, loading interface signatures as semantic inputs instead of AST stubs, real artifact storage/reuse, dependency/lockfile-driven project configuration, and eventually making interface-backed checking the normal package path.
+- The remaining boundary pieces are broadening package-aware body typechecking coverage, feeding package-aware typed HIR into lowering/execution, loading interface signatures as semantic inputs instead of AST stubs, real artifact storage/reuse, dependency/lockfile-driven project configuration, and eventually making interface-backed checking the normal package path.
 
 ## Requirement Decisions For The Next Slice
 

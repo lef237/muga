@@ -285,8 +285,8 @@ pub fn compile_typed_path_against_loaded_interfaces(
     interfaces: &PackageInterfaceGraph,
     interface_symbols: &symbol::SymbolTable,
 ) -> Result<TypedHirProgram, Vec<Diagnostic>> {
-    let loaded = package::load_from_entry_against_interfaces(path, interfaces, interface_symbols)?;
-    compile_loaded_typed_program_with_interface_symbols(loaded, interfaces, interface_symbols)
+    check_package_aware_path_against_loaded_interfaces(path, interfaces, interface_symbols)
+        .map(|check| check.typed_program)
 }
 
 pub fn compile_typed_path_against_interface_artifacts(
@@ -443,21 +443,12 @@ fn compile_loaded_typed_program(
     loaded: package::LoadedProgram,
     interfaces: Option<&PackageInterfaceGraph>,
 ) -> Result<TypedHirProgram, Vec<Diagnostic>> {
-    compile_loaded_typed_program_inner(loaded, interfaces, None)
-}
-
-fn compile_loaded_typed_program_with_interface_symbols(
-    loaded: package::LoadedProgram,
-    interfaces: &PackageInterfaceGraph,
-    interface_symbols: &symbol::SymbolTable,
-) -> Result<TypedHirProgram, Vec<Diagnostic>> {
-    compile_loaded_typed_program_inner(loaded, Some(interfaces), Some(interface_symbols))
+    compile_loaded_typed_program_inner(loaded, interfaces)
 }
 
 fn compile_loaded_typed_program_inner(
     loaded: package::LoadedProgram,
     interfaces: Option<&PackageInterfaceGraph>,
-    interface_symbols: Option<&symbol::SymbolTable>,
 ) -> Result<TypedHirProgram, Vec<Diagnostic>> {
     let resolve_output = resolver::resolve_program(&loaded.program);
     let type_output = typing::typecheck_program(&loaded.program);
@@ -466,16 +457,8 @@ fn compile_loaded_typed_program_inner(
     if diagnostics.is_empty() {
         let program = typed_hir::lower(&loaded.program, &type_output, loaded.package_graph);
         let generated_interfaces;
-        let normalized_interfaces;
         let interfaces = if let Some(interfaces) = interfaces {
-            if let Some(interface_symbols) = interface_symbols {
-                let mut symbols = program.symbols.clone();
-                normalized_interfaces =
-                    interfaces.reintern_symbols(interface_symbols, &mut symbols);
-                &normalized_interfaces
-            } else {
-                interfaces
-            }
+            interfaces
         } else {
             generated_interfaces = program.package_interfaces();
             &generated_interfaces
