@@ -954,6 +954,11 @@ pkg fn helper(): Int {
         local.source,
         muga::package_signature::PackageSignatureSource::ModuleLocal
     );
+    let local_signature = main_env
+        .function_signature(&result.signatures, "local")
+        .expect("local function signature should be available");
+    assert_eq!(local_signature.name, "local");
+    assert_eq!(local_signature.ret, Some(muga::types::TypeInfo::Int));
 
     let helper = main_env
         .function("helper")
@@ -963,6 +968,10 @@ pkg fn helper(): Int {
         helper.source,
         muga::package_signature::PackageSignatureSource::SamePackage
     );
+    let helper_signature = main_env
+        .function_signature(&result.signatures, "helper")
+        .expect("helper function signature should be available");
+    assert_eq!(helper_signature.ret, Some(muga::types::TypeInfo::Int));
 
     let visible = main_env
         .record("Visible")
@@ -972,6 +981,10 @@ pkg fn helper(): Int {
         visible.source,
         muga::package_signature::PackageSignatureSource::SamePackage
     );
+    let visible_signature = main_env
+        .record_signature(&result.signatures, "Visible")
+        .expect("Visible record signature should be available");
+    assert_eq!(visible_signature.name, "Visible");
     assert!(
         main_env.record("Hidden").is_none(),
         "module-private helper record should not be visible from main"
@@ -1019,6 +1032,16 @@ fn package_module_signature_environment_tracks_imported_exports() {
             alias: "users".to_string(),
             package: users,
         }
+    );
+    let user_signature = facade_env
+        .record_signature(&result.signatures, "users::User")
+        .expect("imported User signature should be available");
+    assert_eq!(user_signature.name, "User");
+    assert!(
+        user_signature
+            .fields
+            .iter()
+            .any(|field| field.name == "age" && field.ty == muga::types::TypeInfo::Int)
     );
 }
 
