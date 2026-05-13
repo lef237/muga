@@ -135,7 +135,7 @@ pub fn compile_typed_path(path: &Path) -> Result<TypedHirProgram, Vec<Diagnostic
         return check_package_aware_path(path).map(|check| check.typed_program);
     }
     let loaded = package::load_flattened_from_entry(path)?;
-    compile_loaded_typed_program(loaded)
+    compile_flattened_typed_program(loaded)
 }
 
 pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Diagnostic>> {
@@ -461,7 +461,7 @@ pub fn check_package_aware_path_against_cached_artifact_root(
     )
 }
 
-fn compile_loaded_typed_program(
+fn compile_flattened_typed_program(
     loaded: package::LoadedFlattenedProgram,
 ) -> Result<TypedHirProgram, Vec<Diagnostic>> {
     let resolve_output = resolver::resolve_program(&loaded.program);
