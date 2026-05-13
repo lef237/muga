@@ -128,7 +128,7 @@ pub fn check_package_aware_path(path: &Path) -> Result<PackageAwareCheck, Vec<Di
     }
     let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
     let module_checks = typecheck_loaded_package_modules(&packages, &signatures)?;
-    let typed_program = entry_typed_program(&packages, &module_checks)?;
+    let typed_program = package_typed_program(&packages, &module_checks)?;
     Ok(PackageAwareCheck {
         packages,
         signatures,
@@ -153,7 +153,7 @@ pub fn check_package_aware_path_against_loaded_interfaces(
     }
     let signatures = package_signature::PackageSignatureEnvironment::from_loaded_graph(&packages)?;
     let module_checks = typecheck_loaded_package_modules(&packages, &signatures)?;
-    let typed_program = entry_typed_program(&packages, &module_checks)?;
+    let typed_program = package_typed_program(&packages, &module_checks)?;
     Ok(PackageAwareCheck {
         packages,
         signatures,
@@ -209,23 +209,28 @@ fn typecheck_loaded_package_modules(
     }
 }
 
-fn entry_typed_program(
+fn package_typed_program(
     packages: &package::LoadedPackageGraph,
     module_checks: &[PackageModuleCheck],
 ) -> Result<TypedHirProgram, Vec<Diagnostic>> {
-    module_checks
+    let entry_exists = module_checks.iter().any(|check| {
+        check.package == packages.entry_package && check.module == packages.entry_module
+    });
+    if !entry_exists {
+        return Err(vec![Diagnostic::new(
+            "PK018",
+            "entry module was not typechecked in package-aware checking",
+            Default::default(),
+        )]);
+    }
+    let modules = module_checks
         .iter()
-        .find(|check| {
-            check.package == packages.entry_package && check.module == packages.entry_module
-        })
         .map(|check| check.typed_program.clone())
-        .ok_or_else(|| {
-            vec![Diagnostic::new(
-                "PK018",
-                "entry module was not typechecked in package-aware checking",
-                Default::default(),
-            )]
-        })
+        .collect::<Vec<_>>();
+    Ok(typed_hir::merge_modules(
+        &modules,
+        packages.package_graph.clone(),
+    ))
 }
 
 fn attach_package_items_to_module_typed_program(

@@ -100,8 +100,7 @@ Ada
 - [x] retained package-aware module typecheck outputs preserve package binding identity needed by typed HIR lowering.
 - [x] package-aware checking exposes per-module typed HIR outputs lowered from retained module typecheck outputs.
 - [x] package-aware checking can load dependency signatures from in-memory or persisted package interfaces without reading dependency source bodies.
-- [x] package-aware check results expose entry-module typed HIR without using the legacy flattened typed path.
-- [ ] full package-wide typed HIR aggregation without flattening is not implemented.
+- [x] package-aware check results expose package-wide typed HIR aggregated from per-module outputs without using the legacy flattened typed path.
 - [ ] default CLI checking/execution still uses package flattening and dependency source loading.
 
 ### Diagnostics
@@ -169,15 +168,15 @@ Ada
 - Retained package-aware module typecheck outputs now carry package binding identity through typed HIR lowering, so module-local lowering can preserve package item call targets without relying on flattened AST metadata.
 - The package-aware API now exposes those lowered per-module typed HIR programs alongside each module typecheck output.
 - The package-aware API can now load dependency signatures from in-memory or persisted package interfaces, letting package-aware module checks run without dependency implementation source.
-- Package-aware check results now expose the entry module typed HIR from the unflattened module check output, while package-wide typed HIR aggregation remains deferred.
+- Package-aware check results now expose package-wide typed HIR aggregated from per-module outputs, with local binding/statement/expression IDs and symbols remapped into one typed HIR program.
 - CLI `check --artifact-root` now uses that package-aware artifact path.
 - Default CLI package checking and execution still read and flatten dependency bodies.
 - Project-mode artifact-root config is intentionally deferred until dependency declarations, lockfiles, and a package-aware project driver exist.
-- Full incremental artifact reuse and full typed HIR generation without the flattened typed path are still not implemented.
+- Full incremental artifact reuse and package-aware execution without the flattened typed path are still not implemented.
 
 ## Recommended Next Implementation
 
-The next implementation theme remains package-aware checking without flattening while keeping artifact roots explicit on the CLI. The current package-aware path validates package boundary rules, builds source/module signatures from the unflattened graph, runs an initial module body check, and exposes entry/per-module typed HIR without flattening. Full package-wide typed HIR aggregation still needs a deliberate identity-remapping design.
+The next implementation theme remains package-aware checking without flattening while keeping artifact roots explicit on the CLI. The current package-aware path validates package boundary rules, builds source/module signatures from the unflattened graph, runs an initial module body check, and exposes per-module plus package-wide typed HIR without flattening. The remaining execution path still needs to move off legacy flattening.
 
 Reasoning:
 
@@ -263,10 +262,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 12. Combined artifact emission | Keep artifact roots explicit on the CLI and add `emit-artifacts` to write reachable `.mgi` plus entry `.mgc` in one command. | `src/main.rs`, `src/lib.rs`, tests/docs | Done | Low |
 | 13. Transitive interface artifact reuse | Persist direct dependencies in `.mgi`, load transitive public-signature type interfaces, and include the loaded interface set in `.mgc` keys. | `src/interface.rs`, `src/package.rs`, `src/cache.rs`, tests/docs | Done | High |
 | 14. Unflattened package graph loader | Return package files plus package/module/item/export metadata before flattening so resolver/typechecker migration has a stable input. | `src/package.rs`, tests/docs | Done | Medium |
-| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module typecheck outputs, entry/per-module typed HIR, and interface-backed dependency signatures now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and design full package-wide typed HIR aggregation without flattening. | package/resolver/typing/lib/tests | 4-8 days | High |
+| 15. Package-aware checking without flattening | Started: library-only package-aware boundary checking, source/module signature collection, retained module typecheck outputs, package-wide typed HIR aggregation, and interface-backed dependency signatures now run over the unflattened package graph while keeping artifact semantics explicit. Remaining work is to broaden module body checking and move package-aware execution off the legacy flattened path. | package/resolver/typing/lib/tests | 4-8 days | High |
 | 16. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Implement only after user-defined enum identity is stable. | spec docs first, then parser/typechecker/HIR/runtime | 2-4 days | High |
 
-The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should broaden module body checking coverage and prepare a package-wide typed HIR aggregation design with explicit identity remapping.
+The safest immediate code slice remains Slice 15: continue moving semantic checking onto the unflattened package graph while preserving the explicit `.mgi` / `.mgc` workflow. The next sub-slice should broaden module body checking coverage and start plumbing package-aware typed HIR toward execution/lowering boundaries.
 
 ## Test Plan For The Next Code Slice
 
@@ -278,7 +277,7 @@ Package-aware checking:
 - [x] `package_aware_checking_rejects_private_cross_package_references`
 - [x] `package_aware_checking_reports_package_qualified_type_errors`
 - [x] `package_aware_checking_reuses_unflattened_package_graph`
-- [x] `package_aware_entry_typed_program_preserves_public_interface_items`
+- [x] `package_aware_typed_program_preserves_public_interface_items`
 - [x] `package_aware_checking_exposes_module_type_outputs`
 - [x] `package_module_typed_hir_lowering_preserves_package_binding_identity`
 - [x] `package_aware_checking_can_use_loaded_interface_signatures_without_dependency_source`
