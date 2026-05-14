@@ -1,0 +1,14 @@
+package api::artifact_facade
+
+import model::artifact_user as users
+
+pub fn default_user(): users::User {
+  users::User {
+    name: "Ada"
+    age: 21
+  }
+}
+
+pub fn age(user: users::User): Int {
+  user.age
+}
