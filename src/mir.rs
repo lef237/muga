@@ -143,6 +143,7 @@ pub enum Expr {
     Int(IntExpr),
     Bool(BoolExpr),
     String(StringExpr),
+    Unit(UnitExpr),
     Ident(IdentExpr),
     ListLit(ListLitExpr),
     Index(IndexExpr),
@@ -165,6 +166,7 @@ impl Expr {
             Self::Int(expr) => expr.span,
             Self::Bool(expr) => expr.span,
             Self::String(expr) => expr.span,
+            Self::Unit(expr) => expr.span,
             Self::Ident(expr) => expr.span,
             Self::ListLit(expr) => expr.span,
             Self::Index(expr) => expr.span,
@@ -198,6 +200,11 @@ pub struct BoolExpr {
 #[derive(Clone, Debug)]
 pub struct StringExpr {
     pub value: String,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct UnitExpr {
     pub span: Span,
 }
 
@@ -511,6 +518,7 @@ impl TypedLowerer<'_> {
                 value: value.clone(),
                 span: expr.span,
             }),
+            typed_hir::ExprKind::Unit => Expr::Unit(UnitExpr { span: expr.span }),
             typed_hir::ExprKind::Ident(ident) => self.lower_ident_expr(ident, expr.span),
             typed_hir::ExprKind::ListLit(list) => Expr::ListLit(ListLitExpr {
                 items: list

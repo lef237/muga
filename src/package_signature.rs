@@ -584,6 +584,7 @@ impl<'a> SignatureCollector<'a> {
             TypeExpr::Int => TypeInfo::Int,
             TypeExpr::Bool => TypeInfo::Bool,
             TypeExpr::String => TypeInfo::String,
+            TypeExpr::Unit => TypeInfo::Unit,
             TypeExpr::Named(name) if type_params.iter().any(|param| param == name) => {
                 let symbol = self.symbol(name);
                 TypeInfo::GenericParam(symbol)
@@ -866,6 +867,7 @@ impl<'a> SignatureCollector<'a> {
             TypeInfo::Int
             | TypeInfo::Bool
             | TypeInfo::String
+            | TypeInfo::Unit
             | TypeInfo::Builtin(_)
             | TypeInfo::Unknown
             | TypeInfo::Error => ty.clone(),

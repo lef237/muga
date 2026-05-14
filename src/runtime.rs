@@ -17,6 +17,7 @@ pub enum Value {
     Int(i64),
     Bool(bool),
     String(String),
+    Unit,
     List(Vec<Value>),
     Map(MapValue),
     Enum(EnumValue),
@@ -121,6 +122,7 @@ impl fmt::Display for Value {
             Self::Int(value) => write!(f, "{value}"),
             Self::Bool(value) => write!(f, "{value}"),
             Self::String(value) => write!(f, "{value}"),
+            Self::Unit => write!(f, "()"),
             Self::List(items) => {
                 write!(f, "[")?;
                 for (index, item) in items.iter().enumerate() {
@@ -318,6 +320,7 @@ fn execute_chunk(
             Instruction::LoadInt(value) => stack.push(Value::Int(*value)),
             Instruction::LoadBool(value) => stack.push(Value::Bool(*value)),
             Instruction::LoadString(value) => stack.push(Value::String(value.clone())),
+            Instruction::LoadUnit => stack.push(Value::Unit),
             Instruction::MakeRecord {
                 type_name,
                 fields,
@@ -789,7 +792,8 @@ fn call_builtin(
                         .push_str(&value.to_string());
                     Ok(value)
                 }
-                Value::List(_)
+                Value::Unit
+                | Value::List(_)
                 | Value::Map(_)
                 | Value::Enum(_)
                 | Value::Record(_)
@@ -811,7 +815,8 @@ fn call_builtin(
                     output.push('\n');
                     Ok(value)
                 }
-                Value::List(_)
+                Value::Unit
+                | Value::List(_)
                 | Value::Map(_)
                 | Value::Enum(_)
                 | Value::Record(_)

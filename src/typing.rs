@@ -90,6 +90,7 @@ enum Type {
     Int,
     Bool,
     String,
+    Unit,
     Record(Symbol, Vec<Type>),
     Enum(Symbol, Vec<Type>),
     GenericParam(Symbol),
@@ -480,6 +481,7 @@ impl TypeChecker {
             TypeInfo::Int => Type::Int,
             TypeInfo::Bool => Type::Bool,
             TypeInfo::String => Type::String,
+            TypeInfo::Unit => Type::Unit,
             TypeInfo::GenericParam(symbol) => {
                 Type::GenericParam(self.symbol(signatures.symbols.resolve(*symbol)))
             }
@@ -746,6 +748,7 @@ impl TypeChecker {
             Expr::Int(_) => self.apply_expected(Type::Int, expected, expr.span()),
             Expr::Bool(_) => self.apply_expected(Type::Bool, expected, expr.span()),
             Expr::String(_) => self.apply_expected(Type::String, expected, expr.span()),
+            Expr::Unit(_) => self.apply_expected(Type::Unit, expected, expr.span()),
             Expr::Ident(expr) => {
                 let name = self.symbol(&expr.name);
                 if let Some(binding) = self.lookup(name).cloned() {
@@ -2285,6 +2288,7 @@ impl TypeChecker {
             Expr::Int(_) => Some(Type::Int),
             Expr::Bool(_) => Some(Type::Bool),
             Expr::String(_) => Some(Type::String),
+            Expr::Unit(_) => Some(Type::Unit),
             _ => None,
         }
     }
@@ -3069,6 +3073,7 @@ impl TypeChecker {
             TypeExpr::Int => Type::Int,
             TypeExpr::Bool => Type::Bool,
             TypeExpr::String => Type::String,
+            TypeExpr::Unit => Type::Unit,
             TypeExpr::Named(name) => {
                 let symbol = self.symbol(name);
                 if type_params.contains(&symbol) {
@@ -3261,6 +3266,7 @@ impl TypeChecker {
             (Type::Int, Type::Int) => Ok(Type::Int),
             (Type::Bool, Type::Bool) => Ok(Type::Bool),
             (Type::String, Type::String) => Ok(Type::String),
+            (Type::Unit, Type::Unit) => Ok(Type::Unit),
             (Type::Record(left_name, left_args), Type::Record(right_name, right_args))
                 if left_name == right_name && left_args.len() == right_args.len() =>
             {
@@ -3376,6 +3382,7 @@ impl TypeChecker {
             Type::Int => TypeInfo::Int,
             Type::Bool => TypeInfo::Bool,
             Type::String => TypeInfo::String,
+            Type::Unit => TypeInfo::Unit,
             Type::Record(symbol, args) => {
                 let args = args.iter().map(|arg| self.type_info_for(arg)).collect();
                 if let Some(item) = self.package_record_items.get(&symbol).copied() {
@@ -3681,6 +3688,7 @@ impl Type {
             Self::Int => "Int",
             Self::Bool => "Bool",
             Self::String => "String",
+            Self::Unit => "Unit",
             Self::Record(_, _) => "Record",
             Self::Enum(_, _) => "Enum",
             Self::GenericParam(_) => "Type parameter",
@@ -3841,7 +3849,7 @@ fn collect_calls_in_expr(
     symbols: &mut SymbolTable,
 ) {
     match expr {
-        Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Ident(_) => {}
+        Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Unit(_) | Expr::Ident(_) => {}
         Expr::ListLit(expr) => {
             for item in &expr.items {
                 collect_calls_in_expr(item, local_names, calls, symbols);

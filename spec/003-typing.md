@@ -17,6 +17,7 @@ The minimal v1 built-in types are:
 - `Int`
 - `Bool`
 - `String`
+- `Unit`
 
 In addition, v1 introduces:
 
@@ -36,6 +37,7 @@ non_function_type  := type_primary type_args?
 type_primary       := "Int"
                     | "Bool"
                     | "String"
+                    | "Unit"
                     | IDENT
 type_args          := "[" type_expr_list "]"
 type_expr_list     := type_expr ("," type_expr)*
@@ -49,6 +51,9 @@ Examples:
 - `List[Int]`
 - `Map[String, Int]`
 - `Option[User]`
+- `Result[Unit, IOError]`
+
+`Unit` has exactly one source value, written `()`. It is the preferred success value for effect-only fallible APIs such as future file writes, closes, and directory operations: `Result[Unit, E]`.
 
 The v1 target includes a restricted generics MVP.
 

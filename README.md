@@ -168,6 +168,7 @@ Implemented:
 
 - lexer, parser, resolver, typechecker, typed HIR lowering, MIR lowering, bytecode compilation, and VM runtime
 - `check` for front-end validation and `run` for VM execution
+- `Unit` type with the `()` literal for effect-only success values
 - `print` / `println` prelude builtins for `Int`, `Bool`, and `String`
 - records, field access, `record.with(...)`, chained calls, package-qualified chained calls, arrow function types, local binding annotations, and local bidirectional inference for selected higher-order cases
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
@@ -211,7 +212,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With generic records/functions, `Result` propagation, first string helpers, and explicit scalar formatting now landed, the next priority is keeping diagnostics and docs/specs/samples aligned before broadening into larger runtime work.
+The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With generic records/functions, `Result` propagation, first string helpers, explicit scalar formatting, and `Unit` now landed, the next priority is the smallest practical `std::io` / `std::fs` slice.
 
 Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad collection APIs, and full incremental project artifact reuse remain deferred. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
 
@@ -236,6 +237,7 @@ Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad co
 - [samples/string_format_helpers.muga](./samples/string_format_helpers.muga) (runnable sample for explicit `to_string()` plus `String.concat()`)
 - [samples/string_parse_int.muga](./samples/string_parse_int.muga) (runnable sample for `String.parse_int()` and `try` propagation)
 - [samples/string_parse_bool.muga](./samples/string_parse_bool.muga) (runnable sample for `String.parse_bool()` and `try` propagation)
+- [samples/unit_result.muga](./samples/unit_result.muga) (runnable sample for `Unit` as a `Result` success value)
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)

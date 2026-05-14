@@ -1,6 +1,6 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, CLI source-compatible default run coverage around artifact generation, user-defined generic records/functions, prefix `try expr` `Result` propagation, artifact/control-flow hardening for `try`, and the first `String` helper builtin slices.
+Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, CLI source-compatible default run coverage around artifact generation, user-defined generic records/functions, prefix `try expr` `Result` propagation, artifact/control-flow hardening for `try`, the first `String` helper builtin slices, and `Unit` / `()` for effect-only success values.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
@@ -190,6 +190,7 @@ Ada
 - [x] prefix `try expr` `Result` propagation is implemented and hardened for source, nested control flow, closures, and artifact-backed dependency execution.
 - [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`.
 - [x] first explicit formatting helpers are implemented: `to_string` for `Int`, `Bool`, and `String`.
+- [x] `Unit` and the `()` literal are implemented through parser, typechecker, typed HIR, MIR, bytecode/runtime, package interfaces, and `.mgb` implementation artifacts.
 
 ## Architecture Facts To Keep In Mind
 
@@ -199,6 +200,7 @@ Ada
 - `Option[T]` and `Result[T, E]` remain compiler-known enum-like types for now; user-defined enums use a parallel source-level enum model.
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.
+- Runtime `Unit` is a first-class value and should be used as the success payload for effect-only `Result` APIs.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
 - Package interfaces now have a deterministic v2 text format with stable artifact package/item IDs and file round-trip helpers.
 - Loaded package interface summaries can now act as the downstream dependency boundary for typed checking.
@@ -296,8 +298,9 @@ Estimates are in focused engineering days for someone already familiar with this
 | 26. String receiver diagnostic hardening | Keep string-helper receiver inference for unannotated parameters while reporting targeted `T006` diagnostics for concrete non-`String` receivers across unary, predicate, transform, slicing, and parse helpers. | `src/typing.rs`, `tests/examples.rs`, docs | Done | Low |
 | 27. `try` expression diagnostic hardening | Report targeted `T023` diagnostics for obvious non-`Result` `try` operands while preserving expected-type inference for `try Result::Ok(...)` and similar constructor-heavy expressions. | `src/typing.rs`, `tests/examples.rs`, docs | Done | Low |
 | 28. Explicit scalar formatting helpers | Add `to_string` for `Int`, `Bool`, and `String` plus `String.concat(other): String` as the first formatting primitive, without implicit conversion, interpolation, template formatting, or builder APIs. Cover source, ambiguity diagnostics, samples, and artifact-backed dependency execution. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
+| 29. `Unit` value/type foundation | Add `Unit` and `()` so effect-only APIs can return `Result[Unit, E]` without inventing meaningless success `Bool`/`Int` values. Persist `Unit` through public package interfaces and `.mgb` bytecode artifacts. | parser/types/typing/typed HIR/MIR/bytecode/runtime/interface/artifacts/tests/docs | Done | Low |
 
-The next deferred string/API decisions are intentionally explicit: prefer `String.byte_len(): Int` only when byte-oriented APIs need it, keep future range syntax or substring aliases aligned with `slice_chars`, reserve grapheme-cluster APIs until a Unicode segmentation dependency/versioning policy exists, keep fallible string helpers returning `Result[_, String]` until multiple standard-library APIs need a shared richer error type, and defer richer formatting templates/interpolation/builders until concrete formatting use cases justify their shape. Remaining low-risk hardening should focus on generic/interface diagnostics before choosing the next practical standard-library slice. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
+The next deferred string/API decisions are intentionally explicit: prefer `String.byte_len(): Int` only when byte-oriented APIs need it, keep future range syntax or substring aliases aligned with `slice_chars`, reserve grapheme-cluster APIs until a Unicode segmentation dependency/versioning policy exists, keep fallible string helpers returning `Result[_, String]` until multiple standard-library APIs need a shared richer error type, and defer richer formatting templates/interpolation/builders until concrete formatting use cases justify their shape. The next practical standard-library slice should build a minimal `std::io::IOError` and one-shot `std::fs` text functions on top of `Result` plus `Unit`, while keeping resource handles, `Path`, binary `Bytes`, and control-flow MIR deferred until a concrete runtime/API gap requires them.
 
 ## Test Plan For The Next Code Slice
 

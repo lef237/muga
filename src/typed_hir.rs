@@ -160,6 +160,7 @@ pub enum ExprKind {
     Int(i64),
     Bool(bool),
     String(String),
+    Unit,
     Ident(IdentExpr),
     ListLit(ListLitExpr),
     Index(IndexExpr),
@@ -517,6 +518,7 @@ impl ModuleRemapper<'_, '_> {
                 ExprKind::Int(value) => ExprKind::Int(*value),
                 ExprKind::Bool(value) => ExprKind::Bool(*value),
                 ExprKind::String(value) => ExprKind::String(value.clone()),
+                ExprKind::Unit => ExprKind::Unit,
                 ExprKind::Ident(expr) => ExprKind::Ident(IdentExpr {
                     name: expr.name.clone(),
                     binding: self.binding(expr.binding),
@@ -721,6 +723,7 @@ impl ModuleRemapper<'_, '_> {
             TypeInfo::Int
             | TypeInfo::Bool
             | TypeInfo::String
+            | TypeInfo::Unit
             | TypeInfo::Builtin(_)
             | TypeInfo::Unknown
             | TypeInfo::Error => ty.clone(),
@@ -806,7 +809,7 @@ fn max_binding_id_in_statements(statements: &[Stmt]) -> Option<u32> {
 fn max_binding_id_in_expr(expr: &Expr) -> Option<u32> {
     let mut max = None;
     match &expr.kind {
-        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) => {}
+        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) | ExprKind::Unit => {}
         ExprKind::Ident(expr) => {
             max = max_opt(max, Some(expr.binding.as_u32()));
             max = max_opt(max, max_binding_id_in_ident_target(expr.target));
@@ -971,7 +974,11 @@ fn max_expr_id_in_statements(statements: &[Stmt]) -> Option<u32> {
 fn max_expr_id_in_expr(expr: &Expr) -> Option<u32> {
     let mut max = Some(expr.id.as_u32());
     match &expr.kind {
-        ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) | ExprKind::Ident(_) => {}
+        ExprKind::Int(_)
+        | ExprKind::Bool(_)
+        | ExprKind::String(_)
+        | ExprKind::Unit
+        | ExprKind::Ident(_) => {}
         ExprKind::ListLit(expr) => {
             for item in &expr.items {
                 max = max_opt(max, max_expr_id_in_expr(item));
@@ -1257,6 +1264,7 @@ impl<'a> Lowerer<'a> {
             ast::Expr::Int(expr) => ExprKind::Int(expr.value),
             ast::Expr::Bool(expr) => ExprKind::Bool(expr.value),
             ast::Expr::String(expr) => ExprKind::String(expr.value.clone()),
+            ast::Expr::Unit(_) => ExprKind::Unit,
             ast::Expr::Ident(expr) => ExprKind::Ident(IdentExpr {
                 name: expr.name.clone(),
                 binding: self.binding_for_expr(expr.id),
@@ -1519,6 +1527,7 @@ impl<'a> Lowerer<'a> {
             ast::TypeExpr::Int => TypeInfo::Int,
             ast::TypeExpr::Bool => TypeInfo::Bool,
             ast::TypeExpr::String => TypeInfo::String,
+            ast::TypeExpr::Unit => TypeInfo::Unit,
             ast::TypeExpr::Named(name) if type_params.iter().any(|param| param == name) => self
                 .analysis
                 .symbols

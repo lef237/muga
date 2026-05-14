@@ -181,6 +181,7 @@ The minimal v1 literal set is:
 - decimal integer literals
 - boolean literals `true` and `false`
 - string literals `"..."` with escapes `\\`, `\"`, `\n`, and `\t`
+- the unit literal `()`
 
 Raw strings and multiline strings are not part of v1.
 
@@ -299,6 +300,7 @@ literal           := INT_LIT
                    | STRING_LIT
                    | "true"
                    | "false"
+                   | "()"
 
 anon_fn           := "fn" "(" params? ")" return_annot? value_block
 stmt_block        := "{" stmt* "}"

@@ -1,0 +1,8 @@
+fn step(): Result[Unit, String] {
+  Result::Ok(())
+}
+
+fn main(): Result[Unit, String] {
+  done = try step()
+  Result::Ok(done)
+}

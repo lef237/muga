@@ -183,6 +183,7 @@ pub enum Expr {
     Int(IntExpr),
     Bool(BoolExpr),
     String(StringExpr),
+    Unit(UnitExpr),
     Ident(IdentExpr),
     ListLit(ListLitExpr),
     Index(IndexExpr),
@@ -204,6 +205,7 @@ impl Expr {
             Self::Int(expr) => expr.id,
             Self::Bool(expr) => expr.id,
             Self::String(expr) => expr.id,
+            Self::Unit(expr) => expr.id,
             Self::Ident(expr) => expr.id,
             Self::ListLit(expr) => expr.id,
             Self::Index(expr) => expr.id,
@@ -225,6 +227,7 @@ impl Expr {
             Self::Int(expr) => expr.span,
             Self::Bool(expr) => expr.span,
             Self::String(expr) => expr.span,
+            Self::Unit(expr) => expr.span,
             Self::Ident(expr) => expr.span,
             Self::ListLit(expr) => expr.span,
             Self::Index(expr) => expr.span,
@@ -260,6 +263,12 @@ pub struct BoolExpr {
 pub struct StringExpr {
     pub id: ExprId,
     pub value: String,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct UnitExpr {
+    pub id: ExprId,
     pub span: Span,
 }
 
@@ -435,6 +444,7 @@ pub enum TypeExpr {
     Int,
     Bool,
     String,
+    Unit,
     Named(String),
     Generic(GenericTypeExpr),
     Function(FunctionTypeExpr),
@@ -512,6 +522,7 @@ impl NodeIdAssigner {
             Expr::Int(expr) => expr.id = self.expr_id(),
             Expr::Bool(expr) => expr.id = self.expr_id(),
             Expr::String(expr) => expr.id = self.expr_id(),
+            Expr::Unit(expr) => expr.id = self.expr_id(),
             Expr::Ident(expr) => expr.id = self.expr_id(),
             Expr::ListLit(expr) => {
                 expr.id = self.expr_id();

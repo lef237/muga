@@ -72,6 +72,7 @@ pub enum Instruction {
     LoadInt(i64),
     LoadBool(bool),
     LoadString(String),
+    LoadUnit,
     MakeRecord {
         type_name: Symbol,
         fields: Vec<Symbol>,
@@ -339,6 +340,7 @@ impl ProgramMerger {
             Instruction::LoadInt(value) => Instruction::LoadInt(*value),
             Instruction::LoadBool(value) => Instruction::LoadBool(*value),
             Instruction::LoadString(value) => Instruction::LoadString(value.clone()),
+            Instruction::LoadUnit => Instruction::LoadUnit,
             Instruction::MakeRecord {
                 type_name,
                 fields,
@@ -762,6 +764,7 @@ impl Compiler {
                     .instructions
                     .push(Instruction::LoadString(expr.value.clone()));
             }
+            mir::Expr::Unit(_) => chunk.instructions.push(Instruction::LoadUnit),
             mir::Expr::RecordLit(expr) => {
                 for field in &expr.fields {
                     self.compile_expr(&field.value, chunk);

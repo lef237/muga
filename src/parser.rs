@@ -539,7 +539,7 @@ impl Parser {
                 let (name, span) = self.parse_type_name_after_first(name, token.span)?;
                 if self.matches_simple(&TokenKind::LBracket) {
                     let (args, end) = self.parse_type_args()?;
-                    if matches!(name.as_str(), "Int" | "Bool" | "String") {
+                    if matches!(name.as_str(), "Int" | "Bool" | "String" | "Unit") {
                         return Err(Diagnostic::new(
                             "P001",
                             format!("primitive type `{name}` may not have type arguments"),
@@ -555,6 +555,7 @@ impl Parser {
                     "Int" => Ok((TypeExpr::Int, span)),
                     "Bool" => Ok((TypeExpr::Bool, span)),
                     "String" => Ok((TypeExpr::String, span)),
+                    "Unit" => Ok((TypeExpr::Unit, span)),
                     _ => Ok((TypeExpr::Named(name), span)),
                 }
             }
@@ -1098,6 +1099,13 @@ impl Parser {
             }
             TokenKind::LBracket => self.parse_list_lit(token.span),
             TokenKind::LParen => {
+                if matches!(self.peek_kind(), TokenKind::RParen) {
+                    let end = self.advance().span;
+                    return Ok(Expr::Unit(UnitExpr {
+                        id: self.expr_id(),
+                        span: token.span.merge(end),
+                    }));
+                }
                 let expr = self.parse_expr_allowing_struct_literal()?;
                 self.expect_simple(TokenKind::RParen, "expected `)` after expression")?;
                 Ok(expr)
