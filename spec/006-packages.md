@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, a minimal `muga.toml` project mode that infers package paths from `name` and `source`, explicit `.mgi` / `.mgc` artifact workflows, and a library-only package-aware check scaffold that validates package boundary rules plus source/module signatures over the unflattened package graph while retaining module body-check and package-wide typed HIR outputs. Dependency manifests, registries, selective imports, package-aware execution without flattening, package-level caching, and any future per-field record visibility are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, a minimal `muga.toml` project mode that infers package paths from `name` and `source`, explicit `.mgi` / `.mgc` / `.mgb` artifact workflows, package-aware checking over the unflattened package graph, and artifact-backed package execution through MIR-lowered bytecode artifacts. Dependency manifests, registries, selective imports, automatic project-level artifact reuse, control-flow-oriented MIR, and any future per-field record visibility are still deferred.
 
 ## 1. Design Goals
 
@@ -922,7 +922,7 @@ These layers are additive. None of them changes the meaning of the content hash,
 
 ### 17.11 Current Implementation Boundary
 
-The current implementation has a local package loader, minimal manifest mode, package identity data, in-memory package interface summaries, persisted package interface artifacts, and explicit package check cache artifacts. It does not yet have dependency declarations, published-package content hashing, lockfiles, registries, package archives, or automatic project-level artifact reuse.
+The current implementation has a local package loader, minimal manifest mode, package identity data, in-memory package interface summaries, persisted package interface artifacts, explicit package check cache artifacts, and explicit MIR-lowered bytecode package implementation artifacts. It does not yet have dependency declarations, published-package content hashing, lockfiles, registries, package archives, or automatic project-level artifact reuse.
 
 It currently:
 
@@ -945,7 +945,7 @@ It currently:
 - can build loaded-interface dependency package graph metadata directly from package interfaces without dependency AST stubs
 - routes `muga check --artifact-root` and `muga run --artifact-root` through explicit package artifact paths
 - emits `.mgi` interface artifacts from the package-aware typed HIR aggregate
-- emits `.mgb` package implementation artifacts containing the source bodies needed for artifact-backed execution
+- emits `.mgb` package implementation artifacts containing MIR-lowered bytecode bodies needed for artifact-backed execution
 - returns package-aware typed HIR from loaded/interface-artifact typed compilation paths
 - can lower package-aware typed HIR through the existing HIR/bytecode VM path
 - generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
@@ -953,7 +953,9 @@ It currently:
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
 - includes loaded direct/transitive dependency interface hashes in `.mgc` check cache keys
 - writes `.mgc` check cache artifacts only after package-aware artifact checking succeeds
-- validates `.mgb` artifacts against loaded `.mgi` interface hashes before artifact-backed execution and rejects missing or stale dependency implementation artifacts without source-tree fallback
+- validates `.mgb` artifacts against loaded `.mgi` interface hashes before artifact-backed execution and rejects missing, stale, hash-mismatched, structurally invalid, wrong-package, or dependency-interface-mismatched implementation artifacts without source-tree fallback
+- executes direct and transitive dependency bytecode from `.mgb` artifacts without reading dependency source files from the consumer source tree
+- remaps independently generated `.mgb` package item references onto the loaded `.mgi` interface identities and reserves private implementation item ids past the entry program's package item ids before bytecode merge
 
 Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns only package naming and source-root inference. Artifact-backed checking, running, and artifact emission are explicit CLI workflows through `--artifact-root`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. Project-level artifact-root config should be reconsidered after dependency declarations, lockfiles, and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.
 

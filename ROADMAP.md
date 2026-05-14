@@ -28,7 +28,7 @@ Implemented language surface:
 - package check cache keys combine entry package source hashes with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` consumes `.mgi` and `.mgc` artifacts for dependency-body-free package checking
 - `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR, and `emit-artifacts` also writes reachable `.mgb` implementation artifacts containing MIR-lowered bytecode programs plus the entry `.mgc` check cache; lower-level `emit-check-cache` validates against `.mgi` artifacts before writing `.mgc`
-- `muga run --artifact-root <dir>` validates `.mgi` / `.mgc` / structurally checked `.mgb` artifacts and executes dependencies without reading dependency source files from the source tree
+- `muga run --artifact-root <dir>` validates `.mgi` / `.mgc` / structurally checked `.mgb` artifacts, executes direct and transitive dependencies without reading dependency source files from the source tree, remaps independently generated implementation item references onto loaded interface identities, and rejects wrong-package or dependency-interface-mismatched `.mgb` files
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -50,7 +50,7 @@ Current architectural gaps:
 - user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package execution still reads dependency source bodies when no artifact root is supplied; explicit artifact-backed execution is available for dependency-source-tree-free runs
-- remaining package work is explicit artifact workflow hardening and normal project/artifact integration; package-aware checking is now the default package validation path
+- remaining package work is explicit artifact workflow documentation/sample hardening and later normal project/artifact integration; package-aware checking is now the default package validation path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
 - VM bytecode execution now consumes an initial expression-shaped MIR with explicit execution bodies, body terminators, hoisted body-local function definitions, typed binding/package-item identity, typed assignment update mode, runtime names carrying binding/local identity, and slot-backed runtime environments with package function references canonicalized to their defining binding; control-flow-oriented MIR and native lowering are post-v1 unless needed to close a concrete artifact/execution gap
 - default compile APIs lower typed HIR into MIR; the old untyped AST-to-HIR compatibility module has been removed
@@ -86,7 +86,7 @@ Related design notes:
 The next code slices should convert the completed package-aware checking foundation into a v1-ready package/artifact experience:
 
 1. Treat the current MIR/runtime identity cleanup as a foundation-closing slice, not an open-ended backend rewrite. The VM should execute checked package programs by lowered local identity and semantic package identity, but control-flow MIR and native lowering should wait unless they are required to close a concrete v1 execution gap.
-2. Harden dependency-body-free package execution. `check --artifact-root` avoids dependency implementation bodies, and `run --artifact-root` consumes MIR-lowered bytecode `.mgb` implementation artifacts for dependencies without source-tree fallback.
+2. Continue hardening dependency-body-free package execution. `check --artifact-root` avoids dependency implementation bodies, and `run --artifact-root` consumes MIR-lowered bytecode `.mgb` implementation artifacts for dependencies without source-tree fallback.
 3. Keep artifact roots explicit on the CLI for v1. `muga emit-artifacts`, `muga check --artifact-root`, and any run-time artifact-root flag should fail loudly on missing or stale artifacts instead of silently falling back to dependency source bodies.
 4. Harden the explicit artifact workflow with samples, diagnostics, and documentation before adding manifest-owned artifact configuration.
 5. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist. Revisit it later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
@@ -140,8 +140,8 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- hardening the MIR-lowered bytecode `.mgb` implementation artifact format into the final v1 execution artifact contract
-- broader `run --artifact-root` diagnostics for missing, stale, hash-mismatched, structurally invalid, or otherwise mismatched dependency artifacts
+- documenting and sampling the explicit `.mgi` / `.mgc` / `.mgb` workflow as the v1 execution artifact contract
+- broader `run --artifact-root` diagnostics for missing, stale, hash-mismatched, structurally invalid, wrong-package, or dependency-interface-mismatched artifacts
 - eventual project-mode artifact-root config after dependency declarations and lockfiles
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported

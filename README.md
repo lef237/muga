@@ -67,10 +67,17 @@ cargo run -- samples/packages/app/main/main.muga
 For explicit artifact-backed package workflows, `emit-artifacts` writes reachable `.mgi` interface files, reachable `.mgb` package implementation artifacts containing MIR-lowered bytecode bodies, and the entry package `.mgc` check cache file. `emit-check-cache` writes `.mgc` only after the package checks successfully against the available `.mgi` artifacts. Use `emit-interface` with `--package` only when you want to restrict interface emission to one package.
 
 ```bash
-cargo run -- emit-artifacts --artifact-root path/to/artifacts path/to/package/main.muga
-cargo run -- check --artifact-root path/to/artifacts path/to/package/main.muga
-cargo run -- run --artifact-root path/to/artifacts path/to/package/main.muga
+artifact_root=$(mktemp -d)
+cargo run -- emit-artifacts --artifact-root "$artifact_root" samples/packages/app/enum_demo/main.muga
+cargo run -- check --artifact-root "$artifact_root" samples/packages/app/enum_demo/main.muga
+cargo run -- run --artifact-root "$artifact_root" samples/packages/app/enum_demo/main.muga
 ```
+
+Artifact roles are deliberately separate:
+
+- `.mgi` is the public interface artifact used to check downstream packages without reading dependency implementation bodies.
+- `.mgc` is the entry package check-cache proof keyed by entry source plus direct and transitive dependency interface hashes.
+- `.mgb` is the dependency execution artifact. It stores MIR-lowered bytecode bodies, is structurally validated on load, and is rejected when missing, stale, hash-mismatched, for the wrong package, or inconsistent with loaded dependency interface hashes.
 
 Run your own file by pointing `cargo run` at any `.muga` source. `run` is the default subcommand, so it can be omitted:
 
@@ -179,7 +186,8 @@ Implemented:
 - package check cache keys combine entry package source content with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
 - `muga check --artifact-root <dir>` validates package entries through package-aware checks against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
 - `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR; `emit-artifacts` also writes `.mgb` package implementation artifacts as MIR-lowered bytecode programs and the entry `.mgc` check cache
-- `muga run --artifact-root <dir>` validates `.mgi` / `.mgc` / structurally checked `.mgb` artifacts and executes package dependencies without reading dependency source files from the source tree
+- `muga run --artifact-root <dir>` validates `.mgi` / `.mgc` / structurally checked `.mgb` artifacts and executes direct and transitive package dependencies without reading dependency source files from the source tree
+- artifact-backed `run` remaps independently generated `.mgb` package item references onto the loaded `.mgi` interface identities, while reserving private implementation item ids so dependency bodies do not collide with the entry package during bytecode merge
 - structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
 - library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking
 - package-aware source and per-module signature environments derived from the unflattened package graph, preserving package item identity, module/same-package/import visibility, and generic enum signature arity
@@ -201,7 +209,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The next implementation slice is v1 artifact workflow hardening while keeping package artifact roots explicit. Artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree.
+The active implementation slice is v1 artifact workflow hardening while keeping package artifact roots explicit. Artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree.
 
 Control-flow MIR, native backend work, generic records/functions, wildcard-heavy pattern matching, and `try expr` remain deferred until the v1 package/artifact workflow is closed. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
 
