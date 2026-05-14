@@ -1052,9 +1052,18 @@ impl TypeChecker {
                     }
                     Type::Builtin(BuiltinId::Insert) => self.check_insert_builtin(expr, expected),
                     Type::Builtin(BuiltinId::Remove) => self.check_remove_builtin(expr, expected),
-                    Type::Builtin(BuiltinId::Trim) => {
-                        self.check_string_unary_builtin(expr, expected, BuiltinId::Trim)
-                    }
+                    Type::Builtin(BuiltinId::Trim) => self.check_string_unary_builtin(
+                        expr,
+                        expected,
+                        BuiltinId::Trim,
+                        Type::String,
+                    ),
+                    Type::Builtin(BuiltinId::CharCount) => self.check_string_unary_builtin(
+                        expr,
+                        expected,
+                        BuiltinId::CharCount,
+                        Type::Int,
+                    ),
                     Type::Builtin(BuiltinId::StartsWith | BuiltinId::EndsWith) => {
                         let builtin = match self.resolve_type(&callee_ty) {
                             Type::Builtin(builtin) => builtin,
@@ -1722,6 +1731,7 @@ impl TypeChecker {
         expr: &CallExpr,
         expected: Option<Type>,
         builtin: BuiltinId,
+        return_ty: Type,
     ) -> Type {
         if expr.args.len() != 1 {
             self.diagnostics.push(Diagnostic::new(
@@ -1734,7 +1744,7 @@ impl TypeChecker {
 
         let arg_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
         match self.resolve_type(&arg_ty) {
-            Type::String => self.apply_expected(Type::String, expected, expr.span),
+            Type::String => self.apply_expected(return_ty, expected, expr.span),
             Type::Error => Type::Error,
             _ => {
                 self.diagnostics.push(Diagnostic::new(

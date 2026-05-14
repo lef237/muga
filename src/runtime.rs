@@ -981,6 +981,17 @@ fn call_builtin(
             };
             Ok(Value::String(text.trim().to_string()))
         }
+        BuiltinId::CharCount => {
+            let value = expect_one_arg(args, span)?;
+            let Value::String(text) = value else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`char_count` expects String as its first argument",
+                    span,
+                )]);
+            };
+            Ok(Value::Int(text.chars().count() as i64))
+        }
         BuiltinId::StartsWith => {
             let (text, prefix) = expect_two_args(args, span)?;
             let Value::String(text) = text else {
