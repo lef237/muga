@@ -169,6 +169,7 @@ pub enum ExprKind {
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     Call(CallExpr),
+    Try(TryExpr),
     If(IfExpr),
     Match(MatchExpr),
     Fn(FnExpr),
@@ -271,6 +272,11 @@ pub struct CallExpr {
     pub args: Vec<Expr>,
     pub origin: CallOrigin,
     pub resolved_callee: TypedCalleeInfo,
+}
+
+#[derive(Clone, Debug)]
+pub struct TryExpr {
+    pub expr: Box<Expr>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -566,6 +572,9 @@ impl ModuleRemapper<'_, '_> {
                     origin: expr.origin,
                     resolved_callee: self.callee(expr.resolved_callee),
                 }),
+                ExprKind::Try(expr) => ExprKind::Try(TryExpr {
+                    expr: Box::new(self.expr(&expr.expr)),
+                }),
                 ExprKind::If(expr) => ExprKind::If(IfExpr {
                     condition: Box::new(self.expr(&expr.condition)),
                     then_branch: self.value_block(&expr.then_branch),
@@ -835,6 +844,7 @@ fn max_binding_id_in_expr(expr: &Expr) -> Option<u32> {
                 max = max_opt(max, max_binding_id_in_expr(arg));
             }
         }
+        ExprKind::Try(expr) => max = max_opt(max, max_binding_id_in_expr(&expr.expr)),
         ExprKind::If(expr) => {
             max = max_opt(max, max_binding_id_in_expr(&expr.condition));
             max = max_opt(max, max_binding_id_in_value_block(&expr.then_branch));
@@ -994,6 +1004,7 @@ fn max_expr_id_in_expr(expr: &Expr) -> Option<u32> {
                 max = max_opt(max, max_expr_id_in_expr(arg));
             }
         }
+        ExprKind::Try(expr) => max = max_opt(max, max_expr_id_in_expr(&expr.expr)),
         ExprKind::If(expr) => {
             max = max_opt(max, max_expr_id_in_expr(&expr.condition));
             max = max_opt(max, max_expr_id_in_value_block(&expr.then_branch));
@@ -1318,6 +1329,9 @@ impl<'a> Lowerer<'a> {
                 args: expr.args.iter().map(|arg| self.lower_expr(arg)).collect(),
                 origin: CallOrigin::from(expr.origin),
                 resolved_callee: self.resolved_callee_for_call(expr.id),
+            }),
+            ast::Expr::Try(expr) => ExprKind::Try(TryExpr {
+                expr: Box::new(self.lower_expr(&expr.expr)),
             }),
             ast::Expr::If(expr) => ExprKind::If(IfExpr {
                 condition: Box::new(self.lower_expr(&expr.condition)),

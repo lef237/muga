@@ -2184,6 +2184,7 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
                     self.validate_expr(arg);
                 }
             }
+            ExprKind::Try(try_expr) => self.validate_expr(&try_expr.expr),
             ExprKind::If(if_expr) => {
                 self.validate_expr(&if_expr.condition);
                 self.validate_value_block(&if_expr.then_branch);

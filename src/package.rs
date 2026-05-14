@@ -554,6 +554,7 @@ impl<'a> PackageAwareChecker<'a> {
                     self.scan_expr(arg);
                 }
             }
+            Expr::Try(expr) => self.scan_expr(&expr.expr),
             Expr::If(expr) => {
                 self.scan_expr(&expr.condition);
                 self.scan_value_block(&expr.then_branch);
@@ -2333,6 +2334,11 @@ impl<'a> PackageRewriter<'a> {
                 callee: Box::new(self.rewrite_expr(&expr.callee)),
                 args: expr.args.iter().map(|arg| self.rewrite_expr(arg)).collect(),
                 origin: expr.origin,
+                span: expr.span,
+            }),
+            Expr::Try(expr) => Expr::Try(TryExpr {
+                id: expr.id,
+                expr: Box::new(self.rewrite_expr(&expr.expr)),
                 span: expr.span,
             }),
             Expr::If(expr) => Expr::If(IfExpr {
