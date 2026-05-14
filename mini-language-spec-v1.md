@@ -14,6 +14,34 @@ Muga v1 prioritizes:
 
 The language is compiler-first. The current VM is a reference execution backend, not a separate semantics engine.
 
+## V1 Completion Boundary
+
+The v1 surface syntax is considered closed around the grammar defined in this overview and the detailed specs. Finishing v1 means implementing and documenting that closed surface, keeping runnable samples and rejection tests aligned with it, and preserving the explicit package artifact workflow.
+
+The v1 grammar includes:
+
+- script files with top-level statements
+- package files with `package`, `import`, `pub`, `pkg`, and `as`
+- immutable and mutable bindings with optional local type annotations
+- `record`, `enum`, `fn`, and anonymous `fn`
+- `if`, `while`, final-expression value blocks, and exhaustive `match`
+- ordinary calls, chained calls, package-qualified chained calls, field access, record update, list literals, and list indexing
+- prefix `try expr` for `Result[T, E]`
+- explicit declaration type parameters on records, enums, and functions
+- generic type expressions in annotations and signatures
+
+The following are explicitly not v1 completion blockers:
+
+- `class`, inheritance, traits, protocols, typeclasses, overloaded dispatch, or operator overloading
+- source-level references such as `ref T`, `mut ref T`, `&value`, `*value`, or pointer syntax
+- postfix `?`, `T?`, implicit exceptions, or `throws`
+- explicit call-site type arguments such as `id[Int](1)`
+- wildcard imports, selective imports, re-export syntax, or package top-level execution
+- wildcard match arms, nested patterns, match guards, multi-payload enum variants, or named-field enum variants
+- map literals, `Set[T]`, arbitrary `Map` key types, broad collection APIs, `for`, `break`, or `continue`
+- concurrency syntax such as `group`, `spawn`, `join`, channels, `async`, or `await`
+- `String.len()`, substring/slice indexing, and richer parse error types until their semantics are explicitly chosen
+
 ## Core Rules
 
 Bindings are immutable by default:
@@ -206,7 +234,13 @@ Package-mode visibility:
 - `pkg` items are visible to sibling files in the same package
 - `pub` items are importable from other packages
 
-The current implementation still flattens packages internally before checking/execution. Typed HIR and in-memory package summaries already carry package item identity; persisted package interfaces and cache artifacts are future work.
+Package interfaces and implementation artifacts are explicit v1 workflow artifacts:
+
+- `.mgi` stores public package interfaces
+- `.mgc` stores package check-cache proofs
+- `.mgb` stores MIR-lowered bytecode implementation artifacts
+
+`muga check --artifact-root` and `muga run --artifact-root` consume those artifacts without reading dependency implementation bodies. Normal package execution without `--artifact-root` remains source-compatible and may still read dependency source bodies.
 
 ## Value Semantics
 
@@ -221,20 +255,22 @@ Explicit source-level references such as `ref T`, `mut ref T`, `&value`, `*value
 Implemented:
 
 - parser/resolver/typechecker/HIR/bytecode/VM pipeline
-- typed HIR foundation
-- records, functions, local inference, closures, higher-order functions
-- packages, module privacy, `pkg`, `pub`, import aliases, and minimal manifest project mode
-- `List`, `Option`, `Result`, and the first `Map` slice
-- in-memory package interface summaries for public records/functions
+- typed HIR and MIR-lowered bytecode for the reference VM
+- records, enums, functions, local inference, closures, higher-order functions, and explicit generic records/functions
+- exhaustive `match` for `Option[T]`, `Result[T, E]`, and user-defined enums
+- prefix `try expr` propagation for `Result[T, E]`
+- packages, module privacy, `pkg`, `pub`, import aliases, package-aware checking, and minimal manifest project mode
+- `List`, `Option`, `Result`, `Map`, and the current `String` helper slice
+- persisted `.mgi` package interfaces, `.mgc` check-cache artifacts, and `.mgb` implementation artifacts
+- artifact-backed `check` and `run` without dependency implementation source fallback
 
 Not implemented:
 
-- user-defined enum declarations
-- user-defined generic records/functions
 - public-signature inference for `pub fn`
-- persisted package interface files and package caches
-- dependency manifests, registries, and lockfiles
-- MIR and native backend
+- dependency declarations, registries, and lockfiles
+- project-mode artifact-root configuration and full incremental package artifact reuse
+- map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
+- control-flow-oriented MIR and native backend
 - structured concurrency
 
 ## Detailed References

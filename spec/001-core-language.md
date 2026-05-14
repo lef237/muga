@@ -159,6 +159,8 @@ Reserved keywords are:
 
 - `fn`
 - `record`
+- `enum`
+- `match`
 - `mut`
 - `package`
 - `import`
@@ -168,6 +170,7 @@ Reserved keywords are:
 - `if`
 - `else`
 - `while`
+- `try`
 - `true`
 - `false`
 
@@ -197,7 +200,7 @@ All binary operators are left-associative.
 
 Precedence, from strongest to weakest:
 
-1. postfix field access / chained call / ordinary call
+1. postfix field access / chained call / ordinary call / indexing
 2. unary and `try`
 3. multiplicative
 4. additive
@@ -218,11 +221,12 @@ Because record fields cannot have function type in v1, the dot operator keeps th
 
 ## 8. Grammar Sketch
 
-This is a v1-oriented EBNF sketch. `type_expr` is defined abstractly here and constrained further by [003-typing.md](./003-typing.md). Records and dot expressions are introduced here, with detailed semantics in [005-records.md](./005-records.md).
+This is a v1-oriented EBNF sketch. `type_expr` is defined abstractly here and constrained further by [003-typing.md](./003-typing.md). Package-specific file grammar is defined in [006-packages.md](./006-packages.md). Records, enums, collections, and dot expressions are introduced here, with detailed semantics in companion specs.
 
 ```ebnf
 program           := top_item*
 top_item          := record_decl
+                   | enum_decl
                    | stmt
 
 stmt              := assign_like_stmt
@@ -231,13 +235,20 @@ stmt              := assign_like_stmt
                    | while_stmt
                    | expr_stmt
 
-assign_like_stmt  := "mut" IDENT "=" expr
-                   | IDENT "=" expr
+assign_like_stmt  := "mut" IDENT type_annot? "=" expr
+                   | IDENT type_annot? "=" expr
+type_annot        := ":" type_expr
 
-record_decl       := "record" IDENT "{" record_field_decl* "}"
+record_decl       := "record" IDENT type_params? "{" record_field_decl* "}"
 record_field_decl := IDENT ":" type_expr
 
-func_decl         := "fn" IDENT "(" params? ")" return_annot? value_block
+enum_decl         := "enum" IDENT type_params? "{" enum_variant_decl* "}"
+enum_variant_decl := IDENT
+                   | IDENT "(" type_expr ")"
+
+type_params       := "[" IDENT ("," IDENT)* "]"
+
+func_decl         := "fn" IDENT type_params? "(" params? ")" return_annot? value_block
 return_annot      := ":" type_expr
 type_expr_list    := type_expr ("," type_expr)*
 
@@ -250,9 +261,15 @@ if_stmt           := "if" expr stmt_block ("else" stmt_block)?
 expr_stmt         := expr
 
 expr              := if_expr
+                   | match_expr
                    | equality_expr
 
 if_expr           := "if" expr value_block "else" value_block
+match_expr        := "match" expr "{" match_arm* "}"
+match_arm         := variant_pattern "=>" expr
+variant_pattern   := qualified_name
+                   | qualified_name "(" IDENT ")"
+
 equality_expr     := comparison_expr (("==" | "!=") comparison_expr)*
 comparison_expr   := additive_expr (("<" | "<=" | ">" | ">=") additive_expr)*
 additive_expr     := multiplicative_expr (("+" | "-") multiplicative_expr)*
@@ -261,17 +278,22 @@ unary_expr        := ("-" | "!" | "try") unary_expr
                    | postfix_expr
 postfix_expr      := primary_expr postfix_tail*
 postfix_tail      := "(" args? ")"
+                   | "[" expr "]"
                    | ".with" "(" record_update_item ("," record_update_item)* ")"
                    | "." IDENT ("(" args? ")")?
+                   | "." IDENT "::" IDENT "(" args? ")"
 record_update_item := IDENT ":" expr
 args              := expr ("," expr)*
 
 primary_expr      := literal
-                   | IDENT
+                   | qualified_name
+                   | list_lit
                    | record_lit
                    | anon_fn
                    | "(" expr ")"
-record_lit        := IDENT "{" record_field_init* "}"
+qualified_name    := IDENT ("::" IDENT)*
+list_lit          := "[" args? "]"
+record_lit        := qualified_name "{" record_field_init* "}"
 record_field_init := IDENT ":" expr
 literal           := INT_LIT
                    | STRING_LIT
@@ -311,9 +333,13 @@ The core language model is:
 - function parameters are immutable bindings
 - functions are ordinary values and may be passed as arguments
 - record declarations introduce nominal type names
+- enum declarations introduce nominal sum types with qualified variants
 - `expr.name` is field access only
 - `expr.name(...)` and `expr.alias::name(...)` are chained call syntax
 - `expr.with(field: value, ...)` is a record-only non-destructive update expression
+- `expr[index]` indexes a list value
+- `match` is exhaustive over enum variants in the v1 MVP
+- `try expr` propagates `Result[T, E]` errors from the nearest function
 - the value of a function body is the final expression in that body
 - `if` without `else` is statement-only
 - `while` is statement-only

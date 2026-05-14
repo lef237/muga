@@ -258,7 +258,7 @@ Higher-order annotation guide:
 
 - Omit an arrow annotation when the callback type is uniquely determined inside the same function body, as in [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) and [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga).
 - Keep an arrow annotation when local inference is still ambiguous, or when you want the callback contract to be obvious at the declaration site, as in [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga).
-- Current `pub fn` declarations require explicit signatures. The design direction is to infer public signatures in the defining package and store resolved signatures in package interfaces.
+- Current `pub fn` declarations require explicit signatures for v1. A post-v1 direction is to infer public signatures in the defining package and store resolved signatures in package interfaces.
 
 Package alias note:
 

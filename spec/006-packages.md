@@ -177,13 +177,14 @@ At the parser level, the file grammar is intentionally split in two:
 
 ```ebnf
 file          := script_file | package_file
-script_file   := stmt*
+script_file   := top_item*
 package_file  := package_decl? import_decl* package_item*
 package_decl  := "package" package_path
 package_path  := IDENT ("::" IDENT)*
 import_decl   := "import" package_path import_alias?
 import_alias  := "as" IDENT
 package_item  := visibility? record_decl
+               | visibility? enum_decl
                | visibility? func_decl
 visibility    := "pub"
                | "pkg"
@@ -195,13 +196,14 @@ Additional parser rules for package mode:
 - if present, `package` must be the first significant token in the file
 - without manifest inference, `package` is required
 - `import` declarations must come after `package` when it is present and before the first item
-- `pub` and `pkg` are valid on top-level `record` and `fn`
+- `pub` and `pkg` are valid on top-level `record`, `enum`, and `fn`
 - top-level items are separated by newlines
-- type and value qualification uses exactly `alias::Name`
+- type and value item qualification uses `alias::Name`
+- enum variant construction and patterns may use `alias::Enum::Variant`
 
 In package mode:
 
-- `record_decl` and `func_decl` keep their existing meanings
+- `record_decl`, `enum_decl`, and `func_decl` keep their existing meanings
 - `assign_like_stmt`, `if_stmt`, `while_stmt`, and `expr_stmt` are not allowed at the top level
 
 ## 7. Imports
@@ -243,6 +245,7 @@ v1-like package rules:
 Package files may contain only:
 
 - `record` declarations
+- `enum` declarations
 - `fn` declarations
 
 This means package mode explicitly excludes:
@@ -298,9 +301,9 @@ This is deliberately more restrictive than package-wide private visibility. The 
 
 ## 10. Qualified Name Use
 
-The same `package_alias::Name` form is used for both types and values.
+The same `package_alias::Name` form is used for package-qualified types and values.
 
-This is intentionally limited to one alias segment followed by one item name:
+Package item qualification is intentionally limited to one alias segment followed by one item name:
 
 ```txt
 users::User
@@ -325,6 +328,13 @@ pub fn handle(req: http::Request): http::Response {
 
 This keeps value and type lookup visually consistent.
 
+Enum variants are namespaced below the enum item. Across package boundaries, their constructors and patterns use the qualified enum item plus the variant:
+
+```txt
+states::Status::Ready(1)
+states::Status::Pending
+```
+
 Within the current package:
 
 - top-level names from the current module may be referenced unqualified
@@ -340,25 +350,30 @@ Across packages:
 
 To support both minimal annotations and fast package compilation, package interfaces store **resolved public signatures**.
 
-Users do not have to write every public signature by hand when the compiler can infer it uniquely.
+For the v1 completion target, public functions still require explicit public signatures in source. Public-signature inference is the intended later policy once the current artifact workflow and diagnostics are stable.
+
+The longer-term policy is that users should not have to write every public signature by hand when the compiler can infer it uniquely.
 
 The important boundary is:
 
-- package authors may omit annotations when local inference is sufficient
+- v1 package authors write explicit public function signatures
+- private package bodies may still use local inference when the type is unique
 - importers read cached package interfaces, not the full bodies of unchanged dependencies
-- package interfaces contain concrete resolved signatures whether they were written or inferred
+- package interfaces contain concrete resolved signatures
+
+If public-signature inference is added later, the defining package may infer a public signature locally before storing that same concrete resolved signature in the package interface. Downstream packages should still never infer a dependency public API from their own call sites.
 
 ### 11.1 Public functions
 
-Every `pub fn` must have an inferable public signature.
+Every `pub fn` must have a public signature.
 
-That signature may come from:
+In the v1 completion target, that signature must be explicit enough for the compiler to know the full callable type before downstream package checking:
 
-- explicit annotations
-- local inference inside the defining package
-- a mix of both
+- public parameter types must be explicit
+- the public return type must be explicit
+- generic public functions must declare their type parameters explicitly
 
-Current implementation note: `pub fn` declarations still require explicit parameter and return annotations. Inferred public signatures are the target package-interface policy, not current behavior.
+Public-signature inference remains a post-v1 extension. If added later, the signature may come from explicit annotations, local inference inside the defining package, or a mix of both, and the generated package interface will still store the resolved signature.
 
 ```txt
 pub fn display_name(user: User) {
@@ -370,16 +385,28 @@ pub fn age_next(user: User) {
 }
 ```
 
-These are valid because the compiler can infer the exported signatures:
+These are examples of the post-v1 inference direction, where the compiler could infer the exported signatures:
 
 ```txt
 display_name: User -> String
 age_next: User -> Int
 ```
 
-The generated package interface stores those resolved signatures.
+The generated package interface would store those resolved signatures.
 
-Annotations remain required when a public signature cannot be inferred uniquely from local information.
+In v1, write the signatures explicitly:
+
+```txt
+pub fn display_name(user: User): String {
+  user.name
+}
+
+pub fn age_next(user: User): Int {
+  user.age + 1
+}
+```
+
+Annotations also remain required in any future inferred-signature mode when a public signature cannot be inferred uniquely from local information.
 
 Examples:
 
@@ -397,11 +424,13 @@ pub fn apply(x, f) {
 
 These are invalid without more annotations because the exported signature is ambiguous.
 
-### 11.2 Public records
+### 11.2 Public records and enums
 
 `record` fields already require explicit types, so `pub record` introduces no additional annotation burden there.
 
 In the committed v1 model, a `pub record` is transparent: its field names and field types are part of the public record shape. Importing packages can use record literals, field access, and `record.with(...)` for those public fields.
+
+`pub enum` exposes its enum name, type parameters, variant names, and payload types through the package interface. Variant constructors and patterns remain qualified as `alias::Enum::Variant`; unqualified variant imports are not part of v1.
 
 If a representation should be hidden inside a module or package, keep the record itself non-public and expose functions that do not leak that non-public type across a wider visibility boundary.
 
@@ -425,7 +454,7 @@ Private functions remain free to use local inference.
 The cost trade-off is explicit:
 
 - the defining package must typecheck public bodies when generating or refreshing its interface
-- downstream packages can use the cached inferred interface without reading those bodies again
+- downstream packages can use the cached interface without reading those bodies again
 - first builds may do slightly more work, but incremental and dependency builds stay fast
 
 ### 11.4 Public signatures may not leak non-public names
