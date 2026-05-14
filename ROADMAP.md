@@ -93,6 +93,18 @@ The next code slices should keep the newly landed generic records/functions and 
 5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while hardening public signatures.
 6. Keep wildcard enum patterns, native backend work, broad stdlib effects, `String.len()` semantics, substring/slice indexing, richer parse error types, and full incremental project artifact reuse deferred until a concrete API slice requires those decisions.
 
+## V1 Definition Of Done
+
+Muga v1 is complete when:
+
+- the closed grammar in [mini-language-spec-v1.md](./mini-language-spec-v1.md) and [spec/001-core-language.md](./spec/001-core-language.md) is implemented, documented, and covered by runnable or rejecting examples
+- package mode accepts only top-level `record`, `enum`, and `fn` declarations, with module-private default visibility, `pkg`, `pub`, and explicit imports
+- public package interfaces persist public records, enums, and explicitly signed public functions in `.mgi` artifacts
+- explicit artifact workflows can emit and consume `.mgi`, `.mgc`, and `.mgb` artifacts for dependency-body-free `check` and `run`
+- normal source-compatible `check` and `run` behavior remains unchanged when no `--artifact-root` is provided
+- public-signature inference for `pub fn` is documented as post-v1; v1 public functions require explicit parameter and return types
+- deferred surface areas remain out of v1: wildcard patterns, map literals, `Set[T]`, arbitrary `Map` keys, traits/protocols/typeclasses, references/borrowing syntax, postfix `?`, call-site type arguments, `for`/`break`/`continue`, concurrency syntax, control-flow MIR, native backend, and full incremental project artifact reuse
+
 ## Compiler Architecture Path
 
 1. **Package interfaces as real inputs**

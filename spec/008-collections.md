@@ -165,7 +165,7 @@ match present {
 
 `Option::None` needs an expected `Option[T]` type, usually from a binding annotation, function return type, parameter type, or branch expectation.
 
-This is implemented as a compiler-known standard enum-like type. General user-defined enum declarations are still deferred, but this source spelling should remain compatible with that future direction.
+This is implemented as a compiler-known standard enum-like type. General user-defined enum declarations are also implemented for the current MVP shape, and this source spelling remains compatible with that ordinary enum model.
 
 The important point is that absence becomes part of the static type.
 

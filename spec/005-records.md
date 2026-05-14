@@ -323,13 +323,15 @@ record Box[T] {
 }
 ```
 
-An instantiated generic record type may be used in record literals and type annotations:
+An instantiated generic record type may be used in type annotations:
 
 ```txt
-box = Box[Int] {
+box: Box[Int] = Box {
   value: 1
 }
 ```
+
+Record literals use the record name itself. For generic records, type arguments are inferred from field values or from an expected type such as a binding annotation, parameter type, return type, or surrounding expression. Explicit record-literal type arguments such as `Box[Int] { ... }` are not part of the v1 surface syntax.
 
 Generic record fields still follow the same record rules:
 
