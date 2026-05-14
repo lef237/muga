@@ -68,9 +68,9 @@ For explicit artifact-backed package workflows, `emit-artifacts` writes reachabl
 
 ```bash
 artifact_root=$(mktemp -d)
-cargo run -- emit-artifacts --artifact-root "$artifact_root" samples/packages/app/enum_demo/main.muga
-cargo run -- check --artifact-root "$artifact_root" samples/packages/app/enum_demo/main.muga
-cargo run -- run --artifact-root "$artifact_root" samples/packages/app/enum_demo/main.muga
+cargo run -- emit-artifacts --artifact-root "$artifact_root" samples/packages/app/artifact_facade/main.muga
+cargo run -- check --artifact-root "$artifact_root" samples/packages/app/artifact_facade/main.muga
+cargo run -- run --artifact-root "$artifact_root" samples/packages/app/artifact_facade/main.muga
 ```
 
 Artifact roles are deliberately separate:
@@ -237,6 +237,7 @@ Control-flow MIR, native backend work, generic records/functions, wildcard-heavy
 - [samples/packages/app/split_main/main.muga](./samples/packages/app/split_main/main.muga) (runnable package sample where the entry package is split across multiple files)
 - [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)
 - [samples/packages/app/enum_demo/main.muga](./samples/packages/app/enum_demo/main.muga) (runnable package sample that exports and consumes a public generic enum)
+- [samples/packages/app/artifact_facade/main.muga](./samples/packages/app/artifact_facade/main.muga) (runnable package sample with `app -> api -> model` imports, useful for artifact-backed transitive execution)
 - [samples/projects/my_service/src/main/main.muga](./samples/projects/my_service/src/main/main.muga) (runnable manifest project sample where package declarations are inferred from `muga.toml` and directories)
 
 Planned concurrency draft samples:

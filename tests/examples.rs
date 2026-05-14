@@ -367,6 +367,11 @@ fn package_entry_runs() {
 }
 
 #[test]
+fn package_artifact_facade_sample_runs() {
+    assert_package_runs("samples/packages/app/artifact_facade/main.muga", "26", "");
+}
+
+#[test]
 fn package_entry_reads_all_files_in_entry_directory() {
     assert_package_runs("samples/packages/app/split_main/main.muga", "42", "");
 }
@@ -2138,6 +2143,7 @@ fn package_body_checking_and_interface_checking_agree_for_existing_samples() {
     for path in [
         "samples/packages/app/main/main.muga",
         "samples/packages/app/enum_demo/main.muga",
+        "samples/packages/app/artifact_facade/main.muga",
     ] {
         let body_checked = muga::compile_typed_path(Path::new(path))
             .expect("body-based package checking should pass");

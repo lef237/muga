@@ -1,0 +1,7 @@
+package app::artifact_facade
+
+import api::artifact_facade as facade
+
+fn main(): Int {
+  facade::age(facade::default_user()) + 5
+}
