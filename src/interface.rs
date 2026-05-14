@@ -1653,7 +1653,7 @@ impl<'a, 's> TypeInfoParser<'a, 's> {
             }
             "Builtin" => {
                 let name = self.next()?;
-                prelude::builtin_by_name(name)
+                prelude::builtin_by_any_name(name)
                     .map(|builtin| TypeInfo::Builtin(builtin.id))
                     .ok_or_else(|| format!("unknown builtin `{name}` in persisted type"))
             }

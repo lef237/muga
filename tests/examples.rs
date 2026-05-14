@@ -150,6 +150,15 @@ fn prelude_catalog_names_are_unique_and_classified() {
         muga::prelude::builtin_by_name("Option::None").map(|builtin| builtin.kind),
         Some(muga::prelude::BuiltinKind::Value)
     );
+    assert_eq!(
+        muga::prelude::builtin_name(muga::prelude::BuiltinId::StdFsReadText),
+        "__muga_std_fs_read_text"
+    );
+    assert_eq!(
+        muga::prelude::builtin_by_name("__muga_std_fs_read_text"),
+        None
+    );
+    assert!(!muga::prelude::is_builtin_name("__muga_std_fs_read_text"));
     assert_eq!(value_count, 1);
     assert_eq!(
         function_count + value_count,
@@ -8921,8 +8930,125 @@ fn main(): Result[Unit, String] {
     assert_eq!(result.output_text, "");
 }
 
+#[test]
+fn standard_fs_write_and_read_text_runs_as_virtual_package() {
+    let root = temp_package_root("std-fs-roundtrip");
+    let target = root.join("roundtrip.txt");
+    let target_literal = muga_string_literal(&display_path(&target));
+    let entry = write_package_file(
+        &root,
+        "app/std_fs_roundtrip/main.muga",
+        &format!(
+            r#"
+package app::std_fs_roundtrip
+
+import std::fs
+import std::io
+
+fn main(): Result[String, io::IOError] {{
+  done = try fs::write_text({target_literal}, "hello std")
+  text = try fs::read_text({target_literal})
+  Result::Ok(text)
+}}
+"#
+        ),
+    );
+
+    let result = muga::run_path(&entry).expect("std::fs package program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(hello std)");
+    assert_eq!(fs::read_to_string(target).unwrap(), "hello std");
+}
+
+#[test]
+fn standard_fs_io_error_exposes_record_fields() {
+    let root = temp_package_root("std-fs-error");
+    let missing = root.join("missing.txt");
+    let missing_literal = muga_string_literal(&display_path(&missing));
+    let entry = write_package_file(
+        &root,
+        "app/std_fs_error/main.muga",
+        &format!(
+            r#"
+package app::std_fs_error
+
+import std::fs
+import std::io
+
+fn main(): String {{
+  match fs::read_text({missing_literal}) {{
+    Result::Ok(text) => text
+    Result::Err(error) => error.operation
+  }}
+}}
+"#
+        ),
+    );
+
+    let result = muga::run_path(&entry).expect("std::fs error program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "read_text");
+}
+
+#[test]
+fn standard_fs_artifact_run_uses_emitted_std_implementations() {
+    let root = temp_package_root("std-fs-artifacts");
+    let target = root.join("artifact.txt");
+    let target_literal = muga_string_literal(&display_path(&target));
+    let entry = write_package_file(
+        &root,
+        "app/std_fs_artifacts/main.muga",
+        &format!(
+            r#"
+package app::std_fs_artifacts
+
+import std::fs
+import std::io
+
+fn main(): Result[String, io::IOError] {{
+  done = try fs::write_text({target_literal}, "artifact std")
+  text = try fs::read_text({target_literal})
+  Result::Ok(text)
+}}
+"#
+        ),
+    );
+    let artifact_root = root.join("artifacts");
+    let written =
+        muga::write_package_artifacts(&entry, &artifact_root).expect("artifacts should emit");
+
+    assert!(
+        written
+            .iter()
+            .any(|path| path.file_name().is_some_and(|name| name == "std__fs.mgi")),
+        "{written:#?}"
+    );
+    assert!(
+        written
+            .iter()
+            .any(|path| path.file_name().is_some_and(|name| name == "std__fs.mgb")),
+        "{written:#?}"
+    );
+
+    let result = muga::run_path_against_artifact_root(&entry, &artifact_root)
+        .expect("artifact-backed std::fs package program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(artifact std)");
+}
+
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+fn muga_string_literal(value: &str) -> String {
+    format!(
+        "\"{}\"",
+        value
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\t', "\\t")
+    )
 }
 
 fn assert_sample_runs(path: &str, expected_main: &str, expected_output: &str) {

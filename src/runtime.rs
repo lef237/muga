@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, fmt, fs, io, rc::Rc};
 
 use crate::{
     bytecode::*,
@@ -101,6 +101,37 @@ fn result_err(value: Value) -> Value {
         .variant(known_enum::RESULT_ERR_NAME)
         .expect("known Result enum should define Err");
     enum_value(result, err, Some(value))
+}
+
+fn io_error_value(operation: &str, path: &str, error: &io::Error) -> Value {
+    Value::Record(RecordValue {
+        type_name: crate::std_package::IO_ERROR_MANGLED_NAME.to_string(),
+        fields: vec![
+            RecordFieldValue {
+                name: "operation".to_string(),
+                value: Value::String(operation.to_string()),
+            },
+            RecordFieldValue {
+                name: "path".to_string(),
+                value: Value::String(path.to_string()),
+            },
+            RecordFieldValue {
+                name: "kind".to_string(),
+                value: Value::String(format!("{:?}", error.kind())),
+            },
+            RecordFieldValue {
+                name: "message".to_string(),
+                value: Value::String(error.to_string()),
+            },
+            RecordFieldValue {
+                name: "raw_code".to_string(),
+                value: error
+                    .raw_os_error()
+                    .map(|code| option_some(Value::Int(i64::from(code))))
+                    .unwrap_or_else(option_none),
+            },
+        ],
+    })
 }
 
 fn make_enum_value(
@@ -1185,6 +1216,41 @@ fn call_builtin(
                 _ => Ok(result_err(Value::String("invalid Bool".to_string()))),
             }
         }
+        BuiltinId::StdFsReadText => {
+            let value = expect_one_arg(args, span)?;
+            let Value::String(path) = value else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`__muga_std_fs_read_text` expects String as its first argument",
+                    span,
+                )]);
+            };
+            match fs::read_to_string(&path) {
+                Ok(text) => Ok(result_ok(Value::String(text))),
+                Err(error) => Ok(result_err(io_error_value("read_text", &path, &error))),
+            }
+        }
+        BuiltinId::StdFsWriteText => {
+            let (path, text) = expect_two_args(args, span)?;
+            let Value::String(path) = path else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`__muga_std_fs_write_text` expects String as its first argument",
+                    span,
+                )]);
+            };
+            let Value::String(text) = text else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`__muga_std_fs_write_text` expects String as its second argument",
+                    span,
+                )]);
+            };
+            match fs::write(&path, text) {
+                Ok(()) => Ok(result_ok(Value::Unit)),
+                Err(error) => Ok(result_err(io_error_value("write_text", &path, &error))),
+            }
+        }
         BuiltinId::OptionSome => {
             let value = expect_one_arg(args, span)?;
             Ok(option_some(value))
@@ -1411,7 +1477,7 @@ fn update_record_value(
 fn install_prelude(program: &Program, env: &EnvRef) {
     for binding in &program.bindings {
         let name = symbol_name(program, binding.name);
-        let Some(builtin) = prelude::builtin_by_name(name) else {
+        let Some(builtin) = prelude::builtin_by_any_name(name) else {
             continue;
         };
         let value = if builtin.id == BuiltinId::OptionNone {

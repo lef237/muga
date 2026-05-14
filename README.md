@@ -169,6 +169,7 @@ Implemented:
 - lexer, parser, resolver, typechecker, typed HIR lowering, MIR lowering, bytecode compilation, and VM runtime
 - `check` for front-end validation and `run` for VM execution
 - `Unit` type with the `()` literal for effect-only success values
+- compiler-provided `std::io` / `std::fs` package slice with `IOError`, `fs::read_text`, and `fs::write_text`
 - `print` / `println` prelude builtins for `Int`, `Bool`, and `String`
 - records, field access, `record.with(...)`, chained calls, package-qualified chained calls, arrow function types, local binding annotations, and local bidirectional inference for selected higher-order cases
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
@@ -208,11 +209,11 @@ Not implemented yet:
 
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
-- project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, control-flow-oriented MIR, and native code generation
+- resource handles, `Path`, binary `Bytes`, directory APIs, stdout/stderr handles, project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, control-flow-oriented MIR, and native code generation
 
 ## Planned Priority
 
-The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With generic records/functions, `Result` propagation, first string helpers, explicit scalar formatting, and `Unit` now landed, the next priority is the smallest practical `std::io` / `std::fs` slice.
+The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With generic records/functions, `Result` propagation, first string helpers, explicit scalar formatting, `Unit`, and the first `std::io` / `std::fs` text-file slice now landed, the next priority is hardening practical stdlib/package behavior without expanding into handles, `Path`, binary IO, or control-flow MIR prematurely.
 
 Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad collection APIs, and full incremental project artifact reuse remain deferred. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
 

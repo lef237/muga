@@ -214,6 +214,13 @@ pub fn typecheck_package_module(
     module: ModuleId,
 ) -> TypeCheckOutput {
     let mut checker = TypeChecker::new();
+    if program
+        .package
+        .as_ref()
+        .is_some_and(|package| crate::std_package::allows_internal_builtins(&package.path))
+    {
+        checker.install_internal_builtins();
+    }
     if let Some(environment) = signatures.module(module) {
         checker.install_package_module_signatures(signatures, environment);
     }
@@ -307,18 +314,28 @@ impl TypeChecker {
 
     fn install_prelude(&mut self) {
         for builtin in prelude::builtins() {
-            let kind = match builtin.kind {
-                BuiltinKind::Function => BindingKind::Function,
-                BuiltinKind::Value => BindingKind::Immutable,
-            };
-            let ty = if builtin.id == BuiltinId::OptionNone {
-                Type::OptionNone
-            } else {
-                Type::Builtin(builtin.id)
-            };
-            let symbol = self.symbol(builtin.name);
-            self.insert_current(symbol, kind, ty, Span::default());
+            self.install_builtin(*builtin);
         }
+    }
+
+    fn install_internal_builtins(&mut self) {
+        for builtin in prelude::internal_builtins() {
+            self.install_builtin(*builtin);
+        }
+    }
+
+    fn install_builtin(&mut self, builtin: prelude::Builtin) {
+        let kind = match builtin.kind {
+            BuiltinKind::Function => BindingKind::Function,
+            BuiltinKind::Value => BindingKind::Immutable,
+        };
+        let ty = if builtin.id == BuiltinId::OptionNone {
+            Type::OptionNone
+        } else {
+            Type::Builtin(builtin.id)
+        };
+        let symbol = self.symbol(builtin.name);
+        self.insert_current(symbol, kind, ty, Span::default());
     }
 
     fn install_package_module_signatures(
@@ -1103,6 +1120,12 @@ impl TypeChecker {
                     }
                     Type::Builtin(BuiltinId::ParseBool) => {
                         self.check_parse_bool_builtin(expr, expected)
+                    }
+                    Type::Builtin(BuiltinId::StdFsReadText) => {
+                        self.check_std_fs_read_text_builtin(expr, expected)
+                    }
+                    Type::Builtin(BuiltinId::StdFsWriteText) => {
+                        self.check_std_fs_write_text_builtin(expr, expected)
                     }
                     Type::Builtin(BuiltinId::OptionSome) => {
                         if expr.args.len() != 1 {
@@ -1971,6 +1994,52 @@ impl TypeChecker {
         } else {
             Type::Error
         }
+    }
+
+    fn check_std_fs_read_text_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 1 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 1 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        let error_ty = self.std_io_error_type();
+        self.apply_expected(
+            Type::Result(Box::new(Type::String), Box::new(error_ty)),
+            expected,
+            expr.span,
+        )
+    }
+
+    fn check_std_fs_write_text_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 2 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 2 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        self.check_expr_with_expected(&expr.args[1], Some(Type::String));
+        let error_ty = self.std_io_error_type();
+        self.apply_expected(
+            Type::Result(Box::new(Type::Unit), Box::new(error_ty)),
+            expected,
+            expr.span,
+        )
+    }
+
+    fn std_io_error_type(&mut self) -> Type {
+        Type::Record(
+            self.symbol(crate::std_package::IO_ERROR_VISIBLE_NAME_IN_FS),
+            Vec::new(),
+        )
     }
 
     fn check_insert_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {

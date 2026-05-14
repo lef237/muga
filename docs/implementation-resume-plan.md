@@ -1,6 +1,6 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, CLI source-compatible default run coverage around artifact generation, user-defined generic records/functions, prefix `try expr` `Result` propagation, artifact/control-flow hardening for `try`, the first `String` helper builtin slices, and `Unit` / `()` for effect-only success values.
+Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, CLI source-compatible default run coverage around artifact generation, user-defined generic records/functions, prefix `try expr` `Result` propagation, artifact/control-flow hardening for `try`, the first `String` helper builtin slices, `Unit` / `()` for effect-only success values, and the first compiler-provided `std::io` / `std::fs` text-file package slice.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
@@ -19,6 +19,7 @@ Recommended order:
 
 ## Verification Snapshot
 
+- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the first compiler-provided `std::io` / `std::fs` text-file package slice: 339 tests, 0 failures.
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after prefix `try expr` plus artifact/control-flow hardening: 296 tests, 0 failures.
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the generic records/functions slice: 285 tests, 0 failures.
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest MIR/runtime identity slice.
@@ -94,6 +95,7 @@ Ada
 - [x] interface summaries preserve public `TypeInfo`, package record identity, collection types, and compiler-known `Result` signatures.
 - [x] `interface` validates typed package compilation references against generated in-memory interfaces.
 - [x] resolver, typechecker output, runtime, and package builtin filtering share `prelude::BuiltinId`.
+- [x] compiler-provided virtual `std::io` and `std::fs` packages participate in normal package loading, package interfaces, and `.mgb` artifact emission.
 - [x] package rewriting attaches `PackageItemId` to flattened AST record/function declarations so typed HIR no longer recovers item identity from mangled names.
 - [x] the package loader can return an unflattened package graph with original package files plus package/module/item/export metadata.
 - [x] package enum constructor call targets carry enum `PackageItemId` when the enum comes from package mode.
@@ -191,6 +193,7 @@ Ada
 - [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`.
 - [x] first explicit formatting helpers are implemented: `to_string` for `Int`, `Bool`, and `String`.
 - [x] `Unit` and the `()` literal are implemented through parser, typechecker, typed HIR, MIR, bytecode/runtime, package interfaces, and `.mgb` implementation artifacts.
+- [x] first practical stdlib package slice is implemented: `std::io::IOError`, `std::fs::read_text(path): Result[String, io::IOError]`, and `std::fs::write_text(path, text): Result[Unit, io::IOError]`.
 
 ## Architecture Facts To Keep In Mind
 
@@ -201,6 +204,7 @@ Ada
 - `match` supports compiler-known `Option[T]` / `Result[T, E]` and user-defined enums; match patterns are represented internally as enum variant patterns.
 - Runtime enum-like values use a generic enum-value representation.
 - Runtime `Unit` is a first-class value and should be used as the success payload for effect-only `Result` APIs.
+- `std::io::IOError` is currently a transparent record for one-shot text IO: `operation`, `path`, `kind`, `message`, and `raw_code: Option[Int]`.
 - `Map` runtime storage is a simple vector of key/value entries, which is correct for semantics but not a final performance representation.
 - Package interfaces now have a deterministic v2 text format with stable artifact package/item IDs and file round-trip helpers.
 - Loaded package interface summaries can now act as the downstream dependency boundary for typed checking.
@@ -230,7 +234,7 @@ Ada
 
 ## Recommended Next Implementation
 
-The generic records/functions foundation, prefix `try expr` propagation, and first `String` helper builtins have landed. The next implementation theme should be practical API readiness: keep samples/docs/specs accurate, cover remaining edge-case diagnostics around generic arity, ambiguous record literals, stale generic interfaces, invalid `try` placements, invalid helper receivers, and fallible helper APIs, then choose the next small standard-library/API slice.
+The generic records/functions foundation, prefix `try expr` propagation, first `String` helper builtins, `Unit`, and first `std::io` / `std::fs` text-file slice have landed. The next implementation theme should be practical API readiness: keep samples/docs/specs accurate, cover remaining edge-case diagnostics around generic arity, ambiguous record literals, stale generic interfaces, invalid `try` placements, invalid helper receivers, `io::IOError` usage, and fallible helper APIs, then choose the next small standard-library/API slice.
 
 Reasoning:
 
@@ -299,8 +303,9 @@ Estimates are in focused engineering days for someone already familiar with this
 | 27. `try` expression diagnostic hardening | Report targeted `T023` diagnostics for obvious non-`Result` `try` operands while preserving expected-type inference for `try Result::Ok(...)` and similar constructor-heavy expressions. | `src/typing.rs`, `tests/examples.rs`, docs | Done | Low |
 | 28. Explicit scalar formatting helpers | Add `to_string` for `Int`, `Bool`, and `String` plus `String.concat(other): String` as the first formatting primitive, without implicit conversion, interpolation, template formatting, or builder APIs. Cover source, ambiguity diagnostics, samples, and artifact-backed dependency execution. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
 | 29. `Unit` value/type foundation | Add `Unit` and `()` so effect-only APIs can return `Result[Unit, E]` without inventing meaningless success `Bool`/`Int` values. Persist `Unit` through public package interfaces and `.mgb` bytecode artifacts. | parser/types/typing/typed HIR/MIR/bytecode/runtime/interface/artifacts/tests/docs | Done | Low |
+| 30. Minimal std text IO package slice | Add compiler-provided virtual `std::io` and `std::fs` packages with transparent `IOError`, `fs::read_text`, and `fs::write_text`. Implement runtime text IO through internal builtins called by package functions, and cover direct package execution plus emitted `.mgi/.mgb` artifact execution. | `src/std_package.rs`, `src/package.rs`, `src/prelude.rs`, `src/resolver.rs`, `src/typing.rs`, `src/runtime.rs`, tests/docs | Done | Medium |
 
-The next deferred string/API decisions are intentionally explicit: prefer `String.byte_len(): Int` only when byte-oriented APIs need it, keep future range syntax or substring aliases aligned with `slice_chars`, reserve grapheme-cluster APIs until a Unicode segmentation dependency/versioning policy exists, keep fallible string helpers returning `Result[_, String]` until multiple standard-library APIs need a shared richer error type, and defer richer formatting templates/interpolation/builders until concrete formatting use cases justify their shape. The next practical standard-library slice should build a minimal `std::io::IOError` and one-shot `std::fs` text functions on top of `Result` plus `Unit`, while keeping resource handles, `Path`, binary `Bytes`, and control-flow MIR deferred until a concrete runtime/API gap requires them.
+The next deferred string/API decisions are intentionally explicit: prefer `String.byte_len(): Int` only when byte-oriented APIs need it, keep future range syntax or substring aliases aligned with `slice_chars`, reserve grapheme-cluster APIs until a Unicode segmentation dependency/versioning policy exists, keep fallible string helpers returning `Result[_, String]` until a richer string-specific error shape is justified, and defer richer formatting templates/interpolation/builders until concrete formatting use cases justify their shape. The next practical standard-library expansion should harden diagnostics and ergonomics around the landed `std::io` / `std::fs` text slice before adding resource handles, `Path`, binary `Bytes`, directory APIs, stdout/stderr handles, or control-flow MIR.
 
 ## Test Plan For The Next Code Slice
 

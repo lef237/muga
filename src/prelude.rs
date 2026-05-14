@@ -24,6 +24,8 @@ pub enum BuiltinId {
     ToString,
     ParseInt,
     ParseBool,
+    StdFsReadText,
+    StdFsWriteText,
     OptionSome,
     OptionNone,
     ResultOk,
@@ -176,8 +178,25 @@ pub const BUILTINS: &[Builtin] = &[
     },
 ];
 
+const INTERNAL_BUILTINS: &[Builtin] = &[
+    Builtin {
+        id: BuiltinId::StdFsReadText,
+        name: crate::std_package::FS_READ_TEXT_BUILTIN,
+        kind: BuiltinKind::Function,
+    },
+    Builtin {
+        id: BuiltinId::StdFsWriteText,
+        name: crate::std_package::FS_WRITE_TEXT_BUILTIN,
+        kind: BuiltinKind::Function,
+    },
+];
+
 pub fn builtins() -> &'static [Builtin] {
     BUILTINS
+}
+
+pub(crate) fn internal_builtins() -> &'static [Builtin] {
+    INTERNAL_BUILTINS
 }
 
 pub fn builtin_name(id: BuiltinId) -> &'static str {
@@ -208,6 +227,8 @@ pub fn builtin_debug_label(id: BuiltinId) -> &'static str {
         BuiltinId::ToString => "Builtin(to_string)",
         BuiltinId::ParseInt => "Builtin(parse_int)",
         BuiltinId::ParseBool => "Builtin(parse_bool)",
+        BuiltinId::StdFsReadText => "Builtin(__muga_std_fs_read_text)",
+        BuiltinId::StdFsWriteText => "Builtin(__muga_std_fs_write_text)",
         BuiltinId::OptionSome => "Builtin(Option::Some)",
         BuiltinId::OptionNone => "Builtin(Option::None)",
         BuiltinId::ResultOk => "Builtin(Result::Ok)",
@@ -218,6 +239,7 @@ pub fn builtin_debug_label(id: BuiltinId) -> &'static str {
 pub fn builtin_by_id(id: BuiltinId) -> Builtin {
     BUILTINS
         .iter()
+        .chain(INTERNAL_BUILTINS.iter())
         .copied()
         .find(|builtin| builtin.id == id)
         .expect("every builtin id must be present in the catalog")
@@ -226,6 +248,14 @@ pub fn builtin_by_id(id: BuiltinId) -> Builtin {
 pub fn builtin_by_name(name: &str) -> Option<Builtin> {
     BUILTINS
         .iter()
+        .copied()
+        .find(|builtin| builtin.name == name)
+}
+
+pub(crate) fn builtin_by_any_name(name: &str) -> Option<Builtin> {
+    BUILTINS
+        .iter()
+        .chain(INTERNAL_BUILTINS.iter())
         .copied()
         .find(|builtin| builtin.name == name)
 }

@@ -54,6 +54,13 @@ pub fn resolve_package_module(
 ) -> ResolveOutput {
     let mut resolver = Resolver::new();
     resolver.install_prelude();
+    if program
+        .package
+        .as_ref()
+        .is_some_and(|package| crate::std_package::allows_internal_builtins(&package.path))
+    {
+        resolver.install_internal_builtins();
+    }
     if let Some(environment) = signatures.module(module) {
         resolver.install_package_module_signatures(signatures, environment);
     }
@@ -135,13 +142,23 @@ impl Resolver {
 
     fn install_prelude(&mut self) {
         for builtin in prelude::builtins() {
-            let kind = match builtin.kind {
-                BuiltinKind::Function => BindingKind::Function,
-                BuiltinKind::Value => BindingKind::Immutable,
-            };
-            let symbol = self.symbol(builtin.name);
-            self.insert_current(symbol, kind, Span::default());
+            self.install_builtin(*builtin);
         }
+    }
+
+    fn install_internal_builtins(&mut self) {
+        for builtin in prelude::internal_builtins() {
+            self.install_builtin(*builtin);
+        }
+    }
+
+    fn install_builtin(&mut self, builtin: prelude::Builtin) {
+        let kind = match builtin.kind {
+            BuiltinKind::Function => BindingKind::Function,
+            BuiltinKind::Value => BindingKind::Immutable,
+        };
+        let symbol = self.symbol(builtin.name);
+        self.insert_current(symbol, kind, Span::default());
     }
 
     fn install_package_module_signatures(
