@@ -16,6 +16,7 @@ pub enum BuiltinId {
     Trim,
     StartsWith,
     EndsWith,
+    ParseInt,
     OptionSome,
     OptionNone,
     ResultOk,
@@ -107,6 +108,11 @@ pub const BUILTINS: &[Builtin] = &[
         kind: BuiltinKind::Function,
     },
     Builtin {
+        id: BuiltinId::ParseInt,
+        name: "parse_int",
+        kind: BuiltinKind::Function,
+    },
+    Builtin {
         id: BuiltinId::OptionSome,
         name: known_enum::OPTION_SOME_QUALIFIED,
         kind: BuiltinKind::Function,
@@ -152,6 +158,7 @@ pub fn builtin_debug_label(id: BuiltinId) -> &'static str {
         BuiltinId::Trim => "Builtin(trim)",
         BuiltinId::StartsWith => "Builtin(starts_with)",
         BuiltinId::EndsWith => "Builtin(ends_with)",
+        BuiltinId::ParseInt => "Builtin(parse_int)",
         BuiltinId::OptionSome => "Builtin(Option::Some)",
         BuiltinId::OptionNone => "Builtin(Option::None)",
         BuiltinId::ResultOk => "Builtin(Result::Ok)",

@@ -158,12 +158,8 @@ Compatibility requirements:
 Local recovery remains explicit:
 
 ```muga
-fn parse_int(text: String): Result[Int, String] {
-  Result::Err("not implemented")
-}
-
 fn main(): Int {
-  result = parse_int("10")
+  result = "10".parse_int()
   match result {
     Result::Ok(value) => value
     Result::Err(message) => 0
@@ -192,7 +188,7 @@ Implemented `try` shape:
 ```muga
 fn load_age(path: String): Result[Int, String] {
   text = try read_file(path)
-  parse_int(text)
+  text.parse_int()
 }
 ```
 
@@ -202,7 +198,7 @@ This should desugar approximately to:
 fn load_age(path: String): Result[Int, String] {
   read = read_file(path)
   match read {
-    Result::Ok(text) => parse_int(text)
+    Result::Ok(text) => text.parse_int()
     Result::Err(error) => Result::Err(error)
   }
 }

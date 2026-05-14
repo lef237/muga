@@ -65,7 +65,7 @@ Recommended shape:
 ```muga
 fn load_age(path: String): Result[Int, String] {
   text = try read_file(path)
-  parse_int(text)
+  text.parse_int()
 }
 ```
 
@@ -86,7 +86,7 @@ The next practical bottleneck is not syntax. It is the absence of ordinary APIs.
 
 Prioritize packages in this order:
 
-1. `std::string`: the first prelude-helper slice implements `trim`, `contains`, `starts_with`, `ends_with`, and `is_empty`; next string work should decide substring/split/replace/parse helpers and leave `String.len()` until byte-versus-character semantics are explicit.
+1. `std::string`: the first prelude-helper slices implement `trim`, `contains`, `starts_with`, `ends_with`, `is_empty`, and `parse_int`; next string work should decide substring/split/replace and leave `String.len()` plus richer parse error types until those semantics are explicit.
 2. `std::fmt` or equivalent formatting helpers, without adding broad implicit conversion.
 3. `std::fs` and `std::io`: read/write files, stdout/stderr handles, basic directory operations.
 4. `std::time`, `std::env`, and `std::process`: enough for CLI tools.
