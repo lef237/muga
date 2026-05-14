@@ -1082,6 +1082,43 @@ fn call_builtin(
             };
             Ok(Value::List(parts))
         }
+        BuiltinId::SliceChars => {
+            let (text, start, count) = expect_three_args(args, span)?;
+            let Value::String(text) = text else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`slice_chars` expects String as its first argument",
+                    span,
+                )]);
+            };
+            let Value::Int(start) = start else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`slice_chars` expects Int as its second argument",
+                    span,
+                )]);
+            };
+            let Value::Int(count) = count else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`slice_chars` expects Int as its third argument",
+                    span,
+                )]);
+            };
+            let Some(end) = start.checked_add(count) else {
+                return Ok(result_err(Value::String("invalid slice range".to_string())));
+            };
+            let char_count = text.chars().count() as i64;
+            if start < 0 || count < 0 || end > char_count {
+                return Ok(result_err(Value::String("invalid slice range".to_string())));
+            }
+            let slice = text
+                .chars()
+                .skip(start as usize)
+                .take(count as usize)
+                .collect();
+            Ok(result_ok(Value::String(slice)))
+        }
         BuiltinId::ParseInt => {
             let value = expect_one_arg(args, span)?;
             let Value::String(text) = value else {

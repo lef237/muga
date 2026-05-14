@@ -172,7 +172,7 @@ Implemented:
 - records, field access, `record.with(...)`, chained calls, package-qualified chained calls, arrow function types, local binding annotations, and local bidirectional inference for selected higher-order cases
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, direct list indexing, `len`, `is_empty`, `push`, `get`, and `set`
-- string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `parse_int`, and `parse_bool`
+- string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `slice_chars`, `parse_int`, and `parse_bool`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, VM execution, typed HIR, and in-memory package interface summaries
 - prefix `try expr` propagation for `Result[T, E]` with exact error-type matching
@@ -231,7 +231,7 @@ Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad co
 - [samples/println_chain.muga](./samples/println_chain.muga) (runnable sample for chaining through builtin `println`)
 - [samples/print_then_println.muga](./samples/print_then_println.muga) (runnable sample for mixing `print` and `println`)
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
-- [samples/string_helpers.muga](./samples/string_helpers.muga) (runnable sample for `String` helper builtins, including `String.char_count()`, and chained calls)
+- [samples/string_helpers.muga](./samples/string_helpers.muga) (runnable sample for `String` helper builtins, including `String.char_count()` / `String.slice_chars()`, and chained calls)
 - [samples/string_parse_int.muga](./samples/string_parse_int.muga) (runnable sample for `String.parse_int()` and `try` propagation)
 - [samples/string_parse_bool.muga](./samples/string_parse_bool.muga) (runnable sample for `String.parse_bool()` and `try` propagation)
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)

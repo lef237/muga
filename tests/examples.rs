@@ -3711,9 +3711,14 @@ package util::strings
 pub fn score(value: String, flag_text: String): Result[Int, String] {
   flag = try flag_text.parse_bool()
   transformed = value.trim().replace("Ada", "Muga")
+  prefix = try transformed.slice_chars(0, 4)
   parts = transformed.split("-")
   if flag {
-    Result::Ok(parts.len())
+    if prefix == "Muga" {
+      Result::Ok(parts.len())
+    } else {
+      Result::Err("slice failed")
+    }
   } else {
     Result::Err("disabled")
   }
@@ -7550,6 +7555,82 @@ fn main(): Int {
     let result = muga::run_source(source).unwrap();
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), "3");
+}
+
+#[test]
+fn string_slice_chars_sample_runs() {
+    let source = r#"
+fn main(): String {
+  match "Ada Lovelace".slice_chars(4, 8) {
+    Result::Ok(part) => part
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Lovelace");
+}
+
+#[test]
+fn string_slice_chars_uses_unicode_scalar_indexes() {
+    let source = r#"
+fn main(): String {
+  match "éclair".slice_chars(0, 1) {
+    Result::Ok(part) => part
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "é");
+}
+
+#[test]
+fn string_slice_chars_out_of_range_returns_result_err() {
+    let source = r#"
+fn main(): String {
+  match "Ada".slice_chars(2, 2) {
+    Result::Ok(part) => part
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "invalid slice range");
+}
+
+#[test]
+fn string_slice_chars_negative_range_returns_result_err() {
+    let source = r#"
+fn main(): String {
+  match "Ada".slice_chars(-1, 1) {
+    Result::Ok(part) => part
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "invalid slice range");
+}
+
+#[test]
+fn string_slice_chars_checks_index_types() {
+    let source = r#"
+fn main(): Result[String, String] {
+  "Ada".slice_chars("0", 1)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
 }
 
 #[test]

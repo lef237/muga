@@ -7,7 +7,14 @@ fn main(): String {
         if "".is_empty() {
           if parts.len() == 2 {
             if text.char_count() == 8 {
-              text
+              match text.slice_chars(4, 4) {
+                Result::Ok(part) => if part == "Muga" {
+                  text
+                } else {
+                  "slice failed"
+                }
+                Result::Err(message) => message
+              }
             } else {
               "char count failed"
             }
