@@ -1,6 +1,6 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, CLI source-compatible default run coverage around artifact generation, user-defined generic records/functions, prefix `try expr` `Result` propagation, and artifact/control-flow hardening for `try`.
+Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, CLI source-compatible default run coverage around artifact generation, user-defined generic records/functions, prefix `try expr` `Result` propagation, artifact/control-flow hardening for `try`, and the first `String` helper builtin slice.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
@@ -188,6 +188,7 @@ Ada
 - [ ] arbitrary map key types are deferred.
 - [ ] `Set[T]` is deferred.
 - [x] prefix `try expr` `Result` propagation is implemented and hardened for source, nested control flow, closures, and artifact-backed dependency execution.
+- [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `starts_with`, and `ends_with`.
 
 ## Architecture Facts To Keep In Mind
 
@@ -226,7 +227,7 @@ Ada
 
 ## Recommended Next Implementation
 
-The generic records/functions foundation and prefix `try expr` propagation have landed. The next implementation theme should be alignment and practical API readiness: keep samples/docs/specs accurate, cover any remaining edge-case diagnostics around generic arity, ambiguous record literals, stale generic interfaces, and invalid `try` placements, and then choose a small standard-library/API slice that benefits from `Result` ergonomics.
+The generic records/functions foundation, prefix `try expr` propagation, and first `String` helper builtins have landed. The next implementation theme should be practical API readiness: keep samples/docs/specs accurate, cover remaining edge-case diagnostics around generic arity, ambiguous record literals, stale generic interfaces, invalid `try` placements, and invalid helper receivers, then choose the next small standard-library/API slice.
 
 Reasoning:
 
@@ -287,8 +288,9 @@ Estimates are in focused engineering days for someone already familiar with this
 | 19. User-defined generic records/functions | Add explicit declaration type parameters for records and functions, call-site inference for ordinary use, and persisted package-interface support for generic public signatures without bounds, specialization, or polymorphic recursion. | parser/types/typing/package/interface/tests/docs | Done | High |
 | 20. Generic surface hardening | Added docs/samples and targeted diagnostics for generic arity, ambiguous generic record literals, package-interface round trips, and stale generic signature checks. Keep expanding edge cases as the package/API surface grows. | docs/samples/tests/typing/interface | Done | Medium |
 | 21. Result propagation | Implemented prefix `try expr` propagation for `Result`, including exact type rules, MIR/bytecode lowering, source diagnostics, artifact-backed dependency execution, nested control-flow coverage, and closure return behavior. | `src/token.rs`, `src/parser.rs`, `src/typing.rs`, `src/typed_hir.rs`, `src/mir.rs`, `src/bytecode.rs`, `tests/examples.rs`, specs/docs | Done | High |
+| 22. First `String` helper builtins | Add low-risk string helpers that do not require byte-versus-character length semantics: `is_empty`, `contains`, `trim`, `starts_with`, and `ends_with`, with runtime, typing, samples, and artifact-backed dependency coverage. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
 
-The safest immediate next slice is docs/sample alignment plus small practical standard-library/API planning. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
+The safest immediate next slice is another narrow practical API step, most likely `String` split/replace or parse helpers returning `Result`. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
 
 ## Test Plan For The Next Code Slice
 

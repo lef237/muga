@@ -838,11 +838,12 @@ fn call_builtin(
         BuiltinId::IsEmpty => {
             let value = expect_one_arg(args, span)?;
             match value {
+                Value::String(text) => Ok(Value::Bool(text.is_empty())),
                 Value::List(items) => Ok(Value::Bool(items.is_empty())),
                 Value::Map(map) => Ok(Value::Bool(map.entries.is_empty())),
                 _ => Err(vec![Diagnostic::new(
                     "R014",
-                    "`is_empty` expects List[T] or Map[K, V] as its first argument",
+                    "`is_empty` expects String, List[T], or Map[K, V] as its first argument",
                     span,
                 )]),
             }
@@ -914,18 +915,30 @@ fn call_builtin(
             }))
         }
         BuiltinId::Contains => {
-            let (map, key) = expect_two_args(args, span)?;
-            let Value::Map(map) = map else {
-                return Err(vec![Diagnostic::new(
+            let (collection, key_or_needle) = expect_two_args(args, span)?;
+            match collection {
+                Value::String(text) => {
+                    let Value::String(needle) = key_or_needle else {
+                        return Err(vec![Diagnostic::new(
+                            "R014",
+                            "`contains` expects String as its second argument for String",
+                            span,
+                        )]);
+                    };
+                    Ok(Value::Bool(text.contains(&needle)))
+                }
+                Value::Map(map) => {
+                    let key = map_key(key_or_needle, span, "contains")?;
+                    Ok(Value::Bool(
+                        map.entries.iter().any(|entry| entry.key == key),
+                    ))
+                }
+                _ => Err(vec![Diagnostic::new(
                     "R014",
-                    "`contains` expects Map[K, V] as its first argument",
+                    "`contains` expects String or Map[K, V] as its first argument",
                     span,
-                )]);
-            };
-            let key = map_key(key, span, "contains")?;
-            Ok(Value::Bool(
-                map.entries.iter().any(|entry| entry.key == key),
-            ))
+                )]),
+            }
         }
         BuiltinId::Insert => {
             let (map, key, value) = expect_three_args(args, span)?;
@@ -956,6 +969,53 @@ fn call_builtin(
             let key = map_key(key, span, "remove")?;
             map.entries.retain(|entry| entry.key != key);
             Ok(Value::Map(map))
+        }
+        BuiltinId::Trim => {
+            let value = expect_one_arg(args, span)?;
+            let Value::String(text) = value else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`trim` expects String as its first argument",
+                    span,
+                )]);
+            };
+            Ok(Value::String(text.trim().to_string()))
+        }
+        BuiltinId::StartsWith => {
+            let (text, prefix) = expect_two_args(args, span)?;
+            let Value::String(text) = text else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`starts_with` expects String as its first argument",
+                    span,
+                )]);
+            };
+            let Value::String(prefix) = prefix else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`starts_with` expects String as its second argument",
+                    span,
+                )]);
+            };
+            Ok(Value::Bool(text.starts_with(&prefix)))
+        }
+        BuiltinId::EndsWith => {
+            let (text, suffix) = expect_two_args(args, span)?;
+            let Value::String(text) = text else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`ends_with` expects String as its first argument",
+                    span,
+                )]);
+            };
+            let Value::String(suffix) = suffix else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`ends_with` expects String as its second argument",
+                    span,
+                )]);
+            };
+            Ok(Value::Bool(text.ends_with(&suffix)))
         }
         BuiltinId::OptionSome => {
             let value = expect_one_arg(args, span)?;

@@ -19,6 +19,7 @@ Implemented language surface:
 - local binding annotations and function type annotations with `->`
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
+- string helpers `is_empty`, `contains`, `trim`, `starts_with`, and `ends_with`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for compiler-known `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
 - prefix `try expr` propagation for `Result[T, E]` with exact error-type matching
@@ -85,12 +86,12 @@ Related design notes:
 
 The next code slices should keep the newly landed generic records/functions and `Result` propagation surfaces stable on top of the package/artifact foundation:
 
-1. Keep docs, runnable samples, and specs aligned for explicit generic `record` / `fn` declarations and prefix `try expr`.
-2. Expand diagnostics around generic arity, duplicate type parameters, ambiguous generic record literals, stale generic package interfaces, and invalid `try` placements where gaps remain.
-3. Keep package interfaces storing resolved generic public signatures for records/functions and keep artifact execution proving fallible dependency APIs without source-body fallback.
+1. Keep docs, runnable samples, and specs aligned for explicit generic `record` / `fn`, prefix `try expr`, and the first `String` helper builtins.
+2. Expand diagnostics around generic arity, duplicate type parameters, ambiguous generic record literals, stale generic package interfaces, invalid `try` placements, and invalid string helper receivers where gaps remain.
+3. Keep package interfaces storing resolved generic public signatures for records/functions and keep artifact execution proving fallible or helper-heavy dependency APIs without source-body fallback.
 4. Keep bounds, protocols/typeclasses, higher-kinded types, specialization, and polymorphic recursion out of the MVP.
 5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while hardening public signatures.
-6. Keep wildcard enum patterns, native backend work, broad stdlib effects, and full incremental project artifact reuse deferred until the next practical API slice is selected.
+6. Keep wildcard enum patterns, native backend work, broad stdlib effects, `String.len()` semantics, and full incremental project artifact reuse deferred until a concrete API slice requires those decisions.
 
 ## Compiler Architecture Path
 

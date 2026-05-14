@@ -72,10 +72,15 @@ The v1 prelude currently provides:
 
 - `print`
 - `println`
+- `len`, `is_empty`, `push`, `get`, and `set` for `List[T]`
+- `Map.empty`, `len`, `is_empty`, `contains`, `get`, `insert`, and `remove` for `Map[K, V]`
+- `is_empty`, `contains`, `trim`, `starts_with`, and `ends_with` for `String`
 
 `print` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output without a trailing newline, and returns that same value.
 
 `println` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output as one line, and returns that same value.
+
+`String.is_empty()` returns `Bool`, `String.contains(needle)` returns `Bool`, `String.trim()` returns `String`, and `String.starts_with(prefix)` / `String.ends_with(suffix)` return `Bool`. `String.len()` is intentionally not part of this first string-helper slice, because byte length versus character-count semantics should be decided separately.
 
 Because `print` and `println` accept several concrete types, neither one by itself makes an unconstrained parameter uniquely inferable.
 
