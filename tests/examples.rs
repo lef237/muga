@@ -7432,6 +7432,18 @@ fn main(): Bool {
     );
 }
 
+fn assert_string_receiver_rejected(source: &str, builtin_name: &str) {
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "T006"
+                && diagnostic.message.contains(builtin_name)
+                && diagnostic.message.contains("String")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
 #[test]
 fn string_helper_requires_string_receiver() {
     let source = r#"
@@ -7439,13 +7451,7 @@ fn main(): String {
   1.trim()
 }
 "#;
-    let diagnostics = muga::check_source(source).unwrap_err();
-    assert!(
-        diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "T002"),
-        "{diagnostics:#?}"
-    );
+    assert_string_receiver_rejected(source, "trim");
 }
 
 #[test]
@@ -7455,13 +7461,64 @@ fn main(): Int {
   1.char_count()
 }
 "#;
-    let diagnostics = muga::check_source(source).unwrap_err();
-    assert!(
-        diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "T002"),
-        "{diagnostics:#?}"
-    );
+    assert_string_receiver_rejected(source, "char_count");
+}
+
+#[test]
+fn string_predicate_and_transform_helpers_require_string_receiver() {
+    let cases = [
+        (
+            r#"
+fn main(): Bool {
+  1.starts_with("A")
+}
+"#,
+            "starts_with",
+        ),
+        (
+            r#"
+fn main(): Bool {
+  1.ends_with("a")
+}
+"#,
+            "ends_with",
+        ),
+        (
+            r#"
+fn main(): String {
+  1.replace("A", "M")
+}
+"#,
+            "replace",
+        ),
+        (
+            r#"
+fn main(): List[String] {
+  1.split(",")
+}
+"#,
+            "split",
+        ),
+    ];
+    for (source, builtin_name) in cases {
+        assert_string_receiver_rejected(source, builtin_name);
+    }
+}
+
+#[test]
+fn string_helper_receiver_still_infers_unannotated_parameter() {
+    let source = r#"
+fn clean(value) {
+  value.trim()
+}
+
+fn main(): String {
+  clean("  Ada  ")
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Ada");
 }
 
 #[test]
@@ -7524,13 +7581,7 @@ fn main(): Result[Int, String] {
   1.parse_int()
 }
 "#;
-    let diagnostics = muga::check_source(source).unwrap_err();
-    assert!(
-        diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "T002"),
-        "{diagnostics:#?}"
-    );
+    assert_string_receiver_rejected(source, "parse_int");
 }
 
 #[test]
@@ -7634,6 +7685,16 @@ fn main(): Result[String, String] {
 }
 
 #[test]
+fn string_slice_chars_requires_string_receiver() {
+    let source = r#"
+fn main(): Result[String, String] {
+  1.slice_chars(0, 1)
+}
+"#;
+    assert_string_receiver_rejected(source, "slice_chars");
+}
+
+#[test]
 fn string_replace_empty_pattern_returns_original() {
     let source = r#"
 fn main(): String {
@@ -7694,6 +7755,16 @@ fn main(): String {
     let result = muga::run_source(source).unwrap();
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), "invalid Bool");
+}
+
+#[test]
+fn string_parse_bool_requires_string_receiver() {
+    let source = r#"
+fn main(): Result[Bool, String] {
+  1.parse_bool()
+}
+"#;
+    assert_string_receiver_rejected(source, "parse_bool");
 }
 
 #[test]

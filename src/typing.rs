@@ -1745,10 +1745,31 @@ impl TypeChecker {
             return Type::Error;
         }
 
-        let arg_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
-        match self.resolve_type(&arg_ty) {
-            Type::String => self.apply_expected(return_ty, expected, expr.span),
-            Type::Error => Type::Error,
+        if self.check_string_receiver(&expr.args[0], builtin, expr.span) {
+            self.apply_expected(return_ty, expected, expr.span)
+        } else {
+            Type::Error
+        }
+    }
+
+    fn check_string_receiver(
+        &mut self,
+        receiver: &Expr,
+        builtin: BuiltinId,
+        call_span: Span,
+    ) -> bool {
+        let receiver_ty = self.check_expr(receiver);
+        match self.resolve_type(&receiver_ty) {
+            Type::String => true,
+            Type::Unknown(_) => match self.unify(receiver_ty, Type::String) {
+                Ok(_) => true,
+                Err(message) => {
+                    self.diagnostics
+                        .push(Diagnostic::new("T002", message, receiver.span()));
+                    false
+                }
+            },
+            Type::Error => false,
             _ => {
                 self.diagnostics.push(Diagnostic::new(
                     "T006",
@@ -1756,9 +1777,9 @@ impl TypeChecker {
                         "`{}` expects String as its first argument",
                         Self::builtin_name(builtin)
                     ),
-                    expr.span,
+                    call_span,
                 ));
-                Type::Error
+                false
             }
         }
     }
@@ -1778,22 +1799,12 @@ impl TypeChecker {
             return Type::Error;
         }
 
-        let receiver_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        let receiver_ok = self.check_string_receiver(&expr.args[0], builtin, expr.span);
         self.check_expr_with_expected(&expr.args[1], Some(Type::String));
-        match self.resolve_type(&receiver_ty) {
-            Type::String => self.apply_expected(Type::Bool, expected, expr.span),
-            Type::Error => Type::Error,
-            _ => {
-                self.diagnostics.push(Diagnostic::new(
-                    "T006",
-                    format!(
-                        "`{}` expects String as its first argument",
-                        Self::builtin_name(builtin)
-                    ),
-                    expr.span,
-                ));
-                Type::Error
-            }
+        if receiver_ok {
+            self.apply_expected(Type::Bool, expected, expr.span)
+        } else {
+            Type::Error
         }
     }
 
@@ -1813,22 +1824,12 @@ impl TypeChecker {
             return Type::Error;
         }
 
-        let receiver_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        let receiver_ok = self.check_string_receiver(&expr.args[0], builtin, expr.span);
         self.check_expr_with_expected(&expr.args[1], Some(Type::String));
-        match self.resolve_type(&receiver_ty) {
-            Type::String => self.apply_expected(ret, expected, expr.span),
-            Type::Error => Type::Error,
-            _ => {
-                self.diagnostics.push(Diagnostic::new(
-                    "T006",
-                    format!(
-                        "`{}` expects String as its first argument",
-                        Self::builtin_name(builtin)
-                    ),
-                    expr.span,
-                ));
-                Type::Error
-            }
+        if receiver_ok {
+            self.apply_expected(ret, expected, expr.span)
+        } else {
+            Type::Error
         }
     }
 
@@ -1848,23 +1849,13 @@ impl TypeChecker {
             return Type::Error;
         }
 
-        let receiver_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        let receiver_ok = self.check_string_receiver(&expr.args[0], builtin, expr.span);
         self.check_expr_with_expected(&expr.args[1], Some(Type::String));
         self.check_expr_with_expected(&expr.args[2], Some(Type::String));
-        match self.resolve_type(&receiver_ty) {
-            Type::String => self.apply_expected(ret, expected, expr.span),
-            Type::Error => Type::Error,
-            _ => {
-                self.diagnostics.push(Diagnostic::new(
-                    "T006",
-                    format!(
-                        "`{}` expects String as its first argument",
-                        Self::builtin_name(builtin)
-                    ),
-                    expr.span,
-                ));
-                Type::Error
-            }
+        if receiver_ok {
+            self.apply_expected(ret, expected, expr.span)
+        } else {
+            Type::Error
         }
     }
 
@@ -1878,24 +1869,18 @@ impl TypeChecker {
             return Type::Error;
         }
 
-        let receiver_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        let receiver_ok =
+            self.check_string_receiver(&expr.args[0], BuiltinId::SliceChars, expr.span);
         self.check_expr_with_expected(&expr.args[1], Some(Type::Int));
         self.check_expr_with_expected(&expr.args[2], Some(Type::Int));
-        match self.resolve_type(&receiver_ty) {
-            Type::String => self.apply_expected(
+        if receiver_ok {
+            self.apply_expected(
                 Type::Result(Box::new(Type::String), Box::new(Type::String)),
                 expected,
                 expr.span,
-            ),
-            Type::Error => Type::Error,
-            _ => {
-                self.diagnostics.push(Diagnostic::new(
-                    "T006",
-                    "`slice_chars` expects String as its first argument",
-                    expr.span,
-                ));
-                Type::Error
-            }
+            )
+        } else {
+            Type::Error
         }
     }
 
@@ -1909,22 +1894,14 @@ impl TypeChecker {
             return Type::Error;
         }
 
-        let arg_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
-        match self.resolve_type(&arg_ty) {
-            Type::String => self.apply_expected(
+        if self.check_string_receiver(&expr.args[0], BuiltinId::ParseInt, expr.span) {
+            self.apply_expected(
                 Type::Result(Box::new(Type::Int), Box::new(Type::String)),
                 expected,
                 expr.span,
-            ),
-            Type::Error => Type::Error,
-            _ => {
-                self.diagnostics.push(Diagnostic::new(
-                    "T006",
-                    "`parse_int` expects String as its first argument",
-                    expr.span,
-                ));
-                Type::Error
-            }
+            )
+        } else {
+            Type::Error
         }
     }
 
@@ -1938,22 +1915,14 @@ impl TypeChecker {
             return Type::Error;
         }
 
-        let arg_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
-        match self.resolve_type(&arg_ty) {
-            Type::String => self.apply_expected(
+        if self.check_string_receiver(&expr.args[0], BuiltinId::ParseBool, expr.span) {
+            self.apply_expected(
                 Type::Result(Box::new(Type::Bool), Box::new(Type::String)),
                 expected,
                 expr.span,
-            ),
-            Type::Error => Type::Error,
-            _ => {
-                self.diagnostics.push(Diagnostic::new(
-                    "T006",
-                    "`parse_bool` expects String as its first argument",
-                    expr.span,
-                ));
-                Type::Error
-            }
+            )
+        } else {
+            Type::Error
         }
     }
 
