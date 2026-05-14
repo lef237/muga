@@ -151,11 +151,11 @@ Compatibility requirements:
 - `Result::Ok(value)`, `Result::Err(error)`, and exhaustive Result `match` remain valid.
 - `T?` remains reserved and unimplemented.
 
-## 7. Result Before Error Propagation Sugar
+## 7. Result Propagation
 
-`Result[T, E]` should be implemented before any propagation operator.
+`Result[T, E]` is the recoverable-error type. Explicit `match` is still the recovery mechanism, and prefix `try expr` is the propagation form.
 
-Initial source usage should be explicit:
+Local recovery remains explicit:
 
 ```muga
 fn parse_int(text: String): Result[Int, String] {
@@ -171,11 +171,11 @@ fn main(): Int {
 }
 ```
 
-This explicit form is now implemented for compiler-known `Result[T, E]`. Only after it stays stable should Muga add propagation sugar.
+This explicit form is implemented for compiler-known `Result[T, E]`, and prefix `try expr` is implemented for propagation.
 
-Current recommendation:
+Current propagation shape:
 
-- prefer prefix `try expr` for `Result` propagation if sugar is added
+- use prefix `try expr` for `Result` propagation
 - do not use postfix `?` for `Result` propagation in the current design direction
 - keep `T?` reserved only as possible future shorthand for `Option[T]`
 - do not introduce optional chaining in the first error-propagation design
@@ -187,7 +187,7 @@ Rationale:
 - Muga's simplicity goal is local readability, not only the fewest characters
 - explicit `match` remains the recovery mechanism when the caller wants to handle the error locally
 
-Candidate `try` shape:
+Implemented `try` shape:
 
 ```muga
 fn load_age(path: String): Result[Int, String] {
@@ -218,7 +218,7 @@ fn load_user(path: String): Result[User, String] {
 }
 ```
 
-Without `try`, the same flow remains expressible with explicit `match`, but gets nested quickly. That is the reason to consider a propagation form at all.
+Without `try`, the same flow remains expressible with explicit `match`, but gets nested quickly. That is the reason Muga includes a propagation form.
 
 When the caller wants to recover instead of propagate, use `match`:
 

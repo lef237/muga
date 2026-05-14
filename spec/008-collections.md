@@ -211,7 +211,7 @@ This is intentionally not part of the first collection implementation.
 Reason:
 
 - `Option[T]` is explicit and works before deciding the rest of the `?` syntax family
-- Result propagation currently prefers a visible `try expr` form over postfix `?`
+- Result propagation uses a visible prefix `try expr` form instead of postfix `?`
 - keeping `T?` as future sugar avoids taking that syntax too early
 
 If `T?` is added later, it should mean exactly `Option[T]`, not a separate nullable type.

@@ -1,6 +1,6 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, and CLI source-compatible default run coverage around artifact generation.
+Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, CLI source-compatible default run coverage around artifact generation, user-defined generic records/functions, prefix `try expr` `Result` propagation, and artifact/control-flow hardening for `try`.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
@@ -15,10 +15,11 @@ Recommended order:
 3. Keep the artifact root explicit on the CLI. Extend the explicit workflow before adding any `muga.toml` artifact-root configuration.
 4. Preserve `.mgi` as the public interface artifact, `.mgc` as the check-cache proof, and `.mgb` as the package implementation artifact. Do not stretch `.mgc` into an executable body store.
 5. Keep missing, stale, hash-mismatched, or structurally invalid execution artifacts as hard errors under `--artifact-root`; do not silently read dependency source bodies in artifact-backed execution.
-6. Continue hardening samples, README/spec notes, and diagnostics. Keep wildcard enum patterns, `try expr`, native backend work, broad stdlib effects, and full incremental reuse deferred unless one is required to finish the v1 package/artifact path.
+6. Continue hardening samples, README/spec notes, and diagnostics. Keep wildcard enum patterns, native backend work, broad stdlib effects, and full incremental reuse deferred unless one is required to finish the v1 package/artifact path.
 
 ## Verification Snapshot
 
+- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after prefix `try expr` plus artifact/control-flow hardening: 296 tests, 0 failures.
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the generic records/functions slice: 285 tests, 0 failures.
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest MIR/runtime identity slice.
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest `.mgb` artifact hardening and sample slice: 274 tests, 0 failures.
@@ -186,7 +187,7 @@ Ada
 - [ ] map literals are deferred.
 - [ ] arbitrary map key types are deferred.
 - [ ] `Set[T]` is deferred.
-- [ ] error propagation syntax is not implemented.
+- [x] prefix `try expr` `Result` propagation is implemented and hardened for source, nested control flow, closures, and artifact-backed dependency execution.
 
 ## Architecture Facts To Keep In Mind
 
@@ -225,7 +226,7 @@ Ada
 
 ## Recommended Next Implementation
 
-The generic records/functions foundation has landed. The next implementation theme should be hardening that surface: add samples and docs, cover edge-case diagnostics around generic arity and ambiguous record literals, and keep persisted package-interface compatibility stable while avoiding larger syntax expansion.
+The generic records/functions foundation and prefix `try expr` propagation have landed. The next implementation theme should be alignment and practical API readiness: keep samples/docs/specs accurate, cover any remaining edge-case diagnostics around generic arity, ambiguous record literals, stale generic interfaces, and invalid `try` placements, and then choose a small standard-library/API slice that benefits from `Result` ergonomics.
 
 Reasoning:
 
@@ -234,7 +235,7 @@ Reasoning:
 - `.mgi` should remain a public-signature artifact, `.mgc` should remain a check-cache proof, and `.mgb` should remain a separate implementation/execution artifact that stores bytecode bodies generated through MIR rather than overloading either existing format or persisting dependency source.
 - Artifact-backed `run` fails loudly when required dependency execution artifacts are missing, stale, hash-mismatched, structurally invalid, or inconsistent with loaded interfaces. It should continue to avoid silently falling back to dependency source bodies under `--artifact-root`.
 - `muga.toml` should not name an artifact root yet. The manifest currently owns only `[package] name/source`; adding build/cache configuration before dependency declarations and lockfiles would make ordinary project `check` and `run` semantics ambiguous.
-- Control-flow MIR, native lowering, broad stdlib effects, `try expr`, and wildcard-heavy matching should remain out of the v1 path unless they become necessary to make artifact-backed execution correct.
+- Control-flow MIR, native lowering, broad stdlib effects, and wildcard-heavy matching should remain out of the v1 path unless they become necessary to make artifact-backed execution correct.
 
 ## Requirement Decisions For The Next Slice
 
@@ -257,7 +258,7 @@ Earlier enum/result decisions remain settled:
 - [x] Match patterns must be exhaustive with no wildcard in the MVP.
 - [x] Package-mode enum declarations use `PackageItemId`.
 - [x] Public enum declarations appear in in-memory package interface summaries.
-- [x] Prefer `try expr` over postfix `?` if Result propagation sugar is added later.
+- [x] Use prefix `try expr`, not postfix `?`, for `Result` propagation.
 
 ## Implementation Plan And Estimate
 
@@ -266,7 +267,7 @@ Estimates are in focused engineering days for someone already familiar with this
 | Slice | Scope | Main files | Estimate | Risk |
 |---|---|---|---:|---|
 | 1. Enum/ADT internal model | Generalize the Option-specific representation into an enum-like internal model, without changing source behavior. AST/typed HIR/MIR pattern shape, runtime enum value shape, compiler-known enum metadata, and generic two-variant bytecode/runtime branching are in place. | `src/typing.rs`, `src/typed_hir.rs`, `src/mir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `tests/examples.rs` | Done | Low |
-| 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. No propagation sugar yet. Reuse the known enum metadata table and generic runtime enum value shape. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/mir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
+| 2. `Result[T, E]` standard type | Add compiler-known `Result::Ok`, `Result::Err`, and exhaustive `Result` match. Reuse the known enum metadata table and generic runtime enum value shape; the later `Result` propagation slice covers `try expr`. | `src/known_enum.rs`, `src/parser.rs`, `src/typing.rs`, `src/mir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/typed_hir.rs` | Done | Medium |
 | 3. Enum declaration syntax MVP | Parse and typecheck user-defined enum declarations with optional unconstrained type parameters and zero/one-payload variants. Add runtime representation and typed HIR/interface summaries. | parser/AST/typechecker/HIR/bytecode/runtime/package/typed HIR/tests | Done | High |
 | 4. Enum integration hardening | Expand diagnostics, package visibility cases, interface stale checks, and compatibility coverage after the MVP is green. | package/interface/typed HIR/tests/docs | Done | Medium |
 | 5. Package interface persistence format | Serialize public records/functions/enums and resolved type identities in a deterministic v2 text format with stable artifact package/item IDs. Load the format back into `PackageInterfaceGraph` and validate the reloaded summaries. | `src/interface.rs`, `tests/examples.rs` | Done | Medium |
@@ -284,10 +285,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 17. Dependency-body-free execution | Added an explicit artifact-backed `run` path that validates `.mgi` / `.mgc`, loads separate MIR-lowered bytecode `.mgb` dependency implementation artifacts, and executes package dependencies without reading source files from the dependency source tree. `emit-artifacts` writes every artifact needed by this path. | `src/main.rs`, `src/lib.rs`, `src/cache.rs`, `src/interface.rs`, `src/implementation_artifact.rs`, tests/docs | Done | Medium |
 | 18. V1 package workflow hardening | Document and test the explicit artifact workflow end to end, including transitive `.mgb` execution, independent `.mgi`/`.mgb` identity remapping, private item id reservation during bytecode merge, broader missing/stale/mismatched artifact diagnostics, default source-compatible execution, and sample package/project commands. | `README.md`, `ROADMAP.md`, `docs/*`, `tests/examples.rs`, samples | Done | Medium |
 | 19. User-defined generic records/functions | Add explicit declaration type parameters for records and functions, call-site inference for ordinary use, and persisted package-interface support for generic public signatures without bounds, specialization, or polymorphic recursion. | parser/types/typing/package/interface/tests/docs | Done | High |
-| 20. Generic surface hardening | Add docs/samples and targeted diagnostics for generic arity, ambiguous generic record literals, package-interface round trips, and stale generic signature checks. | docs/samples/tests/typing/interface | Next | Medium |
-| 21. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Keep this post-v1 unless v1 error-handling docs require the syntax decision. | spec docs first, then parser/typechecker/HIR/runtime | Deferred | High |
+| 20. Generic surface hardening | Added docs/samples and targeted diagnostics for generic arity, ambiguous generic record literals, package-interface round trips, and stale generic signature checks. Keep expanding edge cases as the package/API surface grows. | docs/samples/tests/typing/interface | Done | Medium |
+| 21. Result propagation | Implemented prefix `try expr` propagation for `Result`, including exact type rules, MIR/bytecode lowering, source diagnostics, artifact-backed dependency execution, nested control-flow coverage, and closure return behavior. | `src/token.rs`, `src/parser.rs`, `src/typing.rs`, `src/typed_hir.rs`, `src/mir.rs`, `src/bytecode.rs`, `tests/examples.rs`, specs/docs | Done | High |
 
-The safest immediate code slice is generic surface hardening: preserve the current explicit type-parameter model, do not infer implicit generic functions, and make behavior visible through examples before broadening language surface features.
+The safest immediate next slice is docs/sample alignment plus small practical standard-library/API planning. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
 
 ## Test Plan For The Next Code Slice
 

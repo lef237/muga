@@ -107,7 +107,7 @@ For more entry points, browse the [Samples](#samples) section below.
 - `expr.name` is field access, `expr.name(...)` is chained-call syntax, and `expr.with(...)` is record update
 - classes, inheritance, function-valued record fields, traits, protocols, typeclasses, overloaded dispatch, and ordinary source-level references are out of scope for v1
 - source values use value semantics; the implementation may share immutable storage internally when that is not observable
-- recoverable failures use explicit `Result[T, E]`; possible future propagation sugar is documented as `try expr`, not postfix `?`
+- recoverable failures use explicit `Result[T, E]`; prefix `try expr` propagates `Result` errors, while postfix `?` remains out of scope for v1
 
 ## Documentation
 
@@ -174,6 +174,7 @@ Implemented:
 - list literals, direct list indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, VM execution, typed HIR, and in-memory package interface summaries
+- prefix `try expr` propagation for `Result[T, E]` with exact error-type matching
 - `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
 - file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
 - minimal `muga.toml` project mode with `[package] name/source`
@@ -205,13 +206,12 @@ Not implemented yet:
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
 - project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, control-flow-oriented MIR, and native code generation
-- error propagation syntax such as `try expr`
 
 ## Planned Priority
 
-The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With the first generic records/functions slice landed, the next priority is hardening that generic surface with docs, samples, and edge-case diagnostics before broadening into new syntax.
+The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With generic records/functions and `Result` propagation now landed and hardened, the next priority is keeping docs/specs/samples aligned and choosing the next practical standard-library or API slice before broadening into larger runtime work.
 
-Control-flow MIR, native backend work, wildcard-heavy pattern matching, and `try expr` remain deferred. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
+Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad collection APIs, and full incremental project artifact reuse remain deferred. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
 
 ## Samples
 

@@ -187,7 +187,7 @@ Integer literals are 64-bit signed. The accepted value range is `-2^63 ..= 2^63 
 
 The v1 operator set is:
 
-- unary: `-`, `!`
+- unary: `-`, `!`, `try`
 - multiplicative: `*`, `/`
 - additive: `+`, `-`
 - comparison: `<`, `<=`, `>`, `>=`
@@ -198,7 +198,7 @@ All binary operators are left-associative.
 Precedence, from strongest to weakest:
 
 1. postfix field access / chained call / ordinary call
-2. unary
+2. unary and `try`
 3. multiplicative
 4. additive
 5. comparison
@@ -213,6 +213,8 @@ The dot operator has three surface forms:
 - `expr.with(field: value, ...)` for non-destructive record update
 
 Because record fields cannot have function type in v1, the dot operator keeps those three stable meanings without field-function-call ambiguity.
+
+`try expr` unwraps `Result::Ok(value)` or returns `Result::Err(error)` early from the nearest function. Its precise type rules are specified in [013-enums-results.md](./013-enums-results.md).
 
 ## 8. Grammar Sketch
 
@@ -255,7 +257,7 @@ equality_expr     := comparison_expr (("==" | "!=") comparison_expr)*
 comparison_expr   := additive_expr (("<" | "<=" | ">" | ">=") additive_expr)*
 additive_expr     := multiplicative_expr (("+" | "-") multiplicative_expr)*
 multiplicative_expr := unary_expr (("*" | "/") unary_expr)*
-unary_expr        := ("-" | "!") unary_expr
+unary_expr        := ("-" | "!" | "try") unary_expr
                    | postfix_expr
 postfix_expr      := primary_expr postfix_tail*
 postfix_tail      := "(" args? ")"

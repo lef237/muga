@@ -12,7 +12,7 @@ Current Muga is already computationally expressive enough for ordinary algorithm
 
 - functions, anonymous functions, closures, direct recursion, and mutual recursion
 - `if`, `while`, final-expression function bodies, and local `mut`
-- records, value-returning updates, List, Map, Option, Result, enum, and exhaustive match
+- records, value-returning updates, List, Map, Option, Result, enum, exhaustive match, and `try expr` `Result` propagation
 - package/module boundaries, visibility, package interfaces, and explicit artifact workflows
 
 That is enough to treat the language core as computationally complete in the ordinary abstract sense. It is not enough to call the language broadly practical yet. The missing work is mostly around reusable abstraction, standard-library surface, IO/resource effects, project/dependency workflow, performance, and tooling.
@@ -56,9 +56,9 @@ Rules to preserve:
 
 Reason: users can now write small reusable libraries on top of builtin `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`; the remaining risk is making the behavior obvious and stable at package boundaries.
 
-### 2. Add `try expr` for Result propagation
+### 2. Harden `try expr` for Result propagation
 
-`Result[T, E]` and exhaustive `match` are the correct semantic base, but practical fallible code becomes too nested without propagation sugar.
+`Result[T, E]`, exhaustive `match`, and prefix `try expr` are the current semantic base. The next work is not more error syntax; it is making practical fallible APIs return `Result` consistently.
 
 Recommended shape:
 
@@ -69,7 +69,7 @@ fn load_age(path: String): Result[Int, String] {
 }
 ```
 
-Initial rules should be conservative:
+Current rules are conservative:
 
 - `try expr` works only when `expr` has type `Result[T, E]`
 - the enclosing function must return `Result[U, E]`
@@ -228,7 +228,7 @@ Use `Option[T]` for absence. `T?` may remain future shorthand for `Option[T]`, b
 
 Do not add exception-style control flow as the default recoverable-error model.
 
-Use `Result[T, E]`, exhaustive `match`, and later `try expr`.
+Use `Result[T, E]`, exhaustive `match`, and `try expr`.
 
 ### Broad protocol/trait/typeclass system in v1
 
