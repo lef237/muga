@@ -3631,6 +3631,71 @@ fn main(): Int {
 }
 
 #[test]
+fn artifact_run_uses_parse_int_dependency_without_source() {
+    let provider_root = temp_package_root("parse-int-artifact-provider");
+    write_package_file(
+        &provider_root,
+        "util/parse/main.muga",
+        r#"
+package util::parse
+
+pub fn parse_sum(left: String, right: String): Result[Int, String] {
+  a = try left.trim().parse_int()
+  b = try right.trim().parse_int()
+  Result::Ok(a + b)
+}
+
+pub fn result_or_zero(value: Result[Int, String]): Int {
+  match value {
+    Result::Ok(ok) => ok
+    Result::Err(message) => 0
+  }
+}
+"#,
+    );
+    let provider_entry = write_package_file(
+        &provider_root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import util::parse
+
+fn main(): Int {
+  parse::result_or_zero(parse::parse_sum(" 20 ", "22"))
+}
+"#,
+    );
+    let artifact_root = temp_package_root("parse-int-artifact-root");
+    muga::write_package_artifacts(&provider_entry, &artifact_root)
+        .expect("provider artifacts should be written");
+
+    let consumer_root = temp_package_root("parse-int-artifact-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import util::parse
+
+fn main(): Int {
+  parse::result_or_zero(parse::parse_sum(" 20 ", "22"))
+}
+"#,
+    );
+    assert!(!consumer_root.join("util/parse/main.muga").exists());
+    muga::write_package_check_cache_artifact_for_root(&consumer_entry, &artifact_root)
+        .expect("consumer check cache should be written against interface artifact");
+
+    let result = muga::run_path_against_artifact_root(&consumer_entry, &artifact_root)
+        .expect("consumer should run with dependency implementation artifact");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+    assert_eq!(result.output_text, "");
+}
+
+#[test]
 fn cli_run_uses_transitive_implementation_artifacts_without_dependency_source() {
     let provider_root = temp_package_root("cli-run-transitive-artifact-provider");
     let provider_entry = write_transitive_interface_provider(&provider_root);
@@ -7301,6 +7366,58 @@ fn main(): Bool {
             .iter()
             .any(|diagnostic| diagnostic.code == "T006"
                 && diagnostic.message.contains("String or Map")),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_parse_int_with_try_sample_runs() {
+    let source = r#"
+fn parse_pair(): Result[Int, String] {
+  left = try "20".parse_int()
+  right = try parse_int("22")
+  Result::Ok(left + right)
+}
+
+fn main(): Int {
+  match parse_pair() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn string_parse_int_err_path_returns_result_err() {
+    let source = r#"
+fn main(): String {
+  match "not an int".parse_int() {
+    Result::Ok(value) => "ok"
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "invalid Int");
+}
+
+#[test]
+fn string_parse_int_requires_string_receiver() {
+    let source = r#"
+fn main(): Result[Int, String] {
+  1.parse_int()
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
         "{diagnostics:#?}"
     );
 }

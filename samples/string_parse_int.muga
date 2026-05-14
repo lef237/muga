@@ -1,0 +1,12 @@
+fn parse_pair(): Result[Int, String] {
+  left = try "20".parse_int()
+  right = try "22".parse_int()
+  Result::Ok(left + right)
+}
+
+fn main(): Int {
+  match parse_pair() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}

@@ -1017,6 +1017,20 @@ fn call_builtin(
             };
             Ok(Value::Bool(text.ends_with(&suffix)))
         }
+        BuiltinId::ParseInt => {
+            let value = expect_one_arg(args, span)?;
+            let Value::String(text) = value else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`parse_int` expects String as its first argument",
+                    span,
+                )]);
+            };
+            match text.parse::<i64>() {
+                Ok(value) => Ok(result_ok(Value::Int(value))),
+                Err(_) => Ok(result_err(Value::String("invalid Int".to_string()))),
+            }
+        }
         BuiltinId::OptionSome => {
             let value = expect_one_arg(args, span)?;
             Ok(option_some(value))
