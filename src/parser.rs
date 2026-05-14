@@ -370,7 +370,7 @@ impl Parser {
         if matches!(self.peek_kind(), TokenKind::RBracket) {
             return Err(Diagnostic::new(
                 "P018",
-                "generic enum declaration requires at least one type parameter",
+                "generic declaration requires at least one type parameter",
                 self.current_span(),
             ));
         }
@@ -421,6 +421,11 @@ impl Parser {
         let start = self.current_span();
         self.expect_simple(TokenKind::Fn, "expected `fn`")?;
         let (name, _) = self.expect_ident()?;
+        let type_params = if self.matches_simple(&TokenKind::LBracket) {
+            self.parse_type_param_names()?
+        } else {
+            Vec::new()
+        };
         self.expect_simple(TokenKind::LParen, "expected `(` after function name")?;
         let params = self.parse_params()?;
         self.expect_simple(TokenKind::RParen, "expected `)` after parameters")?;
@@ -432,6 +437,7 @@ impl Parser {
             name,
             package_item: None,
             visibility,
+            type_params,
             params,
             return_type,
             body,

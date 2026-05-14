@@ -1935,6 +1935,66 @@ fn main(): Int {
 }
 
 #[test]
+fn downstream_package_can_use_loaded_generic_function_signature() {
+    let provider_root = temp_package_root("loaded-interface-generic-provider");
+    let provider_entry = write_package_file(
+        &provider_root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import util::generic
+
+fn main(): Int {
+  generic::identity(1)
+}
+"#,
+    );
+    write_package_file(
+        &provider_root,
+        "util/generic/main.muga",
+        r#"
+package util::generic
+
+pub fn identity[T](value: T): T {
+  value
+}
+"#,
+    );
+    let provider =
+        muga::compile_typed_path(&provider_entry).expect("provider package should typecheck");
+    let (interfaces, symbols) = persisted_interfaces_from_program(&provider);
+    let identity = interfaces
+        .package_by_path("util::generic")
+        .and_then(|package| {
+            package
+                .functions
+                .iter()
+                .find(|function| function.name == "identity")
+        })
+        .expect("generic function should be exported");
+    assert_eq!(identity.type_params, vec!["T".to_string()]);
+
+    let consumer_root = temp_package_root("loaded-interface-generic-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import util::generic
+
+fn main(): Int {
+  generic::identity(20) + generic::identity(22)
+}
+"#,
+    );
+
+    muga::compile_typed_path_against_loaded_interfaces(&consumer_entry, &interfaces, &symbols)
+        .expect("loaded generic function signature should be enough for downstream checking");
+}
+
+#[test]
 fn package_aware_checking_can_use_loaded_interface_signatures_without_dependency_source() {
     let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
         .expect("typed package compilation should pass");
@@ -4711,6 +4771,58 @@ fn main(): Int {
     assert_eq!(generic.name, "List");
     assert_eq!(generic.args.len(), 1);
     assert!(matches!(generic.args[0], muga::ast::TypeExpr::Int));
+}
+
+#[test]
+fn generic_function_instantiates_for_each_call() {
+    let source = r#"
+fn identity[T](value: T): T {
+  value
+}
+
+fn main(): Int {
+  identity(20) + identity(22)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main should return a value");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn generic_function_rejects_conflicting_argument_types() {
+    let source = r#"
+fn choose[T](left: T, right: T): T {
+  left
+}
+
+fn main(): Int {
+  choose(1, "x")
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected type error");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn duplicate_function_type_parameter_is_rejected() {
+    let source = r#"
+fn identity[T, T](value: T): T {
+  value
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected duplicate type parameter");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "E002"),
+        "{diagnostics:#?}"
+    );
 }
 
 #[test]

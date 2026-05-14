@@ -111,6 +111,7 @@ enum Type {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct FunctionSig {
+    type_params: Vec<Symbol>,
     params: Vec<Type>,
     ret: Box<Type>,
 }
@@ -427,6 +428,11 @@ impl TypeChecker {
             };
             let symbol = self.symbol(&visible.name);
             let sig = FunctionSig {
+                type_params: function
+                    .type_params
+                    .iter()
+                    .map(|param| self.symbol(param))
+                    .collect(),
                 params: function
                     .params
                     .iter()
@@ -522,6 +528,7 @@ impl TypeChecker {
                 variant_name: self.symbol(signatures.symbols.resolve(*variant)),
             },
             TypeInfo::Function(function) => Type::Function(FunctionSig {
+                type_params: Vec::new(),
                 params: function
                     .params
                     .iter()
@@ -1070,6 +1077,7 @@ impl TypeChecker {
                         &expr.args,
                     ),
                     Type::Function(sig) => {
+                        let sig = self.instantiate_function_sig(sig);
                         if sig.params.len() != expr.args.len() {
                             self.diagnostics.push(Diagnostic::new(
                                 "T004",
@@ -1094,6 +1102,7 @@ impl TypeChecker {
                         let ret_ty =
                             expected.unwrap_or_else(|| Type::Unknown(self.fresh_unknown()));
                         let inferred_sig = Type::Function(FunctionSig {
+                            type_params: Vec::new(),
                             params: arg_tys,
                             ret: Box::new(ret_ty.clone()),
                         });
@@ -1362,6 +1371,37 @@ impl TypeChecker {
                 let _ = self.type_from_expr_with_params(payload, variant.span, &params);
             }
         }
+    }
+
+    fn type_param_symbols(
+        &mut self,
+        params: &[String],
+        owner_kind: &str,
+        owner_name: &str,
+        span: Span,
+    ) -> Vec<Symbol> {
+        let mut seen = HashSet::new();
+        let mut symbols = Vec::with_capacity(params.len());
+        for param in params {
+            let symbol = self.symbol(param);
+            if !seen.insert(symbol) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E002",
+                    format!("duplicate type parameter `{param}` in {owner_kind} `{owner_name}`"),
+                    span,
+                ));
+                continue;
+            }
+            if matches!(param.as_str(), "Int" | "Bool" | "String") {
+                self.diagnostics.push(Diagnostic::new(
+                    "T022",
+                    format!("type parameter `{param}` shadows a built-in type"),
+                    span,
+                ));
+            }
+            symbols.push(symbol);
+        }
+        symbols
     }
 
     fn check_list_lit(&mut self, expr: &ListLitExpr, expected: Option<Type>) -> Type {
@@ -2443,6 +2483,7 @@ impl TypeChecker {
                 .unwrap_or_else(|| Type::Unknown(self.fresh_unknown())),
         };
         FunctionSig {
+            type_params: Vec::new(),
             params,
             ret: Box::new(ret),
         }
@@ -2453,19 +2494,26 @@ impl TypeChecker {
         for statement in statements {
             if let Stmt::FuncDecl(func) = statement {
                 let name = self.symbol(&func.name);
+                let type_params =
+                    self.type_param_symbols(&func.type_params, "function", &func.name, func.span);
                 let params = func
                     .params
                     .iter()
                     .map(|param| match param.type_name.as_ref() {
-                        Some(type_name) => self.type_from_expr(type_name, param.span),
+                        Some(type_name) => {
+                            self.type_from_expr_with_params(type_name, param.span, &type_params)
+                        }
                         None => Type::Unknown(self.fresh_unknown()),
                     })
                     .collect::<Vec<_>>();
                 let ret = match func.return_type.as_ref() {
-                    Some(type_name) => self.type_from_expr(type_name, func.span),
+                    Some(type_name) => {
+                        self.type_from_expr_with_params(type_name, func.span, &type_params)
+                    }
                     None => Type::Unknown(self.fresh_unknown()),
                 };
                 let sig = FunctionSig {
+                    type_params,
                     params,
                     ret: Box::new(ret),
                 };
@@ -2681,6 +2729,7 @@ impl TypeChecker {
                 Type::Error
             }
             TypeExpr::Function(function) => Type::Function(FunctionSig {
+                type_params: Vec::new(),
                 params: function
                     .params
                     .iter()
@@ -2761,6 +2810,7 @@ impl TypeChecker {
                 }
                 let ret = self.unify(*left.ret.clone(), *right.ret.clone())?;
                 Ok(Type::Function(FunctionSig {
+                    type_params: Vec::new(),
                     params,
                     ret: Box::new(ret),
                 }))
@@ -2783,6 +2833,7 @@ impl TypeChecker {
                 }
             }
             Type::Function(sig) => Type::Function(FunctionSig {
+                type_params: sig.type_params.clone(),
                 params: sig.params.iter().map(|ty| self.resolve_type(ty)).collect(),
                 ret: Box::new(self.resolve_type(&sig.ret)),
             }),
@@ -2897,6 +2948,7 @@ impl TypeChecker {
                 .and_then(|index| args.get(index).cloned())
                 .unwrap_or(Type::GenericParam(param)),
             Type::Function(sig) => Type::Function(FunctionSig {
+                type_params: sig.type_params,
                 params: sig
                     .params
                     .into_iter()
@@ -2926,6 +2978,26 @@ impl TypeChecker {
                 Box::new(self.substitute_type_params(*err, params, args)),
             ),
             other => other,
+        }
+    }
+
+    fn instantiate_function_sig(&mut self, sig: FunctionSig) -> FunctionSig {
+        if sig.type_params.is_empty() {
+            return sig;
+        }
+        let args = sig
+            .type_params
+            .iter()
+            .map(|_| Type::Unknown(self.fresh_unknown()))
+            .collect::<Vec<_>>();
+        FunctionSig {
+            type_params: Vec::new(),
+            params: sig
+                .params
+                .into_iter()
+                .map(|param| self.substitute_type_params(param, &sig.type_params, &args))
+                .collect(),
+            ret: Box::new(self.substitute_type_params(*sig.ret, &sig.type_params, &args)),
         }
     }
 

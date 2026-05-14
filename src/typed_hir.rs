@@ -94,6 +94,7 @@ pub struct FunctionStmt {
     pub name: String,
     pub binding: BindingId,
     pub package_item: Option<PackageItemId>,
+    pub type_params: Vec<String>,
     pub params: Vec<Param>,
     pub return_ty: TypeInfo,
     pub body: ValueBlock,
@@ -450,6 +451,7 @@ impl ModuleRemapper<'_, '_> {
                 name: stmt.name.clone(),
                 binding: self.binding(stmt.binding),
                 package_item: stmt.package_item,
+                type_params: stmt.type_params.clone(),
                 params: stmt.params.iter().map(|param| self.param(param)).collect(),
                 return_ty: self.type_info(&stmt.return_ty),
                 body: self.value_block(&stmt.body),
@@ -1169,6 +1171,7 @@ impl<'a> Lowerer<'a> {
                     name: stmt.name.clone(),
                     binding,
                     package_item: self.package_items_by_binding.get(&binding).copied(),
+                    type_params: stmt.type_params.clone(),
                     params: stmt
                         .params
                         .iter()
