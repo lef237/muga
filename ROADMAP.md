@@ -83,14 +83,14 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slices should convert the completed package-aware checking foundation into a v1-ready package/artifact experience:
+The next code slices should add user-defined generic records and functions on top of the now-stable package/artifact foundation:
 
-1. Treat the current MIR/runtime identity cleanup as a foundation-closing slice, not an open-ended backend rewrite. The VM should execute checked package programs by lowered local identity and semantic package identity, but control-flow MIR and native lowering should wait unless they are required to close a concrete v1 execution gap.
-2. Continue hardening dependency-body-free package execution. `check --artifact-root` avoids dependency implementation bodies, and `run --artifact-root` consumes MIR-lowered bytecode `.mgb` implementation artifacts for dependencies without source-tree fallback.
-3. Keep artifact roots explicit on the CLI for v1. `muga emit-artifacts`, `muga check --artifact-root`, and any run-time artifact-root flag should fail loudly on missing or stale artifacts instead of silently falling back to dependency source bodies.
-4. Harden the explicit artifact workflow with samples, diagnostics, and documentation before adding manifest-owned artifact configuration.
-5. Do not add a `muga.toml` artifact-root field until dependency declarations, lockfiles, and a package-aware project driver exist. Revisit it later as a non-semantic `[build]` or `[cache]` setting once the dependency graph is manifest-owned.
-6. Keep generic records/functions, wildcard enum patterns, `try expr`, native backend work, broad stdlib effects, and full incremental reuse deferred unless one becomes necessary to finish the v1 package/artifact path. Once the v1 package/artifact workflow is stable, resume language-surface work in the order recorded in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
+1. Add explicit type parameters on user-defined `record` and `fn` declarations. Do not implicitly generalize ordinary unannotated functions.
+2. Reuse the existing generic type-expression machinery used by `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, and user enums, but make package interfaces store resolved generic public signatures for records and functions.
+3. Support local call-site inference for straightforward generic function calls and generic record literals before adding explicit call-site type arguments.
+4. Keep bounds, protocols/typeclasses, higher-kinded types, specialization, and polymorphic recursion out of the first implementation.
+5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while extending generic signatures.
+6. Keep `try expr`, wildcard enum patterns, native backend work, broad stdlib effects, and full incremental project artifact reuse deferred until generic records/functions are in place.
 
 ## Compiler Architecture Path
 
@@ -140,8 +140,9 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- documenting and sampling the explicit `.mgi` / `.mgc` / `.mgb` workflow as the v1 execution artifact contract
-- broader `run --artifact-root` diagnostics for missing, stale, hash-mismatched, structurally invalid, wrong-package, or dependency-interface-mismatched artifacts
+- generic public record/function signatures in `.mgi`
+- call-site inference for generic functions and record literals
+- diagnostics for unsupported generic inference and stale generic package interfaces
 - eventual project-mode artifact-root config after dependency declarations and lockfiles
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported
