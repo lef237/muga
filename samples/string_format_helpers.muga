@@ -1,0 +1,3 @@
+fn main(): String {
+  "score=".concat(42.to_string()).concat(", enabled=").concat(true.to_string())
+}

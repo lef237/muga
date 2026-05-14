@@ -1083,8 +1083,17 @@ impl TypeChecker {
                         BuiltinId::Split,
                         Type::List(Box::new(Type::String)),
                     ),
+                    Type::Builtin(BuiltinId::Concat) => self.check_string_pair_builtin(
+                        expr,
+                        expected,
+                        BuiltinId::Concat,
+                        Type::String,
+                    ),
                     Type::Builtin(BuiltinId::SliceChars) => {
                         self.check_slice_chars_builtin(expr, expected)
+                    }
+                    Type::Builtin(BuiltinId::ToString) => {
+                        self.check_to_string_builtin(expr, expected)
                     }
                     Type::Builtin(BuiltinId::ParseInt) => {
                         self.check_parse_int_builtin(expr, expected)
@@ -1881,6 +1890,41 @@ impl TypeChecker {
             )
         } else {
             Type::Error
+        }
+    }
+
+    fn check_to_string_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 1 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 1 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let arg_ty = self.check_expr(&expr.args[0]);
+        match self.resolve_type(&arg_ty) {
+            Type::Int | Type::Bool | Type::String => {
+                self.apply_expected(Type::String, expected, expr.span)
+            }
+            Type::Unknown(_) => {
+                self.diagnostics.push(Diagnostic::new(
+                    "E005",
+                    "type annotation required because inference is not unique",
+                    expr.span,
+                ));
+                Type::Error
+            }
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    "`to_string` accepts only Int, Bool, or String",
+                    expr.span,
+                ));
+                Type::Error
+            }
         }
     }
 

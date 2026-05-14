@@ -86,8 +86,8 @@ The next practical bottleneck is not syntax. It is the absence of ordinary APIs.
 
 Prioritize packages in this order:
 
-1. `std::string`: the first prelude-helper slices implement `trim`, `contains`, `starts_with`, `ends_with`, `is_empty`, `char_count`, `replace`, `split`, `slice_chars`, `parse_int`, and `parse_bool`. `char_count` and `slice_chars` use explicit Unicode scalar-value semantics. Keep ambiguous `String.len()`, byte-length APIs, range syntax or substring aliases, grapheme-cluster APIs, and richer string error types deferred until the relevant standard-library slice needs those decisions.
-2. `std::fmt` or equivalent formatting helpers, without adding broad implicit conversion.
+1. `std::string`: the first prelude-helper slices implement `trim`, `contains`, `starts_with`, `ends_with`, `is_empty`, `char_count`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`. `char_count` and `slice_chars` use explicit Unicode scalar-value semantics. Keep ambiguous `String.len()`, byte-length APIs, range syntax or substring aliases, grapheme-cluster APIs, and richer string error types deferred until the relevant standard-library slice needs those decisions.
+2. `std::fmt` or equivalent formatting helpers: the first explicit prelude slice is `to_string` for `Int`, `Bool`, and `String` plus `String.concat`. Full template formatting, interpolation, builders, and implicit conversion remain deferred.
 3. `std::fs` and `std::io`: read/write files, stdout/stderr handles, basic directory operations.
 4. `std::time`, `std::env`, and `std::process`: enough for CLI tools.
 5. `std::json`: parse and encode through explicit data types and `Result`.

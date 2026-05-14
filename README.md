@@ -172,7 +172,8 @@ Implemented:
 - records, field access, `record.with(...)`, chained calls, package-qualified chained calls, arrow function types, local binding annotations, and local bidirectional inference for selected higher-order cases
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, direct list indexing, `len`, `is_empty`, `push`, `get`, and `set`
-- string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `slice_chars`, `parse_int`, and `parse_bool`
+- string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`
+- explicit formatting helpers `to_string` for `Int`, `Bool`, and `String`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, VM execution, typed HIR, and in-memory package interface summaries
 - prefix `try expr` propagation for `Result[T, E]` with exact error-type matching
@@ -210,7 +211,7 @@ Not implemented yet:
 
 ## Planned Priority
 
-The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With generic records/functions and `Result` propagation now landed and hardened, the next priority is keeping docs/specs/samples aligned and choosing the next practical standard-library or API slice before broadening into larger runtime work.
+The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With generic records/functions, `Result` propagation, first string helpers, and explicit scalar formatting now landed, the next priority is keeping diagnostics and docs/specs/samples aligned before broadening into larger runtime work.
 
 Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad collection APIs, and full incremental project artifact reuse remain deferred. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
 
@@ -232,6 +233,7 @@ Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad co
 - [samples/print_then_println.muga](./samples/print_then_println.muga) (runnable sample for mixing `print` and `println`)
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
 - [samples/string_helpers.muga](./samples/string_helpers.muga) (runnable sample for `String` helper builtins, including `String.char_count()` / `String.slice_chars()`, and chained calls)
+- [samples/string_format_helpers.muga](./samples/string_format_helpers.muga) (runnable sample for explicit `to_string()` plus `String.concat()`)
 - [samples/string_parse_int.muga](./samples/string_parse_int.muga) (runnable sample for `String.parse_int()` and `try` propagation)
 - [samples/string_parse_bool.muga](./samples/string_parse_bool.muga) (runnable sample for `String.parse_bool()` and `try` propagation)
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)

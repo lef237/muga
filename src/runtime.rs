@@ -1082,6 +1082,25 @@ fn call_builtin(
             };
             Ok(Value::List(parts))
         }
+        BuiltinId::Concat => {
+            let (left, right) = expect_two_args(args, span)?;
+            let Value::String(mut left) = left else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`concat` expects String as its first argument",
+                    span,
+                )]);
+            };
+            let Value::String(right) = right else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`concat` expects String as its second argument",
+                    span,
+                )]);
+            };
+            left.push_str(&right);
+            Ok(Value::String(left))
+        }
         BuiltinId::SliceChars => {
             let (text, start, count) = expect_three_args(args, span)?;
             let Value::String(text) = text else {
@@ -1118,6 +1137,19 @@ fn call_builtin(
                 .take(count as usize)
                 .collect();
             Ok(result_ok(Value::String(slice)))
+        }
+        BuiltinId::ToString => {
+            let value = expect_one_arg(args, span)?;
+            match value {
+                Value::Int(value) => Ok(Value::String(value.to_string())),
+                Value::Bool(value) => Ok(Value::String(value.to_string())),
+                Value::String(value) => Ok(Value::String(value)),
+                _ => Err(vec![Diagnostic::new(
+                    "R014",
+                    "`to_string` accepts only Int, Bool, or String",
+                    span,
+                )]),
+            }
         }
         BuiltinId::ParseInt => {
             let value = expect_one_arg(args, span)?;

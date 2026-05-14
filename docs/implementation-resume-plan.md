@@ -188,7 +188,8 @@ Ada
 - [ ] arbitrary map key types are deferred.
 - [ ] `Set[T]` is deferred.
 - [x] prefix `try expr` `Result` propagation is implemented and hardened for source, nested control flow, closures, and artifact-backed dependency execution.
-- [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `slice_chars`, `parse_int`, and `parse_bool`.
+- [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`.
+- [x] first explicit formatting helpers are implemented: `to_string` for `Int`, `Bool`, and `String`.
 
 ## Architecture Facts To Keep In Mind
 
@@ -294,8 +295,9 @@ Estimates are in focused engineering days for someone already familiar with this
 | 25. Explicit string scalar slicing | Add `String.slice_chars(start: Int, count: Int): Result[String, String]` as zero-based Unicode scalar-value slicing, returning `Result::Err("invalid slice range")` for negative or out-of-range slices. Cover source, Unicode, type errors, samples, and artifact-backed `try` execution. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
 | 26. String receiver diagnostic hardening | Keep string-helper receiver inference for unannotated parameters while reporting targeted `T006` diagnostics for concrete non-`String` receivers across unary, predicate, transform, slicing, and parse helpers. | `src/typing.rs`, `tests/examples.rs`, docs | Done | Low |
 | 27. `try` expression diagnostic hardening | Report targeted `T023` diagnostics for obvious non-`Result` `try` operands while preserving expected-type inference for `try Result::Ok(...)` and similar constructor-heavy expressions. | `src/typing.rs`, `tests/examples.rs`, docs | Done | Low |
+| 28. Explicit scalar formatting helpers | Add `to_string` for `Int`, `Bool`, and `String` plus `String.concat(other): String` as the first formatting primitive, without implicit conversion, interpolation, template formatting, or builder APIs. Cover source, ambiguity diagnostics, samples, and artifact-backed dependency execution. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
 
-The next deferred string/API decisions are intentionally explicit: prefer `String.byte_len(): Int` only when byte-oriented APIs need it, keep future range syntax or substring aliases aligned with `slice_chars`, reserve grapheme-cluster APIs until a Unicode segmentation dependency/versioning policy exists, and keep fallible string helpers returning `Result[_, String]` until multiple standard-library APIs need a shared richer error type. Remaining low-risk hardening should focus on generic/interface diagnostics before choosing the next practical standard-library slice. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
+The next deferred string/API decisions are intentionally explicit: prefer `String.byte_len(): Int` only when byte-oriented APIs need it, keep future range syntax or substring aliases aligned with `slice_chars`, reserve grapheme-cluster APIs until a Unicode segmentation dependency/versioning policy exists, keep fallible string helpers returning `Result[_, String]` until multiple standard-library APIs need a shared richer error type, and defer richer formatting templates/interpolation/builders until concrete formatting use cases justify their shape. Remaining low-risk hardening should focus on generic/interface diagnostics before choosing the next practical standard-library slice. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
 
 ## Test Plan For The Next Code Slice
 
