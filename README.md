@@ -209,9 +209,9 @@ Not implemented yet:
 
 ## Planned Priority
 
-The active implementation slice is v1 artifact workflow hardening while keeping package artifact roots explicit. Artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree.
+The active implementation slice is user-defined generic records and functions. The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree.
 
-Control-flow MIR, native backend work, generic records/functions, wildcard-heavy pattern matching, and `try expr` remain deferred until the v1 package/artifact workflow is closed. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
+Control-flow MIR, native backend work, wildcard-heavy pattern matching, and `try expr` remain deferred while generic records/functions are added. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
 
 ## Samples
 
