@@ -2201,6 +2201,19 @@ impl TypeChecker {
             return Type::Error;
         };
 
+        if let Some(non_result_ty) = Self::obvious_non_result_try_type(&expr.expr) {
+            self.check_expr(&expr.expr);
+            self.diagnostics.push(Diagnostic::new(
+                "T023",
+                format!(
+                    "`try` expects a Result[T, E] expression but found {}",
+                    non_result_ty.display()
+                ),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
         let value_expected = expected
             .clone()
             .unwrap_or_else(|| Type::Unknown(self.fresh_unknown()));
@@ -2220,6 +2233,15 @@ impl TypeChecker {
                 ));
                 Type::Error
             }
+        }
+    }
+
+    fn obvious_non_result_try_type(expr: &Expr) -> Option<Type> {
+        match expr {
+            Expr::Int(_) => Some(Type::Int),
+            Expr::Bool(_) => Some(Type::Bool),
+            Expr::String(_) => Some(Type::String),
+            _ => None,
         }
     }
 

@@ -6277,6 +6277,26 @@ fn main(): Int {
 }
 
 #[test]
+fn result_try_accepts_result_constructor_expression() {
+    let source = r#"
+fn compute(): Result[Int, String] {
+  value = try Result::Ok(41)
+  Result::Ok(value + 1)
+}
+
+fn main(): Int {
+  match compute() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
 fn result_try_inside_if_expression_returns_early() {
     let source = r#"
 fn fail(): Result[Int, String] {
@@ -6372,6 +6392,25 @@ fn main(): Int {
         diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "T023"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn result_try_requires_result_expression() {
+    let source = r#"
+fn main(): Result[Int, String] {
+  value = try 1
+  Result::Ok(value)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "T023"
+                && diagnostic.message.contains("expects a Result")
+                && diagnostic.message.contains("Int")
+        }),
         "{diagnostics:#?}"
     );
 }
