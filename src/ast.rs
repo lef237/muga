@@ -91,6 +91,7 @@ pub struct RecordDecl {
     pub name: String,
     pub package_item: Option<PackageItemId>,
     pub visibility: Visibility,
+    pub type_params: Vec<String>,
     pub fields: Vec<RecordFieldDecl>,
     pub span: Span,
 }

@@ -354,7 +354,12 @@ impl<'a> PackageAwareChecker<'a> {
             Stmt::RecordDecl(record) => {
                 if matches!(record.visibility, Visibility::Public | Visibility::Package) {
                     for field in &record.fields {
-                        self.validate_visible_type(&field.type_name, record.visibility, field.span);
+                        self.validate_visible_type_with_params(
+                            &field.type_name,
+                            record.visibility,
+                            field.span,
+                            &record.type_params,
+                        );
                     }
                 }
                 self.scan_record_decl(record);
@@ -605,15 +610,6 @@ impl<'a> PackageAwareChecker<'a> {
                 self.scan_type_expr(&function.ret, span);
             }
         }
-    }
-
-    fn validate_visible_type(
-        &mut self,
-        type_expr: &TypeExpr,
-        api_visibility: Visibility,
-        span: Span,
-    ) {
-        self.validate_visible_type_with_params(type_expr, api_visibility, span, &[]);
     }
 
     fn validate_visible_type_with_params(
@@ -1997,7 +1993,12 @@ impl<'a> PackageRewriter<'a> {
     fn rewrite_record_decl(&mut self, record: &RecordDecl) -> RecordDecl {
         if record.visibility == Visibility::Public || record.visibility == Visibility::Package {
             for field in &record.fields {
-                self.validate_visible_type(&field.type_name, record.visibility, field.span);
+                self.validate_visible_type_with_params(
+                    &field.type_name,
+                    record.visibility,
+                    field.span,
+                    &record.type_params,
+                );
             }
         }
 
@@ -2011,12 +2012,17 @@ impl<'a> PackageRewriter<'a> {
                 record.visibility,
             ),
             visibility: Visibility::Private,
+            type_params: record.type_params.clone(),
             fields: record
                 .fields
                 .iter()
                 .map(|field| RecordFieldDecl {
                     name: field.name.clone(),
-                    type_name: self.rewrite_type_expr(&field.type_name, field.span),
+                    type_name: self.rewrite_type_expr_with_params(
+                        &field.type_name,
+                        field.span,
+                        &record.type_params,
+                    ),
                     span: field.span,
                 })
                 .collect(),
@@ -2579,15 +2585,6 @@ impl<'a> PackageRewriter<'a> {
             );
         }
         name.to_string()
-    }
-
-    fn validate_visible_type(
-        &mut self,
-        type_expr: &TypeExpr,
-        api_visibility: Visibility,
-        span: Span,
-    ) {
-        self.validate_visible_type_with_params(type_expr, api_visibility, span, &[]);
     }
 
     fn validate_visible_type_with_params(

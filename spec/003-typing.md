@@ -64,7 +64,7 @@ fn id[T](value: T): T {
 }
 ```
 
-The current Rust implementation supports generic type expressions for compiler-known `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`. User-defined generic records and functions are still deferred. The generics MVP is specified in [009-generics.md](./009-generics.md).
+The current Rust implementation supports generic type expressions for compiler-known `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`, plus explicit user-defined generic records and functions. The generics MVP is specified in [009-generics.md](./009-generics.md).
 
 ## 3. Prelude Built-ins
 

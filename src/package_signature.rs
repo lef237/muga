@@ -55,6 +55,7 @@ pub struct PackageRecordSignature {
     pub module: ModuleId,
     pub name: String,
     pub visibility: Visibility,
+    pub type_params: Vec<String>,
     pub fields: Vec<PackageFieldSignature>,
     pub span: Span,
 }
@@ -173,6 +174,7 @@ struct SignatureCollector<'a> {
     loaded: &'a LoadedPackageGraph,
     symbols: SymbolTable,
     diagnostics: Vec<Diagnostic>,
+    record_type_params: HashMap<PackageItemId, Vec<String>>,
     enum_type_params: HashMap<PackageItemId, Vec<String>>,
     imports: HashMap<String, String>,
     current_package: PackageId,
@@ -189,6 +191,7 @@ impl<'a> SignatureCollector<'a> {
             loaded,
             symbols: SymbolTable::default(),
             diagnostics: Vec::new(),
+            record_type_params: HashMap::new(),
             enum_type_params: HashMap::new(),
             imports: HashMap::new(),
             current_package: PackageId::new(0),
@@ -202,7 +205,7 @@ impl<'a> SignatureCollector<'a> {
 
     fn collect(&mut self) {
         self.collect_interface_signatures();
-        self.collect_enum_headers();
+        self.collect_type_headers();
         for package in &self.loaded.packages {
             if self.loaded.is_loaded_interface_package_path(&package.path) {
                 continue;
@@ -272,9 +275,12 @@ impl<'a> SignatureCollector<'a> {
                     module: item.module,
                     name: record.name.clone(),
                     visibility: Visibility::Public,
+                    type_params: record.type_params.clone(),
                     fields,
                     span: record.span,
                 });
+                self.record_type_params
+                    .insert(record.item, record.type_params.clone());
             }
             for enumeration in &interface.enums {
                 let Some(item) = self.loaded.package_graph.item(enumeration.item) else {
@@ -429,8 +435,9 @@ impl<'a> SignatureCollector<'a> {
         None
     }
 
-    fn collect_enum_headers(&mut self) {
-        let mut headers = Vec::new();
+    fn collect_type_headers(&mut self) {
+        let mut record_headers = Vec::new();
+        let mut enum_headers = Vec::new();
         for package in &self.loaded.packages {
             if self.loaded.is_loaded_interface_package_path(&package.path) {
                 continue;
@@ -447,16 +454,28 @@ impl<'a> SignatureCollector<'a> {
                     continue;
                 };
                 for statement in &file.program.statements {
-                    if let crate::ast::Stmt::EnumDecl(enumeration) = statement
-                        && let Some(item) =
-                            self.item_id(module_id, &enumeration.name, PackageItemKind::Enum)
-                    {
-                        headers.push((item, enumeration.type_params.clone()));
+                    match statement {
+                        crate::ast::Stmt::RecordDecl(record) => {
+                            if let Some(item) =
+                                self.item_id(module_id, &record.name, PackageItemKind::Record)
+                            {
+                                record_headers.push((item, record.type_params.clone()));
+                            }
+                        }
+                        crate::ast::Stmt::EnumDecl(enumeration) => {
+                            if let Some(item) =
+                                self.item_id(module_id, &enumeration.name, PackageItemKind::Enum)
+                            {
+                                enum_headers.push((item, enumeration.type_params.clone()));
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
         }
-        self.enum_type_params.extend(headers);
+        self.record_type_params.extend(record_headers);
+        self.enum_type_params.extend(enum_headers);
     }
 
     fn collect_record(&mut self, record: &RecordDecl) {
@@ -469,7 +488,11 @@ impl<'a> SignatureCollector<'a> {
             .iter()
             .map(|field| PackageFieldSignature {
                 name: field.name.clone(),
-                ty: self.type_info_from_type_expr(&field.type_name, field.span, &[]),
+                ty: self.type_info_from_type_expr(
+                    &field.type_name,
+                    field.span,
+                    &record.type_params,
+                ),
                 span: field.span,
             })
             .collect();
@@ -479,6 +502,7 @@ impl<'a> SignatureCollector<'a> {
             module: self.current_module,
             name: record.name.clone(),
             visibility: record.visibility,
+            type_params: record.type_params.clone(),
             fields,
             span: record.span,
         });
@@ -622,12 +646,11 @@ impl<'a> SignatureCollector<'a> {
             .visible_same_package_item(name, PackageItemKind::Record)
             .map(|item| item.id)
         {
-            if !args.is_empty() {
-                self.push_unsupported_generic_record(name, span);
+            if !self.validate_record_arg_count(item, name, args.len(), span) {
                 return TypeInfo::Error;
             }
             let symbol = self.symbol(name);
-            return TypeInfo::PackageRecord { symbol, item };
+            return TypeInfo::PackageRecord { symbol, item, args };
         }
         if let Some(item) = self
             .visible_same_package_item(name, PackageItemKind::Enum)
@@ -671,14 +694,14 @@ impl<'a> SignatureCollector<'a> {
             return TypeInfo::Error;
         };
         if let Some(export) = self.loaded.package_exports.record_by_name(package_id, name) {
-            if !args.is_empty() {
-                self.push_unsupported_generic_record(name, span);
+            if !self.validate_record_arg_count(export.item, name, args.len(), span) {
                 return TypeInfo::Error;
             }
             let symbol = self.symbol(name);
             return TypeInfo::PackageRecord {
                 symbol,
                 item: export.item,
+                args,
             };
         }
         if let Some(export) = self.loaded.package_exports.enum_by_name(package_id, name) {
@@ -737,15 +760,23 @@ impl<'a> SignatureCollector<'a> {
         self.symbols.intern(name)
     }
 
-    fn push_unsupported_generic_record(&mut self, name: &str, span: Span) {
-        self.diagnostics.push(
-            Diagnostic::new(
-                "T013",
-                format!("generic type `{name}` is not implemented yet"),
-                span,
-            )
-            .with_suggestion("generic records are deferred"),
-        );
+    fn validate_record_arg_count(
+        &mut self,
+        item: PackageItemId,
+        name: &str,
+        actual: usize,
+        span: Span,
+    ) -> bool {
+        let expected = self.record_type_params.get(&item).map_or(0, Vec::len);
+        if actual == expected {
+            return true;
+        }
+        self.diagnostics.push(Diagnostic::new(
+            "T022",
+            format!("record `{name}` expects exactly {expected} type arguments"),
+            span,
+        ));
+        false
     }
 
     fn validate_enum_arg_count(
@@ -772,10 +803,19 @@ impl<'a> SignatureCollector<'a> {
             TypeInfo::GenericParam(symbol) => {
                 TypeInfo::GenericParam(self.interface_symbol(*symbol, symbols))
             }
-            TypeInfo::Record(symbol) => TypeInfo::Record(self.interface_symbol(*symbol, symbols)),
-            TypeInfo::PackageRecord { symbol, item } => TypeInfo::PackageRecord {
+            TypeInfo::Record(symbol, args) => TypeInfo::Record(
+                self.interface_symbol(*symbol, symbols),
+                args.iter()
+                    .map(|arg| self.interface_type_info(arg, symbols))
+                    .collect(),
+            ),
+            TypeInfo::PackageRecord { symbol, item, args } => TypeInfo::PackageRecord {
                 symbol: self.interface_symbol(*symbol, symbols),
                 item: *item,
+                args: args
+                    .iter()
+                    .map(|arg| self.interface_type_info(arg, symbols))
+                    .collect(),
             },
             TypeInfo::Enum { symbol, args } => TypeInfo::Enum {
                 symbol: self.interface_symbol(*symbol, symbols),

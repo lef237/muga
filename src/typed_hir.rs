@@ -60,6 +60,7 @@ pub struct RecordStmt {
     pub id: StmtId,
     pub name: String,
     pub package_item: Option<PackageItemId>,
+    pub type_params: Vec<String>,
     pub fields: Vec<RecordField>,
     pub span: Span,
 }
@@ -416,6 +417,7 @@ impl ModuleRemapper<'_, '_> {
                 id: self.stmt_id(stmt.id),
                 name: stmt.name.clone(),
                 package_item: stmt.package_item,
+                type_params: stmt.type_params.clone(),
                 fields: stmt
                     .fields
                     .iter()
@@ -663,10 +665,14 @@ impl ModuleRemapper<'_, '_> {
     fn type_info(&mut self, ty: &TypeInfo) -> TypeInfo {
         match ty {
             TypeInfo::GenericParam(symbol) => TypeInfo::GenericParam(self.symbol(*symbol)),
-            TypeInfo::Record(symbol) => TypeInfo::Record(self.symbol(*symbol)),
-            TypeInfo::PackageRecord { symbol, item } => TypeInfo::PackageRecord {
+            TypeInfo::Record(symbol, args) => TypeInfo::Record(
+                self.symbol(*symbol),
+                args.iter().map(|arg| self.type_info(arg)).collect(),
+            ),
+            TypeInfo::PackageRecord { symbol, item, args } => TypeInfo::PackageRecord {
                 symbol: self.symbol(*symbol),
                 item: *item,
+                args: args.iter().map(|arg| self.type_info(arg)).collect(),
             },
             TypeInfo::Enum { symbol, args } => TypeInfo::Enum {
                 symbol: self.symbol(*symbol),
@@ -1134,12 +1140,16 @@ impl<'a> Lowerer<'a> {
                 id: stmt.id,
                 name: stmt.name.clone(),
                 package_item: stmt.package_item,
+                type_params: stmt.type_params.clone(),
                 fields: stmt
                     .fields
                     .iter()
                     .map(|field| RecordField {
                         name: field.name.clone(),
-                        ty: self.type_info_from_type_expr(&field.type_name),
+                        ty: self.type_info_from_type_expr_with_params(
+                            &field.type_name,
+                            &stmt.type_params,
+                        ),
                         span: field.span,
                     })
                     .collect(),
@@ -1486,10 +1496,6 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn type_info_from_type_expr(&self, type_expr: &ast::TypeExpr) -> TypeInfo {
-        self.type_info_from_type_expr_with_params(type_expr, &[])
-    }
-
     fn type_info_from_type_expr_with_params(
         &self,
         type_expr: &ast::TypeExpr,
@@ -1516,7 +1522,7 @@ impl<'a> Lowerer<'a> {
                             args: Vec::new(),
                         }
                     } else {
-                        TypeInfo::Record(symbol)
+                        TypeInfo::Record(symbol, Vec::new())
                     };
                     self.package_target_for_type(ty)
                 })
@@ -1581,6 +1587,26 @@ impl<'a> Lowerer<'a> {
                     })
                     .unwrap_or(TypeInfo::Error)
             }
+            ast::TypeExpr::Generic(generic)
+                if self.analysis.symbols.lookup(&generic.name).is_some() =>
+            {
+                self.analysis
+                    .symbols
+                    .lookup(&generic.name)
+                    .map(|symbol| {
+                        self.package_target_for_type(TypeInfo::Record(
+                            symbol,
+                            generic
+                                .args
+                                .iter()
+                                .map(|arg| {
+                                    self.type_info_from_type_expr_with_params(arg, type_params)
+                                })
+                                .collect(),
+                        ))
+                    })
+                    .unwrap_or(TypeInfo::Error)
+            }
             ast::TypeExpr::Generic(_) => TypeInfo::Error,
             ast::TypeExpr::Function(function) => TypeInfo::Function(FunctionTypeInfo {
                 params: function
@@ -1597,12 +1623,13 @@ impl<'a> Lowerer<'a> {
 
     fn package_target_for_type(&self, ty: TypeInfo) -> TypeInfo {
         match ty {
-            TypeInfo::Record(symbol) => self
-                .package_items_by_symbol
-                .get(&symbol)
-                .copied()
-                .map(|item| TypeInfo::PackageRecord { symbol, item })
-                .unwrap_or(TypeInfo::Record(symbol)),
+            TypeInfo::Record(symbol, args) => {
+                if let Some(item) = self.package_items_by_symbol.get(&symbol).copied() {
+                    TypeInfo::PackageRecord { symbol, item, args }
+                } else {
+                    TypeInfo::Record(symbol, args)
+                }
+            }
             TypeInfo::Enum { symbol, args } => {
                 let args = args
                     .into_iter()

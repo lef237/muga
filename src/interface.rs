@@ -249,20 +249,20 @@ impl PackageInterfaceGraph {
                 push_line(&mut out, &["dependency".to_string(), dependency.clone()]);
             }
             for record in &package.records {
-                push_line(
-                    &mut out,
-                    &[
-                        "record".to_string(),
-                        context
-                            .item_id(PackageItemKind::Record, record.item)
-                            .unwrap_or(record.item)
-                            .as_u32()
-                            .to_string(),
-                        record.name.clone(),
-                        format_span(record.span),
-                        record.fields.len().to_string(),
-                    ],
-                );
+                let mut parts = vec![
+                    "record".to_string(),
+                    context
+                        .item_id(PackageItemKind::Record, record.item)
+                        .unwrap_or(record.item)
+                        .as_u32()
+                        .to_string(),
+                    record.name.clone(),
+                    format_span(record.span),
+                    record.type_params.len().to_string(),
+                ];
+                parts.extend(record.type_params.iter().cloned());
+                parts.push(record.fields.len().to_string());
+                push_line(&mut out, &parts);
                 for field in &record.fields {
                     push_line(
                         &mut out,
@@ -540,6 +540,7 @@ impl PackageInterfaceGraph {
                         .map(|record| PackageInterfaceRecord {
                             item: record.item,
                             name: record.name.clone(),
+                            type_params: record.type_params.clone(),
                             fields: record
                                 .fields
                                 .iter()
@@ -938,7 +939,10 @@ impl PersistedArtifactIdRemapper<'_> {
         span: Span,
     ) {
         match ty {
-            TypeInfo::PackageRecord { symbol, item } => {
+            TypeInfo::PackageRecord { symbol, item, args } => {
+                for arg in args {
+                    self.type_info(arg, current_package, dependencies, span);
+                }
                 let name = self.symbols.resolve(*symbol).to_string();
                 if let Some(remapped) = self.reference_item(
                     PackageItemKind::Record,
@@ -1002,8 +1006,12 @@ impl PersistedArtifactIdRemapper<'_> {
                 }
                 self.type_info(&mut function.ret, current_package, dependencies, span);
             }
+            TypeInfo::Record(_, args) => {
+                for arg in args {
+                    self.type_info(arg, current_package, dependencies, span);
+                }
+            }
             TypeInfo::GenericParam(_)
-            | TypeInfo::Record(_)
             | TypeInfo::EnumConstructor {
                 enum_item: None, ..
             }
@@ -1162,6 +1170,7 @@ pub struct PackageInterface {
 pub struct PackageInterfaceRecord {
     pub item: PackageItemId,
     pub name: String,
+    pub type_params: Vec<String>,
     pub fields: Vec<PackageInterfaceField>,
     pub span: Span,
 }
@@ -1340,14 +1349,29 @@ impl<'a> PersistedInterfaceParser<'a> {
 
     fn parse_record(&mut self) -> Option<PackageInterfaceRecord> {
         let parts = self.expect_line("record")?;
-        if parts.len() != 5 {
+        if parts.len() < 5 {
             self.push_error("invalid record line");
             return None;
         }
         let item = PackageItemId::new(self.parse_u32(parts[1], "record item id")?);
         let name = parts[2].to_string();
         let span = self.parse_span(parts[3])?;
-        let field_count = self.parse_usize(parts[4], "field count")?;
+        let (type_params, field_count_index) = if parts.len() == 5 {
+            (Vec::new(), 4)
+        } else {
+            let type_param_count = self.parse_usize(parts[4], "record type parameter count")?;
+            let field_count_index = 5 + type_param_count;
+            if parts.len() != field_count_index + 1 {
+                self.push_error("invalid record type parameter list");
+                return None;
+            }
+            let type_params = parts[5..field_count_index]
+                .iter()
+                .map(|part| (*part).to_string())
+                .collect::<Vec<_>>();
+            (type_params, field_count_index)
+        };
+        let field_count = self.parse_usize(parts[field_count_index], "field count")?;
         let mut fields = Vec::with_capacity(field_count);
         for _ in 0..field_count {
             let field = self.expect_line("field")?;
@@ -1364,6 +1388,7 @@ impl<'a> PersistedInterfaceParser<'a> {
         Some(PackageInterfaceRecord {
             item,
             name,
+            type_params,
             fields,
             span,
         })
@@ -1564,11 +1589,17 @@ impl<'a, 's> TypeInfoParser<'a, 's> {
             "Bool" => Ok(TypeInfo::Bool),
             "String" => Ok(TypeInfo::String),
             "GenericParam" => Ok(TypeInfo::GenericParam(self.symbol()?)),
-            "Record" => Ok(TypeInfo::Record(self.symbol()?)),
-            "PackageRecord" => Ok(TypeInfo::PackageRecord {
-                symbol: self.symbol()?,
-                item: PackageItemId::new(self.u32("package record item id")?),
-            }),
+            "Record" => {
+                let symbol = self.symbol()?;
+                let args = self.type_args_if_present()?;
+                Ok(TypeInfo::Record(symbol, args))
+            }
+            "PackageRecord" => {
+                let symbol = self.symbol()?;
+                let item = PackageItemId::new(self.u32("package record item id")?);
+                let args = self.type_args_if_present()?;
+                Ok(TypeInfo::PackageRecord { symbol, item, args })
+            }
             "Enum" => {
                 let symbol = self.symbol()?;
                 let args = self.type_args()?;
@@ -1637,6 +1668,16 @@ impl<'a, 's> TypeInfoParser<'a, 's> {
             args.push(self.parse()?);
         }
         Ok(args)
+    }
+
+    fn type_args_if_present(&mut self) -> Result<Vec<TypeInfo>, String> {
+        let Some(token) = self.tokens.get(self.index) else {
+            return Ok(Vec::new());
+        };
+        if token.parse::<usize>().is_err() {
+            return Ok(Vec::new());
+        }
+        self.type_args()
     }
 
     fn symbol(&mut self) -> Result<crate::symbol::Symbol, String> {
@@ -1710,11 +1751,12 @@ fn push_type_info_tokens(
             tokens.push("GenericParam".to_string());
             tokens.push(symbols.resolve(*symbol).to_string());
         }
-        TypeInfo::Record(symbol) => {
+        TypeInfo::Record(symbol, args) => {
             tokens.push("Record".to_string());
             tokens.push(symbols.resolve(*symbol).to_string());
+            push_type_args(args, symbols, context, tokens);
         }
-        TypeInfo::PackageRecord { symbol, item } => {
+        TypeInfo::PackageRecord { symbol, item, args } => {
             tokens.push("PackageRecord".to_string());
             tokens.push(symbols.resolve(*symbol).to_string());
             tokens.push(
@@ -1724,6 +1766,7 @@ fn push_type_info_tokens(
                     .as_u32()
                     .to_string(),
             );
+            push_type_args(args, symbols, context, tokens);
         }
         TypeInfo::Enum { symbol, args } => {
             tokens.push("Enum".to_string());
@@ -1814,10 +1857,19 @@ fn reintern_type_info(ty: &TypeInfo, from: &SymbolTable, to: &mut SymbolTable) -
         TypeInfo::GenericParam(symbol) => {
             TypeInfo::GenericParam(reintern_symbol(*symbol, from, to))
         }
-        TypeInfo::Record(symbol) => TypeInfo::Record(reintern_symbol(*symbol, from, to)),
-        TypeInfo::PackageRecord { symbol, item } => TypeInfo::PackageRecord {
+        TypeInfo::Record(symbol, args) => TypeInfo::Record(
+            reintern_symbol(*symbol, from, to),
+            args.iter()
+                .map(|arg| reintern_type_info(arg, from, to))
+                .collect(),
+        ),
+        TypeInfo::PackageRecord { symbol, item, args } => TypeInfo::PackageRecord {
             symbol: reintern_symbol(*symbol, from, to),
             item: *item,
+            args: args
+                .iter()
+                .map(|arg| reintern_type_info(arg, from, to))
+                .collect(),
         },
         TypeInfo::Enum { symbol, args } => TypeInfo::Enum {
             symbol: reintern_symbol(*symbol, from, to),
@@ -1927,6 +1979,7 @@ impl Program {
                                 records.push(PackageInterfaceRecord {
                                     item: item.id,
                                     name: item.name.clone(),
+                                    type_params: record.type_params.clone(),
                                     fields: record
                                         .fields
                                         .iter()
@@ -2256,6 +2309,7 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
             return;
         };
         let matches = record.fields.len() == interface.fields.len()
+            && record.type_params == interface.type_params
             && record
                 .fields
                 .iter()

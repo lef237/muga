@@ -300,6 +300,11 @@ impl Parser {
         let start = self.current_span();
         self.expect_simple(TokenKind::Record, "expected `record`")?;
         let (name, _) = self.expect_ident()?;
+        let type_params = if self.matches_simple(&TokenKind::LBracket) {
+            self.parse_type_param_names()?
+        } else {
+            Vec::new()
+        };
         self.expect_simple(TokenKind::LBrace, "expected `{` after record name")?;
         self.skip_newlines();
         let mut fields = Vec::new();
@@ -325,6 +330,7 @@ impl Parser {
             name,
             package_item: None,
             visibility,
+            type_params,
             fields,
             span: start.merge(end),
         })
