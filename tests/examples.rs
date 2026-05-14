@@ -3233,6 +3233,40 @@ fn cli_emit_artifacts_can_drive_cli_artifact_check() {
 }
 
 #[test]
+fn cli_default_run_without_artifact_root_remains_source_compatible() {
+    let output = muga_command()
+        .arg("samples/packages/app/artifact_facade/main.muga")
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "26\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
+fn cli_artifact_generation_does_not_change_default_run_behavior() {
+    let artifact_root = temp_package_root("cli-artifact-generation-default-run");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/artifact_facade/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+
+    let output = muga_command()
+        .arg("samples/packages/app/artifact_facade/main.muga")
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "26\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
 fn cli_run_uses_artifact_root_without_dependency_source() {
     let artifact_root = temp_package_root("cli-run-artifact-root");
     let emitted = muga_command()
