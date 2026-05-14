@@ -3558,6 +3558,79 @@ fn main(): Int {
 }
 
 #[test]
+fn artifact_run_uses_string_helper_dependency_without_source() {
+    let provider_root = temp_package_root("string-artifact-provider");
+    write_package_file(
+        &provider_root,
+        "util/strings/main.muga",
+        r#"
+package util::strings
+
+pub fn clean(value: String): String {
+  value.trim()
+}
+
+pub fn score(value: String): Int {
+  cleaned = clean(value)
+  if cleaned.starts_with("Ada") {
+    if cleaned.ends_with("lace") {
+      if cleaned.contains("Love") {
+        42
+      } else {
+        0
+      }
+    } else {
+      0
+    }
+  } else {
+    0
+  }
+}
+"#,
+    );
+    let provider_entry = write_package_file(
+        &provider_root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import util::strings
+
+fn main(): Int {
+  strings::score("  Ada Lovelace  ")
+}
+"#,
+    );
+    let artifact_root = temp_package_root("string-artifact-root");
+    muga::write_package_artifacts(&provider_entry, &artifact_root)
+        .expect("provider artifacts should be written");
+
+    let consumer_root = temp_package_root("string-artifact-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import util::strings
+
+fn main(): Int {
+  strings::score("  Ada Lovelace  ")
+}
+"#,
+    );
+    assert!(!consumer_root.join("util/strings/main.muga").exists());
+    muga::write_package_check_cache_artifact_for_root(&consumer_entry, &artifact_root)
+        .expect("consumer check cache should be written against interface artifact");
+
+    let result = muga::run_path_against_artifact_root(&consumer_entry, &artifact_root)
+        .expect("consumer should run with dependency implementation artifact");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+    assert_eq!(result.output_text, "");
+}
+
+#[test]
 fn cli_run_uses_transitive_implementation_artifacts_without_dependency_source() {
     let provider_root = temp_package_root("cli-run-transitive-artifact-provider");
     let provider_entry = write_transitive_interface_provider(&provider_root);
@@ -7150,6 +7223,84 @@ fn main(): Bool {
         diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "T019"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_helper_builtins_sample_runs() {
+    let source = r#"
+fn main(): String {
+  text = "  Ada Lovelace  ".trim()
+  if text.starts_with("Ada") {
+    if text.ends_with("lace") {
+      if text.contains("Love") {
+        if "".is_empty() {
+          text
+        } else {
+          "empty check failed"
+        }
+      } else {
+        "contains failed"
+      }
+    } else {
+      "suffix failed"
+    }
+  } else {
+    "prefix failed"
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Ada Lovelace");
+}
+
+#[test]
+fn string_contains_checks_needle_type() {
+    let source = r#"
+fn main(): Bool {
+  "Ada".contains(1)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_helper_requires_string_receiver() {
+    let source = r#"
+fn main(): String {
+  1.trim()
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_contains_rejects_non_string_or_map_receiver() {
+    let source = r#"
+fn main(): Bool {
+  1.contains(1)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T006"
+                && diagnostic.message.contains("String or Map")),
         "{diagnostics:#?}"
     );
 }

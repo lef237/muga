@@ -1,0 +1,20 @@
+fn main(): String {
+  text = "  Ada Lovelace  ".trim()
+  if text.starts_with("Ada") {
+    if text.ends_with("lace") {
+      if text.contains("Love") {
+        if "".is_empty() {
+          text
+        } else {
+          "empty check failed"
+        }
+      } else {
+        "contains failed"
+      }
+    } else {
+      "suffix failed"
+    }
+  } else {
+    "prefix failed"
+  }
+}

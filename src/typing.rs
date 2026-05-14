@@ -904,13 +904,18 @@ impl TypeChecker {
                         } else {
                             let arg_ty = self.check_expr(&expr.args[0]);
                             match self.resolve_type(&arg_ty) {
-                                Type::List(_) | Type::Map(_, _) => {
+                                Type::List(_) | Type::Map(_, _)
+                                    if matches!(builtin, BuiltinId::Len | BuiltinId::IsEmpty) =>
+                                {
                                     let ret = match builtin {
                                         BuiltinId::Len => Type::Int,
                                         BuiltinId::IsEmpty => Type::Bool,
                                         _ => unreachable!("matched collection query builtin"),
                                     };
                                     self.apply_expected(ret, expected, expr.span)
+                                }
+                                Type::String if builtin == BuiltinId::IsEmpty => {
+                                    self.apply_expected(Type::Bool, expected, expr.span)
                                 }
                                 Type::Unknown(_) => {
                                     self.diagnostics.push(Diagnostic::new(
@@ -922,11 +927,16 @@ impl TypeChecker {
                                 }
                                 Type::Error => Type::Error,
                                 _ => {
+                                    let expected_message = match builtin {
+                                        BuiltinId::Len => "List[T] or Map[K, V]",
+                                        BuiltinId::IsEmpty => "String, List[T], or Map[K, V]",
+                                        _ => unreachable!("matched collection query builtin"),
+                                    };
                                     self.diagnostics.push(Diagnostic::new(
                                         "T006",
                                         format!(
-                                            "`{}` expects List[T] or Map[K, V] as its first argument",
-                                            Self::builtin_name(builtin)
+                                            "`{}` expects {expected_message} as its first argument",
+                                            Self::builtin_name(builtin),
                                         ),
                                         expr.span,
                                     ));
@@ -1042,6 +1052,16 @@ impl TypeChecker {
                     }
                     Type::Builtin(BuiltinId::Insert) => self.check_insert_builtin(expr, expected),
                     Type::Builtin(BuiltinId::Remove) => self.check_remove_builtin(expr, expected),
+                    Type::Builtin(BuiltinId::Trim) => {
+                        self.check_string_unary_builtin(expr, expected, BuiltinId::Trim)
+                    }
+                    Type::Builtin(BuiltinId::StartsWith | BuiltinId::EndsWith) => {
+                        let builtin = match self.resolve_type(&callee_ty) {
+                            Type::Builtin(builtin) => builtin,
+                            _ => unreachable!("matched builtin branch"),
+                        };
+                        self.check_string_predicate_builtin(expr, expected, builtin)
+                    }
                     Type::Builtin(BuiltinId::OptionSome) => {
                         if expr.args.len() != 1 {
                             self.diagnostics.push(Diagnostic::new(
@@ -1648,6 +1668,10 @@ impl TypeChecker {
 
         let base_ty = self.check_expr(&expr.args[0]);
         match self.resolve_type(&base_ty) {
+            Type::String => {
+                self.check_expr_with_expected(&expr.args[1], Some(Type::String));
+                self.apply_expected(Type::Bool, expected, expr.span)
+            }
             Type::Map(key_ty, _) => {
                 if !self.validate_map_key_type(&key_ty, expr.args[0].span()) {
                     return Type::Error;
@@ -1667,7 +1691,74 @@ impl TypeChecker {
             _ => {
                 self.diagnostics.push(Diagnostic::new(
                     "T006",
-                    "`contains` expects Map[K, V] as its first argument",
+                    "`contains` expects String or Map[K, V] as its first argument",
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn check_string_unary_builtin(
+        &mut self,
+        expr: &CallExpr,
+        expected: Option<Type>,
+        builtin: BuiltinId,
+    ) -> Type {
+        if expr.args.len() != 1 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 1 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let arg_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        match self.resolve_type(&arg_ty) {
+            Type::String => self.apply_expected(Type::String, expected, expr.span),
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    format!(
+                        "`{}` expects String as its first argument",
+                        Self::builtin_name(builtin)
+                    ),
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn check_string_predicate_builtin(
+        &mut self,
+        expr: &CallExpr,
+        expected: Option<Type>,
+        builtin: BuiltinId,
+    ) -> Type {
+        if expr.args.len() != 2 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 2 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let receiver_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        self.check_expr_with_expected(&expr.args[1], Some(Type::String));
+        match self.resolve_type(&receiver_ty) {
+            Type::String => self.apply_expected(Type::Bool, expected, expr.span),
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    format!(
+                        "`{}` expects String as its first argument",
+                        Self::builtin_name(builtin)
+                    ),
                     expr.span,
                 ));
                 Type::Error

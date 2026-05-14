@@ -172,6 +172,7 @@ Implemented:
 - records, field access, `record.with(...)`, chained calls, package-qualified chained calls, arrow function types, local binding annotations, and local bidirectional inference for selected higher-order cases
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, direct list indexing, `len`, `is_empty`, `push`, `get`, and `set`
+- string helpers `is_empty`, `contains`, `trim`, `starts_with`, and `ends_with`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, VM execution, typed HIR, and in-memory package interface summaries
 - prefix `try expr` propagation for `Result[T, E]` with exact error-type matching
@@ -230,6 +231,7 @@ Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad co
 - [samples/println_chain.muga](./samples/println_chain.muga) (runnable sample for chaining through builtin `println`)
 - [samples/print_then_println.muga](./samples/print_then_println.muga) (runnable sample for mixing `print` and `println`)
 - [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
+- [samples/string_helpers.muga](./samples/string_helpers.muga) (runnable sample for `String` helper builtins and chained calls)
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
