@@ -1,0 +1,18 @@
+record Box[T] {
+  value: T
+}
+
+fn id[T](value: T): T {
+  value
+}
+
+fn unbox[T](box: Box[T]): T {
+  box.value
+}
+
+fn main(): Int {
+  wrapped = Box {
+    value: id(41)
+  }
+  unbox(wrapped) + 1
+}

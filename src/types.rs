@@ -6,10 +6,11 @@ pub enum TypeInfo {
     Bool,
     String,
     GenericParam(Symbol),
-    Record(Symbol),
+    Record(Symbol, Vec<TypeInfo>),
     PackageRecord {
         symbol: Symbol,
         item: PackageItemId,
+        args: Vec<TypeInfo>,
     },
     Enum {
         symbol: Symbol,

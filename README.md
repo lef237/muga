@@ -198,10 +198,10 @@ Implemented:
 - package-aware typed HIR can lower through the MIR/bytecode VM path, including imported package records/enums/functions
 - default package `run` lowers package-aware typed HIR through MIR before bytecode generation
 - bytecode/runtime name references carry semantic binding identity, lowered local identity, and display symbols; runtime environments are slot-backed by lowered `LocalId`
+- user-defined generic records and generic functions with explicit declaration type parameters, ordinary call/literal inference, and persisted package-interface support for public generic signatures
 
 Not implemented yet:
 
-- user-defined generic records and generic functions
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - public-signature inference for `pub fn`; public functions currently need explicit signatures
 - project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, control-flow-oriented MIR, and native code generation
@@ -209,9 +209,9 @@ Not implemented yet:
 
 ## Planned Priority
 
-The active implementation slice is user-defined generic records and functions. The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree.
+The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With the first generic records/functions slice landed, the next priority is hardening that generic surface with docs, samples, and edge-case diagnostics before broadening into new syntax.
 
-Control-flow MIR, native backend work, wildcard-heavy pattern matching, and `try expr` remain deferred while generic records/functions are added. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
+Control-flow MIR, native backend work, wildcard-heavy pattern matching, and `try expr` remain deferred. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
 
 ## Samples
 
@@ -233,6 +233,7 @@ Control-flow MIR, native backend work, wildcard-heavy pattern matching, and `try
 - [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
 - [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
 - [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
+- [samples/generic_box.muga](./samples/generic_box.muga) (runnable sample for generic records, generic functions, and record literal type-argument inference)
 - [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
 - [samples/packages/app/split_main/main.muga](./samples/packages/app/split_main/main.muga) (runnable package sample where the entry package is split across multiple files)
 - [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)

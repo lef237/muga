@@ -732,7 +732,7 @@ impl TypedLowerer<'_> {
     fn record_type_name(&mut self, expr: &typed_hir::Expr, fallback: &str) -> Symbol {
         match &expr.ty {
             TypeInfo::PackageRecord { item, .. } => self.package_item_symbol(*item, fallback),
-            TypeInfo::Record(symbol) => self.source_symbol(*symbol),
+            TypeInfo::Record(symbol, _) => self.source_symbol(*symbol),
             _ => self.symbol(fallback),
         }
     }

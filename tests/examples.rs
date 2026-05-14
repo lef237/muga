@@ -331,6 +331,11 @@ fn closure_capture_sample_runs() {
 }
 
 #[test]
+fn generic_box_sample_runs() {
+    assert_sample_runs("samples/generic_box.muga", "42", "");
+}
+
+#[test]
 fn inferred_types_sample_runs() {
     assert_sample_runs("samples/inferred_types.muga", "10", "10\n");
 }
@@ -1992,6 +1997,69 @@ fn main(): Int {
 
     muga::compile_typed_path_against_loaded_interfaces(&consumer_entry, &interfaces, &symbols)
         .expect("loaded generic function signature should be enough for downstream checking");
+}
+
+#[test]
+fn downstream_package_can_use_loaded_generic_record_signature() {
+    let provider_root = temp_package_root("loaded-interface-generic-record-provider");
+    let provider_entry = write_package_file(
+        &provider_root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import util::generic
+
+fn main(): Int {
+  wrapped: generic::Box[Int] = generic::make_box(1)
+  wrapped.value
+}
+"#,
+    );
+    write_package_file(
+        &provider_root,
+        "util/generic/main.muga",
+        r#"
+package util::generic
+
+pub record Box[T] {
+  value: T
+}
+
+pub fn make_box(value: Int): Box[Int] {
+  Box {
+    value: value
+  }
+}
+"#,
+    );
+    let provider =
+        muga::compile_typed_path(&provider_entry).expect("provider package should typecheck");
+    let (interfaces, symbols) = persisted_interfaces_from_program(&provider);
+    let record = interfaces
+        .package_by_path("util::generic")
+        .and_then(|package| package.records.iter().find(|record| record.name == "Box"))
+        .expect("generic record should be exported");
+    assert_eq!(record.type_params, vec!["T".to_string()]);
+
+    let consumer_root = temp_package_root("loaded-interface-generic-record-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import util::generic
+
+fn main(): Int {
+  wrapped: generic::Box[Int] = generic::make_box(41)
+  wrapped.value + 1
+}
+"#,
+    );
+
+    muga::compile_typed_path_against_loaded_interfaces(&consumer_entry, &interfaces, &symbols)
+        .expect("loaded generic record signature should be enough for downstream checking");
 }
 
 #[test]
@@ -4814,6 +4882,70 @@ fn duplicate_function_type_parameter_is_rejected() {
     let source = r#"
 fn identity[T, T](value: T): T {
   value
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected duplicate type parameter");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "E002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn generic_record_literal_infers_type_arguments_from_fields() {
+    let source = r#"
+record Box[T] {
+  value: T
+}
+
+fn unbox[T](value: Box[T]): T {
+  value.value
+}
+
+fn main(): Int {
+  wrapped = Box {
+    value: 41
+  }
+  unbox(wrapped) + 1
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main should return a value");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn generic_record_rejects_conflicting_field_types() {
+    let source = r#"
+record Pair[T] {
+  left: T
+  right: T
+}
+
+fn main(): Int {
+  pair = Pair {
+    left: 1
+    right: "x"
+  }
+  pair.left
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected type error");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "E009"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn duplicate_record_type_parameter_is_rejected() {
+    let source = r#"
+record Box[T, T] {
+  value: T
 }
 "#;
     let diagnostics = muga::check_source(source).expect_err("expected duplicate type parameter");

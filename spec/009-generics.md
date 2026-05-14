@@ -1,6 +1,6 @@
 # Generics Specification v1
 
-Status: v1 design draft. The current Rust compiler implements generic type expressions for builtin collection-like types `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`; user-defined generic records, generic functions, and generic package interface persistence are still deferred.
+Status: v1 design draft with an implemented MVP. The current Rust compiler implements generic type expressions for builtin collection-like types `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`, plus explicit user-defined generic records/functions and generic package interface persistence.
 
 Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing a trait, interface, protocol, typeclass, or overloaded dispatch system in the first version.
 
@@ -139,7 +139,7 @@ Type parameters are introduced by a generic declaration.
 
 ```muga
 fn wrap[T](value: T): Box[T] {
-  Box[T] {
+  Box {
     value: value
   }
 }
@@ -173,26 +173,26 @@ record Box[T] {
 Examples:
 
 ```muga
-int_box = Box[Int] {
+int_box = Box {
   value: 1
 }
 
-name_box = Box[String] {
+name_box = Box {
   value: "Ada"
 }
 ```
 
 `Box[Int]` and `Box[String]` are different instantiated record types.
 
-Record literals for generic records should use an explicit instantiated type:
+Record literals infer type arguments from field values or from an expected type:
 
 ```muga
-Box[Int] {
+Box {
   value: 1
 }
 ```
 
-Inferring record literal type arguments from fields may be considered later, but it is not required for the v1 MVP.
+If the type arguments are not unique, the compiler requires an annotation.
 
 ## 7. Generic Functions
 
@@ -281,7 +281,7 @@ maybe_user: Option[User] = users.get("ada")
 parsed: Result[Int, String] = Result::Ok(1)
 ```
 
-`Option[T]` construction and consumption are implemented as `Option::Some(value)`, `Option::None`, and exhaustive Option `match`. `Result[T, E]` construction and consumption are implemented as `Result::Ok(value)`, `Result::Err(error)`, and exhaustive Result `match`. General user-defined enum declarations are still deferred.
+`Option[T]` construction and consumption are implemented as `Option::Some(value)`, `Option::None`, and exhaustive Option `match`. `Result[T, E]` construction and consumption are implemented as `Result::Ok(value)`, `Result::Err(error)`, and exhaustive Result `match`. General user-defined enum declarations are implemented for the current MVP shape.
 
 `T?` is reserved as possible future shorthand for `Option[T]`, but `Option[T]` is the canonical v1 spelling.
 Result propagation sugar, if added, should use visible `try expr` syntax rather than postfix `?`.
@@ -330,7 +330,7 @@ This keeps Muga's source code inference-first while preserving fast package comp
 
 ## 13. Implementation Notes
 
-The implementation should proceed in small slices:
+The implemented foundation followed these slices:
 
 1. parse generic type expressions
 2. parse type parameter lists on records and functions
@@ -339,6 +339,6 @@ The implementation should proceed in small slices:
 5. support generic records
 6. support generic functions with local type-argument inference
 7. update typed HIR to preserve generic signatures and instantiated types
-8. update package symbol graph and future interfaces to store generic signatures
+8. update package symbol graph and interfaces to store generic signatures
 
 The compiler may choose monomorphization, boxed runtime representation, or another backend strategy later. The source-level v1 semantics should not depend on that backend choice.

@@ -30,9 +30,9 @@ Keep the current roadmap priority first:
 
 Reason: practical standard libraries and reusable packages depend on stable package interfaces and implementation artifacts. Building many surface features before that boundary is stable will create churn.
 
-### 1. Implement user-defined generic records and functions
+### 1. Harden user-defined generic records and functions
 
-This is the first major language feature after the v1 package/artifact closure.
+The first generic records/functions slice is implemented. The next work is hardening: examples, docs, and diagnostics for the explicit type-parameter model.
 
 Recommended shape:
 
@@ -54,7 +54,7 @@ Rules to preserve:
 - package interfaces store resolved generic public signatures
 - no bounds, protocols, typeclasses, higher-kinded types, specialization, or polymorphic recursion in the first implementation
 
-Reason: without generic records/functions, users cannot write small reusable libraries even though builtin `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` exist.
+Reason: users can now write small reusable libraries on top of builtin `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`; the remaining risk is making the behavior obvious and stable at package boundaries.
 
 ### 2. Add `try expr` for Result propagation
 

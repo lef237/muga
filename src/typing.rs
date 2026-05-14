@@ -90,7 +90,7 @@ enum Type {
     Int,
     Bool,
     String,
-    Record(Symbol),
+    Record(Symbol, Vec<Type>),
     Enum(Symbol, Vec<Type>),
     GenericParam(Symbol),
     List(Box<Type>),
@@ -135,6 +135,7 @@ struct ExprType {
 #[derive(Clone, Debug)]
 struct RecordDef {
     span: Span,
+    type_params: Vec<Symbol>,
     fields: Vec<RecordField>,
 }
 
@@ -345,6 +346,11 @@ impl TypeChecker {
                 continue;
             };
             let symbol = self.symbol(&visible.name);
+            let type_params = record
+                .type_params
+                .iter()
+                .map(|param| self.symbol(param))
+                .collect::<Vec<_>>();
             let fields = record
                 .fields
                 .iter()
@@ -359,6 +365,7 @@ impl TypeChecker {
                 symbol,
                 RecordDef {
                     span: record.span,
+                    type_params,
                     fields,
                 },
             );
@@ -474,16 +481,24 @@ impl TypeChecker {
             TypeInfo::GenericParam(symbol) => {
                 Type::GenericParam(self.symbol(signatures.symbols.resolve(*symbol)))
             }
-            TypeInfo::Record(symbol) => {
-                Type::Record(self.symbol(signatures.symbols.resolve(*symbol)))
-            }
-            TypeInfo::PackageRecord { symbol, item } => {
+            TypeInfo::Record(symbol, args) => Type::Record(
+                self.symbol(signatures.symbols.resolve(*symbol)),
+                args.iter()
+                    .map(|arg| self.type_from_signature_info(arg, signatures))
+                    .collect(),
+            ),
+            TypeInfo::PackageRecord { symbol, item, args } => {
                 let symbol = self
                     .package_records
                     .get(item)
                     .copied()
                     .unwrap_or_else(|| self.symbol(signatures.symbols.resolve(*symbol)));
-                Type::Record(symbol)
+                Type::Record(
+                    symbol,
+                    args.iter()
+                        .map(|arg| self.type_from_signature_info(arg, signatures))
+                        .collect(),
+                )
             }
             TypeInfo::Enum { symbol, args } => Type::Enum(
                 self.symbol(signatures.symbols.resolve(*symbol)),
@@ -766,7 +781,7 @@ impl TypeChecker {
             Expr::ListLit(expr) => self.check_list_lit(expr, expected),
             Expr::Index(expr) => self.check_index_expr(expr, expected),
             Expr::RecordLit(expr) => {
-                let ty = self.check_record_lit(expr);
+                let ty = self.check_record_lit(expr, expected.as_ref());
                 self.apply_expected(ty, expected, expr.span)
             }
             Expr::Field(expr) => {
@@ -1206,6 +1221,11 @@ impl TypeChecker {
                 );
                 continue;
             }
+            let type_params = record
+                .type_params
+                .iter()
+                .map(|param| self.symbol(param))
+                .collect::<Vec<_>>();
             let mut fields = Vec::new();
             for field in &record.fields {
                 fields.push(RecordField {
@@ -1219,6 +1239,7 @@ impl TypeChecker {
                 name,
                 RecordDef {
                     span: record.span,
+                    type_params,
                     fields,
                 },
             );
@@ -1300,6 +1321,8 @@ impl TypeChecker {
     }
 
     fn check_record_decl(&mut self, record: &RecordDecl) {
+        let type_params =
+            self.type_param_symbols(&record.type_params, "record", &record.name, record.span);
         let mut field_names = HashMap::new();
         for field in &record.fields {
             let field_name = self.symbol(&field.name);
@@ -1316,7 +1339,8 @@ impl TypeChecker {
                     .with_related("previous field declaration is here", previous_span),
                 );
             }
-            let field_ty = self.type_from_expr(&field.type_name, field.span);
+            let field_ty =
+                self.type_from_expr_with_params(&field.type_name, field.span, &type_params);
             if matches!(self.resolve_type(&field_ty), Type::Function(_)) {
                 self.diagnostics.push(Diagnostic::new(
                     "E011",
@@ -2270,7 +2294,7 @@ impl TypeChecker {
         )
     }
 
-    fn check_record_lit(&mut self, expr: &RecordLitExpr) -> Type {
+    fn check_record_lit(&mut self, expr: &RecordLitExpr, expected: Option<&Type>) -> Type {
         let type_name = self.symbol(&expr.type_name);
         let Some(record) = self.records.get(&type_name).cloned() else {
             self.diagnostics.push(Diagnostic::new(
@@ -2283,13 +2307,14 @@ impl TypeChecker {
             }
             return Type::Error;
         };
+        let record_args = self.record_literal_type_args(type_name, &record, expected);
 
         let mut seen = HashSet::new();
         let mut has_error = false;
         for field in &expr.fields {
-            let value_ty = self.check_expr(&field.value);
             let field_name = self.symbol(&field.name);
             if !seen.insert(field_name) {
+                self.check_expr(&field.value);
                 self.diagnostics.push(
                     Diagnostic::new(
                         "E009",
@@ -2306,6 +2331,7 @@ impl TypeChecker {
             }
 
             let Some(declared) = find_record_field(&record, field_name) else {
+                self.check_expr(&field.value);
                 self.diagnostics.push(
                     Diagnostic::new(
                         "E009",
@@ -2321,7 +2347,8 @@ impl TypeChecker {
                 continue;
             };
 
-            let field_ty = self.record_field_type(declared);
+            let value_ty = self.check_expr(&field.value);
+            let field_ty = self.record_field_type(declared, &record.type_params, &record_args);
             if let Err(message) = self.unify(field_ty, value_ty) {
                 self.diagnostics.push(
                     Diagnostic::new("E009", message, field.span)
@@ -2352,14 +2379,49 @@ impl TypeChecker {
         if has_error {
             Type::Error
         } else {
-            Type::Record(type_name)
+            let args = record_args
+                .into_iter()
+                .map(|arg| self.resolve_type(&arg))
+                .collect::<Vec<_>>();
+            if args.iter().any(Type::is_unknown) {
+                self.diagnostics.push(Diagnostic::new(
+                    "E005",
+                    "type annotation required because record type arguments are not unique",
+                    expr.span,
+                ));
+                Type::Error
+            } else {
+                Type::Record(type_name, args)
+            }
         }
+    }
+
+    fn record_literal_type_args(
+        &mut self,
+        type_name: Symbol,
+        record: &RecordDef,
+        expected: Option<&Type>,
+    ) -> Vec<Type> {
+        let expected_args = expected.and_then(|ty| match self.resolve_type(ty) {
+            Type::Record(expected_name, args) if expected_name == type_name => Some(args),
+            _ => None,
+        });
+        if let Some(args) = expected_args
+            && args.len() == record.type_params.len()
+        {
+            return args;
+        }
+        record
+            .type_params
+            .iter()
+            .map(|_| Type::Unknown(self.fresh_unknown()))
+            .collect()
     }
 
     fn check_field_expr(&mut self, expr: &FieldExpr) -> Type {
         let base_ty = self.check_expr(&expr.base);
         let resolved_base = self.resolve_type(&base_ty);
-        let Type::Record(record_name) = resolved_base else {
+        let Type::Record(record_name, record_args) = resolved_base else {
             self.diagnostics.push(Diagnostic::new(
                 "T008",
                 "field access requires a record value",
@@ -2387,13 +2449,13 @@ impl TypeChecker {
             return Type::Error;
         };
 
-        self.record_field_type(field)
+        self.record_field_type(field, &record.type_params, &record_args)
     }
 
     fn check_record_update(&mut self, expr: &RecordUpdateExpr) -> Type {
         let base_ty = self.check_expr(&expr.base);
         let resolved_base = self.resolve_type(&base_ty);
-        let Type::Record(record_name) = resolved_base else {
+        let Type::Record(record_name, record_args) = resolved_base else {
             self.diagnostics
                 .push(Diagnostic::new("E012", "invalid record update", expr.span));
             for field in &expr.fields {
@@ -2435,7 +2497,7 @@ impl TypeChecker {
                 continue;
             };
 
-            let field_ty = self.record_field_type(declared);
+            let field_ty = self.record_field_type(declared, &record.type_params, &record_args);
             if let Err(message) = self.unify(field_ty, value_ty) {
                 self.diagnostics.push(
                     Diagnostic::new("E012", message, field.span)
@@ -2448,18 +2510,24 @@ impl TypeChecker {
         if has_error {
             Type::Error
         } else {
-            Type::Record(record_name)
+            Type::Record(record_name, record_args)
         }
     }
 
-    fn record_field_type(&mut self, field: &RecordField) -> Type {
+    fn record_field_type(
+        &mut self,
+        field: &RecordField,
+        type_params: &[Symbol],
+        type_args: &[Type],
+    ) -> Type {
         if let Some(ty) = &field.ty {
-            return ty.clone();
+            return self.substitute_type_params(ty.clone(), type_params, type_args);
         }
         let Some(type_name) = &field.type_name else {
             return Type::Error;
         };
-        self.type_from_expr(type_name, field.span)
+        let ty = self.type_from_expr_with_params(type_name, field.span, type_params);
+        self.substitute_type_params(ty, type_params, type_args)
     }
 
     fn signature_from_fn_expr(&mut self, expr: &FnExpr, expected: Option<&Type>) -> FunctionSig {
@@ -2614,8 +2682,20 @@ impl TypeChecker {
                 let symbol = self.symbol(name);
                 if type_params.contains(&symbol) {
                     Type::GenericParam(symbol)
-                } else if self.records.contains_key(&symbol) {
-                    Type::Record(symbol)
+                } else if let Some(record) = self.records.get(&symbol) {
+                    if !record.type_params.is_empty() {
+                        self.diagnostics.push(Diagnostic::new(
+                            "T022",
+                            format!(
+                                "record `{name}` expects exactly {} type arguments",
+                                record.type_params.len()
+                            ),
+                            span,
+                        ));
+                        Type::Error
+                    } else {
+                        Type::Record(symbol, Vec::new())
+                    }
                 } else if self
                     .enums
                     .get(&symbol)
@@ -2691,6 +2771,28 @@ impl TypeChecker {
             }
             TypeExpr::Generic(generic) => {
                 let symbol = self.symbol(&generic.name);
+                if let Some(record) = self.records.get(&symbol).cloned() {
+                    if generic.args.len() != record.type_params.len() {
+                        self.diagnostics.push(Diagnostic::new(
+                            "T022",
+                            format!(
+                                "record `{}` expects exactly {} type arguments",
+                                generic.name,
+                                record.type_params.len()
+                            ),
+                            span,
+                        ));
+                        return Type::Error;
+                    }
+                    return Type::Record(
+                        symbol,
+                        generic
+                            .args
+                            .iter()
+                            .map(|arg| self.type_from_expr_with_params(arg, span, type_params))
+                            .collect(),
+                    );
+                }
                 if let Some(enumeration) = self.enums.get(&symbol).cloned() {
                     if generic.args.len() != enumeration.type_params.len() {
                         self.diagnostics.push(Diagnostic::new(
@@ -2768,7 +2870,16 @@ impl TypeChecker {
             (Type::Int, Type::Int) => Ok(Type::Int),
             (Type::Bool, Type::Bool) => Ok(Type::Bool),
             (Type::String, Type::String) => Ok(Type::String),
-            (Type::Record(left), Type::Record(right)) if left == right => Ok(Type::Record(left)),
+            (Type::Record(left_name, left_args), Type::Record(right_name, right_args))
+                if left_name == right_name && left_args.len() == right_args.len() =>
+            {
+                let args = left_args
+                    .into_iter()
+                    .zip(right_args)
+                    .map(|(left, right)| self.unify(left, right))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Type::Record(left_name, args))
+            }
             (Type::Enum(left_name, left_args), Type::Enum(right_name, right_args))
                 if left_name == right_name && left_args.len() == right_args.len() =>
             {
@@ -2841,6 +2952,10 @@ impl TypeChecker {
                 *name,
                 args.iter().map(|arg| self.resolve_type(arg)).collect(),
             ),
+            Type::Record(name, args) => Type::Record(
+                *name,
+                args.iter().map(|arg| self.resolve_type(arg)).collect(),
+            ),
             Type::List(item) => Type::List(Box::new(self.resolve_type(item))),
             Type::Map(key, value) => Type::Map(
                 Box::new(self.resolve_type(key)),
@@ -2870,12 +2985,14 @@ impl TypeChecker {
             Type::Int => TypeInfo::Int,
             Type::Bool => TypeInfo::Bool,
             Type::String => TypeInfo::String,
-            Type::Record(symbol) => self
-                .package_record_items
-                .get(&symbol)
-                .copied()
-                .map(|item| TypeInfo::PackageRecord { symbol, item })
-                .unwrap_or(TypeInfo::Record(symbol)),
+            Type::Record(symbol, args) => {
+                let args = args.iter().map(|arg| self.type_info_for(arg)).collect();
+                if let Some(item) = self.package_record_items.get(&symbol).copied() {
+                    TypeInfo::PackageRecord { symbol, item, args }
+                } else {
+                    TypeInfo::Record(symbol, args)
+                }
+            }
             Type::Enum(symbol, args) => {
                 let args = args.iter().map(|arg| self.type_info_for(arg)).collect();
                 if let Some(item) = self.package_enum_items.get(&symbol).copied() {
@@ -2927,6 +3044,9 @@ impl TypeChecker {
             Type::Enum(_, args) => args
                 .iter()
                 .any(|arg| self.type_contains_unknown(arg, needle)),
+            Type::Record(_, args) => args
+                .iter()
+                .any(|arg| self.type_contains_unknown(arg, needle)),
             Type::List(item) => self.type_contains_unknown(&item, needle),
             Type::Map(key, value) => {
                 self.type_contains_unknown(&key, needle)
@@ -2959,6 +3079,13 @@ impl TypeChecker {
             Type::Enum(name, enum_args) => Type::Enum(
                 name,
                 enum_args
+                    .into_iter()
+                    .map(|arg| self.substitute_type_params(arg, params, args))
+                    .collect(),
+            ),
+            Type::Record(name, record_args) => Type::Record(
+                name,
+                record_args
                     .into_iter()
                     .map(|arg| self.substitute_type_params(arg, params, args))
                     .collect(),
@@ -3163,7 +3290,7 @@ impl Type {
             Self::Int => "Int",
             Self::Bool => "Bool",
             Self::String => "String",
-            Self::Record(_) => "Record",
+            Self::Record(_, _) => "Record",
             Self::Enum(_, _) => "Enum",
             Self::GenericParam(_) => "Type parameter",
             Self::List(_) => "List",

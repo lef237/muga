@@ -47,7 +47,6 @@ Implemented language surface:
 
 Current architectural gaps:
 
-- user-defined generic records/functions are not implemented
 - `pub fn` still requires explicit public signatures
 - normal package execution still reads dependency source bodies when no artifact root is supplied; explicit artifact-backed execution is available for dependency-source-tree-free runs
 - remaining package work is explicit artifact workflow documentation/sample hardening and later normal project/artifact integration; package-aware checking is now the default package validation path
@@ -83,14 +82,14 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slices should add user-defined generic records and functions on top of the now-stable package/artifact foundation:
+The next code slices should harden the newly landed generic records/functions surface on top of the now-stable package/artifact foundation:
 
-1. Add explicit type parameters on user-defined `record` and `fn` declarations. Do not implicitly generalize ordinary unannotated functions.
-2. Reuse the existing generic type-expression machinery used by `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, and user enums, but make package interfaces store resolved generic public signatures for records and functions.
-3. Support local call-site inference for straightforward generic function calls and generic record literals before adding explicit call-site type arguments.
-4. Keep bounds, protocols/typeclasses, higher-kinded types, specialization, and polymorphic recursion out of the first implementation.
-5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while extending generic signatures.
-6. Keep `try expr`, wildcard enum patterns, native backend work, broad stdlib effects, and full incremental project artifact reuse deferred until generic records/functions are in place.
+1. Add docs and runnable samples for explicit generic `record` and `fn` declarations.
+2. Expand diagnostics around generic arity, duplicate type parameters, ambiguous generic record literals, and stale generic package interfaces.
+3. Keep package interfaces storing resolved generic public signatures for records and functions, and preserve compatibility for persisted non-generic interfaces.
+4. Keep bounds, protocols/typeclasses, higher-kinded types, specialization, and polymorphic recursion out of the MVP.
+5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while hardening generic signatures.
+6. Keep `try expr`, wildcard enum patterns, native backend work, broad stdlib effects, and full incremental project artifact reuse deferred until the generic MVP is stable.
 
 ## Compiler Architecture Path
 
@@ -140,9 +139,7 @@ Diagnostics remain part of the architecture, not a late polish layer. New enum, 
 
 Package-interface queue:
 
-- generic public record/function signatures in `.mgi`
-- call-site inference for generic functions and record literals
-- diagnostics for unsupported generic inference and stale generic package interfaces
+- diagnostics for ambiguous generic record literals and stale generic package interfaces
 - eventual project-mode artifact-root config after dependency declarations and lockfiles
 - source-root and manifest conventions
 - serialization of inferred public signatures once supported
@@ -166,7 +163,6 @@ Write-oriented API queue:
 These should stay deferred unless the active implementation slice requires them:
 
 - map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
-- generic records/functions beyond the planned MVP slice
 - bounds, typeclasses, higher-kinded types, const generics, specialization, and polymorphic recursion
 - wildcard-heavy pattern matching, guards, nested destructuring, and named-field enum variants
 - persisted dependency declarations, registries, package archives, lockfiles, and package signing
