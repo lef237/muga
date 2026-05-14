@@ -15,6 +15,7 @@ pub mod prelude;
 pub mod resolver;
 pub mod runtime;
 pub mod span;
+pub(crate) mod std_package;
 pub mod symbol;
 pub mod token;
 pub mod typed_hir;

@@ -88,7 +88,7 @@ Prioritize packages in this order:
 
 1. `std::string`: the first prelude-helper slices implement `trim`, `contains`, `starts_with`, `ends_with`, `is_empty`, `char_count`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`. `char_count` and `slice_chars` use explicit Unicode scalar-value semantics. Keep ambiguous `String.len()`, byte-length APIs, range syntax or substring aliases, grapheme-cluster APIs, and richer string error types deferred until the relevant standard-library slice needs those decisions.
 2. `std::fmt` or equivalent formatting helpers: the first explicit prelude slice is `to_string` for `Int`, `Bool`, and `String` plus `String.concat`. Full template formatting, interpolation, builders, and implicit conversion remain deferred.
-3. `std::fs` and `std::io`: read/write files, stdout/stderr handles, basic directory operations.
+3. `std::fs` and `std::io`: the first text-file slice is implemented (`fs::read_text`, `fs::write_text`, and `io::IOError`). Keep stdout/stderr handles, resource handles, `Path`, binary `Bytes`, and directory operations as follow-up slices.
 4. `std::time`, `std::env`, and `std::process`: enough for CLI tools.
 5. `std::json`: parse and encode through explicit data types and `Result`.
 6. `std::http`: only after resource handles, Result ergonomics, and package workflow are stable.
@@ -96,9 +96,14 @@ Prioritize packages in this order:
 Recommended API style:
 
 ```muga
-result: Result[String, IOError] = fs::read_text(path)
-written: Result[Unit, IOError] = fs::write_text(path, text)
+import std::fs
+import std::io
+
+result: Result[String, io::IOError] = fs::read_text(path)
+written: Result[Unit, io::IOError] = fs::write_text(path, text)
 ```
+
+`io::IOError` is currently a transparent record with `operation`, `path`, `kind`, `message`, and `raw_code: Option[Int]`. This is intentionally enough for one-shot text IO and `try expr` propagation, but not a final resource-handle or path abstraction.
 
 Use:
 

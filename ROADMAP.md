@@ -18,6 +18,7 @@ Implemented language surface:
 - records, field access, `record.with(...)`, chained calls, and package-qualified chained calls
 - local binding annotations and function type annotations with `->`
 - `Unit` with the `()` literal for effect-only success values
+- compiler-provided `std::io::IOError`, `std::fs::read_text`, and `std::fs::write_text` package slice
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`
@@ -52,6 +53,7 @@ Implemented language surface:
 Current architectural gaps:
 
 - `pub fn` still requires explicit public signatures
+- standard-library resource handles, `Path`, binary `Bytes`, directory APIs, stdout/stderr handles, and richer stdlib package families are not implemented
 - normal package execution still reads dependency source bodies when no artifact root is supplied; explicit artifact-backed execution is available for dependency-source-tree-free runs
 - remaining package work is explicit artifact workflow documentation/sample hardening and later normal project/artifact integration; package-aware checking is now the default package validation path
 - project-mode artifact-root config and full incremental package artifact reuse are not implemented
@@ -86,14 +88,14 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slices should keep the newly landed generic records/functions and `Result` propagation surfaces stable on top of the package/artifact foundation:
+The next code slices should keep the newly landed generic records/functions, `Result` propagation, and first stdlib package surfaces stable on top of the package/artifact foundation:
 
-1. Keep docs, runnable samples, and specs aligned for explicit generic `record` / `fn`, prefix `try expr`, the first `String` helper builtins, and explicit `to_string` formatting helpers.
-2. Expand diagnostics around generic arity, duplicate type parameters, ambiguous generic record literals, stale generic package interfaces, invalid `try` placements, and invalid string helper receivers where gaps remain.
-3. Keep package interfaces storing resolved generic public signatures for records/functions and keep artifact execution proving fallible or helper-heavy dependency APIs without source-body fallback.
+1. Keep docs, runnable samples, and specs aligned for explicit generic `record` / `fn`, prefix `try expr`, the first `String` helper builtins, explicit `to_string` formatting helpers, `Unit`, and the `std::io` / `std::fs` text-file slice.
+2. Expand diagnostics around generic arity, duplicate type parameters, ambiguous generic record literals, stale generic package interfaces, invalid `try` placements, invalid string helper receivers, and `std::io::IOError` usage where gaps remain.
+3. Keep package interfaces storing resolved generic public signatures for records/functions and keep artifact execution proving fallible, helper-heavy, and stdlib-backed dependency APIs without source-body fallback.
 4. Keep bounds, protocols/typeclasses, higher-kinded types, specialization, and polymorphic recursion out of the MVP.
 5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while hardening public signatures.
-6. Keep wildcard enum patterns, native backend work, broad stdlib effects, ambiguous `String.len()` semantics, byte-length APIs, range syntax or substring aliases, grapheme-cluster APIs, richer string error types, richer formatting templates/interpolation/builders, and full incremental project artifact reuse deferred until a concrete API slice requires those decisions. The preferred future string path is `String.byte_len()` for byte size, range syntax aligned with `String.slice_chars(start, count)` if syntax-level slicing is added, and grapheme APIs only after a Unicode segmentation policy is chosen.
+6. Keep wildcard enum patterns, native backend work, broad stdlib effects, resource handles, `Path`, binary `Bytes`, directory APIs, ambiguous `String.len()` semantics, byte-length APIs, range syntax or substring aliases, grapheme-cluster APIs, richer string error types, richer formatting templates/interpolation/builders, and full incremental project artifact reuse deferred until a concrete API slice requires those decisions. The preferred future string path is `String.byte_len()` for byte size, range syntax aligned with `String.slice_chars(start, count)` if syntax-level slicing is added, and grapheme APIs only after a Unicode segmentation policy is chosen.
 
 ## V1 Definition Of Done
 

@@ -1340,6 +1340,10 @@ impl PackageLoader {
     }
 
     fn load_package_files(&mut self, package_path: &str) -> Vec<ParsedFile> {
+        if let Some(files) = crate::std_package::virtual_package_files(package_path) {
+            return self.load_virtual_package_files(package_path, files);
+        }
+
         let package_dir = self.package_dir(package_path);
         let read_dir = match fs::read_dir(&package_dir) {
             Ok(read_dir) => read_dir,
@@ -1425,6 +1429,30 @@ impl PackageLoader {
             });
         }
         files
+    }
+
+    fn load_virtual_package_files(
+        &mut self,
+        package_path: &str,
+        files: &[crate::std_package::VirtualPackageFile],
+    ) -> Vec<ParsedFile> {
+        let mut parsed = Vec::with_capacity(files.len());
+        for file in files {
+            let source = file.source.trim_start().to_string();
+            let program = match self.parse_package_file(&source, package_path) {
+                Ok(program) => program,
+                Err(diagnostics) => {
+                    self.diagnostics.extend(diagnostics);
+                    continue;
+                }
+            };
+            parsed.push(ParsedFile {
+                program,
+                module_path: file.module_path.to_string(),
+                source,
+            });
+        }
+        parsed
     }
 
     fn load_package_source_files(&mut self, package_path: &str) -> Vec<SourceFingerprintFile> {

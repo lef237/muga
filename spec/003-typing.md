@@ -51,7 +51,7 @@ Examples:
 - `List[Int]`
 - `Map[String, Int]`
 - `Option[User]`
-- `Result[Unit, IOError]`
+- `Result[Unit, io::IOError]`
 
 `Unit` has exactly one source value, written `()`. It is the preferred success value for effect-only fallible APIs such as future file writes, closes, and directory operations: `Result[Unit, E]`.
 
@@ -90,7 +90,37 @@ The v1 prelude currently provides:
 
 `String.is_empty()` returns `Bool`, `String.contains(needle)` returns `Bool`, `String.trim()` returns `String`, `String.char_count()` returns `Int`, `String.starts_with(prefix)` / `String.ends_with(suffix)` return `Bool`, `String.replace(old, new)` returns `String`, `String.split(separator)` returns `List[String]`, `String.concat(other)` returns `String`, `String.slice_chars(start, count)` returns `Result[String, String]`, `String.parse_int()` returns `Result[Int, String]`, and `String.parse_bool()` returns `Result[Bool, String]`. `String.char_count()` and `String.slice_chars(start, count)` count and index Unicode scalar values, not UTF-8 bytes or user-perceived grapheme clusters. `slice_chars` accepts zero-based `start` plus `count`; negative values or ranges beyond the string return `Result::Err("invalid slice range")`. `replace("", new)` returns the original string unchanged, and `split("")` returns a one-item list containing the original string.
 
-`String.len()` is intentionally not part of this string-helper slice. Future length/indexing APIs should stay explicit: add `String.byte_len()` when bytes or I/O APIs need byte size, keep any range syntax or substring aliases aligned with `slice_chars` before adding them, and reserve grapheme-cluster APIs until the standard library has a Unicode segmentation dependency/versioning policy. Fallible string helpers currently return `Result[_, String]`; richer error records or enums should be introduced only after several standard-library APIs need a shared error shape.
+`String.len()` is intentionally not part of this string-helper slice. Future length/indexing APIs should stay explicit: add `String.byte_len()` when bytes or I/O APIs need byte size, keep any range syntax or substring aliases aligned with `slice_chars` before adding them, and reserve grapheme-cluster APIs until the standard library has a Unicode segmentation dependency/versioning policy. Fallible string helpers currently return `Result[_, String]`; richer string-specific error records or enums should be introduced only after several string APIs need a shared error shape.
+
+## 4. Standard Library Package Slice
+
+The first compiler-provided standard packages are:
+
+```muga
+import std::fs
+import std::io
+```
+
+`std::io` exports:
+
+```muga
+pub record IOError {
+  operation: String
+  path: String
+  kind: String
+  message: String
+  raw_code: Option[Int]
+}
+```
+
+`std::fs` exports:
+
+```muga
+pub fn read_text(path: String): Result[String, io::IOError]
+pub fn write_text(path: String, text: String): Result[Unit, io::IOError]
+```
+
+`read_text` reads a UTF-8 text file into a `String`. `write_text` writes a `String` to a file and uses `Unit` as the success payload. Recoverable filesystem failures return `Result::Err(io::IOError)`. The current slice intentionally does not add resource handles, `Path`, binary `Bytes`, directory APIs, stdout/stderr handles, permissions APIs, or asynchronous IO.
 
 Because `print` and `println` accept several concrete types, neither one by itself makes an unconstrained parameter uniquely inferable.
 
@@ -114,7 +144,7 @@ fn show(x) {
 
 still requires annotation in v1.
 
-## 4. Higher-Order Functions
+## 5. Higher-Order Functions
 
 v1 supports higher-order functions.
 
@@ -181,7 +211,7 @@ fn show(x: Int, f: Int -> String): String {
 }
 ```
 
-## 5. Record Typing
+## 6. Record Typing
 
 For:
 
@@ -208,7 +238,7 @@ has type `User` if and only if:
 - each field initializer has the declared field type
 - every record field type must be a non-function type in v1
 
-## 6. Field Access and Chained Call Typing
+## 7. Field Access and Chained Call Typing
 
 For field access:
 
@@ -235,7 +265,7 @@ Then:
 
 Because record fields may not have function type in v1, `expr.name(...)` and `expr.alias::name(...)` never mean a call through a function-valued field.
 
-## 7. Record Update Typing
+## 8. Record Update Typing
 
 For:
 
@@ -257,7 +287,7 @@ The update is non-destructive. The result is a new record value rather than a mu
 
 `expr.with(...)` is not typed as an ordinary chained call in v1.
 
-## 8. Operator Typing Rules
+## 9. Operator Typing Rules
 
 The built-in operator typing rules are:
 
@@ -269,7 +299,7 @@ The built-in operator typing rules are:
 
 String concatenation uses explicit `String.concat(other)`. The `+` operator remains `Int`-only.
 
-## 9. Inference Sources
+## 10. Inference Sources
 
 v1 inference may use:
 
@@ -299,7 +329,7 @@ fn inc(x) {
 
 If `+` here is the integer addition operator in v1, `x` is inferred as `Int`.
 
-## 10. Local Bindings
+## 11. Local Bindings
 
 For a binding:
 
@@ -346,7 +376,7 @@ This is needed because an empty collection literal does not determine its elemen
 
 This syntax is implemented for local bindings and is used to give empty collection literals and `Option::None` an expected type.
 
-## 11. Conditions and Branches
+## 12. Conditions and Branches
 
 The condition expression of:
 
@@ -373,7 +403,7 @@ Both branches produce `Int`, so the `if` expression has type `Int`.
 
 For an `if` expression, the branch result types must match exactly.
 
-## 12. Function Parameter Inference
+## 13. Function Parameter Inference
 
 A parameter annotation may be omitted when the parameter type is uniquely determined from the function body and surrounding constraints.
 
@@ -409,7 +439,7 @@ fn apply(x: Int, f: Int -> Int): Int {
 }
 ```
 
-## 13. Function Return Inference
+## 14. Function Return Inference
 
 The return type of a function is inferred from the final expression in the body.
 
@@ -417,7 +447,7 @@ When control flow branches, the return type is inferred from the unified branch 
 
 If the body does not provide enough information to infer a unique return type, a return annotation is required.
 
-## 14. Inference Boundary
+## 15. Inference Boundary
 
 v1 intentionally uses local-only inference.
 
@@ -454,7 +484,7 @@ fn id(x) {
 
 is not.
 
-## 15. Mandatory Annotations
+## 16. Mandatory Annotations
 
 Annotations are required in the following cases:
 
@@ -470,7 +500,7 @@ For v1, an explicit function signature means:
 - at least one parameter or the return type is annotated for direct recursion
 - every function in a mutually recursive group has enough annotations to determine its full callable type before body checking
 
-## 16. Direct Recursion Rule
+## 17. Direct Recursion Rule
 
 For a directly recursive function, at least one of the following must be present:
 
@@ -513,7 +543,7 @@ fn fact(n) {
 }
 ```
 
-## 17. Mutual Recursion Rule
+## 18. Mutual Recursion Rule
 
 Mutually recursive functions require explicit signatures.
 
