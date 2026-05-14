@@ -1,6 +1,6 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, and a checked `app -> api -> model` artifact workflow sample.
+Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, a checked `app -> api -> model` artifact workflow sample, and CLI source-compatible default run coverage around artifact generation.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
@@ -20,7 +20,7 @@ Recommended order:
 ## Verification Snapshot
 
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest MIR/runtime identity slice.
-- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest `.mgb` artifact hardening and sample slice: 272 tests, 0 failures.
+- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest `.mgb` artifact hardening and sample slice: 274 tests, 0 failures.
 - [x] `cargo test --locked` passed after slot-backed runtime locals and bytecode local metadata: 258 tests, 0 failures.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
@@ -297,8 +297,8 @@ Artifact-backed execution:
 - [x] `run_with_artifact_root_rejects_stale_dependency_execution_artifact`
 - [x] `run_with_artifact_root_rejects_execution_artifact_interface_hash_mismatch`
 - [x] `run_with_artifact_root_does_not_fall_back_to_dependency_source`
-- [ ] `default_run_without_artifact_root_remains_source_compatible`
-- [ ] `artifact_backed_run_does_not_change_default_run_behavior`
+- [x] `default_run_without_artifact_root_remains_source_compatible`
+- [x] `artifact_backed_run_does_not_change_default_run_behavior`
 
 Already-covered package-aware checking anchors:
 
