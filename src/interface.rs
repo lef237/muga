@@ -306,21 +306,21 @@ impl PackageInterfaceGraph {
                 }
             }
             for function in &package.functions {
-                push_line(
-                    &mut out,
-                    &[
-                        "function".to_string(),
-                        context
-                            .item_id(PackageItemKind::Function, function.item)
-                            .unwrap_or(function.item)
-                            .as_u32()
-                            .to_string(),
-                        function.name.clone(),
-                        format_span(function.span),
-                        function.params.len().to_string(),
-                        format_type_info(&function.ret, symbols, context),
-                    ],
-                );
+                let mut parts = vec![
+                    "function".to_string(),
+                    context
+                        .item_id(PackageItemKind::Function, function.item)
+                        .unwrap_or(function.item)
+                        .as_u32()
+                        .to_string(),
+                    function.name.clone(),
+                    format_span(function.span),
+                    function.type_params.len().to_string(),
+                ];
+                parts.extend(function.type_params.iter().cloned());
+                parts.push(function.params.len().to_string());
+                parts.push(format_type_info(&function.ret, symbols, context));
+                push_line(&mut out, &parts);
                 for param in &function.params {
                     push_line(
                         &mut out,
@@ -580,6 +580,7 @@ impl PackageInterfaceGraph {
                         .map(|function| PackageInterfaceFunction {
                             item: function.item,
                             name: function.name.clone(),
+                            type_params: function.type_params.clone(),
                             params: function
                                 .params
                                 .iter()
@@ -1192,6 +1193,7 @@ pub struct PackageInterfaceEnumVariant {
 pub struct PackageInterfaceFunction {
     pub item: PackageItemId,
     pub name: String,
+    pub type_params: Vec<String>,
     pub params: Vec<PackageInterfaceParam>,
     pub ret: TypeInfo,
     pub span: Span,
@@ -1415,15 +1417,30 @@ impl<'a> PersistedInterfaceParser<'a> {
 
     fn parse_function(&mut self) -> Option<PackageInterfaceFunction> {
         let parts = self.expect_line("function")?;
-        if parts.len() != 6 {
+        if parts.len() < 6 {
             self.push_error("invalid function line");
             return None;
         }
         let item = PackageItemId::new(self.parse_u32(parts[1], "function item id")?);
         let name = parts[2].to_string();
         let span = self.parse_span(parts[3])?;
-        let param_count = self.parse_usize(parts[4], "function parameter count")?;
-        let ret = self.parse_type(parts[5])?;
+        let (type_params, param_count_index) = if parts.len() == 6 {
+            (Vec::new(), 4)
+        } else {
+            let type_param_count = self.parse_usize(parts[4], "function type parameter count")?;
+            let param_count_index = 5 + type_param_count;
+            if parts.len() != param_count_index + 2 {
+                self.push_error("invalid function type parameter list");
+                return None;
+            }
+            let type_params = parts[5..param_count_index]
+                .iter()
+                .map(|part| (*part).to_string())
+                .collect::<Vec<_>>();
+            (type_params, param_count_index)
+        };
+        let param_count = self.parse_usize(parts[param_count_index], "function parameter count")?;
+        let ret = self.parse_type(parts[param_count_index + 1])?;
         let mut params = Vec::with_capacity(param_count);
         for _ in 0..param_count {
             let param = self.expect_line("param")?;
@@ -1440,6 +1457,7 @@ impl<'a> PersistedInterfaceParser<'a> {
         Some(PackageInterfaceFunction {
             item,
             name,
+            type_params,
             params,
             ret,
             span,
@@ -1946,6 +1964,7 @@ impl Program {
                                 functions.push(PackageInterfaceFunction {
                                     item: item.id,
                                     name: item.name.clone(),
+                                    type_params: function.type_params.clone(),
                                     params: function
                                         .params
                                         .iter()
@@ -2282,6 +2301,7 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
             return;
         };
         let matches = function.params.len() == interface.params.len()
+            && function.type_params == interface.type_params
             && function
                 .params
                 .iter()

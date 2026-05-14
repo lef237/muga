@@ -366,10 +366,11 @@ impl<'a> PackageAwareChecker<'a> {
                 ) {
                     for variant in &enumeration.variants {
                         if let Some(payload) = &variant.payload {
-                            self.validate_visible_type(
+                            self.validate_visible_type_with_params(
                                 payload,
                                 enumeration.visibility,
                                 variant.span,
+                                &enumeration.type_params,
                             );
                         }
                     }
@@ -402,11 +403,21 @@ impl<'a> PackageAwareChecker<'a> {
                 ) {
                     for param in &function.params {
                         if let Some(type_name) = &param.type_name {
-                            self.validate_visible_type(type_name, function.visibility, param.span);
+                            self.validate_visible_type_with_params(
+                                type_name,
+                                function.visibility,
+                                param.span,
+                                &function.type_params,
+                            );
                         }
                     }
                     if let Some(type_name) = &function.return_type {
-                        self.validate_visible_type(type_name, function.visibility, function.span);
+                        self.validate_visible_type_with_params(
+                            type_name,
+                            function.visibility,
+                            function.span,
+                            &function.type_params,
+                        );
                     }
                 }
                 self.scan_func_decl(function);
@@ -602,22 +613,48 @@ impl<'a> PackageAwareChecker<'a> {
         api_visibility: Visibility,
         span: Span,
     ) {
+        self.validate_visible_type_with_params(type_expr, api_visibility, span, &[]);
+    }
+
+    fn validate_visible_type_with_params(
+        &mut self,
+        type_expr: &TypeExpr,
+        api_visibility: Visibility,
+        span: Span,
+        type_params: &[String],
+    ) {
         match type_expr {
             TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
-            TypeExpr::Named(name) => self.validate_visible_type_name(name, api_visibility, span),
+            TypeExpr::Named(name) => {
+                if !type_params.iter().any(|param| param == name) {
+                    self.validate_visible_type_name(name, api_visibility, span);
+                }
+            }
             TypeExpr::Generic(generic) => {
-                if !is_known_generic_type_name(&generic.name) {
+                if !is_known_generic_type_name(&generic.name)
+                    && !type_params.iter().any(|param| param == &generic.name)
+                {
                     self.validate_visible_type_name(&generic.name, api_visibility, span);
                 }
                 for arg in &generic.args {
-                    self.validate_visible_type(arg, api_visibility, span);
+                    self.validate_visible_type_with_params(arg, api_visibility, span, type_params);
                 }
             }
             TypeExpr::Function(function) => {
                 for param in &function.params {
-                    self.validate_visible_type(param, api_visibility, span);
+                    self.validate_visible_type_with_params(
+                        param,
+                        api_visibility,
+                        span,
+                        type_params,
+                    );
                 }
-                self.validate_visible_type(&function.ret, api_visibility, span);
+                self.validate_visible_type_with_params(
+                    &function.ret,
+                    api_visibility,
+                    span,
+                    type_params,
+                );
             }
         }
     }
@@ -1993,7 +2030,12 @@ impl<'a> PackageRewriter<'a> {
         {
             for variant in &enumeration.variants {
                 if let Some(payload) = &variant.payload {
-                    self.validate_visible_type(payload, enumeration.visibility, variant.span);
+                    self.validate_visible_type_with_params(
+                        payload,
+                        enumeration.visibility,
+                        variant.span,
+                        &enumeration.type_params,
+                    );
                 }
             }
         }
@@ -2014,10 +2056,13 @@ impl<'a> PackageRewriter<'a> {
                 .iter()
                 .map(|variant| EnumVariantDecl {
                     name: variant.name.clone(),
-                    payload: variant
-                        .payload
-                        .as_ref()
-                        .map(|payload| self.rewrite_type_expr(payload, variant.span)),
+                    payload: variant.payload.as_ref().map(|payload| {
+                        self.rewrite_type_expr_with_params(
+                            payload,
+                            variant.span,
+                            &enumeration.type_params,
+                        )
+                    }),
                     span: variant.span,
                 })
                 .collect(),
@@ -2041,20 +2086,40 @@ impl<'a> PackageRewriter<'a> {
             }
             for param in &func.params {
                 if let Some(type_name) = &param.type_name {
-                    self.validate_visible_type(type_name, Visibility::Public, param.span);
+                    self.validate_visible_type_with_params(
+                        type_name,
+                        Visibility::Public,
+                        param.span,
+                        &func.type_params,
+                    );
                 }
             }
             if let Some(type_name) = &func.return_type {
-                self.validate_visible_type(type_name, Visibility::Public, func.span);
+                self.validate_visible_type_with_params(
+                    type_name,
+                    Visibility::Public,
+                    func.span,
+                    &func.type_params,
+                );
             }
         } else if top_level && func.visibility == Visibility::Package {
             for param in &func.params {
                 if let Some(type_name) = &param.type_name {
-                    self.validate_visible_type(type_name, Visibility::Package, param.span);
+                    self.validate_visible_type_with_params(
+                        type_name,
+                        Visibility::Package,
+                        param.span,
+                        &func.type_params,
+                    );
                 }
             }
             if let Some(type_name) = &func.return_type {
-                self.validate_visible_type(type_name, Visibility::Package, func.span);
+                self.validate_visible_type_with_params(
+                    type_name,
+                    Visibility::Package,
+                    func.span,
+                    &func.type_params,
+                );
             }
         }
 
@@ -2064,10 +2129,9 @@ impl<'a> PackageRewriter<'a> {
             self.insert_local(param.name.clone());
             params.push(Param {
                 name: param.name.clone(),
-                type_name: param
-                    .type_name
-                    .as_ref()
-                    .map(|type_name| self.rewrite_type_expr(type_name, param.span)),
+                type_name: param.type_name.as_ref().map(|type_name| {
+                    self.rewrite_type_expr_with_params(type_name, param.span, &func.type_params)
+                }),
                 span: param.span,
             });
         }
@@ -2094,11 +2158,11 @@ impl<'a> PackageRewriter<'a> {
                 func.name.clone()
             },
             visibility: Visibility::Private,
+            type_params: func.type_params.clone(),
             params,
-            return_type: func
-                .return_type
-                .as_ref()
-                .map(|type_name| self.rewrite_type_expr(type_name, func.span)),
+            return_type: func.return_type.as_ref().map(|type_name| {
+                self.rewrite_type_expr_with_params(type_name, func.span, &func.type_params)
+            }),
             body,
             span: func.span,
         }
@@ -2339,26 +2403,42 @@ impl<'a> PackageRewriter<'a> {
     }
 
     fn rewrite_type_expr(&mut self, type_expr: &TypeExpr, span: Span) -> TypeExpr {
+        self.rewrite_type_expr_with_params(type_expr, span, &[])
+    }
+
+    fn rewrite_type_expr_with_params(
+        &mut self,
+        type_expr: &TypeExpr,
+        span: Span,
+        type_params: &[String],
+    ) -> TypeExpr {
         match type_expr {
             TypeExpr::Int => TypeExpr::Int,
             TypeExpr::Bool => TypeExpr::Bool,
             TypeExpr::String => TypeExpr::String,
+            TypeExpr::Named(name) if type_params.iter().any(|param| param == name) => {
+                TypeExpr::Named(name.clone())
+            }
             TypeExpr::Named(name) => TypeExpr::Named(self.rewrite_type_name(name, span)),
             TypeExpr::Generic(generic) => TypeExpr::Generic(GenericTypeExpr {
-                name: self.rewrite_type_name(&generic.name, span),
+                name: if type_params.iter().any(|param| param == &generic.name) {
+                    generic.name.clone()
+                } else {
+                    self.rewrite_type_name(&generic.name, span)
+                },
                 args: generic
                     .args
                     .iter()
-                    .map(|arg| self.rewrite_type_expr(arg, span))
+                    .map(|arg| self.rewrite_type_expr_with_params(arg, span, type_params))
                     .collect(),
             }),
             TypeExpr::Function(function) => TypeExpr::Function(FunctionTypeExpr {
                 params: function
                     .params
                     .iter()
-                    .map(|param| self.rewrite_type_expr(param, span))
+                    .map(|param| self.rewrite_type_expr_with_params(param, span, type_params))
                     .collect(),
-                ret: Box::new(self.rewrite_type_expr(&function.ret, span)),
+                ret: Box::new(self.rewrite_type_expr_with_params(&function.ret, span, type_params)),
             }),
         }
     }
@@ -2507,9 +2587,22 @@ impl<'a> PackageRewriter<'a> {
         api_visibility: Visibility,
         span: Span,
     ) {
+        self.validate_visible_type_with_params(type_expr, api_visibility, span, &[]);
+    }
+
+    fn validate_visible_type_with_params(
+        &mut self,
+        type_expr: &TypeExpr,
+        api_visibility: Visibility,
+        span: Span,
+        type_params: &[String],
+    ) {
         match type_expr {
             TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
             TypeExpr::Named(name) => {
+                if type_params.iter().any(|param| param == name) {
+                    return;
+                }
                 if let Some((alias, item)) = split_qualified_name(name) {
                     let _ = self.resolve_imported_type_item(alias, item, span);
                     return;
@@ -2554,15 +2647,35 @@ impl<'a> PackageRewriter<'a> {
                 }
             }
             TypeExpr::Generic(generic) => {
+                if !type_params.iter().any(|param| param == &generic.name)
+                    && !is_known_generic_type_name(&generic.name)
+                {
+                    self.validate_visible_type_with_params(
+                        &TypeExpr::Named(generic.name.clone()),
+                        api_visibility,
+                        span,
+                        type_params,
+                    );
+                }
                 for arg in &generic.args {
-                    self.validate_visible_type(arg, api_visibility, span);
+                    self.validate_visible_type_with_params(arg, api_visibility, span, type_params);
                 }
             }
             TypeExpr::Function(function) => {
                 for param in &function.params {
-                    self.validate_visible_type(param, api_visibility, span);
+                    self.validate_visible_type_with_params(
+                        param,
+                        api_visibility,
+                        span,
+                        type_params,
+                    );
                 }
-                self.validate_visible_type(&function.ret, api_visibility, span);
+                self.validate_visible_type_with_params(
+                    &function.ret,
+                    api_visibility,
+                    span,
+                    type_params,
+                );
             }
         }
     }

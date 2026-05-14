@@ -126,6 +126,7 @@ pub struct FuncDecl {
     pub name: String,
     pub package_item: Option<PackageItemId>,
     pub visibility: Visibility,
+    pub type_params: Vec<String>,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
     pub body: ValueBlock,

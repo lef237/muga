@@ -92,6 +92,7 @@ pub struct PackageFunctionSignature {
     pub module: ModuleId,
     pub name: String,
     pub visibility: Visibility,
+    pub type_params: Vec<String>,
     pub params: Vec<PackageParamSignature>,
     pub ret: Option<TypeInfo>,
     pub span: Span,
@@ -324,6 +325,7 @@ impl<'a> SignatureCollector<'a> {
                     module: item.module,
                     name: function.name.clone(),
                     visibility: Visibility::Public,
+                    type_params: function.type_params.clone(),
                     params,
                     ret: Some(ret),
                     span: function.span,
@@ -526,23 +528,22 @@ impl<'a> SignatureCollector<'a> {
             .iter()
             .map(|param| PackageParamSignature {
                 name: param.name.clone(),
-                ty: param
-                    .type_name
-                    .as_ref()
-                    .map(|type_name| self.type_info_from_type_expr(type_name, param.span, &[])),
+                ty: param.type_name.as_ref().map(|type_name| {
+                    self.type_info_from_type_expr(type_name, param.span, &function.type_params)
+                }),
                 span: param.span,
             })
             .collect();
-        let ret = function
-            .return_type
-            .as_ref()
-            .map(|type_name| self.type_info_from_type_expr(type_name, function.span, &[]));
+        let ret = function.return_type.as_ref().map(|type_name| {
+            self.type_info_from_type_expr(type_name, function.span, &function.type_params)
+        });
         self.functions.push(PackageFunctionSignature {
             item,
             package: self.current_package,
             module: self.current_module,
             name: function.name.clone(),
             visibility: function.visibility,
+            type_params: function.type_params.clone(),
             params,
             ret,
             span: function.span,
