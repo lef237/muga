@@ -6060,6 +6060,89 @@ fn main(): Int {
 }
 
 #[test]
+fn result_try_inside_if_expression_returns_early() {
+    let source = r#"
+fn fail(): Result[Int, String] {
+  Result::Err("missing")
+}
+
+fn compute(flag: Bool): Result[Int, String] {
+  value = if flag {
+    try fail()
+  } else {
+    1
+  }
+  Result::Ok(value)
+}
+
+fn main(): String {
+  match compute(true) {
+    Result::Ok(value) => "ok"
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "missing");
+}
+
+#[test]
+fn result_try_inside_match_arm_returns_early() {
+    let source = r#"
+fn fail(): Result[Int, String] {
+  Result::Err("from arm")
+}
+
+fn compute(value: Result[Int, String]): Result[Int, String] {
+  next = match value {
+    Result::Ok(ok) => try fail()
+    Result::Err(message) => 0
+  }
+  Result::Ok(next)
+}
+
+fn main(): String {
+  match compute(Result::Ok(1)) {
+    Result::Ok(value) => "ok"
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "from arm");
+}
+
+#[test]
+fn result_try_inside_closure_returns_from_closure_only() {
+    let source = r#"
+fn fail(): Result[Int, String] {
+  Result::Err("inner")
+}
+
+fn outer(): Result[Int, String] {
+  f = fn(): Result[Int, String] {
+    value = try fail()
+    Result::Ok(value + 1)
+  }
+  ignored = f()
+  Result::Ok(42)
+}
+
+fn main(): Int {
+  match outer() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
 fn result_try_requires_result_return_type() {
     let source = r#"
 fn main(): Int {
