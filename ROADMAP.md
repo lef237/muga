@@ -19,7 +19,7 @@ Implemented language surface:
 - local binding annotations and function type annotations with `->`
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
-- string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `parse_int`, and `parse_bool`
+- string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `slice_chars`, `parse_int`, and `parse_bool`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for compiler-known `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
 - prefix `try expr` propagation for `Result[T, E]` with exact error-type matching
@@ -86,12 +86,12 @@ Related design notes:
 
 The next code slices should keep the newly landed generic records/functions and `Result` propagation surfaces stable on top of the package/artifact foundation:
 
-1. Keep docs, runnable samples, and specs aligned for explicit generic `record` / `fn`, prefix `try expr`, and the first `String` helper builtins, including explicit `String.char_count()` semantics.
+1. Keep docs, runnable samples, and specs aligned for explicit generic `record` / `fn`, prefix `try expr`, and the first `String` helper builtins, including explicit `String.char_count()` and `String.slice_chars(start, count)` semantics.
 2. Expand diagnostics around generic arity, duplicate type parameters, ambiguous generic record literals, stale generic package interfaces, invalid `try` placements, and invalid string helper receivers where gaps remain.
 3. Keep package interfaces storing resolved generic public signatures for records/functions and keep artifact execution proving fallible or helper-heavy dependency APIs without source-body fallback.
 4. Keep bounds, protocols/typeclasses, higher-kinded types, specialization, and polymorphic recursion out of the MVP.
 5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while hardening public signatures.
-6. Keep wildcard enum patterns, native backend work, broad stdlib effects, ambiguous `String.len()` semantics, byte-length APIs, substring/slice indexing, grapheme-cluster APIs, richer parse error types, and full incremental project artifact reuse deferred until a concrete API slice requires those decisions. The preferred future string path is `String.byte_len()` for byte size, `String.slice_chars(start, count): Result[String, String]` for code-point slicing, and grapheme APIs only after a Unicode segmentation policy is chosen.
+6. Keep wildcard enum patterns, native backend work, broad stdlib effects, ambiguous `String.len()` semantics, byte-length APIs, range syntax or substring aliases, grapheme-cluster APIs, richer string error types, and full incremental project artifact reuse deferred until a concrete API slice requires those decisions. The preferred future string path is `String.byte_len()` for byte size, range syntax aligned with `String.slice_chars(start, count)` if syntax-level slicing is added, and grapheme APIs only after a Unicode segmentation policy is chosen.
 
 ## V1 Definition Of Done
 

@@ -1083,6 +1083,9 @@ impl TypeChecker {
                         BuiltinId::Split,
                         Type::List(Box::new(Type::String)),
                     ),
+                    Type::Builtin(BuiltinId::SliceChars) => {
+                        self.check_slice_chars_builtin(expr, expected)
+                    }
                     Type::Builtin(BuiltinId::ParseInt) => {
                         self.check_parse_int_builtin(expr, expected)
                     }
@@ -1858,6 +1861,37 @@ impl TypeChecker {
                         "`{}` expects String as its first argument",
                         Self::builtin_name(builtin)
                     ),
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn check_slice_chars_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 3 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 3 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let receiver_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        self.check_expr_with_expected(&expr.args[1], Some(Type::Int));
+        self.check_expr_with_expected(&expr.args[2], Some(Type::Int));
+        match self.resolve_type(&receiver_ty) {
+            Type::String => self.apply_expected(
+                Type::Result(Box::new(Type::String), Box::new(Type::String)),
+                expected,
+                expr.span,
+            ),
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    "`slice_chars` expects String as its first argument",
                     expr.span,
                 ));
                 Type::Error

@@ -188,7 +188,7 @@ Ada
 - [ ] arbitrary map key types are deferred.
 - [ ] `Set[T]` is deferred.
 - [x] prefix `try expr` `Result` propagation is implemented and hardened for source, nested control flow, closures, and artifact-backed dependency execution.
-- [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `parse_int`, and `parse_bool`.
+- [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `slice_chars`, `parse_int`, and `parse_bool`.
 
 ## Architecture Facts To Keep In Mind
 
@@ -291,8 +291,9 @@ Estimates are in focused engineering days for someone already familiar with this
 | 22. First `String` helper builtins | Add low-risk string helpers that do not require byte-versus-character length semantics: `is_empty`, `contains`, `trim`, `starts_with`, `ends_with`, `replace`, and `split`, with runtime, typing, samples, and artifact-backed dependency coverage. `replace("", new)` is a no-op and `split("")` returns `[self]`. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
 | 23. Fallible string parse helpers | Add `String.parse_int(): Result[Int, String]` and `String.parse_bool(): Result[Bool, String]` so practical code can exercise `try` with builtin fallible APIs while postponing richer parse error types. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
 | 24. Explicit string character count | Add `String.char_count(): Int` as Unicode scalar-value counting, with runtime, typing, sample, source tests, and artifact-backed dependency coverage. This avoids overloading `String.len()` before byte/character/grapheme semantics are settled. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
+| 25. Explicit string scalar slicing | Add `String.slice_chars(start: Int, count: Int): Result[String, String]` as zero-based Unicode scalar-value slicing, returning `Result::Err("invalid slice range")` for negative or out-of-range slices. Cover source, Unicode, type errors, samples, and artifact-backed `try` execution. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
 
-The next deferred string/API decisions are intentionally explicit: prefer `String.byte_len(): Int` only when byte-oriented APIs need it, prefer `String.slice_chars(start: Int, count: Int): Result[String, String]` for the first substring API, reserve grapheme-cluster APIs until a Unicode segmentation dependency/versioning policy exists, and keep parse helpers returning `Result[_, String]` until multiple standard-library APIs need a shared richer error type. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
+The next deferred string/API decisions are intentionally explicit: prefer `String.byte_len(): Int` only when byte-oriented APIs need it, keep future range syntax or substring aliases aligned with `slice_chars`, reserve grapheme-cluster APIs until a Unicode segmentation dependency/versioning policy exists, and keep fallible string helpers returning `Result[_, String]` until multiple standard-library APIs need a shared richer error type. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
 
 ## Test Plan For The Next Code Slice
 
