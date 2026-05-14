@@ -3483,6 +3483,81 @@ fn main(): Int {
 }
 
 #[test]
+fn artifact_run_uses_try_expression_dependency_without_source() {
+    let provider_root = temp_package_root("try-artifact-provider");
+    write_package_file(
+        &provider_root,
+        "util/fallible/main.muga",
+        r#"
+package util::fallible
+
+pub fn checked(value: Int): Result[Int, String] {
+  if value > 0 {
+    Result::Ok(value)
+  } else {
+    Result::Err("not positive")
+  }
+}
+
+pub fn add_checked(left: Int, right: Int): Result[Int, String] {
+  a = try checked(left)
+  b = try checked(right)
+  Result::Ok(a + b)
+}
+
+pub fn result_or_zero(value: Result[Int, String]): Int {
+  match value {
+    Result::Ok(ok) => ok
+    Result::Err(message) => 0
+  }
+}
+"#,
+    );
+    let provider_entry = write_package_file(
+        &provider_root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import util::fallible
+
+fn main(): Int {
+  fallible::result_or_zero(fallible::add_checked(20, 22))
+}
+"#,
+    );
+    let artifact_root = temp_package_root("try-artifact-root");
+    muga::write_package_artifacts(&provider_entry, &artifact_root)
+        .expect("provider artifacts should be written");
+
+    let consumer_root = temp_package_root("try-artifact-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import util::fallible
+
+fn main(): Int {
+  ok = fallible::result_or_zero(fallible::add_checked(20, 22))
+  err = fallible::result_or_zero(fallible::add_checked(-1, 99))
+  ok + err
+}
+"#,
+    );
+    assert!(!consumer_root.join("util/fallible/main.muga").exists());
+    muga::write_package_check_cache_artifact_for_root(&consumer_entry, &artifact_root)
+        .expect("consumer check cache should be written against interface artifact");
+
+    let result = muga::run_path_against_artifact_root(&consumer_entry, &artifact_root)
+        .expect("consumer should run with dependency implementation artifact");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+    assert_eq!(result.output_text, "");
+}
+
+#[test]
 fn cli_run_uses_transitive_implementation_artifacts_without_dependency_source() {
     let provider_root = temp_package_root("cli-run-transitive-artifact-provider");
     let provider_entry = write_transitive_interface_provider(&provider_root);
