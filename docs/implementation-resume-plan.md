@@ -1,6 +1,6 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-13 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, and explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution.
+Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, and `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, and stale/mismatched artifact diagnostics.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
@@ -20,6 +20,7 @@ Recommended order:
 ## Verification Snapshot
 
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest MIR/runtime identity slice.
+- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest `.mgb` artifact hardening slice: 271 tests, 0 failures.
 - [x] `cargo test --locked` passed after slot-backed runtime locals and bytecode local metadata: 258 tests, 0 failures.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
@@ -139,6 +140,10 @@ Ada
 - [x] package-aware typed HIR can lower through the MIR/bytecode VM path for package records/enums/functions.
 - [x] explicit artifact-backed package execution reads dependency bytecode bodies from `.mgb` artifacts and does not fall back to dependency source files.
 - [x] `.mgb` bytecode bodies are structurally validated on read before bytecode merge/runtime execution, including symbol, local, binding, function, package item, and jump-target references.
+- [x] artifact-backed `run` executes transitive dependency implementation artifacts without dependency source files in the consumer tree.
+- [x] independently generated `.mgi` and `.mgb` artifacts can be combined when the public interface hash matches; `.mgb` package item references are remapped onto the loaded interface items.
+- [x] `.mgb` private package item ids are reserved after the entry program's package item ids before bytecode merge, avoiding collisions between entry-private functions and dependency-private implementation functions.
+- [x] artifact-backed `run` has CLI coverage for wrong-package `.mgb` files and stale dependency interface hashes in `.mgb` dependency metadata.
 
 ### Diagnostics
 
@@ -274,10 +279,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 15. Package-aware checking without flattening | Done for the current package checking surface: library-only package-aware boundary checking, source/module signature collection, retained module resolver/typecheck outputs, package-wide typed HIR aggregation, default package `check` and `compile_typed_path`, direct interface-backed dependency signatures/graph metadata, and removal of the interface-stub flattened typed path now run over the unflattened package graph while keeping artifact semantics explicit. Remaining v1 work is dependency-body-free execution and workflow hardening. | package/resolver/typing/lib/tests | Done | High |
 | 16. MIR/runtime identity foundation | Route package-aware typed HIR through MIR into bytecode with explicit body nodes, binding/package-item identity, assignment mode, `NameRef` local identity, slot-backed runtime locals, entrypoint identity, and synthetic local metadata. | `src/mir.rs`, `src/bytecode.rs`, `src/runtime.rs`, `src/lib.rs`, tests/docs | Done | Medium |
 | 17. Dependency-body-free execution | Added an explicit artifact-backed `run` path that validates `.mgi` / `.mgc`, loads separate MIR-lowered bytecode `.mgb` dependency implementation artifacts, and executes package dependencies without reading source files from the dependency source tree. `emit-artifacts` writes every artifact needed by this path. | `src/main.rs`, `src/lib.rs`, `src/cache.rs`, `src/interface.rs`, `src/implementation_artifact.rs`, tests/docs | Done | Medium |
-| 18. V1 package workflow hardening | Document and test the explicit artifact workflow end to end, including broader missing/stale artifact diagnostics, default source-compatible execution, and sample package/project commands. | `README.md`, `ROADMAP.md`, `docs/*`, `tests/examples.rs`, samples | 1-2 days | Medium |
+| 18. V1 package workflow hardening | Document and test the explicit artifact workflow end to end, including transitive `.mgb` execution, independent `.mgi`/`.mgb` identity remapping, private item id reservation during bytecode merge, broader missing/stale/mismatched artifact diagnostics, default source-compatible execution, and sample package/project commands. | `README.md`, `ROADMAP.md`, `docs/*`, `tests/examples.rs`, samples | In progress | Medium |
 | 19. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Keep this post-v1 unless v1 error-handling docs require the syntax decision. | spec docs first, then parser/typechecker/HIR/runtime | Deferred | High |
 
-The safest immediate code slice is now artifact workflow hardening: keep the current expression-shaped MIR/reference VM path, broaden `.mgb` diagnostics and samples, and defer automatic project artifact reuse until dependency declarations and lockfiles exist.
+The safest immediate code slice remains artifact workflow hardening: keep the current expression-shaped MIR/reference VM path, add a small artifact workflow sample or README/spec refresh, and defer automatic project artifact reuse until dependency declarations and lockfiles exist.
 
 ## Test Plan For The Next Code Slice
 
