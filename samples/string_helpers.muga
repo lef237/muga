@@ -1,10 +1,15 @@
 fn main(): String {
-  text = "  Ada Lovelace  ".trim()
+  text = "  Ada Lovelace  ".trim().replace("Lovelace", "Muga")
+  parts = text.split(" ")
   if text.starts_with("Ada") {
-    if text.ends_with("lace") {
-      if text.contains("Love") {
+    if text.ends_with("Muga") {
+      if text.contains("Mu") {
         if "".is_empty() {
-          text
+          if parts.len() == 2 {
+            text
+          } else {
+            "split failed"
+          }
         } else {
           "empty check failed"
         }

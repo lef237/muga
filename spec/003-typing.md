@@ -74,13 +74,13 @@ The v1 prelude currently provides:
 - `println`
 - `len`, `is_empty`, `push`, `get`, and `set` for `List[T]`
 - `Map.empty`, `len`, `is_empty`, `contains`, `get`, `insert`, and `remove` for `Map[K, V]`
-- `is_empty`, `contains`, `trim`, `starts_with`, `ends_with`, and `parse_int` for `String`
+- `is_empty`, `contains`, `trim`, `starts_with`, `ends_with`, `replace`, `split`, `parse_int`, and `parse_bool` for `String`
 
 `print` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output without a trailing newline, and returns that same value.
 
 `println` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output as one line, and returns that same value.
 
-`String.is_empty()` returns `Bool`, `String.contains(needle)` returns `Bool`, `String.trim()` returns `String`, `String.starts_with(prefix)` / `String.ends_with(suffix)` return `Bool`, and `String.parse_int()` returns `Result[Int, String]`. `String.len()` is intentionally not part of this first string-helper slice, because byte length versus character-count semantics should be decided separately.
+`String.is_empty()` returns `Bool`, `String.contains(needle)` returns `Bool`, `String.trim()` returns `String`, `String.starts_with(prefix)` / `String.ends_with(suffix)` return `Bool`, `String.replace(old, new)` returns `String`, `String.split(separator)` returns `List[String]`, `String.parse_int()` returns `Result[Int, String]`, and `String.parse_bool()` returns `Result[Bool, String]`. `replace("", new)` returns the original string unchanged, and `split("")` returns a one-item list containing the original string. `String.len()` is intentionally not part of this string-helper slice, because byte length versus character-count semantics should be decided separately.
 
 Because `print` and `println` accept several concrete types, neither one by itself makes an unconstrained parameter uniquely inferable.
 
