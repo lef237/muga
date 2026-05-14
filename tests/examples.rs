@@ -2060,6 +2060,39 @@ fn main(): Int {
 
     muga::compile_typed_path_against_loaded_interfaces(&consumer_entry, &interfaces, &symbols)
         .expect("loaded generic record signature should be enough for downstream checking");
+
+    let mut stale_interfaces = interfaces.clone();
+    stale_interfaces
+        .packages
+        .iter_mut()
+        .find(|package| package.path == "util::generic")
+        .expect("generic package should exist")
+        .records
+        .iter_mut()
+        .find(|record| record.name == "Box")
+        .expect("Box should be exported")
+        .type_params
+        .push("E".to_string());
+    let text = stale_interfaces.to_persisted_text(&provider.symbols);
+    let mut stale_symbols = provider.symbols.clone();
+    let stale_interfaces =
+        muga::interface::PackageInterfaceGraph::from_persisted_text(&text, &mut stale_symbols)
+            .expect("stale persisted interfaces should still parse");
+    let diagnostics = muga::compile_typed_path_against_loaded_interfaces(
+        &consumer_entry,
+        &stale_interfaces,
+        &stale_symbols,
+    )
+    .expect_err("stale generic record interface should be rejected");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "T022"
+                && diagnostic
+                    .message
+                    .contains("expects exactly 2 type arguments")
+        }),
+        "{diagnostics:#?}"
+    );
 }
 
 #[test]
@@ -4937,6 +4970,55 @@ fn main(): Int {
         diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "E009"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn generic_record_literal_requires_unique_type_arguments() {
+    let source = r#"
+record Phantom[T] {
+  value: Int
+}
+
+fn main(): Int {
+  wrapped = Phantom {
+    value: 1
+  }
+  wrapped.value
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected ambiguous record type error");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "E005"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn generic_record_type_annotation_checks_arity() {
+    let source = r#"
+record Box[T] {
+  value: T
+}
+
+fn main(): Int {
+  wrapped: Box = Box {
+    value: 1
+  }
+  wrapped.value
+}
+"#;
+    let diagnostics = muga::check_source(source).expect_err("expected generic arity error");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "T022"
+                && diagnostic
+                    .message
+                    .contains("record `Box` expects exactly 1 type arguments")
+        }),
         "{diagnostics:#?}"
     );
 }

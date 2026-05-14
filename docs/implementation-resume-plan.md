@@ -19,7 +19,7 @@ Recommended order:
 
 ## Verification Snapshot
 
-- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the generic records/functions slice: 283 tests, 0 failures.
+- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the generic records/functions slice: 285 tests, 0 failures.
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest MIR/runtime identity slice.
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest `.mgb` artifact hardening and sample slice: 274 tests, 0 failures.
 - [x] `cargo test --locked` passed after slot-backed runtime locals and bytecode local metadata: 258 tests, 0 failures.
