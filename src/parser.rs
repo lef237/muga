@@ -894,6 +894,16 @@ impl Parser {
                     expr: Box::new(expr),
                 }))
             }
+            TokenKind::Try => {
+                let start = self.current_span();
+                self.advance();
+                let expr = self.parse_unary()?;
+                Ok(Expr::Try(TryExpr {
+                    id: self.expr_id(),
+                    span: start.merge(expr.span()),
+                    expr: Box::new(expr),
+                }))
+            }
             _ => self.parse_call(),
         }
     }

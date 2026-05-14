@@ -20,6 +20,7 @@ pub enum TokenKind {
     If,
     Else,
     While,
+    Try,
     True,
     False,
     LParen,
@@ -68,6 +69,7 @@ impl TokenKind {
                 | TokenKind::Comma
                 | TokenKind::Arrow
                 | TokenKind::FatArrow
+                | TokenKind::Try
                 | TokenKind::LBracket
                 | TokenKind::Plus
                 | TokenKind::Minus

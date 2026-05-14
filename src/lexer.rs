@@ -204,6 +204,7 @@ impl Lexer {
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "while" => TokenKind::While,
+            "try" => TokenKind::Try,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             _ => TokenKind::Ident(text),

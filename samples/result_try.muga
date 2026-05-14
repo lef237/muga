@@ -1,0 +1,15 @@
+fn read(value: Int): Result[Int, String] {
+  Result::Ok(value)
+}
+
+fn compute(): Result[Int, String] {
+  value = try read(41)
+  Result::Ok(value + 1)
+}
+
+fn main(): Int {
+  match compute() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}

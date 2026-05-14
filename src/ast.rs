@@ -192,6 +192,7 @@ pub enum Expr {
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     Call(CallExpr),
+    Try(TryExpr),
     If(IfExpr),
     Match(MatchExpr),
     Fn(FnExpr),
@@ -212,6 +213,7 @@ impl Expr {
             Self::Unary(expr) => expr.id,
             Self::Binary(expr) => expr.id,
             Self::Call(expr) => expr.id,
+            Self::Try(expr) => expr.id,
             Self::If(expr) => expr.id,
             Self::Match(expr) => expr.id,
             Self::Fn(expr) => expr.id,
@@ -232,6 +234,7 @@ impl Expr {
             Self::Unary(expr) => expr.span,
             Self::Binary(expr) => expr.span,
             Self::Call(expr) => expr.span,
+            Self::Try(expr) => expr.span,
             Self::If(expr) => expr.span,
             Self::Match(expr) => expr.span,
             Self::Fn(expr) => expr.span,
@@ -356,6 +359,13 @@ pub struct CallExpr {
     pub callee: Box<Expr>,
     pub args: Vec<Expr>,
     pub origin: CallOrigin,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct TryExpr {
+    pub id: ExprId,
+    pub expr: Box<Expr>,
     pub span: Span,
 }
 
@@ -546,6 +556,10 @@ impl NodeIdAssigner {
                 for arg in &mut expr.args {
                     self.assign_expr(arg);
                 }
+            }
+            Expr::Try(expr) => {
+                expr.id = self.expr_id();
+                self.assign_expr(&mut expr.expr);
             }
             Expr::If(expr) => {
                 expr.id = self.expr_id();

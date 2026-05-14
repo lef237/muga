@@ -241,6 +241,7 @@ struct TypeChecker {
     package_enum_items: HashMap<Symbol, PackageItemId>,
     package_function_items: HashMap<Symbol, PackageItemId>,
     package_items_by_binding: HashMap<BindingId, PackageItemId>,
+    current_function_returns: Vec<Type>,
 }
 
 impl TypeChecker {
@@ -264,6 +265,7 @@ impl TypeChecker {
             package_enum_items: HashMap::new(),
             package_function_items: HashMap::new(),
             package_items_by_binding: HashMap::new(),
+            current_function_returns: Vec::new(),
         };
         checker.install_prelude();
         checker
@@ -687,6 +689,7 @@ impl TypeChecker {
         };
 
         self.push_scope(true);
+        self.current_function_returns.push((*sig.ret).clone());
         for (param, param_ty) in func.params.iter().zip(sig.params.iter().cloned()) {
             let name = self.symbol(&param.name);
             self.insert_current(name, BindingKind::Parameter, param_ty, param.span);
@@ -700,6 +703,7 @@ impl TypeChecker {
             }
         }
         self.check_expr_with_expected(&func.body.expr, Some((*sig.ret).clone()));
+        self.current_function_returns.pop();
         self.pop_scope();
 
         let resolved_params: Vec<Type> =
@@ -1171,9 +1175,11 @@ impl TypeChecker {
                 }
             }
             Expr::Match(expr) => self.check_match_expr(expr, expected),
+            Expr::Try(expr) => self.check_try_expr(expr, expected),
             Expr::Fn(expr) => {
                 let sig = self.signature_from_fn_expr(expr, expected.as_ref());
                 self.push_scope(true);
+                self.current_function_returns.push((*sig.ret).clone());
                 for (param, param_ty) in expr.params.iter().zip(sig.params.iter().cloned()) {
                     let name = self.symbol(&param.name);
                     self.insert_current(name, BindingKind::Parameter, param_ty, param.span);
@@ -1187,6 +1193,7 @@ impl TypeChecker {
                     }
                 }
                 self.check_expr_with_expected(&expr.body.expr, Some((*sig.ret).clone()));
+                self.current_function_returns.pop();
                 self.pop_scope();
                 self.apply_expected(Type::Function(sig), expected, expr.span)
             }
@@ -1935,6 +1942,73 @@ impl TypeChecker {
         };
         self.check_expr_with_expected(&expr.args[0], Some(payload_ty));
         Type::Result(ok_ty, err_ty)
+    }
+
+    fn check_try_expr(&mut self, expr: &TryExpr, expected: Option<Type>) -> Type {
+        let Some((_return_ok, return_err)) = self.current_result_return(expr.span) else {
+            self.check_expr(&expr.expr);
+            return Type::Error;
+        };
+
+        let value_expected = expected
+            .clone()
+            .unwrap_or_else(|| Type::Unknown(self.fresh_unknown()));
+        let result_expected = Type::Result(Box::new(value_expected), Box::new(return_err));
+        let result_ty = self.check_expr_with_expected(&expr.expr, Some(result_expected));
+        match self.resolve_type(&result_ty) {
+            Type::Result(ok_ty, _) => self.apply_expected(*ok_ty, expected, expr.span),
+            Type::Error => Type::Error,
+            other => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T023",
+                    format!(
+                        "`try` expects a Result[T, E] expression but found {}",
+                        other.display()
+                    ),
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn current_result_return(&mut self, span: Span) -> Option<(Type, Type)> {
+        let Some(return_ty) = self.current_function_returns.last().cloned() else {
+            self.diagnostics.push(Diagnostic::new(
+                "T023",
+                "`try` is allowed only inside a function returning Result[T, E]",
+                span,
+            ));
+            return None;
+        };
+
+        match self.resolve_type(&return_ty) {
+            Type::Result(ok_ty, err_ty) => Some((*ok_ty, *err_ty)),
+            Type::Unknown(_) => {
+                let ok_ty = Type::Unknown(self.fresh_unknown());
+                let err_ty = Type::Unknown(self.fresh_unknown());
+                let result_ty = Type::Result(Box::new(ok_ty.clone()), Box::new(err_ty.clone()));
+                if let Err(message) = self.unify(return_ty, result_ty) {
+                    self.diagnostics
+                        .push(Diagnostic::new("T023", message, span));
+                    None
+                } else {
+                    Some((ok_ty, err_ty))
+                }
+            }
+            Type::Error => None,
+            other => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T023",
+                    format!(
+                        "`try` requires the enclosing function to return Result[T, E], found {}",
+                        other.display()
+                    ),
+                    span,
+                ));
+                None
+            }
+        }
     }
 
     fn check_user_enum_constructor(
@@ -3489,6 +3563,7 @@ fn collect_calls_in_expr(
                 collect_calls_in_expr(arg, local_names, calls, symbols);
             }
         }
+        Expr::Try(expr) => collect_calls_in_expr(&expr.expr, local_names, calls, symbols),
         Expr::If(expr) => {
             collect_calls_in_expr(&expr.condition, local_names, calls, symbols);
             collect_calls_in_statements(&expr.then_branch.statements, local_names, calls, symbols);

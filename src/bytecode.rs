@@ -858,6 +858,7 @@ impl Compiler {
                     span: expr.span,
                 });
             }
+            mir::Expr::Try(expr) => self.compile_try_expr(expr, chunk),
             mir::Expr::If(expr) => self.compile_if_expr(expr, chunk),
             mir::Expr::Match(expr) => self.compile_match_expr(expr, chunk),
             mir::Expr::Closure(expr) => chunk.instructions.push(Instruction::MakeClosure {
@@ -876,6 +877,62 @@ impl Compiler {
         self.compile_value_block(&expr.else_branch, chunk);
         let end_target = chunk.instructions.len();
         self.patch_jump(chunk, end_jump, end_target);
+    }
+
+    fn compile_try_expr(&mut self, expr: &mir::TryExpr, chunk: &mut Chunk) {
+        let temp = self.match_temp_symbol();
+        let temp_ref = self.synthetic_name_ref(temp);
+        chunk.instructions.push(Instruction::PushScope);
+        self.compile_expr(&expr.expr, chunk);
+        chunk.instructions.push(Instruction::Assign {
+            target: temp_ref,
+            mutable: false,
+            is_update: false,
+            span: expr.expr.span(),
+        });
+
+        chunk.instructions.push(Instruction::LoadName {
+            target: temp_ref,
+            span: expr.expr.span(),
+        });
+        let err_jump = self.emit_jump_if_not_enum_variant(
+            chunk,
+            expr.result_enum,
+            expr.ok_variant,
+            expr.expr.span(),
+        );
+        let end_jump = self.emit_jump(chunk);
+
+        let err_target = chunk.instructions.len();
+        self.patch_jump_if_not_enum_variant(chunk, err_jump, err_target);
+        chunk.instructions.push(Instruction::LoadName {
+            target: temp_ref,
+            span: expr.expr.span(),
+        });
+        let exhausted_jump = self.emit_jump_if_not_enum_variant(
+            chunk,
+            expr.result_enum,
+            expr.err_variant,
+            expr.expr.span(),
+        );
+        chunk.instructions.push(Instruction::MakeEnum {
+            enum_name: expr.result_enum,
+            variant_name: expr.err_variant,
+            has_payload: true,
+            span: expr.span,
+        });
+        chunk.instructions.push(Instruction::Return);
+
+        let exhausted_target = chunk.instructions.len();
+        self.patch_jump_if_not_enum_variant(chunk, exhausted_jump, exhausted_target);
+        chunk.instructions.push(Instruction::MatchExhausted {
+            enum_name: expr.result_enum,
+            span: expr.span,
+        });
+
+        let end_target = chunk.instructions.len();
+        self.patch_jump(chunk, end_jump, end_target);
+        chunk.instructions.push(Instruction::PopScope);
     }
 
     fn compile_match_expr(&mut self, expr: &mir::MatchExpr, chunk: &mut Chunk) {

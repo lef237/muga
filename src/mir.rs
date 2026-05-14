@@ -153,6 +153,7 @@ pub enum Expr {
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     Call(CallExpr),
+    Try(TryExpr),
     If(IfExpr),
     Match(MatchExpr),
     Closure(ClosureExpr),
@@ -174,6 +175,7 @@ impl Expr {
             Self::Unary(expr) => expr.span,
             Self::Binary(expr) => expr.span,
             Self::Call(expr) => expr.span,
+            Self::Try(expr) => expr.span,
             Self::If(expr) => expr.span,
             Self::Match(expr) => expr.span,
             Self::Closure(expr) => expr.span,
@@ -311,6 +313,15 @@ pub struct BinaryExpr {
 pub struct CallExpr {
     pub callee: Box<Expr>,
     pub args: Vec<Expr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct TryExpr {
+    pub expr: Box<Expr>,
+    pub result_enum: Symbol,
+    pub ok_variant: Symbol,
+    pub err_variant: Symbol,
     pub span: Span,
 }
 
@@ -571,6 +582,13 @@ impl TypedLowerer<'_> {
                 span: expr.span,
             }),
             typed_hir::ExprKind::Call(call) => self.lower_call_expr(call, expr.span),
+            typed_hir::ExprKind::Try(try_expr) => Expr::Try(TryExpr {
+                expr: Box::new(self.lower_expr(&try_expr.expr)),
+                result_enum: self.symbol(known_enum::RESULT_NAME),
+                ok_variant: self.symbol(known_enum::RESULT_OK_NAME),
+                err_variant: self.symbol(known_enum::RESULT_ERR_NAME),
+                span: expr.span,
+            }),
             typed_hir::ExprKind::If(if_expr) => Expr::If(IfExpr {
                 condition: Box::new(self.lower_expr(&if_expr.condition)),
                 then_branch: self.lower_value_block(&if_expr.then_branch),

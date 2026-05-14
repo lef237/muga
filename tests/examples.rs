@@ -336,6 +336,11 @@ fn generic_box_sample_runs() {
 }
 
 #[test]
+fn result_try_sample_runs() {
+    assert_sample_runs("samples/result_try.muga", "42", "");
+}
+
+#[test]
 fn inferred_types_sample_runs() {
     assert_sample_runs("samples/inferred_types.muga", "10", "10\n");
 }
@@ -5102,6 +5107,30 @@ fn main(): Int {
 }
 
 #[test]
+fn parser_preserves_try_expression() {
+    let source = r#"
+fn main(): Result[Int, String] {
+  value = try read()
+  Result::Ok(value)
+}
+"#;
+    let program = parse_source(source);
+    let main = match &program.statements[0] {
+        muga::ast::Stmt::FuncDecl(func) => func,
+        other => panic!("expected function declaration, got {other:#?}"),
+    };
+    let assign = match &main.body.statements[0] {
+        muga::ast::Stmt::Assign(assign) => assign,
+        other => panic!("expected assignment, got {other:#?}"),
+    };
+    let try_expr = match &assign.value {
+        muga::ast::Expr::Try(expr) => expr,
+        other => panic!("expected try expression, got {other:#?}"),
+    };
+    assert!(matches!(try_expr.expr.as_ref(), muga::ast::Expr::Call(_)));
+}
+
+#[test]
 fn parser_preserves_user_enum_declarations() {
     let source = r#"
 enum Choice[T] {
@@ -5881,6 +5910,116 @@ fn main(): Result[Int, String] {
     let result = muga::run_source(source).unwrap();
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), "Result::Ok(1)");
+}
+
+#[test]
+fn result_try_ok_path_runs() {
+    let source = r#"
+fn read(value: Int): Result[Int, String] {
+  Result::Ok(value)
+}
+
+fn compute(): Result[Int, String] {
+  value = try read(41)
+  Result::Ok(value + 1)
+}
+
+fn main(): Int {
+  match compute() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn result_try_err_path_returns_early() {
+    let source = r#"
+fn fail(): Result[Int, String] {
+  Result::Err("missing")
+}
+
+fn compute(): Result[Int, String] {
+  value = try fail()
+  Result::Ok(value + 1)
+}
+
+fn main(): String {
+  match compute() {
+    Result::Ok(value) => "ok"
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "missing");
+}
+
+#[test]
+fn result_try_can_infer_enclosing_result_return_type() {
+    let source = r#"
+fn read(value: Int): Result[Int, String] {
+  Result::Ok(value)
+}
+
+fn compute() {
+  value = try read(41)
+  Result::Ok(value + 1)
+}
+
+fn main(): Int {
+  match compute() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn result_try_requires_result_return_type() {
+    let source = r#"
+fn main(): Int {
+  value = try Result::Ok(1)
+  value
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T023"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn result_try_requires_matching_error_type() {
+    let source = r#"
+fn read(): Result[Int, Int] {
+  Result::Ok(1)
+}
+
+fn main(): Result[Int, String] {
+  value = try read()
+  Result::Ok(value)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
 }
 
 #[test]
@@ -8147,6 +8286,7 @@ fn collect_typed_calls_in_expr<'a>(
                 collect_typed_calls_in_expr(arg, calls);
             }
         }
+        muga::typed_hir::ExprKind::Try(expr) => collect_typed_calls_in_expr(&expr.expr, calls),
         muga::typed_hir::ExprKind::If(expr) => {
             collect_typed_calls_in_expr(&expr.condition, calls);
             collect_typed_calls_in_value_block(&expr.then_branch, calls);
@@ -8278,6 +8418,9 @@ fn collect_typed_ids_in_expr(
             for arg in &expr.args {
                 collect_typed_ids_in_expr(arg, statement_ids, expr_ids);
             }
+        }
+        muga::typed_hir::ExprKind::Try(expr) => {
+            collect_typed_ids_in_expr(&expr.expr, statement_ids, expr_ids);
         }
         muga::typed_hir::ExprKind::If(expr) => {
             collect_typed_ids_in_expr(&expr.condition, statement_ids, expr_ids);

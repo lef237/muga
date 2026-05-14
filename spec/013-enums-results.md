@@ -1,6 +1,6 @@
 # Enums, Result, And Error Propagation Draft
 
-Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, stale enum interface validation, downstream typed checking from loaded interface summaries, explicit-root `.mgi` artifact discovery for typed checking, source/dependency-hash `.mgc` package check cache validation, `muga check --artifact-root` consumption of those artifacts, and CLI emission of `.mgi` / `.mgc` artifacts. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching. Error propagation syntax is not implemented yet.
+Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, stale enum interface validation, downstream typed checking from loaded interface summaries, explicit-root `.mgi` artifact discovery for typed checking, source/dependency-hash `.mgc` package check cache validation, `muga check --artifact-root` consumption of those artifacts, CLI emission of `.mgi` / `.mgc` artifacts, and prefix `try expr` propagation for `Result[T, E]`. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching.
 
 ## 1. Goals
 
@@ -235,12 +235,12 @@ fn load_or_guest(path: String): User {
 }
 ```
 
-Open `try` decisions:
+Implemented `try` decisions:
 
-- whether `try expr` is allowed only inside functions returning `Result[_, E]`
-- whether propagated error types must match exactly or whether conversion is ever allowed
-- whether `try` should also work with `Option[T]`; current recommendation is no for v1
-- whether `try` is an expression in all expression positions or only in assignment/final-expression positions
+- `try expr` is allowed only inside functions whose return type is, or can be inferred as, `Result[_, E]`
+- propagated error types must match exactly; no conversion hook exists in v1
+- `try` works only with `Result[T, E]`, not `Option[T]`
+- `try` is a prefix expression and can appear wherever its unwrapped `T` type is valid
 
 Deferred alternatives:
 
@@ -304,10 +304,11 @@ Performance-specific representations can be handled later in MIR/native lowering
 - [x] Add in-memory package interface summaries for public enum declarations.
 - [x] Preserve all existing `Option[T]` behavior and tests.
 - [x] Add `Result[T, E]` tests before adding any propagation operator.
+- [x] Add prefix `try expr` propagation for `Result[T, E]`.
 
 ## 11. Recommended Phasing
 
 1. Add project artifact-root config or dependency artifact discovery around the existing interface and check-cache metadata.
 2. Add full package artifact storage/reuse.
-3. Revisit `try expr` propagation syntax.
+3. Harden `try expr` across package artifacts and any future stdlib APIs that return `Result`.
 4. Continue toward MIR/native lowering once package boundaries are real inputs.

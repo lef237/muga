@@ -412,6 +412,7 @@ impl Resolver {
                     self.resolve_expr(arg);
                 }
             }
+            Expr::Try(expr) => self.resolve_expr(&expr.expr),
             Expr::If(expr) => {
                 self.resolve_expr(&expr.condition);
                 self.resolve_value_block(&expr.then_branch);
