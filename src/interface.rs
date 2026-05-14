@@ -1018,6 +1018,7 @@ impl PersistedArtifactIdRemapper<'_> {
             | TypeInfo::Int
             | TypeInfo::Bool
             | TypeInfo::String
+            | TypeInfo::Unit
             | TypeInfo::Builtin(_)
             | TypeInfo::Unknown
             | TypeInfo::Error => {}
@@ -1588,6 +1589,7 @@ impl<'a, 's> TypeInfoParser<'a, 's> {
             "Int" => Ok(TypeInfo::Int),
             "Bool" => Ok(TypeInfo::Bool),
             "String" => Ok(TypeInfo::String),
+            "Unit" => Ok(TypeInfo::Unit),
             "GenericParam" => Ok(TypeInfo::GenericParam(self.symbol()?)),
             "Record" => {
                 let symbol = self.symbol()?;
@@ -1747,6 +1749,7 @@ fn push_type_info_tokens(
         TypeInfo::Int => tokens.push("Int".to_string()),
         TypeInfo::Bool => tokens.push("Bool".to_string()),
         TypeInfo::String => tokens.push("String".to_string()),
+        TypeInfo::Unit => tokens.push("Unit".to_string()),
         TypeInfo::GenericParam(symbol) => {
             tokens.push("GenericParam".to_string());
             tokens.push(symbols.resolve(*symbol).to_string());
@@ -1916,6 +1919,7 @@ fn reintern_type_info(ty: &TypeInfo, from: &SymbolTable, to: &mut SymbolTable) -
         TypeInfo::Int
         | TypeInfo::Bool
         | TypeInfo::String
+        | TypeInfo::Unit
         | TypeInfo::Builtin(_)
         | TypeInfo::Unknown
         | TypeInfo::Error => ty.clone(),
@@ -2146,7 +2150,7 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
     fn validate_expr(&mut self, expr: &Expr) {
         self.validate_type(&expr.ty, expr.span);
         match &expr.kind {
-            ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) => {}
+            ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::String(_) | ExprKind::Unit => {}
             ExprKind::Ident(ident) => {
                 if let IdentTarget::PackageItem { item, .. } = ident.target {
                     self.validate_item(item, expr.span);

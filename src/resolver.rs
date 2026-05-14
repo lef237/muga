@@ -360,7 +360,7 @@ impl Resolver {
 
     fn resolve_expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Int(_) | Expr::Bool(_) | Expr::String(_) => {}
+            Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Unit(_) => {}
             Expr::ListLit(expr) => {
                 for item in &expr.items {
                     self.resolve_expr(item);

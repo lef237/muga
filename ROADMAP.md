@@ -17,6 +17,7 @@ Implemented language surface:
 - immutable-by-default bindings, `mut`, no shadowing, local-only inference, higher-order functions, and closure capture
 - records, field access, `record.with(...)`, chained calls, and package-qualified chained calls
 - local binding annotations and function type annotations with `->`
+- `Unit` with the `()` literal for effect-only success values
 - `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
 - list literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`

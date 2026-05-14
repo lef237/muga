@@ -515,7 +515,7 @@ impl<'a> PackageAwareChecker<'a> {
 
     fn scan_expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Int(_) | Expr::Bool(_) | Expr::String(_) => {}
+            Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Unit(_) => {}
             Expr::Ident(expr) => {
                 if !self.lookup_local(&expr.name) {
                     self.check_value_name(&expr.name, expr.span);
@@ -594,7 +594,7 @@ impl<'a> PackageAwareChecker<'a> {
 
     fn scan_type_expr(&mut self, type_expr: &TypeExpr, span: Span) {
         match type_expr {
-            TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
+            TypeExpr::Int | TypeExpr::Bool | TypeExpr::String | TypeExpr::Unit => {}
             TypeExpr::Named(name) => self.check_type_name(name, span),
             TypeExpr::Generic(generic) => {
                 if !is_known_generic_type_name(&generic.name) {
@@ -621,7 +621,7 @@ impl<'a> PackageAwareChecker<'a> {
         type_params: &[String],
     ) {
         match type_expr {
-            TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
+            TypeExpr::Int | TypeExpr::Bool | TypeExpr::String | TypeExpr::Unit => {}
             TypeExpr::Named(name) => {
                 if !type_params.iter().any(|param| param == name) {
                     self.validate_visible_type_name(name, api_visibility, span);
@@ -2261,7 +2261,7 @@ impl<'a> PackageRewriter<'a> {
 
     fn rewrite_expr(&mut self, expr: &Expr) -> Expr {
         match expr {
-            Expr::Int(_) | Expr::Bool(_) | Expr::String(_) => expr.clone(),
+            Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Unit(_) => expr.clone(),
             Expr::Ident(expr) => Expr::Ident(IdentExpr {
                 id: expr.id,
                 name: self.rewrite_value_name(&expr.name, expr.span),
@@ -2428,6 +2428,7 @@ impl<'a> PackageRewriter<'a> {
             TypeExpr::Int => TypeExpr::Int,
             TypeExpr::Bool => TypeExpr::Bool,
             TypeExpr::String => TypeExpr::String,
+            TypeExpr::Unit => TypeExpr::Unit,
             TypeExpr::Named(name) if type_params.iter().any(|param| param == name) => {
                 TypeExpr::Named(name.clone())
             }
@@ -2601,7 +2602,7 @@ impl<'a> PackageRewriter<'a> {
         type_params: &[String],
     ) {
         match type_expr {
-            TypeExpr::Int | TypeExpr::Bool | TypeExpr::String => {}
+            TypeExpr::Int | TypeExpr::Bool | TypeExpr::String | TypeExpr::Unit => {}
             TypeExpr::Named(name) => {
                 if type_params.iter().any(|param| param == name) {
                     return;

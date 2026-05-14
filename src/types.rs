@@ -5,6 +5,7 @@ pub enum TypeInfo {
     Int,
     Bool,
     String,
+    Unit,
     GenericParam(Symbol),
     Record(Symbol, Vec<TypeInfo>),
     PackageRecord {

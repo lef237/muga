@@ -97,11 +97,13 @@ Recommended API style:
 
 ```muga
 result: Result[String, IOError] = fs::read_text(path)
+written: Result[Unit, IOError] = fs::write_text(path, text)
 ```
 
 Use:
 
 - `Result[T, E]` for recoverable effects
+- `Unit` as the success value for effect-only operations
 - `Option[T]` for absence
 - value-returning updates for ordinary data
 - builder/buffer types for repeated construction

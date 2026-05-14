@@ -532,6 +532,7 @@ fn push_instruction(out: &mut String, instruction: &Instruction) {
         Instruction::LoadString(value) => {
             out.push_str(&format!("ins\tLoadString\t{}\n", escape_field(value)));
         }
+        Instruction::LoadUnit => out.push_str("ins\tLoadUnit\n"),
         Instruction::MakeRecord {
             type_name,
             fields,
@@ -816,6 +817,7 @@ impl<'a> ArtifactParser<'a> {
             "LoadInt" if parts.len() == 3 => Instruction::LoadInt(parse_i64(parts[2], "int")?),
             "LoadBool" if parts.len() == 3 => Instruction::LoadBool(parse_bool(parts[2], "bool")?),
             "LoadString" if parts.len() == 3 => Instruction::LoadString(unescape_field(parts[2])?),
+            "LoadUnit" if parts.len() == 2 => Instruction::LoadUnit,
             "MakeRecord" if parts.len() == 6 => Instruction::MakeRecord {
                 type_name: Symbol::new(parse_u32(parts[2], "record type symbol")?),
                 fields: parse_symbol_list(parts[3], parse_usize(parts[4], "field count")?)?,
@@ -1155,6 +1157,7 @@ fn validate_chunk_structure(
             Instruction::LoadInt(_)
             | Instruction::LoadBool(_)
             | Instruction::LoadString(_)
+            | Instruction::LoadUnit
             | Instruction::LoadIndex { .. }
             | Instruction::UnaryNeg { .. }
             | Instruction::UnaryNot { .. }

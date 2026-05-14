@@ -341,6 +341,11 @@ fn result_try_sample_runs() {
 }
 
 #[test]
+fn unit_result_sample_runs() {
+    assert_sample_runs("samples/unit_result.muga", "Result::Ok(())", "");
+}
+
+#[test]
 fn inferred_types_sample_runs() {
     assert_sample_runs("samples/inferred_types.muga", "10", "10\n");
 }
@@ -3547,6 +3552,69 @@ fn main(): Int {
 "#,
     );
     assert!(!consumer_root.join("util/fallible/main.muga").exists());
+    muga::write_package_check_cache_artifact_for_root(&consumer_entry, &artifact_root)
+        .expect("consumer check cache should be written against interface artifact");
+
+    let result = muga::run_path_against_artifact_root(&consumer_entry, &artifact_root)
+        .expect("consumer should run with dependency implementation artifact");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+    assert_eq!(result.output_text, "");
+}
+
+#[test]
+fn artifact_run_uses_unit_dependency_without_source() {
+    let provider_root = temp_package_root("unit-artifact-provider");
+    write_package_file(
+        &provider_root,
+        "util/effects/main.muga",
+        r#"
+package util::effects
+
+pub fn touch(): Result[Unit, String] {
+  Result::Ok(())
+}
+
+pub fn result_or_zero(value: Result[Unit, String]): Int {
+  match value {
+    Result::Ok(done) => 1
+    Result::Err(message) => 0
+  }
+}
+"#,
+    );
+    let provider_entry = write_package_file(
+        &provider_root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import util::effects
+
+fn main(): Int {
+  effects::result_or_zero(effects::touch())
+}
+"#,
+    );
+    let artifact_root = temp_package_root("unit-artifact-root");
+    muga::write_package_artifacts(&provider_entry, &artifact_root)
+        .expect("provider artifacts should be written");
+
+    let consumer_root = temp_package_root("unit-artifact-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import util::effects
+
+fn main(): Int {
+  effects::result_or_zero(effects::touch()) + 41
+}
+"#,
+    );
+    assert!(!consumer_root.join("util/effects/main.muga").exists());
     muga::write_package_check_cache_artifact_for_root(&consumer_entry, &artifact_root)
         .expect("consumer check cache should be written against interface artifact");
 
@@ -8815,6 +8883,44 @@ fn main(): Int {
     );
 }
 
+#[test]
+fn unit_literal_runs_and_typechecks() {
+    let source = r#"
+fn main(): Unit {
+  ()
+}
+"#;
+    let typed = muga::compile_typed_source(source).expect("Unit program should typecheck");
+    assert_eq!(main_return_type(&typed), Some(muga::types::TypeInfo::Unit));
+
+    let result = muga::run_source(source).expect("Unit program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert!(
+        matches!(value, muga::runtime::Value::Unit),
+        "expected Unit value, got {value:?}"
+    );
+    assert_eq!(value.to_string(), "()");
+    assert_eq!(result.output_text, "");
+}
+
+#[test]
+fn unit_can_flow_through_result_try() {
+    let source = r#"
+fn step(): Result[Unit, String] {
+  Result::Ok(())
+}
+
+fn main(): Result[Unit, String] {
+  done = try step()
+  Result::Ok(done)
+}
+"#;
+    let result = muga::run_source(source).expect("Result[Unit, String] program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(())");
+    assert_eq!(result.output_text, "");
+}
+
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
@@ -9178,6 +9284,7 @@ fn collect_typed_calls_in_expr<'a>(
         muga::typed_hir::ExprKind::Int(_)
         | muga::typed_hir::ExprKind::Bool(_)
         | muga::typed_hir::ExprKind::String(_)
+        | muga::typed_hir::ExprKind::Unit
         | muga::typed_hir::ExprKind::Ident(_) => {}
         muga::typed_hir::ExprKind::ListLit(expr) => {
             for item in &expr.items {
@@ -9308,6 +9415,7 @@ fn collect_typed_ids_in_expr(
         muga::typed_hir::ExprKind::Int(_)
         | muga::typed_hir::ExprKind::Bool(_)
         | muga::typed_hir::ExprKind::String(_)
+        | muga::typed_hir::ExprKind::Unit
         | muga::typed_hir::ExprKind::Ident(_) => {}
         muga::typed_hir::ExprKind::ListLit(expr) => {
             for item in &expr.items {
