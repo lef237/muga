@@ -19,7 +19,9 @@ pub enum BuiltinId {
     EndsWith,
     Replace,
     Split,
+    Concat,
     SliceChars,
+    ToString,
     ParseInt,
     ParseBool,
     OptionSome,
@@ -128,8 +130,18 @@ pub const BUILTINS: &[Builtin] = &[
         kind: BuiltinKind::Function,
     },
     Builtin {
+        id: BuiltinId::Concat,
+        name: "concat",
+        kind: BuiltinKind::Function,
+    },
+    Builtin {
         id: BuiltinId::SliceChars,
         name: "slice_chars",
+        kind: BuiltinKind::Function,
+    },
+    Builtin {
+        id: BuiltinId::ToString,
+        name: "to_string",
         kind: BuiltinKind::Function,
     },
     Builtin {
@@ -191,7 +203,9 @@ pub fn builtin_debug_label(id: BuiltinId) -> &'static str {
         BuiltinId::EndsWith => "Builtin(ends_with)",
         BuiltinId::Replace => "Builtin(replace)",
         BuiltinId::Split => "Builtin(split)",
+        BuiltinId::Concat => "Builtin(concat)",
         BuiltinId::SliceChars => "Builtin(slice_chars)",
+        BuiltinId::ToString => "Builtin(to_string)",
         BuiltinId::ParseInt => "Builtin(parse_int)",
         BuiltinId::ParseBool => "Builtin(parse_bool)",
         BuiltinId::OptionSome => "Builtin(Option::Some)",

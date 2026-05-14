@@ -74,13 +74,16 @@ The v1 prelude currently provides:
 - `println`
 - `len`, `is_empty`, `push`, `get`, and `set` for `List[T]`
 - `Map.empty`, `len`, `is_empty`, `contains`, `get`, `insert`, and `remove` for `Map[K, V]`
-- `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `slice_chars`, `parse_int`, and `parse_bool` for `String`
+- `to_string` for `Int`, `Bool`, and `String`
+- `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool` for `String`
 
 `print` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output without a trailing newline, and returns that same value.
 
 `println` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output as one line, and returns that same value.
 
-`String.is_empty()` returns `Bool`, `String.contains(needle)` returns `Bool`, `String.trim()` returns `String`, `String.char_count()` returns `Int`, `String.starts_with(prefix)` / `String.ends_with(suffix)` return `Bool`, `String.replace(old, new)` returns `String`, `String.split(separator)` returns `List[String]`, `String.slice_chars(start, count)` returns `Result[String, String]`, `String.parse_int()` returns `Result[Int, String]`, and `String.parse_bool()` returns `Result[Bool, String]`. `String.char_count()` and `String.slice_chars(start, count)` count and index Unicode scalar values, not UTF-8 bytes or user-perceived grapheme clusters. `slice_chars` accepts zero-based `start` plus `count`; negative values or ranges beyond the string return `Result::Err("invalid slice range")`. `replace("", new)` returns the original string unchanged, and `split("")` returns a one-item list containing the original string.
+`Int.to_string()`, `Bool.to_string()`, and `String.to_string()` return `String`. `to_string` is explicit and intentionally does not introduce implicit string conversion.
+
+`String.is_empty()` returns `Bool`, `String.contains(needle)` returns `Bool`, `String.trim()` returns `String`, `String.char_count()` returns `Int`, `String.starts_with(prefix)` / `String.ends_with(suffix)` return `Bool`, `String.replace(old, new)` returns `String`, `String.split(separator)` returns `List[String]`, `String.concat(other)` returns `String`, `String.slice_chars(start, count)` returns `Result[String, String]`, `String.parse_int()` returns `Result[Int, String]`, and `String.parse_bool()` returns `Result[Bool, String]`. `String.char_count()` and `String.slice_chars(start, count)` count and index Unicode scalar values, not UTF-8 bytes or user-perceived grapheme clusters. `slice_chars` accepts zero-based `start` plus `count`; negative values or ranges beyond the string return `Result::Err("invalid slice range")`. `replace("", new)` returns the original string unchanged, and `split("")` returns a one-item list containing the original string.
 
 `String.len()` is intentionally not part of this string-helper slice. Future length/indexing APIs should stay explicit: add `String.byte_len()` when bytes or I/O APIs need byte size, keep any range syntax or substring aliases aligned with `slice_chars` before adding them, and reserve grapheme-cluster APIs until the standard library has a Unicode segmentation dependency/versioning policy. Fallible string helpers currently return `Result[_, String]`; richer error records or enums should be introduced only after several standard-library APIs need a shared error shape.
 
@@ -259,7 +262,7 @@ The built-in operator typing rules are:
 - `<`, `<=`, `>`, `>=` : `Int -> Int -> Bool`
 - `==`, `!=` : allowed only for identical primitive types among `Int`, `Bool`, and `String`
 
-String concatenation is not part of v1. Therefore, `+` is `Int`-only.
+String concatenation uses explicit `String.concat(other)`. The `+` operator remains `Int`-only.
 
 ## 9. Inference Sources
 

@@ -3713,11 +3713,12 @@ pub fn score(value: String, flag_text: String): Result[Int, String] {
   transformed = value.trim().replace("Ada", "Muga")
   prefix = try transformed.slice_chars(0, 4)
   parts = transformed.split("-")
+  label = prefix.concat(parts.len().to_string())
   if flag {
-    if prefix == "Muga" {
+    if label == "Muga3" {
       Result::Ok(parts.len())
     } else {
-      Result::Err("slice failed")
+      Result::Err("format failed")
     }
   } else {
     Result::Err("disabled")
@@ -7645,6 +7646,89 @@ fn main(): Int {
     let result = muga::run_source(source).unwrap();
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), "3");
+}
+
+#[test]
+fn string_to_string_and_concat_sample_runs() {
+    let source = r#"
+fn main(): String {
+  "score=".concat(42.to_string()).concat(", enabled=").concat(true.to_string())
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "score=42, enabled=true");
+}
+
+#[test]
+fn to_string_accepts_string_identity() {
+    let source = r#"
+fn main(): String {
+  "Ada".to_string()
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Ada");
+}
+
+#[test]
+fn to_string_requires_unambiguous_receiver_type() {
+    let source = r#"
+fn render(value) {
+  value.to_string()
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "E005"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn to_string_rejects_unsupported_receiver_type() {
+    let source = r#"
+fn main(): String {
+  items: List[Int] = [1]
+  items.to_string()
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "T006" && diagnostic.message.contains("to_string")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_concat_checks_argument_type() {
+    let source = r#"
+fn main(): String {
+  "Ada".concat(1)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_concat_requires_string_receiver() {
+    let source = r#"
+fn main(): String {
+  1.concat("Ada")
+}
+"#;
+    assert_string_receiver_rejected(source, "concat");
 }
 
 #[test]
