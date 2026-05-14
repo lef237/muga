@@ -558,7 +558,12 @@ pub fn compile_bytecode_path_for_run_against_artifact_root(
         &mut symbols,
     )?;
     let implementation_artifacts =
-        implementation_artifact::read_persisted_artifacts(artifact_root, &interfaces, &symbols)?;
+        implementation_artifact::read_persisted_artifacts_reserving_program_items(
+            artifact_root,
+            &interfaces,
+            &symbols,
+            &[&entry],
+        )?;
     let dependencies = implementation_artifact::programs_from_artifacts(implementation_artifacts);
     Ok(bytecode::merge(entry, dependencies))
 }

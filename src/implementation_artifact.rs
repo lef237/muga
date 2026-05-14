@@ -296,9 +296,21 @@ pub fn read_persisted_artifacts(
     interfaces: &PackageInterfaceGraph,
     symbols: &SymbolTable,
 ) -> Result<Vec<PackageImplementationArtifact>, Vec<Diagnostic>> {
+    read_persisted_artifacts_reserving_program_items(root, interfaces, symbols, &[])
+}
+
+pub fn read_persisted_artifacts_reserving_program_items(
+    root: &Path,
+    interfaces: &PackageInterfaceGraph,
+    symbols: &SymbolTable,
+    reserved_programs: &[&bytecode::Program],
+) -> Result<Vec<PackageImplementationArtifact>, Vec<Diagnostic>> {
     let mut artifacts = Vec::new();
     let mut diagnostics = Vec::new();
     let mut next_private_item = next_private_package_item_id(interfaces);
+    for program in reserved_programs {
+        next_private_item = next_private_item.max(next_package_item_id_in_program(program));
+    }
 
     for interface in &interfaces.packages {
         let artifact_path = persisted_file_path(root, &interface.path);
@@ -1399,6 +1411,17 @@ fn next_private_package_item_id(interfaces: &PackageInterfaceGraph) -> u32 {
                 .chain(interface.enums.iter().map(|enumeration| enumeration.item))
                 .chain(interface.functions.iter().map(|function| function.item))
         })
+        .map(|item| item.as_u32())
+        .max()
+        .map_or(0, |item| item + 1)
+}
+
+fn next_package_item_id_in_program(program: &bytecode::Program) -> u32 {
+    program
+        .bindings
+        .iter()
+        .filter_map(|binding| binding.package_item)
+        .chain(program.locals.iter().filter_map(|local| local.package_item))
         .map(|item| item.as_u32())
         .max()
         .map_or(0, |item| item + 1)

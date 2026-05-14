@@ -3277,6 +3277,148 @@ fn main(): Int {
 }
 
 #[test]
+fn cli_run_uses_transitive_implementation_artifacts_without_dependency_source() {
+    let provider_root = temp_package_root("cli-run-transitive-artifact-provider");
+    let provider_entry = write_transitive_interface_provider(&provider_root);
+    let artifact_root = temp_package_root("cli-run-transitive-artifact-root");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&provider_entry)
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+    assert!(
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "api::facade").is_file()
+    );
+    assert!(
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "model::users")
+            .is_file()
+    );
+
+    let consumer_root = temp_package_root("cli-run-transitive-artifact-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/transitive_consumer/main.muga",
+        r#"
+package app::transitive_consumer
+
+import api::facade
+
+fn main(): Int {
+  facade::age(facade::default_user()) + 1
+}
+"#,
+    );
+    assert!(!consumer_root.join("api/facade/main.muga").exists());
+    assert!(!consumer_root.join("model/users/main.muga").exists());
+
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&consumer_entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&consumer_entry)
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "22\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
+fn cli_run_remaps_independently_generated_implementation_artifact_item_ids() {
+    let interface_provider_root = temp_package_root("cli-run-independent-mgi-provider");
+    let interface_provider_entry = write_transitive_interface_provider(&interface_provider_root);
+    let interface_artifact_root = temp_package_root("cli-run-independent-mgi-root");
+    let emitted_interfaces = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&interface_artifact_root)
+        .arg(&interface_provider_entry)
+        .output()
+        .expect("muga command should run");
+    assert!(
+        emitted_interfaces.status.success(),
+        "{emitted_interfaces:#?}"
+    );
+
+    let implementation_provider_root = temp_package_root("cli-run-independent-mgb-provider");
+    let implementation_provider_entry =
+        write_transitive_provider_with_private_api_item(&implementation_provider_root);
+    let implementation_artifact_root = temp_package_root("cli-run-independent-mgb-root");
+    let emitted_implementations = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&implementation_artifact_root)
+        .arg(&implementation_provider_entry)
+        .output()
+        .expect("muga command should run");
+    assert!(
+        emitted_implementations.status.success(),
+        "{emitted_implementations:#?}"
+    );
+
+    let artifact_root = temp_package_root("cli-run-independent-combined-root");
+    copy_interface_artifact(&interface_artifact_root, &artifact_root, "api::facade");
+    copy_interface_artifact(&interface_artifact_root, &artifact_root, "model::users");
+    copy_implementation_artifact(&implementation_artifact_root, &artifact_root, "api::facade");
+    copy_implementation_artifact(
+        &implementation_artifact_root,
+        &artifact_root,
+        "model::users",
+    );
+
+    let consumer_root = temp_package_root("cli-run-independent-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/independent_consumer/main.muga",
+        r#"
+package app::independent_consumer
+
+import api::facade
+
+fn main(): Int {
+  facade::age(facade::default_user()) + 2
+}
+"#,
+    );
+    assert!(!consumer_root.join("api/facade/main.muga").exists());
+    assert!(!consumer_root.join("model/users/main.muga").exists());
+
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&consumer_entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&consumer_entry)
+        .output()
+        .expect("muga command should run");
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "23\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+}
+
+#[test]
 fn cli_run_reports_missing_dependency_implementation_artifact() {
     let artifact_root = temp_package_root("cli-run-missing-implementation");
     let emitted = muga_command()
@@ -7198,6 +7340,30 @@ fn write_interface_artifacts(
     }
 }
 
+fn copy_interface_artifact(from_root: &Path, to_root: &Path, package_path: &str) {
+    let from = muga::interface::PackageInterfaceGraph::persisted_file_path(from_root, package_path);
+    let to = muga::interface::PackageInterfaceGraph::persisted_file_path(to_root, package_path);
+    fs::copy(&from, &to).unwrap_or_else(|error| {
+        panic!(
+            "interface artifact should copy from {} to {}: {error}",
+            from.display(),
+            to.display()
+        )
+    });
+}
+
+fn copy_implementation_artifact(from_root: &Path, to_root: &Path, package_path: &str) {
+    let from = muga::implementation_artifact::persisted_file_path(from_root, package_path);
+    let to = muga::implementation_artifact::persisted_file_path(to_root, package_path);
+    fs::copy(&from, &to).unwrap_or_else(|error| {
+        panic!(
+            "implementation artifact should copy from {} to {}: {error}",
+            from.display(),
+            to.display()
+        )
+    });
+}
+
 fn write_tampered_states_implementation_artifact(
     name: &str,
     tamper: impl FnOnce(&mut muga::implementation_artifact::PackageImplementationArtifact),
@@ -7242,6 +7408,62 @@ package model::users
 pub record User {
   name: String,
   age: Int
+}
+"#,
+    );
+    write_package_file(
+        root,
+        "api/facade/main.muga",
+        r#"
+package api::facade
+
+import model::users
+
+pub fn default_user(): users::User {
+  users::User { name: "Ada", age: 21 }
+}
+
+pub fn age(user: users::User): Int {
+  user.age
+}
+"#,
+    );
+    write_package_file(
+        root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import api::facade
+
+fn main(): Int {
+  facade::age(facade::default_user())
+}
+"#,
+    )
+}
+
+fn write_transitive_provider_with_private_api_item(root: &Path) -> std::path::PathBuf {
+    write_package_file(
+        root,
+        "model/users/main.muga",
+        r#"
+package model::users
+
+pub record User {
+  name: String,
+  age: Int
+}
+"#,
+    );
+    write_package_file(
+        root,
+        "api/facade/aaa_private.muga",
+        r#"
+package api::facade
+
+fn private_shift(): Int {
+  0
 }
 "#,
     );
