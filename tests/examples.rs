@@ -3572,10 +3572,14 @@ pub fn clean(value: String): String {
 
 pub fn score(value: String): Int {
   cleaned = clean(value)
-  if cleaned.starts_with("Ada") {
-    if cleaned.ends_with("lace") {
-      if cleaned.contains("Love") {
-        42
+  if cleaned.char_count() == 12 {
+    if cleaned.starts_with("Ada") {
+      if cleaned.ends_with("lace") {
+        if cleaned.contains("Love") {
+          42
+        } else {
+          0
+        }
       } else {
         0
       }
@@ -7367,28 +7371,44 @@ fn string_helper_builtins_sample_runs() {
     let source = r#"
 fn main(): String {
   text = "  Ada Lovelace  ".trim()
-  if text.starts_with("Ada") {
-    if text.ends_with("lace") {
-      if text.contains("Love") {
-        if "".is_empty() {
-          text
+  if text.char_count() == 12 {
+    if text.starts_with("Ada") {
+      if text.ends_with("lace") {
+        if text.contains("Love") {
+          if "".is_empty() {
+            text
+          } else {
+            "empty check failed"
+          }
         } else {
-          "empty check failed"
+          "contains failed"
         }
       } else {
-        "contains failed"
+        "suffix failed"
       }
     } else {
-      "suffix failed"
+      "prefix failed"
     }
   } else {
-    "prefix failed"
+    "char count failed"
   }
 }
 "#;
     let result = muga::run_source(source).unwrap();
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), "Ada Lovelace");
+}
+
+#[test]
+fn string_char_count_counts_unicode_scalar_values() {
+    let source = r#"
+fn main(): Int {
+  "é".char_count()
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "1");
 }
 
 #[test]
@@ -7412,6 +7432,22 @@ fn string_helper_requires_string_receiver() {
     let source = r#"
 fn main(): String {
   1.trim()
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_char_count_requires_string_receiver() {
+    let source = r#"
+fn main(): Int {
+  1.char_count()
 }
 "#;
     let diagnostics = muga::check_source(source).unwrap_err();

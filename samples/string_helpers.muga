@@ -6,7 +6,11 @@ fn main(): String {
       if text.contains("Mu") {
         if "".is_empty() {
           if parts.len() == 2 {
-            text
+            if text.char_count() == 8 {
+              text
+            } else {
+              "char count failed"
+            }
           } else {
             "split failed"
           }

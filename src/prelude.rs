@@ -14,6 +14,7 @@ pub enum BuiltinId {
     Insert,
     Remove,
     Trim,
+    CharCount,
     StartsWith,
     EndsWith,
     Replace,
@@ -101,6 +102,11 @@ pub const BUILTINS: &[Builtin] = &[
         kind: BuiltinKind::Function,
     },
     Builtin {
+        id: BuiltinId::CharCount,
+        name: "char_count",
+        kind: BuiltinKind::Function,
+    },
+    Builtin {
         id: BuiltinId::StartsWith,
         name: "starts_with",
         kind: BuiltinKind::Function,
@@ -174,6 +180,7 @@ pub fn builtin_debug_label(id: BuiltinId) -> &'static str {
         BuiltinId::Insert => "Builtin(insert)",
         BuiltinId::Remove => "Builtin(remove)",
         BuiltinId::Trim => "Builtin(trim)",
+        BuiltinId::CharCount => "Builtin(char_count)",
         BuiltinId::StartsWith => "Builtin(starts_with)",
         BuiltinId::EndsWith => "Builtin(ends_with)",
         BuiltinId::Replace => "Builtin(replace)",
