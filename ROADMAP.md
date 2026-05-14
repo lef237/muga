@@ -21,6 +21,7 @@ Implemented language surface:
 - list literals, indexing, `len`, `is_empty`, `push`, `get`, and `set`
 - `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for compiler-known `Option` and `Result`
 - user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, typed HIR, VM execution, and in-memory package interface summaries
+- prefix `try expr` propagation for `Result[T, E]` with exact error-type matching
 - enum diagnostics, package enum visibility coverage, imported `alias::Enum::Variant` constructors/patterns, package enum call-target identity, and stale enum interface validation
 - deterministic v2 package interface text persistence with stable artifact package/item IDs, content hashes, direct dependency metadata, artifact path naming, file round-trip, and loaded-interface validation for public records/functions/enums
 - loaded package interfaces and discovered `.mgi` artifacts can act as the dependency boundary for downstream typed checking, including transitive public-signature type dependencies, without reading dependency implementation bodies
@@ -67,7 +68,7 @@ These are baseline decisions, not active roadmap questions:
 - source values use value semantics; internal sharing/copy elision is an implementation detail
 - ordinary Muga code does not use `ref T`, `mut ref T`, address-of, dereference, or raw pointer syntax
 - `Option[T]` is canonical optional spelling; `T?` remains reserved
-- `Result[T, E]` is the recoverable-error type; possible propagation sugar should be visible as `try expr`
+- `Result[T, E]` is the recoverable-error type; propagation uses visible prefix `try expr`, not postfix `?`
 - package interfaces store resolved public signatures so downstream packages do not infer through dependency bodies
 
 Related design notes:
@@ -82,14 +83,14 @@ Related design notes:
 
 ## Immediate Priority
 
-The next code slices should harden the newly landed generic records/functions surface on top of the now-stable package/artifact foundation:
+The next code slices should keep the newly landed generic records/functions and `Result` propagation surfaces stable on top of the package/artifact foundation:
 
-1. Add docs and runnable samples for explicit generic `record` and `fn` declarations.
-2. Expand diagnostics around generic arity, duplicate type parameters, ambiguous generic record literals, and stale generic package interfaces.
-3. Keep package interfaces storing resolved generic public signatures for records and functions, and preserve compatibility for persisted non-generic interfaces.
+1. Keep docs, runnable samples, and specs aligned for explicit generic `record` / `fn` declarations and prefix `try expr`.
+2. Expand diagnostics around generic arity, duplicate type parameters, ambiguous generic record literals, stale generic package interfaces, and invalid `try` placements where gaps remain.
+3. Keep package interfaces storing resolved generic public signatures for records/functions and keep artifact execution proving fallible dependency APIs without source-body fallback.
 4. Keep bounds, protocols/typeclasses, higher-kinded types, specialization, and polymorphic recursion out of the MVP.
-5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while hardening generic signatures.
-6. Keep `try expr`, wildcard enum patterns, native backend work, broad stdlib effects, and full incremental project artifact reuse deferred until the generic MVP is stable.
+5. Keep the explicit `.mgi` / `.mgc` / `.mgb` artifact workflow as the package boundary while hardening public signatures.
+6. Keep wildcard enum patterns, native backend work, broad stdlib effects, and full incremental project artifact reuse deferred until the next practical API slice is selected.
 
 ## Compiler Architecture Path
 

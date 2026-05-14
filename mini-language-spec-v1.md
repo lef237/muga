@@ -50,7 +50,8 @@ Core expression and statement forms include:
 - record declarations, record literals, field access, and non-destructive record update
 - ordinary calls and chained calls
 - list literals and list indexing
-- exhaustive `match` for compiler-known `Option[T]` and `Result[T, E]`
+- exhaustive `match` for compiler-known `Option[T]`, `Result[T, E]`, and user-defined enums
+- `try expr` propagation for `Result[T, E]`
 - package declarations and imports in package mode
 
 Type annotations use `:`:
@@ -80,7 +81,7 @@ Result[Int, String]
 Map[String, Int]
 ```
 
-The implementation currently supports generic type expressions for `List`, `Option`, `Result`, and `Map`. User-defined generic records/functions remain part of the v1 design target but are not implemented yet.
+The implementation supports generic type expressions for `List`, `Option`, `Result`, and `Map`, plus explicit user-defined generic records and functions.
 
 ## Functions And Inference
 
@@ -181,9 +182,9 @@ match result {
 }
 ```
 
-`Option[T]` is the canonical optional spelling. `T?` is reserved as possible future shorthand. `Result[T, E]` is explicit; possible future propagation sugar is documented as `try expr`, not postfix `?`.
+`Option[T]` is the canonical optional spelling. `T?` is reserved as possible future shorthand. `Result[T, E]` is explicit; prefix `try expr` propagates `Result` errors, while postfix `?` is not part of v1.
 
-User-defined enum declarations are the next planned implementation slice.
+User-defined enum declarations are implemented with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, and exhaustive `match`.
 
 ## Packages
 
