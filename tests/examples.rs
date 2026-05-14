@@ -3539,6 +3539,129 @@ fn main(): Int {
 }
 
 #[test]
+fn cli_run_reports_wrong_package_implementation_artifact() {
+    let artifact_root = temp_package_root("cli-run-wrong-package-implementation");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg("samples/packages/app/enum_demo/main.muga")
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+
+    let artifact_path =
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "util::states");
+    let mut artifact = muga::implementation_artifact::read_persisted_file(&artifact_path)
+        .expect("implementation artifact should parse");
+    artifact.package_path = "util::wrong_states".to_string();
+    fs::write(&artifact_path, artifact.to_persisted_text())
+        .expect("wrong package implementation artifact should be rewritten");
+
+    let root = temp_package_root("cli-run-wrong-package-implementation-downstream");
+    let entry = write_package_file(
+        &root,
+        "app/wrong_impl/main.muga",
+        r#"
+package app::wrong_impl
+
+import util::states
+
+fn main(): Int {
+  states::value_or_zero(states::ready(6))
+}
+"#,
+    );
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert!(stderr.contains("PK022"), "{stderr}");
+    assert!(stderr.contains("contains `util::wrong_states`"), "{stderr}");
+    assert!(stderr.contains("instead of `util::states`"), "{stderr}");
+}
+
+#[test]
+fn cli_run_reports_dependency_interface_mismatched_implementation_artifact() {
+    let provider_root = temp_package_root("cli-run-stale-implementation-dependency-provider");
+    let provider_entry = write_transitive_interface_provider(&provider_root);
+    let artifact_root = temp_package_root("cli-run-stale-implementation-dependency");
+    let emitted = muga_command()
+        .arg("emit-artifacts")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&provider_entry)
+        .output()
+        .expect("muga command should run");
+    assert!(emitted.status.success(), "{emitted:#?}");
+
+    let artifact_path =
+        muga::implementation_artifact::persisted_file_path(&artifact_root, "api::facade");
+    let mut artifact = muga::implementation_artifact::read_persisted_file(&artifact_path)
+        .expect("implementation artifact should parse");
+    artifact.dependency_interfaces[0].interface_hash = "stale-dependency-hash".to_string();
+    artifact
+        .write_persisted_artifact(&artifact_root)
+        .expect("stale dependency implementation artifact should be rewritten");
+
+    let consumer_root = temp_package_root("cli-run-stale-implementation-dependency-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/stale_impl_dep/main.muga",
+        r#"
+package app::stale_impl_dep
+
+import api::facade
+
+fn main(): Int {
+  facade::age(facade::default_user()) + 3
+}
+"#,
+    );
+    let cache = muga_command()
+        .arg("emit-check-cache")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&consumer_entry)
+        .output()
+        .expect("muga command should run");
+    assert!(cache.status.success(), "{cache:#?}");
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--artifact-root")
+        .arg(&artifact_root)
+        .arg(&consumer_entry)
+        .output()
+        .expect("muga command should run");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert!(stderr.contains("PK023"), "{stderr}");
+    assert!(
+        stderr.contains("stale package implementation artifact for `api::facade`"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("dependency `model::users`"), "{stderr}");
+    assert!(stderr.contains("stale-dependency-hash"), "{stderr}");
+}
+
+#[test]
 fn cli_run_reports_hash_mismatched_dependency_implementation_artifact() {
     let artifact_root = temp_package_root("cli-run-implementation-hash-mismatch");
     let emitted = muga_command()
