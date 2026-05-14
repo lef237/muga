@@ -3696,6 +3696,76 @@ fn main(): Int {
 }
 
 #[test]
+fn artifact_run_uses_string_transform_dependency_without_source() {
+    let provider_root = temp_package_root("string-transform-artifact-provider");
+    write_package_file(
+        &provider_root,
+        "util/strings/main.muga",
+        r#"
+package util::strings
+
+pub fn score(value: String, flag_text: String): Result[Int, String] {
+  flag = try flag_text.parse_bool()
+  transformed = value.trim().replace("Ada", "Muga")
+  parts = transformed.split("-")
+  if flag {
+    Result::Ok(parts.len())
+  } else {
+    Result::Err("disabled")
+  }
+}
+
+pub fn result_or_zero(value: Result[Int, String]): Int {
+  match value {
+    Result::Ok(ok) => ok
+    Result::Err(message) => 0
+  }
+}
+"#,
+    );
+    let provider_entry = write_package_file(
+        &provider_root,
+        "app/provider/main.muga",
+        r#"
+package app::provider
+
+import util::strings
+
+fn main(): Int {
+  strings::result_or_zero(strings::score(" Ada-Muga-Ada ", "true"))
+}
+"#,
+    );
+    let artifact_root = temp_package_root("string-transform-artifact-root");
+    muga::write_package_artifacts(&provider_entry, &artifact_root)
+        .expect("provider artifacts should be written");
+
+    let consumer_root = temp_package_root("string-transform-artifact-consumer");
+    let consumer_entry = write_package_file(
+        &consumer_root,
+        "app/consumer/main.muga",
+        r#"
+package app::consumer
+
+import util::strings
+
+fn main(): Int {
+  strings::result_or_zero(strings::score(" Ada-Muga-Ada ", "true"))
+}
+"#,
+    );
+    assert!(!consumer_root.join("util/strings/main.muga").exists());
+    muga::write_package_check_cache_artifact_for_root(&consumer_entry, &artifact_root)
+        .expect("consumer check cache should be written against interface artifact");
+
+    let result = muga::run_path_against_artifact_root(&consumer_entry, &artifact_root)
+        .expect("consumer should run with dependency implementation artifact");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "3");
+    assert_eq!(result.output_text, "");
+}
+
+#[test]
 fn cli_run_uses_transitive_implementation_artifacts_without_dependency_source() {
     let provider_root = temp_package_root("cli-run-transitive-artifact-provider");
     let provider_entry = write_transitive_interface_provider(&provider_root);
@@ -7411,6 +7481,125 @@ fn string_parse_int_requires_string_receiver() {
     let source = r#"
 fn main(): Result[Int, String] {
   1.parse_int()
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_replace_and_split_sample_runs() {
+    let source = r#"
+fn main(): Int {
+  parts = "Ada,Muga,".replace("Ada", "Muga").split(",")
+  if parts.len() == 3 {
+    match parts.get(2) {
+      Option::Some(last) => if last == "" {
+        parts.len()
+      } else {
+        0
+      }
+      Option::None => 0
+    }
+  } else {
+    0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "3");
+}
+
+#[test]
+fn string_replace_empty_pattern_returns_original() {
+    let source = r#"
+fn main(): String {
+  "Ada".replace("", "x")
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Ada");
+}
+
+#[test]
+fn string_split_empty_separator_returns_original_item() {
+    let source = r#"
+fn main(): Int {
+  "Ada".split("").len()
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "1");
+}
+
+#[test]
+fn string_parse_bool_with_try_sample_runs() {
+    let source = r#"
+fn enabled_score(): Result[Int, String] {
+  enabled = try "true".parse_bool()
+  if enabled {
+    Result::Ok(42)
+  } else {
+    Result::Ok(0)
+  }
+}
+
+fn main(): Int {
+  match enabled_score() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn string_parse_bool_err_path_returns_result_err() {
+    let source = r#"
+fn main(): String {
+  match "yes".parse_bool() {
+    Result::Ok(value) => "ok"
+    Result::Err(message) => message
+  }
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "invalid Bool");
+}
+
+#[test]
+fn string_replace_checks_argument_types() {
+    let source = r#"
+fn main(): String {
+  "Ada".replace("Ada", 1)
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T002"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn string_split_checks_separator_type() {
+    let source = r#"
+fn main(): List[String] {
+  "Ada".split(1)
 }
 "#;
     let diagnostics = muga::check_source(source).unwrap_err();

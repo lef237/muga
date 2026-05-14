@@ -1062,8 +1062,23 @@ impl TypeChecker {
                         };
                         self.check_string_predicate_builtin(expr, expected, builtin)
                     }
+                    Type::Builtin(BuiltinId::Replace) => self.check_string_binary_builtin(
+                        expr,
+                        expected,
+                        BuiltinId::Replace,
+                        Type::String,
+                    ),
+                    Type::Builtin(BuiltinId::Split) => self.check_string_pair_builtin(
+                        expr,
+                        expected,
+                        BuiltinId::Split,
+                        Type::List(Box::new(Type::String)),
+                    ),
                     Type::Builtin(BuiltinId::ParseInt) => {
                         self.check_parse_int_builtin(expr, expected)
+                    }
+                    Type::Builtin(BuiltinId::ParseBool) => {
+                        self.check_parse_bool_builtin(expr, expected)
                     }
                     Type::Builtin(BuiltinId::OptionSome) => {
                         if expr.args.len() != 1 {
@@ -1769,6 +1784,77 @@ impl TypeChecker {
         }
     }
 
+    fn check_string_pair_builtin(
+        &mut self,
+        expr: &CallExpr,
+        expected: Option<Type>,
+        builtin: BuiltinId,
+        ret: Type,
+    ) -> Type {
+        if expr.args.len() != 2 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 2 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let receiver_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        self.check_expr_with_expected(&expr.args[1], Some(Type::String));
+        match self.resolve_type(&receiver_ty) {
+            Type::String => self.apply_expected(ret, expected, expr.span),
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    format!(
+                        "`{}` expects String as its first argument",
+                        Self::builtin_name(builtin)
+                    ),
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn check_string_binary_builtin(
+        &mut self,
+        expr: &CallExpr,
+        expected: Option<Type>,
+        builtin: BuiltinId,
+        ret: Type,
+    ) -> Type {
+        if expr.args.len() != 3 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 3 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let receiver_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        self.check_expr_with_expected(&expr.args[1], Some(Type::String));
+        self.check_expr_with_expected(&expr.args[2], Some(Type::String));
+        match self.resolve_type(&receiver_ty) {
+            Type::String => self.apply_expected(ret, expected, expr.span),
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    format!(
+                        "`{}` expects String as its first argument",
+                        Self::builtin_name(builtin)
+                    ),
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
     fn check_parse_int_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
         if expr.args.len() != 1 {
             self.diagnostics.push(Diagnostic::new(
@@ -1791,6 +1877,35 @@ impl TypeChecker {
                 self.diagnostics.push(Diagnostic::new(
                     "T006",
                     "`parse_int` expects String as its first argument",
+                    expr.span,
+                ));
+                Type::Error
+            }
+        }
+    }
+
+    fn check_parse_bool_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 1 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 1 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let arg_ty = self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        match self.resolve_type(&arg_ty) {
+            Type::String => self.apply_expected(
+                Type::Result(Box::new(Type::Bool), Box::new(Type::String)),
+                expected,
+                expr.span,
+            ),
+            Type::Error => Type::Error,
+            _ => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T006",
+                    "`parse_bool` expects String as its first argument",
                     expr.span,
                 ));
                 Type::Error

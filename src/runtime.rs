@@ -1017,6 +1017,60 @@ fn call_builtin(
             };
             Ok(Value::Bool(text.ends_with(&suffix)))
         }
+        BuiltinId::Replace => {
+            let (text, old, new) = expect_three_args(args, span)?;
+            let Value::String(text) = text else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`replace` expects String as its first argument",
+                    span,
+                )]);
+            };
+            let Value::String(old) = old else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`replace` expects String as its second argument",
+                    span,
+                )]);
+            };
+            let Value::String(new) = new else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`replace` expects String as its third argument",
+                    span,
+                )]);
+            };
+            if old.is_empty() {
+                Ok(Value::String(text))
+            } else {
+                Ok(Value::String(text.replace(&old, &new)))
+            }
+        }
+        BuiltinId::Split => {
+            let (text, separator) = expect_two_args(args, span)?;
+            let Value::String(text) = text else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`split` expects String as its first argument",
+                    span,
+                )]);
+            };
+            let Value::String(separator) = separator else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`split` expects String as its second argument",
+                    span,
+                )]);
+            };
+            let parts = if separator.is_empty() {
+                vec![Value::String(text)]
+            } else {
+                text.split(&separator)
+                    .map(|part| Value::String(part.to_string()))
+                    .collect()
+            };
+            Ok(Value::List(parts))
+        }
         BuiltinId::ParseInt => {
             let value = expect_one_arg(args, span)?;
             let Value::String(text) = value else {
@@ -1029,6 +1083,21 @@ fn call_builtin(
             match text.parse::<i64>() {
                 Ok(value) => Ok(result_ok(Value::Int(value))),
                 Err(_) => Ok(result_err(Value::String("invalid Int".to_string()))),
+            }
+        }
+        BuiltinId::ParseBool => {
+            let value = expect_one_arg(args, span)?;
+            let Value::String(text) = value else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`parse_bool` expects String as its first argument",
+                    span,
+                )]);
+            };
+            match text.as_str() {
+                "true" => Ok(result_ok(Value::Bool(true))),
+                "false" => Ok(result_ok(Value::Bool(false))),
+                _ => Ok(result_err(Value::String("invalid Bool".to_string()))),
             }
         }
         BuiltinId::OptionSome => {

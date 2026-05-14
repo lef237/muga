@@ -188,7 +188,7 @@ Ada
 - [ ] arbitrary map key types are deferred.
 - [ ] `Set[T]` is deferred.
 - [x] prefix `try expr` `Result` propagation is implemented and hardened for source, nested control flow, closures, and artifact-backed dependency execution.
-- [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `starts_with`, `ends_with`, and `parse_int`.
+- [x] first `String` helper builtins are implemented: `is_empty`, `contains`, `trim`, `starts_with`, `ends_with`, `replace`, `split`, `parse_int`, and `parse_bool`.
 
 ## Architecture Facts To Keep In Mind
 
@@ -288,10 +288,10 @@ Estimates are in focused engineering days for someone already familiar with this
 | 19. User-defined generic records/functions | Add explicit declaration type parameters for records and functions, call-site inference for ordinary use, and persisted package-interface support for generic public signatures without bounds, specialization, or polymorphic recursion. | parser/types/typing/package/interface/tests/docs | Done | High |
 | 20. Generic surface hardening | Added docs/samples and targeted diagnostics for generic arity, ambiguous generic record literals, package-interface round trips, and stale generic signature checks. Keep expanding edge cases as the package/API surface grows. | docs/samples/tests/typing/interface | Done | Medium |
 | 21. Result propagation | Implemented prefix `try expr` propagation for `Result`, including exact type rules, MIR/bytecode lowering, source diagnostics, artifact-backed dependency execution, nested control-flow coverage, and closure return behavior. | `src/token.rs`, `src/parser.rs`, `src/typing.rs`, `src/typed_hir.rs`, `src/mir.rs`, `src/bytecode.rs`, `tests/examples.rs`, specs/docs | Done | High |
-| 22. First `String` helper builtins | Add low-risk string helpers that do not require byte-versus-character length semantics: `is_empty`, `contains`, `trim`, `starts_with`, and `ends_with`, with runtime, typing, samples, and artifact-backed dependency coverage. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
-| 23. Fallible string parse helper | Add `String.parse_int(): Result[Int, String]` so practical code can exercise `try` with a builtin fallible API while postponing richer parse error types. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
+| 22. First `String` helper builtins | Add low-risk string helpers that do not require byte-versus-character length semantics: `is_empty`, `contains`, `trim`, `starts_with`, `ends_with`, `replace`, and `split`, with runtime, typing, samples, and artifact-backed dependency coverage. `replace("", new)` is a no-op and `split("")` returns `[self]`. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
+| 23. Fallible string parse helpers | Add `String.parse_int(): Result[Int, String]` and `String.parse_bool(): Result[Bool, String]` so practical code can exercise `try` with builtin fallible APIs while postponing richer parse error types. | `src/prelude.rs`, `src/typing.rs`, `src/runtime.rs`, `tests/examples.rs`, samples/docs | Done | Low |
 
-The safest immediate next slice is another narrow practical API step, most likely `String` split/replace helpers. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
+The next step now requires a real design decision: substring/slice APIs and `String.len()` need explicit byte-versus-character semantics, and richer parse errors need a standard error type shape. Preserve the current explicit type-parameter model, do not infer implicit generic functions, and avoid broadening into control-flow MIR or native lowering until a concrete runtime/API gap requires it.
 
 ## Test Plan For The Next Code Slice
 

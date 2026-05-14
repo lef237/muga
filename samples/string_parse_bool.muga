@@ -1,0 +1,15 @@
+fn enabled_score(): Result[Int, String] {
+  enabled = try "true".parse_bool()
+  if enabled {
+    Result::Ok(42)
+  } else {
+    Result::Ok(0)
+  }
+}
+
+fn main(): Int {
+  match enabled_score() {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}
