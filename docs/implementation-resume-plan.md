@@ -1,6 +1,6 @@
 # Implementation Resume Plan
 
-Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, and `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, and stale/mismatched artifact diagnostics.
+Status: current implementation ledger for 2026-05-14 after adding package-aware module body checking, stable interface artifact identities, package-aware default checking/typed compilation, removal of the legacy interface-stub typed path, an initial MIR bytecode boundary, slot-backed runtime locals keyed by lowered local identity, explicit MIR-lowered bytecode `.mgb` implementation artifacts for artifact-backed package execution, `.mgb` hardening for transitive artifacts, independent implementation identity remapping, private item id reservation, stale/mismatched artifact diagnostics, and a checked `app -> api -> model` artifact workflow sample.
 
 Purpose: if prior conversation context is lost, read this file after [ROADMAP.md](../ROADMAP.md). It records what the repository currently implements, what was verified, and the concrete test plan for the next code slice.
 
@@ -20,7 +20,7 @@ Recommended order:
 ## Verification Snapshot
 
 - [x] `cargo fmt --check`, `git diff --check`, `cargo check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest MIR/runtime identity slice.
-- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest `.mgb` artifact hardening slice: 271 tests, 0 failures.
+- [x] `cargo fmt --check`, `git diff --check`, `cargo check --tests`, `cargo clippy --all-targets -- -D warnings`, and `cargo test --locked` passed after the latest `.mgb` artifact hardening and sample slice: 272 tests, 0 failures.
 - [x] `cargo test --locked` passed after slot-backed runtime locals and bytecode local metadata: 258 tests, 0 failures.
 - [x] `target/debug/muga samples/println_sum.muga` printed:
 
@@ -144,6 +144,7 @@ Ada
 - [x] independently generated `.mgi` and `.mgb` artifacts can be combined when the public interface hash matches; `.mgb` package item references are remapped onto the loaded interface items.
 - [x] `.mgb` private package item ids are reserved after the entry program's package item ids before bytecode merge, avoiding collisions between entry-private functions and dependency-private implementation functions.
 - [x] artifact-backed `run` has CLI coverage for wrong-package `.mgb` files and stale dependency interface hashes in `.mgb` dependency metadata.
+- [x] `samples/packages/app/artifact_facade/main.muga` provides a small `app -> api -> model` package sample that is covered by package execution and interface-backed checking tests.
 
 ### Diagnostics
 
@@ -282,7 +283,7 @@ Estimates are in focused engineering days for someone already familiar with this
 | 18. V1 package workflow hardening | Document and test the explicit artifact workflow end to end, including transitive `.mgb` execution, independent `.mgi`/`.mgb` identity remapping, private item id reservation during bytecode merge, broader missing/stale/mismatched artifact diagnostics, default source-compatible execution, and sample package/project commands. | `README.md`, `ROADMAP.md`, `docs/*`, `tests/examples.rs`, samples | In progress | Medium |
 | 19. Error propagation design | Specify `try expr` propagation for `Result`, including exact type rules and desugaring. Keep this post-v1 unless v1 error-handling docs require the syntax decision. | spec docs first, then parser/typechecker/HIR/runtime | Deferred | High |
 
-The safest immediate code slice remains artifact workflow hardening: keep the current expression-shaped MIR/reference VM path, add a small artifact workflow sample or README/spec refresh, and defer automatic project artifact reuse until dependency declarations and lockfiles exist.
+The safest immediate code slice remains artifact workflow hardening: keep the current expression-shaped MIR/reference VM path, finish small README/spec/sample polish around the explicit workflow, and defer automatic project artifact reuse until dependency declarations and lockfiles exist.
 
 ## Test Plan For The Next Code Slice
 
