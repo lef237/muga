@@ -509,11 +509,13 @@ impl TypeChecker {
                     .collect(),
             ),
             TypeInfo::PackageRecord { symbol, item, args } => {
-                let symbol = self
-                    .package_records
-                    .get(item)
-                    .copied()
-                    .unwrap_or_else(|| self.symbol(signatures.symbols.resolve(*symbol)));
+                let symbol = self.package_records.get(item).copied().unwrap_or_else(|| {
+                    self.install_transitive_package_record(*item, signatures);
+                    self.package_records
+                        .get(item)
+                        .copied()
+                        .unwrap_or_else(|| self.symbol(signatures.symbols.resolve(*symbol)))
+                });
                 Type::Record(
                     symbol,
                     args.iter()
@@ -575,6 +577,54 @@ impl TypeChecker {
             TypeInfo::Builtin(builtin) => Type::Builtin(*builtin),
             TypeInfo::Unknown => Type::Unknown(self.fresh_unknown()),
             TypeInfo::Error => Type::Error,
+        }
+    }
+
+    fn install_transitive_package_record(
+        &mut self,
+        item: crate::identity::PackageItemId,
+        signatures: &PackageSignatureEnvironment,
+    ) {
+        if self.package_records.contains_key(&item) {
+            return;
+        }
+        let Some(record) = signatures.record(item).cloned() else {
+            return;
+        };
+        let display_name = signatures
+            .package_path(record.package)
+            .map(|path| format!("{path}::{}", record.name))
+            .unwrap_or_else(|| record.name.clone());
+        let symbol = self.symbol(&display_name);
+        self.package_records.insert(item, symbol);
+        self.package_record_items.insert(symbol, item);
+
+        let type_params = record
+            .type_params
+            .iter()
+            .map(|param| self.symbol(param))
+            .collect::<Vec<_>>();
+        self.records.insert(
+            symbol,
+            RecordDef {
+                span: record.span,
+                type_params: type_params.clone(),
+                fields: Vec::new(),
+            },
+        );
+
+        let fields = record
+            .fields
+            .iter()
+            .map(|field| RecordField {
+                name: self.symbol(&field.name),
+                type_name: None,
+                ty: Some(self.type_from_signature_info(&field.ty, signatures)),
+                span: field.span,
+            })
+            .collect();
+        if let Some(record) = self.records.get_mut(&symbol) {
+            record.fields = fields;
         }
     }
 

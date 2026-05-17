@@ -2738,8 +2738,8 @@ package app::consumer
 
 import api::facade
 
-fn main(): Int {
-  facade::age(facade::default_user())
+fn main(): String {
+  facade::default_user().name
 }
 "#,
     );
@@ -8991,6 +8991,66 @@ fn main(): String {{
 }
 
 #[test]
+fn standard_fs_io_error_fields_do_not_require_direct_io_import() {
+    let root = temp_package_root("std-fs-error-transitive");
+    let missing = root.join("missing.txt");
+    let missing_literal = muga_string_literal(&display_path(&missing));
+    let entry = write_package_file(
+        &root,
+        "app/std_fs_error_transitive/main.muga",
+        &format!(
+            r#"
+package app::std_fs_error_transitive
+
+import std::fs
+
+record IOError {{
+  code: Int
+}}
+
+fn main(): String {{
+  match fs::read_text({missing_literal}) {{
+    Result::Ok(text) => text
+    Result::Err(error) => error.operation
+  }}
+}}
+"#
+        ),
+    );
+
+    let result = muga::run_path(&entry).expect("std::fs error program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "read_text");
+}
+
+#[test]
+fn standard_fs_io_error_accepts_explicit_import_alias() {
+    let root = temp_package_root("std-fs-error-alias");
+    let missing = root.join("missing.txt");
+    let missing_literal = muga_string_literal(&display_path(&missing));
+    let entry = write_package_file(
+        &root,
+        "app/std_fs_error_alias/main.muga",
+        &format!(
+            r#"
+package app::std_fs_error_alias
+
+import std::fs
+import std::io as errors
+
+fn main(): Result[String, errors::IOError] {{
+  text = try fs::read_text({missing_literal})
+  Result::Ok(text)
+}}
+"#
+        ),
+    );
+
+    let result = muga::check_path(&entry);
+    assert!(result.is_ok(), "{:#?}", result.err());
+}
+
+#[test]
 fn standard_fs_artifact_run_uses_emitted_std_implementations() {
     let root = temp_package_root("std-fs-artifacts");
     let target = root.join("artifact.txt");
@@ -9034,6 +9094,52 @@ fn main(): Result[String, io::IOError] {{
         .expect("artifact-backed std::fs package program should run");
     let value = result.main_result.expect("main result should exist");
     assert_eq!(value.to_string(), "Result::Ok(artifact std)");
+}
+
+#[test]
+fn standard_fs_artifact_run_exposes_error_fields_without_direct_io_import() {
+    let root = temp_package_root("std-fs-artifact-error-transitive");
+    let missing = root.join("missing.txt");
+    let missing_literal = muga_string_literal(&display_path(&missing));
+    let entry = write_package_file(
+        &root,
+        "app/std_fs_artifact_error_transitive/main.muga",
+        &format!(
+            r#"
+package app::std_fs_artifact_error_transitive
+
+import std::fs
+
+fn main(): String {{
+  match fs::read_text({missing_literal}) {{
+    Result::Ok(text) => text
+    Result::Err(error) => error.operation
+  }}
+}}
+"#
+        ),
+    );
+    let artifact_root = root.join("artifacts");
+    let written =
+        muga::write_package_artifacts(&entry, &artifact_root).expect("artifacts should emit");
+
+    assert!(
+        written
+            .iter()
+            .any(|path| path.file_name().is_some_and(|name| name == "std__io.mgi")),
+        "{written:#?}"
+    );
+    assert!(
+        written
+            .iter()
+            .any(|path| path.file_name().is_some_and(|name| name == "std__fs.mgb")),
+        "{written:#?}"
+    );
+
+    let result = muga::run_path_against_artifact_root(&entry, &artifact_root)
+        .expect("artifact-backed std::fs error program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "read_text");
 }
 
 fn display_path(path: &Path) -> String {

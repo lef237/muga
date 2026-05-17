@@ -14,6 +14,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct PackageSignatureEnvironment {
     pub symbols: SymbolTable,
+    pub package_paths: HashMap<PackageId, String>,
     pub records: Vec<PackageRecordSignature>,
     pub enums: Vec<PackageEnumSignature>,
     pub functions: Vec<PackageFunctionSignature>,
@@ -45,6 +46,12 @@ impl PackageSignatureEnvironment {
         self.modules
             .iter()
             .find(|environment| environment.module == module)
+    }
+
+    pub fn package_path(&self, package: PackageId) -> Option<&str> {
+        self.package_paths
+            .get(&package)
+            .map(std::string::String::as_str)
     }
 }
 
@@ -342,8 +349,16 @@ impl<'a> SignatureCollector<'a> {
 
     fn finish(self) -> Result<PackageSignatureEnvironment, Vec<Diagnostic>> {
         if self.diagnostics.is_empty() {
+            let package_paths = self
+                .loaded
+                .package_graph
+                .packages
+                .iter()
+                .map(|package| (package.id, package.path.clone()))
+                .collect();
             Ok(PackageSignatureEnvironment {
                 symbols: self.symbols,
+                package_paths,
                 records: self.records,
                 enums: self.enums,
                 functions: self.functions,

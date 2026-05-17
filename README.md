@@ -204,6 +204,7 @@ Implemented:
 - default package `run` lowers package-aware typed HIR through MIR before bytecode generation
 - bytecode/runtime name references carry semantic binding identity, lowered local identity, and display symbols; runtime environments are slot-backed by lowered `LocalId`
 - user-defined generic records and generic functions with explicit declaration type parameters, ordinary call/literal inference, and persisted package-interface support for public generic signatures
+- public package signature types remain available for value checking across imports, so `fs::read_text` errors can be matched and their `IOError` fields read even when `std::io` is not directly imported; import `std::io` when you want to name `io::IOError` in source annotations
 
 Not implemented yet:
 
