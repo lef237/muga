@@ -1541,10 +1541,8 @@ fn lookup_beyond_current_function(env: &EnvRef, local: LocalId) -> Option<Bindin
     let mut current = Some(env.clone());
     while let Some(candidate) = current {
         let borrowed = candidate.borrow();
-        if first_boundary_seen {
-            if let Some(found) = borrowed.binding(local) {
-                return Some(found.clone());
-            }
+        if first_boundary_seen && let Some(found) = borrowed.binding(local) {
+            return Some(found.clone());
         }
         if borrowed.function_boundary {
             first_boundary_seen = true;

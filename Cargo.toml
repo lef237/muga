@@ -2,7 +2,7 @@
 name = "muga"
 version = "0.1.4"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 license = "MIT"
 description = "A quiet programming language."
 repository = "https://github.com/lef237/muga"
