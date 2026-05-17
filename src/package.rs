@@ -827,11 +827,8 @@ impl<'a> PackageAwareChecker<'a> {
 
     fn imported_package(&mut self, alias: &str, span: Span) -> Option<PackageId> {
         let Some(package_path) = self.imports.get(alias).cloned() else {
-            self.diagnostics.push(Diagnostic::new(
-                "PK009",
-                format!("unknown import alias `{alias}`"),
-                span,
-            ));
+            self.diagnostics
+                .push(unknown_import_alias_diagnostic(alias, span));
             return None;
         };
         let Some(package_id) = self.loaded.package_graph.package_id(&package_path) else {
@@ -2716,11 +2713,8 @@ impl<'a> PackageRewriter<'a> {
         span: Span,
     ) -> String {
         let Some(package_path) = self.imports.get(alias) else {
-            self.diagnostics.push(Diagnostic::new(
-                "PK009",
-                format!("unknown import alias `{alias}`"),
-                span,
-            ));
+            self.diagnostics
+                .push(unknown_import_alias_diagnostic(alias, span));
             return format!("{alias}::{item}");
         };
         let Some(package) = self.packages.get(package_path) else {
@@ -2776,11 +2770,8 @@ impl<'a> PackageRewriter<'a> {
 
     fn resolve_imported_type_item(&mut self, alias: &str, item: &str, span: Span) -> String {
         let Some(package_path) = self.imports.get(alias) else {
-            self.diagnostics.push(Diagnostic::new(
-                "PK009",
-                format!("unknown import alias `{alias}`"),
-                span,
-            ));
+            self.diagnostics
+                .push(unknown_import_alias_diagnostic(alias, span));
             return format!("{alias}::{item}");
         };
         let Some(package) = self.packages.get(package_path) else {
@@ -3467,6 +3458,17 @@ fn sanitize_mangle_segment(segment: &str) -> String {
             }
         })
         .collect()
+}
+
+fn unknown_import_alias_diagnostic(alias: &str, span: Span) -> Diagnostic {
+    let diagnostic = Diagnostic::new("PK009", format!("unknown import alias `{alias}`"), span);
+    match alias {
+        "fs" => diagnostic.with_suggestion("add `import std::fs` before using `fs::...`"),
+        "io" => diagnostic.with_suggestion("add `import std::io` before using `io::...`"),
+        _ => {
+            diagnostic.with_suggestion("add an import declaration or use an existing import alias")
+        }
+    }
 }
 
 fn is_builtin_name(name: &str) -> bool {

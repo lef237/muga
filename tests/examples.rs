@@ -9051,6 +9051,42 @@ fn main(): Result[String, errors::IOError] {{
 }
 
 #[test]
+fn standard_fs_io_error_annotation_without_io_import_suggests_import() {
+    let root = temp_package_root("std-fs-error-missing-io-import");
+    let missing = root.join("missing.txt");
+    let missing_literal = muga_string_literal(&display_path(&missing));
+    let entry = write_package_file(
+        &root,
+        "app/std_fs_missing_io_import/main.muga",
+        &format!(
+            r#"
+package app::std_fs_missing_io_import
+
+import std::fs
+
+fn main(): Result[String, io::IOError] {{
+  fs::read_text({missing_literal})
+}}
+"#
+        ),
+    );
+
+    let diagnostics = muga::check_path(&entry).unwrap_err();
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK009")
+        .expect("missing io import diagnostic should exist");
+    assert!(diagnostic.message.contains("unknown import alias `io`"));
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("import std::io")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
 fn standard_fs_artifact_run_uses_emitted_std_implementations() {
     let root = temp_package_root("std-fs-artifacts");
     let target = root.join("artifact.txt");

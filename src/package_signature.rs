@@ -694,11 +694,8 @@ impl<'a> SignatureCollector<'a> {
         span: Span,
     ) -> TypeInfo {
         let Some(package_path) = self.imports.get(alias) else {
-            self.diagnostics.push(Diagnostic::new(
-                "PK009",
-                format!("unknown import alias `{alias}`"),
-                span,
-            ));
+            self.diagnostics
+                .push(unknown_import_alias_diagnostic(alias, span));
             return TypeInfo::Error;
         };
         let Some(package_id) = self.loaded.package_graph.package_id(package_path) else {
@@ -891,6 +888,17 @@ impl<'a> SignatureCollector<'a> {
 
     fn interface_symbol(&mut self, symbol: Symbol, symbols: &SymbolTable) -> Symbol {
         self.symbols.intern(symbols.resolve(symbol))
+    }
+}
+
+fn unknown_import_alias_diagnostic(alias: &str, span: Span) -> Diagnostic {
+    let diagnostic = Diagnostic::new("PK009", format!("unknown import alias `{alias}`"), span);
+    match alias {
+        "fs" => diagnostic.with_suggestion("add `import std::fs` before using `fs::...`"),
+        "io" => diagnostic.with_suggestion("add `import std::io` before using `io::...`"),
+        _ => {
+            diagnostic.with_suggestion("add an import declaration or use an existing import alias")
+        }
     }
 }
 
