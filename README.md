@@ -26,7 +26,7 @@ muga run --artifact-root path/to/artifacts path/to/package/main.muga
 
 ## Quickstart
 
-Prerequisites: a recent Rust toolchain (edition 2024, so Rust 1.85 or later).
+Prerequisites: Rust 1.95 or later.
 
 Clone the repository and run one of the bundled samples:
 

@@ -114,18 +114,18 @@ fn parse_entry_program(path: &Path) -> Result<(Program, Option<ProjectManifest>)
         let inferred_package = infer_manifest_package_path(path, manifest)?;
         let program =
             crate::parser::parse_inferred_package(entry_tokens, inferred_package.clone())?;
-        if let Some(package) = &program.package {
-            if package.path != inferred_package {
-                return Err(vec![Diagnostic::new(
-                    "PK006",
-                    format!(
-                        "file {} declares package `{}` but manifest layout expects `{inferred_package}`",
-                        path.display(),
-                        package.path
-                    ),
-                    package.span,
-                )]);
-            }
+        if let Some(package) = &program.package
+            && package.path != inferred_package
+        {
+            return Err(vec![Diagnostic::new(
+                "PK006",
+                format!(
+                    "file {} declares package `{}` but manifest layout expects `{inferred_package}`",
+                    path.display(),
+                    package.path
+                ),
+                package.span,
+            )]);
         }
         program
     } else {
@@ -2643,39 +2643,35 @@ impl<'a> PackageRewriter<'a> {
                     &self.current_package_data.records,
                     name,
                     &self.current_module,
-                ) {
-                    if !visibility_can_expose(item.visibility, api_visibility) {
-                        let api = visibility_label(api_visibility);
-                        let item_visibility = visibility_label(item.visibility);
-                        self.diagnostics.push(
-                            Diagnostic::new(
-                                "PK012",
-                                format!(
-                                    "{api} API may not expose {item_visibility} record `{name}`"
-                                ),
-                                span,
-                            )
-                            .with_related(format!("record `{name}` is declared here"), item.span),
-                        );
-                    }
+                ) && !visibility_can_expose(item.visibility, api_visibility)
+                {
+                    let api = visibility_label(api_visibility);
+                    let item_visibility = visibility_label(item.visibility);
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "PK012",
+                            format!("{api} API may not expose {item_visibility} record `{name}`"),
+                            span,
+                        )
+                        .with_related(format!("record `{name}` is declared here"), item.span),
+                    );
                 }
                 if let Some(item) = resolve_package_item(
                     &self.current_package_data.enums,
                     name,
                     &self.current_module,
-                ) {
-                    if !visibility_can_expose(item.visibility, api_visibility) {
-                        let api = visibility_label(api_visibility);
-                        let item_visibility = visibility_label(item.visibility);
-                        self.diagnostics.push(
-                            Diagnostic::new(
-                                "PK012",
-                                format!("{api} API may not expose {item_visibility} enum `{name}`"),
-                                span,
-                            )
-                            .with_related(format!("enum `{name}` is declared here"), item.span),
-                        );
-                    }
+                ) && !visibility_can_expose(item.visibility, api_visibility)
+                {
+                    let api = visibility_label(api_visibility);
+                    let item_visibility = visibility_label(item.visibility);
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "PK012",
+                            format!("{api} API may not expose {item_visibility} enum `{name}`"),
+                            span,
+                        )
+                        .with_related(format!("enum `{name}` is declared here"), item.span),
+                    );
                 }
             }
             TypeExpr::Generic(generic) => {

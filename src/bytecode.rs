@@ -500,12 +500,11 @@ fn rewrite_chunk_package_refs(
     canonical: &HashMap<PackageItemId, NameRef>,
 ) {
     for instruction in &mut chunk.instructions {
-        if let Instruction::LoadName { target, .. } = instruction {
-            if let Some(item) = local_items.get(&target.local)
-                && let Some(canonical) = canonical.get(item)
-            {
-                *target = *canonical;
-            }
+        if let Instruction::LoadName { target, .. } = instruction
+            && let Some(item) = local_items.get(&target.local)
+            && let Some(canonical) = canonical.get(item)
+        {
+            *target = *canonical;
         }
     }
 }
