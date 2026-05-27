@@ -160,6 +160,16 @@ Here `writer` represents an external resource. The side effect is part of the re
 
 This keeps write effects readable without exposing arbitrary writable aliases.
 
+Future resource handles should be opaque public types when their representation is runtime-owned or OS-backed. The design boundary is recorded in [opaque-resource-handles.md](../docs/opaque-resource-handles.md). Their APIs should define:
+
+- ownership and whether a handle can be copied, moved, closed, or dropped
+- whether operations may block an OS thread or cooperate with the Muga scheduler
+- whether operations observe task cancellation, deadlines, or timeouts
+- whether a handle can cross a task boundary or be shared by multiple tasks
+- which recoverable failures appear in the public `Result[T, E]` error type
+
+These rules should live at the handle API boundary. Ordinary values should not gain general reference identity just because resource-backed values need lifecycle rules. The first implementation-facing step should be an interface-only `pub opaque type` slice before any runtime-backed handle value or broad IO API is added.
+
 ## 6. Performance Model
 
 Value semantics do not imply slow code.
@@ -248,6 +258,13 @@ For collections:
 - their implementation should use shared storage or another efficient representation
 - source-level mutation semantics must be decided before mutable collection operations are added
 
+For equality:
+
+- v1 equality is value equality only for `Int`, `Bool`, and `String`
+- records, enums, `Option[T]`, `Result[T, E]`, lists, maps, `Unit`, functions, and builtins do not have implicit equality
+- unsupported values must be rejected statically rather than compared by identity or runtime representation
+- future aggregate equality should be explicit in the spec and package interfaces before any `List.contains`, structural assertion, `Set[T]`, or arbitrary `Map` key support relies on it
+
 For write-oriented standard library APIs:
 
 - prefer value-returning updates for ordinary data
@@ -272,4 +289,4 @@ Before this design is fully normative, decide:
 - how future collection storage handles sharing, copying, and mutation
 - how builder and buffer types express efficient repeated writes
 - how resource handles express side effects, ownership, and task-safety
-- whether aggregate equality remains explicit and limited, or expands beyond primitive equality
+- whether and when aggregate equality expands beyond the v1 scalar-only policy

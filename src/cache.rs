@@ -1,10 +1,13 @@
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
 
 use crate::{
-    diagnostic::Diagnostic,
+    diagnostic::{
+        Diagnostic, artifact_file_context, artifact_hash_context, regeneration_command_context,
+    },
     interface::{PackageInterfaceGraph, stable_hash_hex},
     package,
     span::Span,
@@ -12,6 +15,18 @@ use crate::{
 };
 
 const PERSISTED_CHECK_HEADER: &str = "muga-package-check-v1";
+const REGENERATE_CHECK_CACHE_SUGGESTION: &str = "regenerate package check caches with `muga build`, `muga emit-artifacts`, or `muga emit-check-cache`";
+const REGENERATE_CHECK_CACHE_COMMANDS: [(&str, &str); 3] = [
+    ("default-build", "muga build <entry>"),
+    (
+        "artifact-root",
+        "muga emit-artifacts --artifact-root <dir> <entry>",
+    ),
+    (
+        "check-cache",
+        "muga emit-check-cache --artifact-root <dir> <entry>",
+    ),
+];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PackageCheckCacheKey {
@@ -57,16 +72,28 @@ impl PackageCheckCacheKey {
         };
         let actual_hash = stable_hash_hex(&body);
         if expected_hash != actual_hash {
-            return Err(vec![
-                Diagnostic::new(
-                    "PK020",
-                    format!(
-                        "package check cache artifact hash mismatch: expected `{expected_hash}` but found `{actual_hash}`"
-                    ),
-                    Span::default(),
-                )
-                .with_suggestion("regenerate the package check cache artifact"),
-            ]);
+            let mut diagnostic = Diagnostic::new(
+                "PK020",
+                format!(
+                    "package check cache artifact hash mismatch: expected `{expected_hash}` but found `{actual_hash}`"
+                ),
+                Span::default(),
+            )
+            .with_suggestion(REGENERATE_CHECK_CACHE_SUGGESTION)
+            .with_context(artifact_hash_context(
+                "expected",
+                "artifact",
+                None,
+                expected_hash,
+            ))
+            .with_context(artifact_hash_context(
+                "actual",
+                "artifact",
+                None,
+                actual_hash,
+            ));
+            add_check_cache_regeneration_context(&mut diagnostic);
+            return Err(vec![diagnostic]);
         }
 
         Self::from_body_lines(&lines[2..])
@@ -251,21 +278,28 @@ pub fn write_package_check_artifact(
             ),
             Span::default(),
         )
+        .with_context(check_cache_artifact_file_context(path))
     })
 }
 
 pub fn read_package_check_artifact(path: &Path) -> Result<PackageCheckCacheKey, Vec<Diagnostic>> {
     let text = fs::read_to_string(path).map_err(|error| {
-        vec![Diagnostic::new(
-            "PK020",
-            format!(
-                "failed to read package check cache artifact `{}`: {error}",
-                path.display()
-            ),
-            Span::default(),
-        )]
+        vec![
+            Diagnostic::new(
+                "PK020",
+                format!(
+                    "failed to read package check cache artifact `{}`: {error}",
+                    path.display()
+                ),
+                Span::default(),
+            )
+            .with_context(check_cache_artifact_file_context(path)),
+        ]
     })?;
-    PackageCheckCacheKey::from_persisted_text(&text)
+    PackageCheckCacheKey::from_persisted_text(&text).map_err(|mut diagnostics| {
+        add_check_cache_artifact_file_context(&mut diagnostics, path);
+        diagnostics
+    })
 }
 
 pub fn validate_package_check_artifact(
@@ -273,37 +307,178 @@ pub fn validate_package_check_artifact(
     expected: &PackageCheckCacheKey,
 ) -> Result<(), Vec<Diagnostic>> {
     if !path.is_file() {
-        return Err(vec![
-            Diagnostic::new(
-                "PK020",
-                format!("missing package check cache artifact `{}`", path.display()),
-                Span::default(),
-            )
-            .with_suggestion("regenerate the package check cache artifact"),
-        ]);
+        let mut diagnostic = Diagnostic::new(
+            "PK020",
+            format!("missing package check cache artifact `{}`", path.display()),
+            Span::default(),
+        )
+        .with_context(check_cache_artifact_file_context(path))
+        .with_suggestion(REGENERATE_CHECK_CACHE_SUGGESTION);
+        add_check_cache_regeneration_context(&mut diagnostic);
+        return Err(vec![diagnostic]);
     }
 
     let actual = read_package_check_artifact(path)?;
     if actual.stable_hash() == expected.stable_hash() {
         Ok(())
     } else {
-        Err(vec![
-            Diagnostic::new(
-                "PK021",
-                format!(
-                    "stale package check cache artifact `{}`: expected `{}` but found `{}`",
-                    path.display(),
-                    expected.stable_hash(),
-                    actual.stable_hash()
-                ),
-                Span::default(),
-            )
-            .with_suggestion("regenerate the package check cache artifact"),
-        ])
+        let details = cache_key_difference_details(expected, &actual);
+        let reason = if details.is_empty() {
+            "cache inputs changed".to_string()
+        } else {
+            details.join("; ")
+        };
+        let expected_hash = expected.stable_hash();
+        let actual_hash = actual.stable_hash();
+        let mut diagnostic = Diagnostic::new(
+            "PK021",
+            format!(
+                "stale package check cache artifact `{}`: {reason}; expected `{expected_hash}` but found `{actual_hash}`",
+                path.display()
+            ),
+            Span::default(),
+        )
+        .with_context(check_cache_artifact_file_context(path))
+        .with_context(artifact_hash_context(
+            "expected",
+            "artifact",
+            None,
+            &expected_hash,
+        ))
+        .with_context(artifact_hash_context(
+            "actual",
+            "artifact",
+            None,
+            &actual_hash,
+        ))
+        .with_suggestion(REGENERATE_CHECK_CACHE_SUGGESTION);
+        add_check_cache_input_context(&mut diagnostic, expected, &actual);
+        add_check_cache_regeneration_context(&mut diagnostic);
+        Err(vec![diagnostic])
     }
 }
 
+fn cache_key_difference_details(
+    expected: &PackageCheckCacheKey,
+    actual: &PackageCheckCacheKey,
+) -> Vec<String> {
+    let mut details = Vec::new();
+    if expected.source_hash != actual.source_hash {
+        details.push("entry package source changed".to_string());
+    }
+
+    let expected_dependencies = dependency_hashes_by_path(expected);
+    let actual_dependencies = dependency_hashes_by_path(actual);
+
+    for (package_path, expected_hash) in &expected_dependencies {
+        match actual_dependencies.get(package_path) {
+            Some(actual_hash) if actual_hash == expected_hash => {}
+            Some(_) => details.push(format!("dependency interface `{package_path}` changed")),
+            None => details.push(format!("dependency interface `{package_path}` was added")),
+        }
+    }
+
+    for package_path in actual_dependencies.keys() {
+        if !expected_dependencies.contains_key(package_path) {
+            details.push(format!("dependency interface `{package_path}` was removed"));
+        }
+    }
+
+    details
+}
+
+fn dependency_hashes_by_path(key: &PackageCheckCacheKey) -> BTreeMap<&str, &str> {
+    key.dependency_interfaces
+        .iter()
+        .map(|dependency| {
+            (
+                dependency.package_path.as_str(),
+                dependency.interface_hash.as_str(),
+            )
+        })
+        .collect()
+}
+
 fn cache_artifact_diagnostic(message: impl Into<String>) -> Diagnostic {
-    Diagnostic::new("PK020", message, Span::default())
-        .with_suggestion("regenerate the package check cache artifact")
+    let mut diagnostic = Diagnostic::new("PK020", message, Span::default())
+        .with_suggestion(REGENERATE_CHECK_CACHE_SUGGESTION);
+    add_check_cache_regeneration_context(&mut diagnostic);
+    diagnostic
+}
+
+fn check_cache_artifact_file_context(path: &Path) -> crate::diagnostic::DiagnosticContext {
+    artifact_file_context("check-cache", "checkCache", path)
+}
+
+fn add_check_cache_artifact_file_context(diagnostics: &mut [Diagnostic], path: &Path) {
+    for diagnostic in diagnostics {
+        diagnostic.add_context(check_cache_artifact_file_context(path));
+    }
+}
+
+fn add_check_cache_regeneration_context(diagnostic: &mut Diagnostic) {
+    for (role, command) in REGENERATE_CHECK_CACHE_COMMANDS {
+        diagnostic.add_context(regeneration_command_context(role, command));
+    }
+}
+
+fn add_check_cache_input_context(
+    diagnostic: &mut Diagnostic,
+    expected: &PackageCheckCacheKey,
+    actual: &PackageCheckCacheKey,
+) {
+    if expected.source_hash != actual.source_hash {
+        diagnostic.add_context(artifact_hash_context(
+            "expected",
+            "source",
+            None,
+            &expected.source_hash,
+        ));
+        diagnostic.add_context(artifact_hash_context(
+            "actual",
+            "source",
+            None,
+            &actual.source_hash,
+        ));
+    }
+
+    let expected_dependencies = dependency_hashes_by_path(expected);
+    let actual_dependencies = dependency_hashes_by_path(actual);
+
+    for (package_path, expected_hash) in &expected_dependencies {
+        match actual_dependencies.get(package_path) {
+            Some(actual_hash) if actual_hash == expected_hash => {}
+            Some(actual_hash) => {
+                diagnostic.add_context(artifact_hash_context(
+                    "expected",
+                    "dependencyInterface",
+                    Some(*package_path),
+                    *expected_hash,
+                ));
+                diagnostic.add_context(artifact_hash_context(
+                    "actual",
+                    "dependencyInterface",
+                    Some(*package_path),
+                    *actual_hash,
+                ));
+            }
+            None => diagnostic.add_context(artifact_hash_context(
+                "expected",
+                "dependencyInterface",
+                Some(*package_path),
+                *expected_hash,
+            )),
+        }
+    }
+
+    for (package_path, actual_hash) in actual_dependencies {
+        if !expected_dependencies.contains_key(package_path) {
+            diagnostic.add_context(artifact_hash_context(
+                "actual",
+                "dependencyInterface",
+                Some(package_path),
+                actual_hash,
+            ));
+        }
+    }
 }

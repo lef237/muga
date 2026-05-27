@@ -1,0 +1,20 @@
+// Post-v1 design snippet: typed channels after the task core is stable.
+// This is not valid v1 source.
+
+group {
+  jobs = channel(Int, capacity: 64)
+  results = channel(Int, capacity: 64)
+
+  producer = spawn produce_jobs(jobs)
+  worker1 = spawn worker(jobs, results)
+  worker2 = spawn worker(jobs, results)
+
+  first = results.recv()
+  second = results.recv()
+
+  producer.join()
+  worker1.join()
+  worker2.join()
+
+  first + second
+}

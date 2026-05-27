@@ -1,6 +1,6 @@
 # Enums, Result, And Error Propagation Draft
 
-Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, exhaustive `match`, VM execution, typed HIR, package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, stale enum interface validation, downstream typed checking from loaded interface summaries, explicit-root `.mgi` artifact discovery for typed checking, source/dependency-hash `.mgc` package check cache validation, `muga check --artifact-root` consumption of those artifacts, CLI emission of `.mgi` / `.mgc` artifacts, and prefix `try expr` propagation for `Result[T, E]`. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching.
+Status: design draft with an implemented and hardened MVP. The current Rust compiler implements compiler-known `Option[T]` and `Result[T, E]`, plus user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, payload discard `_` inside variant patterns, exhaustive `match`, VM execution, typed HIR, package interface summaries, package enum visibility checks, imported `alias::Enum::Variant` coverage, stale enum interface validation, downstream typed checking from loaded interface summaries, explicit-root `.mgi` artifact discovery for typed checking, source/dependency-hash `.mgc` package check cache validation, `muga check --artifact-root` consumption of those artifacts, CLI emission of `.mgi` / `.mgc` artifacts, and prefix `try expr` propagation for `Result[T, E]`. AST/HIR/typed HIR match patterns use enum-variant-shaped internal data, runtime enum values use a generic enum-value representation, and variant facts are consumed by typechecking, bytecode lowering, and runtime branching.
 
 ## 1. Goals
 
@@ -91,13 +91,15 @@ Deferred:
 - named-field variants
 - per-variant visibility
 - unqualified variant imports
-- wildcard patterns
+- broad catch-all wildcard patterns
 - nested patterns
 - pattern guards
 - recursive enum layout optimization
-- derived equality/hash behavior
+- derived equality/hash behavior beyond the scalar-only v1 equality policy
 
 This MVP is enough to model `Option[T]` and `Result[T, E]`.
+
+`Option[T]`, `Result[T, E]`, and user-defined enums do not support `==` or `!=` in v1. Use exhaustive `match` and compare scalar payload fields explicitly. Derived enum equality/hash behavior is a future feature and must define package-interface persistence, diagnostics, and behavior for unsupported payload types before it is added.
 
 ## 5. Typing Rules
 
@@ -126,6 +128,8 @@ Match typing:
 - duplicate variant arms are errors
 - missing variant arms are errors
 - payload bindings are immutable local bindings inside the arm expression
+- `_` may appear only inside a one-payload variant pattern, such as `Result::Ok(_)`, and discards that payload without introducing a binding
+- `_ =>` broad catch-all arms are not part of v1
 - all arm result expressions must have the same type, or must match the surrounding expected type
 
 Identity rules for the MVP:
@@ -153,7 +157,7 @@ Compatibility requirements:
 
 ## 7. Result Propagation
 
-`Result[T, E]` is the recoverable-error type. Explicit `match` is still the recovery mechanism, and prefix `try expr` is the propagation form.
+`Result[T, E]` is the recoverable-error type. Explicit `match` is still the recovery mechanism, and prefix `try expr` is the implemented propagation form. If Muga adds a dot-chain propagation form later, it should use postfix keyword syntax `expr.try`, not postfix `expr?`.
 
 Local recovery remains explicit:
 
@@ -171,17 +175,20 @@ This explicit form is implemented for compiler-known `Result[T, E]`, and prefix 
 
 Current propagation shape:
 
-- use prefix `try expr` for `Result` propagation
-- do not use postfix `?` for `Result` propagation in the current design direction
-- keep `T?` reserved only as possible future shorthand for `Option[T]`
-- do not introduce optional chaining in the first error-propagation design
+- use prefix `try expr` for the implemented `Result` propagation form
+- reserve future dot-chain `Result` propagation for postfix keyword syntax `expr.try`
+- do not use postfix `expr?` for `Result` propagation in the current design direction
+- keep the `?` syntax family reserved for optional-value features such as future `T?` and `?.`
+- do not make optional chaining part of `Result` propagation
 
 Rationale:
 
 - `try` is a word, so the possible early return is visible at the expression site
-- postfix `?` is compact, but it is less readable for beginners and conflicts with future `T?` shorthand
+- `expr.try` keeps that word visible inside Muga's normal dot-chain style
+- postfix `expr?` is compact, but it hides a function-level early return behind a small marker
 - Muga's simplicity goal is local readability, not only the fewest characters
 - explicit `match` remains the recovery mechanism when the caller wants to handle the error locally
+- reserving `?` for optional values gives the syntax family one primary meaning: absence, not recoverable errors
 
 Implemented `try` shape:
 
@@ -237,10 +244,98 @@ Implemented `try` decisions:
 - propagated error types must match exactly; no conversion hook exists in v1
 - `try` works only with `Result[T, E]`, not `Option[T]`
 - `try` is a prefix expression and can appear wherever its unwrapped `T` type is valid
+- invalid `try Result::Ok(...)` / `try Result::Err(...)` placements should report the `try` placement error without a secondary missing-expected-Result diagnostic for the constructor
+- the current compiler implements only prefix `try expr`; future `expr.try` is a design direction, not an implemented syntax
+- `expr?` is not an alias for `try expr` or future `expr.try`
+
+### 7.1 Result Chain Propagation And Value Chaining
+
+Rust-style `expr?` is useful because it keeps success-path code compact:
+
+```rust
+let age = read_to_string(path)?.trim().parse::<i64>()?;
+```
+
+Muga should support the same practical need without assigning function-level early return to postfix Result propagation `expr?`. The preferred future propagation syntax is postfix keyword `expr.try`:
+
+```muga
+fn load_age(path: String): Result[Int, String] {
+  age = read_file(path).try.trim().parse_int().try
+  Result::Ok(age)
+}
+```
+
+`expr.try` should be syntax, not a helper method. It is equivalent to applying `try` at that point in the chain:
+
+```muga
+read_file(path).try.trim()
+```
+
+is equivalent to:
+
+```muga
+(try read_file(path)).trim()
+```
+
+Future `expr.try` rules should match prefix `try expr` rules:
+
+- `expr` must have type `Result[T, E]`
+- the enclosing function must return, or be inferred to return, `Result[U, E]`
+- `Result::Ok(value)` continues the chain as `value: T`
+- `Result::Err(error)` returns `Result::Err(error)` from the enclosing function
+- propagated error types must match exactly at first
+- `expr.try` works only with `Result[T, E]`, not `Option[T]`
+- `try` remains a reserved keyword in this position; user-defined methods should not be able to overload this control-flow behavior
+
+This gives Muga two spellings for the same Result propagation operation:
+
+- `try expr` for the already implemented prefix form
+- `expr.try` for a future dot-chain form that keeps fluent success paths compact
+
+Ordinary `Result` value chaining remains a separate concern. The implemented `std::result` helper package uses package-qualified chained calls; the following assumes `result` is the visible helper package alias:
+
+```muga
+fn load_age(path: String): Result[Int, String] {
+  (
+    read_file(path)
+      .result::map(fn(text) { text.trim() })
+      .result::and_then(fn(text) { text.parse_int() })
+  )
+}
+```
+
+The helper semantics are:
+
+- `result::is_ok(result)` returns `true` for `Ok(_)` and `false` for `Err(_)`.
+- `result::is_err(result)` returns `true` for `Err(_)` and `false` for `Ok(_)`.
+- `result::map(result, f)` applies `f` to the `Ok` payload and preserves `Err` unchanged.
+- `result::map_err(result, f)` applies `f` to the `Err` payload and preserves `Ok` unchanged.
+- `result::and_then(result, f)` applies `f` to the `Ok` payload when `f` itself returns `Result[U, E]`, and preserves `Err` unchanged.
+- `result::value_or(result, fallback)` unwraps `Ok(value)` or returns `fallback` for `Err`.
+- these helpers transform a `Result` value; they do not return early from the enclosing function.
+- no helper performs implicit error conversion unless such a conversion API is explicitly added.
+
+When a function wants to unwrap intermediate values and propagate errors, use `try`:
+
+```muga
+fn load_age(path: String): Result[Int, String] {
+  text = try read_file(path)
+  age = try text.trim().parse_int()
+  Result::Ok(age)
+}
+```
+
+This keeps the control-flow distinction explicit:
+
+- use `try expr`, and future `expr.try`, for function-level `Err` propagation
+- use `result::map` / `result::and_then` for fluent value transformation
+- use explicit `match` for local recovery or fallback behavior
+- do not make `Result` participate in `?.` optional chaining
+- do not automatically transform `Option[Result[T, E]]` into `Result[Option[T], E]` or the reverse
 
 Deferred alternatives:
 
-- postfix `expr?`: rejected for now as less readable and too close to future `T?`
+- postfix `expr?` for `Result`: rejected as too implicit for Muga's error-propagation direction
 - checked `throws`: deferred because it adds a separate effect system to function types and package interfaces
 - implicit exceptions: rejected as a default because failure would be hidden from ordinary signatures
 
@@ -297,6 +392,7 @@ Performance-specific representations can be handled later in MIR/native lowering
 - [x] Add exhaustive match checking over compiler-known enum variants.
 - [x] Add HIR, bytecode, and runtime support for compiler-known enum construction and matching.
 - [x] Add typed HIR support for enum declarations, variant constructors, match patterns, and enum types.
+- [x] Add payload discard `_` inside enum variant patterns without adding broad catch-all match arms.
 - [x] Add in-memory package interface summaries for public enum declarations.
 - [x] Preserve all existing `Option[T]` behavior and tests.
 - [x] Add `Result[T, E]` tests before adding any propagation operator.

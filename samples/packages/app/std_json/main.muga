@@ -1,0 +1,29 @@
+package app::std_json
+
+import std::json
+
+fn encode_config(name: String, score: Int, active: Bool): Result[String, json::Error] {
+  fields: Map[String, json::Value] = Map.empty()
+  value = json::Value::Object(fields.insert("active", json::Value::Bool(active)).insert("name", json::Value::String(name)).insert("score", json::int(score)))
+  json::encode(value)
+}
+
+fn main(): Result[String, json::Error] {
+  parsed = try json::parse("{\"name\":\"Ada\",\"score\":42,\"active\":true,\"items\":[1,2],\"tags\":[\"tool\",\"service\"],\"meta\":{\"team\":\"core\",\"labels\":[\"runtime\",\"json\"]}}")
+  name = try json::object_string_required(parsed, "name")
+  score = try json::object_int_required(parsed, "score")
+  active = try json::object_bool_required(parsed, "active")
+  label = try json::object_string_or(parsed, "label", "default")
+  item_ints = try json::object_int_array_required(parsed, "items")
+  tags = try json::object_string_array_required(parsed, "tags")
+  empty_items: List[json::Value] = []
+  fallback_items = try json::object_array_or(parsed, "fallback_items", empty_items)
+  meta = try json::object_object_required(parsed, "meta")
+  empty_meta: Map[String, json::Value] = Map.empty()
+  fallback_meta = try json::object_object_or(parsed, "fallback_meta", empty_meta)
+  team = try json::at_string_required(parsed, [json::PathSegment::Field("meta"), json::PathSegment::Field("team")])
+  first_item = try json::at_int_required(parsed, [json::PathSegment::Field("items"), json::PathSegment::Index(0)])
+  labels = try json::at_string_array_required(parsed, [json::PathSegment::Field("meta"), json::PathSegment::Field("labels")])
+  encoded = try encode_config(name, score, active)
+  Result::Ok(label.concat("|").concat(name).concat("|").concat(score.to_string()).concat("|").concat(active.to_string()).concat("|").concat(item_ints.len().to_string()).concat("|").concat(tags.len().to_string()).concat("|").concat(fallback_items.len().to_string()).concat("|").concat(meta.len().to_string()).concat("|").concat(fallback_meta.len().to_string()).concat("|").concat(team).concat("|").concat(first_item.to_string()).concat("|").concat(labels.len().to_string()).concat("|").concat(encoded))
+}

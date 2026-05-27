@@ -1,0 +1,23 @@
+package app::std_map
+
+import std::map
+
+fn first(items: List[String]): String {
+  match items.get(0) {
+    Option::Some(value) => value
+    Option::None => "missing"
+  }
+}
+
+fn second_number(items: List[Int]): String {
+  match items.get(1) {
+    Option::Some(value) => value.to_string()
+    Option::None => "missing"
+  }
+}
+
+fn main(): String {
+  items: Map[String, Int] = Map.empty()
+  filled = items.insert("a", 1).insert("b", 2)
+  first(filled.map::keys()).concat(":").concat(second_number(filled.map::values()))
+}

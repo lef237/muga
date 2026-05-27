@@ -31,6 +31,54 @@ pub struct ImportDecl {
     pub span: Span,
 }
 
+#[derive(Clone, Debug)]
+pub struct Attribute {
+    pub name: String,
+    pub arguments: Vec<AttributeArgument>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct AttributeArgument {
+    pub name: String,
+    pub value: Option<AttributeArgumentValue>,
+    pub span: Span,
+}
+
+impl AttributeArgument {
+    pub fn string_value(&self) -> Option<&str> {
+        self.value
+            .as_ref()
+            .and_then(AttributeArgumentValue::as_string)
+    }
+
+    pub fn int_value(&self) -> Option<i64> {
+        self.value.as_ref().and_then(AttributeArgumentValue::as_int)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AttributeArgumentValue {
+    String(String),
+    Int(i64),
+}
+
+impl AttributeArgumentValue {
+    pub fn as_string(&self) -> Option<&str> {
+        match self {
+            Self::String(value) => Some(value),
+            Self::Int(_) => None,
+        }
+    }
+
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            Self::String(_) => None,
+            Self::Int(value) => Some(*value),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Visibility {
     Private,
@@ -43,9 +91,15 @@ pub enum Stmt {
     Assign(AssignStmt),
     RecordDecl(RecordDecl),
     EnumDecl(EnumDecl),
+    OpaqueTypeDecl(OpaqueTypeDecl),
     FuncDecl(FuncDecl),
     If(IfStmt),
     While(WhileStmt),
+    For(ForStmt),
+    Using(UsingStmt),
+    Break(BreakStmt),
+    Continue(ContinueStmt),
+    Return(ReturnStmt),
     Expr(ExprStmt),
 }
 
@@ -55,9 +109,15 @@ impl Stmt {
             Self::Assign(stmt) => stmt.id,
             Self::RecordDecl(stmt) => stmt.id,
             Self::EnumDecl(stmt) => stmt.id,
+            Self::OpaqueTypeDecl(stmt) => stmt.id,
             Self::FuncDecl(stmt) => stmt.id,
             Self::If(stmt) => stmt.id,
             Self::While(stmt) => stmt.id,
+            Self::For(stmt) => stmt.id,
+            Self::Using(stmt) => stmt.id,
+            Self::Break(stmt) => stmt.id,
+            Self::Continue(stmt) => stmt.id,
+            Self::Return(stmt) => stmt.id,
             Self::Expr(stmt) => stmt.id,
         }
     }
@@ -67,9 +127,15 @@ impl Stmt {
             Self::Assign(stmt) => stmt.span,
             Self::RecordDecl(stmt) => stmt.span,
             Self::EnumDecl(stmt) => stmt.span,
+            Self::OpaqueTypeDecl(stmt) => stmt.span,
             Self::FuncDecl(stmt) => stmt.span,
             Self::If(stmt) => stmt.span,
             Self::While(stmt) => stmt.span,
+            Self::For(stmt) => stmt.span,
+            Self::Using(stmt) => stmt.span,
+            Self::Break(stmt) => stmt.span,
+            Self::Continue(stmt) => stmt.span,
+            Self::Return(stmt) => stmt.span,
             Self::Expr(stmt) => stmt.span,
         }
     }
@@ -91,6 +157,8 @@ pub struct RecordDecl {
     pub name: String,
     pub package_item: Option<PackageItemId>,
     pub visibility: Visibility,
+    pub attributes: Vec<Attribute>,
+    pub doc_comments: Vec<String>,
     pub type_params: Vec<String>,
     pub fields: Vec<RecordFieldDecl>,
     pub span: Span,
@@ -98,6 +166,7 @@ pub struct RecordDecl {
 
 #[derive(Clone, Debug)]
 pub struct RecordFieldDecl {
+    pub attributes: Vec<Attribute>,
     pub name: String,
     pub type_name: TypeExpr,
     pub span: Span,
@@ -109,6 +178,8 @@ pub struct EnumDecl {
     pub name: String,
     pub package_item: Option<PackageItemId>,
     pub visibility: Visibility,
+    pub attributes: Vec<Attribute>,
+    pub doc_comments: Vec<String>,
     pub type_params: Vec<String>,
     pub variants: Vec<EnumVariantDecl>,
     pub span: Span,
@@ -116,8 +187,19 @@ pub struct EnumDecl {
 
 #[derive(Clone, Debug)]
 pub struct EnumVariantDecl {
+    pub attributes: Vec<Attribute>,
     pub name: String,
     pub payload: Option<TypeExpr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct OpaqueTypeDecl {
+    pub id: StmtId,
+    pub name: String,
+    pub package_item: Option<PackageItemId>,
+    pub visibility: Visibility,
+    pub doc_comments: Vec<String>,
     pub span: Span,
 }
 
@@ -127,6 +209,8 @@ pub struct FuncDecl {
     pub name: String,
     pub package_item: Option<PackageItemId>,
     pub visibility: Visibility,
+    pub attributes: Vec<Attribute>,
+    pub doc_comments: Vec<String>,
     pub type_params: Vec<String>,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
@@ -159,6 +243,45 @@ pub struct WhileStmt {
 }
 
 #[derive(Clone, Debug)]
+pub struct ForStmt {
+    pub id: StmtId,
+    pub item: String,
+    pub item_span: Span,
+    pub iterable: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct UsingStmt {
+    pub id: StmtId,
+    pub name: String,
+    pub name_span: Span,
+    pub value: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct BreakStmt {
+    pub id: StmtId,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct ContinueStmt {
+    pub id: StmtId,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct ReturnStmt {
+    pub id: StmtId,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
 pub struct ExprStmt {
     pub id: StmtId,
     pub expr: Expr,
@@ -175,6 +298,7 @@ pub struct Block {
 pub struct ValueBlock {
     pub statements: Vec<Stmt>,
     pub expr: Box<Expr>,
+    pub terminal_return: bool,
     pub span: Span,
 }
 
@@ -351,6 +475,8 @@ pub enum BinaryOp {
     GtEq,
     EqEq,
     BangEq,
+    And,
+    Or,
 }
 
 #[derive(Clone, Debug)]
@@ -366,6 +492,7 @@ pub struct BinaryExpr {
 pub struct CallExpr {
     pub id: ExprId,
     pub callee: Box<Expr>,
+    pub type_args: Vec<TypeExpr>,
     pub args: Vec<Expr>,
     pub origin: CallOrigin,
     pub span: Span,
@@ -418,8 +545,15 @@ pub enum MatchPattern {
 pub struct EnumVariantPattern {
     pub enum_name: String,
     pub variant_name: String,
-    pub binding: Option<String>,
+    pub payload: EnumVariantPatternPayload,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum EnumVariantPatternPayload {
+    None,
+    Binding(String),
+    Discard,
 }
 
 impl MatchPattern {
@@ -480,6 +614,9 @@ impl NodeIdAssigner {
             Stmt::EnumDecl(stmt) => {
                 stmt.id = self.stmt_id();
             }
+            Stmt::OpaqueTypeDecl(stmt) => {
+                stmt.id = self.stmt_id();
+            }
             Stmt::FuncDecl(stmt) => {
                 stmt.id = self.stmt_id();
                 self.assign_value_block(&mut stmt.body);
@@ -496,6 +633,26 @@ impl NodeIdAssigner {
                 stmt.id = self.stmt_id();
                 self.assign_expr(&mut stmt.condition);
                 self.assign_block(&mut stmt.body);
+            }
+            Stmt::For(stmt) => {
+                stmt.id = self.stmt_id();
+                self.assign_expr(&mut stmt.iterable);
+                self.assign_block(&mut stmt.body);
+            }
+            Stmt::Using(stmt) => {
+                stmt.id = self.stmt_id();
+                self.assign_expr(&mut stmt.value);
+                self.assign_block(&mut stmt.body);
+            }
+            Stmt::Break(stmt) => {
+                stmt.id = self.stmt_id();
+            }
+            Stmt::Continue(stmt) => {
+                stmt.id = self.stmt_id();
+            }
+            Stmt::Return(stmt) => {
+                stmt.id = self.stmt_id();
+                self.assign_expr(&mut stmt.value);
             }
             Stmt::Expr(stmt) => {
                 stmt.id = self.stmt_id();

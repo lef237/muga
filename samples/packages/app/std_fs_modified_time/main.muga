@@ -1,0 +1,16 @@
+package app::std_fs_modified_time
+
+import std::fs
+import std::path
+
+fn main(): String {
+  target = path::from_string("samples/packages/app/std_fs_modified_time/main.muga")
+  match fs::modified_unix_millis_path(target) {
+    Result::Ok(modified) => if modified.value > 0 {
+      "ok"
+    } else {
+      "invalid"
+    }
+    Result::Err(error) => error.operation
+  }
+}

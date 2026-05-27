@@ -110,7 +110,7 @@ Current typed HIR status:
 - call expressions carry explicit resolved callee shape and call origin
 - package item statements, call targets, and package record types carry `PackageItemId`-backed identity
 - typed HIR lowering reads package item identity from the AST instead of recovering it from flattened mangled names
-- `Option` and `Result` match patterns are represented as enum variant patterns with enum name, variant name, and optional payload binding
+- `Option` and `Result` match patterns are represented as enum variant patterns with enum name, variant name, and explicit payload mode (`none`, binding, or discard)
 - compiler-known enum metadata describes `Option` and `Result`, while user-defined enum declarations carry package item identity through typed HIR, package interfaces, MIR lowering, bytecode, and runtime values
 
 ## Current Migration Status
@@ -131,7 +131,7 @@ Done:
 - typed HIR package identifiers, public item statements, call targets, and record types point to package item identities
 - shared public `TypeInfo` data lives in `types` instead of being owned by typechecker internals
 - diagnostics support related notes and suggestions for selected resolver, typechecker, and package errors
-- `interface` can generate in-memory package interface summaries for public records, enums, and functions from typed HIR item identities
+- `interface` can generate in-memory package interface summaries for public records, enums, opaque types, and functions from typed HIR item identities
 - `interface` validates public package references against generated interface summaries
 - `interface` validation uses package/name lookup and checks stale public item identity, function signatures, and record field shapes
 - import/package-qualified lookup is routed through `interface::PackageExportGraph` before whole-program flattening

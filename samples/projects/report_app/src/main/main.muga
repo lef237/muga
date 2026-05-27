@@ -1,0 +1,44 @@
+import report_shared::reports
+import std::cli
+import std::env
+import std::fs
+import std::io
+import std::path
+
+fn default_output_path(): path::Path {
+  home = match env::get_var("HOME") {
+    Option::Some(value) => value
+    Option::None => "."
+  }
+  path::join(path::join(path::from_string(home), "tmp"), "muga-report-app-summary.txt")
+}
+
+fn ensure_parent(file_path: path::Path): Result[Unit, io::IOError] {
+  match path::parent(file_path) {
+    Option::Some(parent) => fs::create_dir_all_path(parent)
+    Option::None => Result::Ok(())
+  }
+}
+
+fn write_report(file_path: path::Path, text: String): Result[Unit, io::IOError] {
+  using file = try fs::create_text(file_path) {
+    wrote = try fs::write_text_to(file, text)
+    flushed = try fs::flush(file)
+  }
+  Result::Ok(())
+}
+
+fn main(): Result[String, io::IOError] {
+  args = env::args()
+  input = path::from_string(cli::positional_or(args, 0, "samples/projects/report_app/data/daily.txt"))
+  output = path::from_string(cli::positional_or(args, 1, path::as_string(default_output_path())))
+  made_parent = try ensure_parent(output)
+  report = try reports::load_report(input)
+  summary = reports::summarize(report)
+  rendered = reports::render_summary(summary, path::as_string(input))
+  wrote = try write_report(output, rendered)
+  printed = println(summary)
+  warned = eprintln("wrote report ".concat(path::as_string(output)))
+  missing = path::from_string("samples/projects/report_app/data/missing.txt")
+  Result::Ok(summary.concat("|").concat(reports::error_operation(missing)).concat("|").concat(args.len().to_string()))
+}

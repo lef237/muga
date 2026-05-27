@@ -331,7 +331,7 @@ box: Box[Int] = Box {
 }
 ```
 
-Record literals use the record name itself. For generic records, type arguments are inferred from field values or from an expected type such as a binding annotation, parameter type, return type, or surrounding expression. Explicit record-literal type arguments such as `Box[Int] { ... }` are not part of the v1 surface syntax.
+Record literals use the record name itself. For generic records, type arguments are inferred from field values or from an expected type such as a binding annotation, parameter type, return type, or surrounding expression. When an expected generic record type is known, the instantiated field types are also available to contextual field values such as `[]`, `Map.empty()`, and `Option::None`. Explicit record-literal type arguments such as `Box[Int] { ... }` are not part of the v1 surface syntax.
 
 Generic record fields still follow the same record rules:
 

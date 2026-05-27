@@ -1,0 +1,9 @@
+package app::std_path_join
+
+import std::path
+
+fn main(): String {
+  base = path::from_string("samples/packages/app")
+  joined = path::join(base, "std_path_join/main.muga")
+  path::as_string(joined)
+}

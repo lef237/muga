@@ -200,11 +200,13 @@ fn combine(a: Int, b: Int, f: (Int, Int) -> Int): Int {
 
 ## 7. Return Semantics
 
-The value of a function is the value of the final expression in its body.
+The value of a function is normally the value of the final expression in its body.
 
-`return` is not required in v1.
+`return expr` is available for explicit early exit. It returns from the nearest named or anonymous function, so a `return` inside a closure does not return from the caller.
 
-Function bodies are value blocks, so every function body ends with a final expression.
+The same function boundary applies to loop control: `break` and `continue` inside a nested named or anonymous function cannot target a loop in the caller.
+
+Function bodies are value blocks, so every function body ends with a final expression or a terminal `return expr`.
 
 Example:
 
@@ -317,11 +319,53 @@ fn is_odd(n) {
 }
 ```
 
-## 12. Summary
+## 12. Static Test Attribute
+
+The `@test` attribute is compiler-recognized static metadata for the `muga test`
+tool. It is allowed only directly before a named function declaration.
+
+```txt
+@test
+fn parses_age(): Result[Unit, String] {
+  age = try "42".parse_int()
+  Result::Ok(())
+}
+```
+
+`@test` does not expand code, rewrite the function body, add runtime
+reflection, or change normal name resolution. The function remains an ordinary
+function declaration.
+
+Test functions must have no parameters and must return either `Unit` or
+`Result[Unit, E]`. Returning `()` or `Result::Ok(())` passes. Returning
+`Result::Err(error)` fails the test and reports the error payload.
+
+The standard `std::test` package provides the first scalar assertion helpers:
+`test::assert_true`, `test::assert_eq_int`, `test::assert_eq_bool`, and
+`test::assert_eq_string`. They return `Result[Unit, String]`, so tests can use
+`try` to stop at the first failed assertion:
+
+```txt
+import std::test
+
+@test
+fn parses_age(): Result[Unit, String] {
+  age = try "42".parse_int()
+  test::assert_eq_int(42, age)
+}
+```
+
+There is no generic structural `assert_eq` in v1. Test equality follows the language equality policy: scalar equality for `Int`, `Bool`, and `String` only. Records, enums, `Option`, `Result`, lists, and maps should be checked by matching or projecting scalar fields explicitly.
+
+Attributes other than `@test`, and `@test` on non-function declarations, are
+rejected in v1.
+
+## 13. Summary
 
 Functions in v1 are ordinary immutable bindings of function values, with:
 
 - immutable parameters
+- optional `@test` metadata for the `muga test` tool
 - optional receiver-style first parameters whose names are unconstrained
 - higher-order use through function values and function-type annotations
 - generic functions with explicit type parameter lists

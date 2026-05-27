@@ -6,7 +6,12 @@
 //! tied to legacy AST lowering.
 
 use crate::{
+    cli_schema::{
+        CliCommandVariantSchema, CliEnumVariantSchema, CliFieldSchema, CliSchema,
+        CliSubcommandSchema, CliValueSchema,
+    },
     identity::{BindingId, BindingKind, PackageItemId},
+    json_decode::{JsonDecodeFieldSchema, JsonDecodeSchema, JsonDecodeVariantSchema},
     known_enum,
     package::PackageSymbolGraph,
     span::Span,
@@ -69,6 +74,11 @@ pub enum Stmt {
     Assign(AssignStmt),
     If(IfStmt),
     While(WhileStmt),
+    For(ForStmt),
+    Using(UsingStmt),
+    Break(BreakStmt),
+    Continue(ContinueStmt),
+    Return(ReturnStmt),
     Expr(ExprStmt),
 }
 
@@ -78,6 +88,11 @@ impl Stmt {
             Self::Assign(stmt) => stmt.span,
             Self::If(stmt) => stmt.span,
             Self::While(stmt) => stmt.span,
+            Self::For(stmt) => stmt.span,
+            Self::Using(stmt) => stmt.span,
+            Self::Break(stmt) => stmt.span,
+            Self::Continue(stmt) => stmt.span,
+            Self::Return(stmt) => stmt.span,
             Self::Expr(stmt) => stmt.span,
         }
     }
@@ -118,6 +133,51 @@ pub struct WhileStmt {
 }
 
 #[derive(Clone, Debug)]
+pub struct ForStmt {
+    pub item: Symbol,
+    pub item_binding: BindingId,
+    pub iterable: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct UsingStmt {
+    pub name: Symbol,
+    pub binding: BindingId,
+    pub value: Expr,
+    pub body: Block,
+    pub cleanup: UsingCleanup,
+    pub result_enum: Symbol,
+    pub ok_variant: Symbol,
+    pub err_variant: Symbol,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct UsingCleanup {
+    pub name: Symbol,
+    pub target: IdentTarget,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct BreakStmt {
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct ContinueStmt {
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct ReturnStmt {
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
 pub struct ExprStmt {
     pub expr: Expr,
     pub span: Span,
@@ -135,6 +195,7 @@ pub struct ValueBlock {
     pub function_defs: Vec<FunctionDef>,
     pub statements: Vec<Stmt>,
     pub expr: Box<Expr>,
+    pub terminal_return: bool,
     pub span: Span,
 }
 
@@ -151,6 +212,20 @@ pub enum Expr {
     EnumVariant(EnumVariantExpr),
     Field(FieldExpr),
     RecordUpdate(RecordUpdateExpr),
+    JsonDecode(JsonDecodeExpr),
+    JsonDecodeOr(JsonDecodeOrExpr),
+    JsonToValue(JsonToValueExpr),
+    JsonEncodeTyped(JsonEncodeTypedExpr),
+    ConfigLoadJson(ConfigLoadJsonExpr),
+    ConfigLoadJsonOr(ConfigLoadJsonOrExpr),
+    CliParse(CliParseExpr),
+    CliParseOr(CliParseOrExpr),
+    CliParseRequest(CliParseRequestExpr),
+    CliParseRequestOr(CliParseRequestOrExpr),
+    CliUsageFor(CliUsageForExpr),
+    CliUsageForRequired(CliUsageForRequiredExpr),
+    CliHelpFor(CliHelpForExpr),
+    CliHelpForRequired(CliHelpForRequiredExpr),
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     Call(CallExpr),
@@ -174,6 +249,20 @@ impl Expr {
             Self::EnumVariant(expr) => expr.span,
             Self::Field(expr) => expr.span,
             Self::RecordUpdate(expr) => expr.span,
+            Self::JsonDecode(expr) => expr.span,
+            Self::JsonDecodeOr(expr) => expr.span,
+            Self::JsonToValue(expr) => expr.span,
+            Self::JsonEncodeTyped(expr) => expr.span,
+            Self::ConfigLoadJson(expr) => expr.span,
+            Self::ConfigLoadJsonOr(expr) => expr.span,
+            Self::CliParse(expr) => expr.span,
+            Self::CliParseOr(expr) => expr.span,
+            Self::CliParseRequest(expr) => expr.span,
+            Self::CliParseRequestOr(expr) => expr.span,
+            Self::CliUsageFor(expr) => expr.span,
+            Self::CliUsageForRequired(expr) => expr.span,
+            Self::CliHelpFor(expr) => expr.span,
+            Self::CliHelpForRequired(expr) => expr.span,
             Self::Unary(expr) => expr.span,
             Self::Binary(expr) => expr.span,
             Self::Call(expr) => expr.span,
@@ -281,6 +370,112 @@ pub struct RecordUpdateExpr {
     pub span: Span,
 }
 
+#[derive(Clone, Debug)]
+pub struct JsonDecodeExpr {
+    pub value: Box<Expr>,
+    pub schema: JsonDecodeSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct JsonDecodeOrExpr {
+    pub value: Box<Expr>,
+    pub fallback: Box<Expr>,
+    pub schema: JsonDecodeSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct JsonToValueExpr {
+    pub value: Box<Expr>,
+    pub schema: JsonDecodeSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct JsonEncodeTypedExpr {
+    pub value: Box<Expr>,
+    pub schema: JsonDecodeSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConfigLoadJsonExpr {
+    pub path: Box<Expr>,
+    pub schema: JsonDecodeSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConfigLoadJsonOrExpr {
+    pub path: Box<Expr>,
+    pub fallback: Box<Expr>,
+    pub schema: JsonDecodeSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliParseOrExpr {
+    pub args: Box<Expr>,
+    pub defaults: Box<Expr>,
+    pub schema: CliSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliParseExpr {
+    pub args: Box<Expr>,
+    pub schema: CliSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliParseRequestExpr {
+    pub args: Box<Expr>,
+    pub program: Box<Expr>,
+    pub schema: CliSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliParseRequestOrExpr {
+    pub args: Box<Expr>,
+    pub program: Box<Expr>,
+    pub defaults: Box<Expr>,
+    pub schema: CliSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliUsageForExpr {
+    pub program: Box<Expr>,
+    pub defaults: Box<Expr>,
+    pub schema: CliSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliUsageForRequiredExpr {
+    pub program: Box<Expr>,
+    pub schema: CliSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliHelpForExpr {
+    pub program: Box<Expr>,
+    pub defaults: Box<Expr>,
+    pub schema: CliSchema,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct CliHelpForRequiredExpr {
+    pub program: Box<Expr>,
+    pub schema: CliSchema,
+    pub span: Span,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     Neg,
@@ -306,6 +501,8 @@ pub enum BinaryOp {
     GtEq,
     EqEq,
     BangEq,
+    And,
+    Or,
 }
 
 #[derive(Clone, Debug)]
@@ -363,8 +560,15 @@ pub enum MatchPattern {
 pub struct EnumVariantPattern {
     pub enum_name: Symbol,
     pub variant_name: Symbol,
-    pub binding: Option<PatternBinding>,
+    pub payload: EnumVariantPatternPayload,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum EnumVariantPatternPayload {
+    None,
+    Binding(PatternBinding),
+    Discard,
 }
 
 #[derive(Clone, Debug)]
@@ -461,6 +665,7 @@ impl TypedLowerer<'_> {
             }),
             typed_hir::Stmt::Record(_)
             | typed_hir::Stmt::Enum(_)
+            | typed_hir::Stmt::OpaqueType(_)
             | typed_hir::Stmt::Function(_) => {
                 return None;
             }
@@ -476,6 +681,42 @@ impl TypedLowerer<'_> {
             typed_hir::Stmt::While(stmt) => Stmt::While(WhileStmt {
                 condition: self.lower_expr(&stmt.condition),
                 body: self.lower_block(&stmt.body),
+                span: stmt.span,
+            }),
+            typed_hir::Stmt::For(stmt) => Stmt::For(ForStmt {
+                item: self.symbol(&stmt.item),
+                item_binding: stmt.item_binding,
+                iterable: self.lower_expr(&stmt.iterable),
+                body: self.lower_block(&stmt.body),
+                span: stmt.span,
+            }),
+            typed_hir::Stmt::Using(stmt) => Stmt::Using(UsingStmt {
+                name: self.symbol(&stmt.name),
+                binding: stmt.binding,
+                value: self.lower_expr(&stmt.value),
+                body: self.lower_block(&stmt.body),
+                cleanup: UsingCleanup {
+                    name: self.symbol(&stmt.cleanup.name),
+                    target: match stmt.cleanup.target {
+                        typed_hir::IdentTarget::Binding(binding) => IdentTarget::Binding(binding),
+                        typed_hir::IdentTarget::PackageItem { binding, item } => {
+                            IdentTarget::PackageItem { binding, item }
+                        }
+                        typed_hir::IdentTarget::EnumVariant { .. } => {
+                            unreachable!("using cleanup cannot target enum variant")
+                        }
+                    },
+                    span: stmt.cleanup.span,
+                },
+                result_enum: self.symbol(known_enum::RESULT_NAME),
+                ok_variant: self.symbol(known_enum::RESULT_OK_NAME),
+                err_variant: self.symbol(known_enum::RESULT_ERR_NAME),
+                span: stmt.span,
+            }),
+            typed_hir::Stmt::Break(stmt) => Stmt::Break(BreakStmt { span: stmt.span }),
+            typed_hir::Stmt::Continue(stmt) => Stmt::Continue(ContinueStmt { span: stmt.span }),
+            typed_hir::Stmt::Return(stmt) => Stmt::Return(ReturnStmt {
+                value: self.lower_expr(&stmt.value),
                 span: stmt.span,
             }),
             typed_hir::Stmt::Expr(stmt) => Stmt::Expr(ExprStmt {
@@ -500,6 +741,7 @@ impl TypedLowerer<'_> {
             function_defs,
             statements,
             expr: Box::new(self.lower_expr(&block.expr)),
+            terminal_return: block.terminal_return,
             span: block.span,
         }
     }
@@ -584,6 +826,8 @@ impl TypedLowerer<'_> {
                     typed_hir::BinaryOp::GtEq => BinaryOp::GtEq,
                     typed_hir::BinaryOp::EqEq => BinaryOp::EqEq,
                     typed_hir::BinaryOp::BangEq => BinaryOp::BangEq,
+                    typed_hir::BinaryOp::And => BinaryOp::And,
+                    typed_hir::BinaryOp::Or => BinaryOp::Or,
                 },
                 left: Box::new(self.lower_expr(&binary.left)),
                 right: Box::new(self.lower_expr(&binary.right)),
@@ -653,6 +897,192 @@ impl TypedLowerer<'_> {
                 span,
             });
         }
+        if let Some(schema) = expr.json_required_decode_schema.as_ref() {
+            let value = expr
+                .args
+                .first()
+                .expect("json::decode schema call should have value argument");
+            return Expr::JsonDecode(JsonDecodeExpr {
+                value: Box::new(self.lower_expr(value)),
+                schema: self.lower_json_decode_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.json_decode_schema.as_ref() {
+            let mut args = expr.args.iter();
+            let value = args
+                .next()
+                .expect("json::decode_or schema call should have value argument");
+            let fallback = args
+                .next()
+                .expect("json::decode_or schema call should have fallback argument");
+            return Expr::JsonDecodeOr(JsonDecodeOrExpr {
+                value: Box::new(self.lower_expr(value)),
+                fallback: Box::new(self.lower_expr(fallback)),
+                schema: self.lower_json_decode_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.json_to_value_schema.as_ref() {
+            let value = expr
+                .args
+                .first()
+                .expect("json::to_value schema call should have value argument");
+            return Expr::JsonToValue(JsonToValueExpr {
+                value: Box::new(self.lower_expr(value)),
+                schema: self.lower_json_decode_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.json_encode_typed_schema.as_ref() {
+            let value = expr
+                .args
+                .first()
+                .expect("json::encode_typed schema call should have value argument");
+            return Expr::JsonEncodeTyped(JsonEncodeTypedExpr {
+                value: Box::new(self.lower_expr(value)),
+                schema: self.lower_json_decode_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.config_required_load_json_schema.as_ref() {
+            let path = expr
+                .args
+                .first()
+                .expect("config::load_json schema call should have path argument");
+            return Expr::ConfigLoadJson(ConfigLoadJsonExpr {
+                path: Box::new(self.lower_expr(path)),
+                schema: self.lower_json_decode_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.config_load_json_schema.as_ref() {
+            let mut args = expr.args.iter();
+            let path = args
+                .next()
+                .expect("config::load_json_or schema call should have path argument");
+            let fallback = args
+                .next()
+                .expect("config::load_json_or schema call should have fallback argument");
+            return Expr::ConfigLoadJsonOr(ConfigLoadJsonOrExpr {
+                path: Box::new(self.lower_expr(path)),
+                fallback: Box::new(self.lower_expr(fallback)),
+                schema: self.lower_json_decode_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.cli_parse_or_schema.as_ref() {
+            let mut args = expr.args.iter();
+            let cli_args = args
+                .next()
+                .expect("cli::parse_or schema call should have args argument");
+            let defaults = args
+                .next()
+                .expect("cli::parse_or schema call should have defaults argument");
+            return Expr::CliParseOr(CliParseOrExpr {
+                args: Box::new(self.lower_expr(cli_args)),
+                defaults: Box::new(self.lower_expr(defaults)),
+                schema: self.lower_cli_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.cli_parse_schema.as_ref() {
+            let mut args = expr.args.iter();
+            let cli_args = args
+                .next()
+                .expect("cli::parse schema call should have args argument");
+            return Expr::CliParse(CliParseExpr {
+                args: Box::new(self.lower_expr(cli_args)),
+                schema: self.lower_cli_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.cli_parse_request_schema.as_ref() {
+            let mut args = expr.args.iter();
+            let cli_args = args
+                .next()
+                .expect("cli::parse_request schema call should have args argument");
+            let program = args
+                .next()
+                .expect("cli::parse_request schema call should have program argument");
+            return Expr::CliParseRequest(CliParseRequestExpr {
+                args: Box::new(self.lower_expr(cli_args)),
+                program: Box::new(self.lower_expr(program)),
+                schema: self.lower_cli_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.cli_parse_request_or_schema.as_ref() {
+            let mut args = expr.args.iter();
+            let cli_args = args
+                .next()
+                .expect("cli::parse_request_or schema call should have args argument");
+            let program = args
+                .next()
+                .expect("cli::parse_request_or schema call should have program argument");
+            let defaults = args
+                .next()
+                .expect("cli::parse_request_or schema call should have defaults argument");
+            return Expr::CliParseRequestOr(CliParseRequestOrExpr {
+                args: Box::new(self.lower_expr(cli_args)),
+                program: Box::new(self.lower_expr(program)),
+                defaults: Box::new(self.lower_expr(defaults)),
+                schema: self.lower_cli_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.cli_usage_for_schema.as_ref() {
+            let mut args = expr.args.iter();
+            let program = args
+                .next()
+                .expect("cli::usage_for schema call should have program argument");
+            let defaults = args
+                .next()
+                .expect("cli::usage_for schema call should have defaults argument");
+            return Expr::CliUsageFor(CliUsageForExpr {
+                program: Box::new(self.lower_expr(program)),
+                defaults: Box::new(self.lower_expr(defaults)),
+                schema: self.lower_cli_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.cli_usage_for_required_schema.as_ref() {
+            let program = expr
+                .args
+                .first()
+                .expect("cli::usage_for_required schema call should have program argument");
+            return Expr::CliUsageForRequired(CliUsageForRequiredExpr {
+                program: Box::new(self.lower_expr(program)),
+                schema: self.lower_cli_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.cli_help_for_schema.as_ref() {
+            let mut args = expr.args.iter();
+            let program = args
+                .next()
+                .expect("cli::help_for schema call should have program argument");
+            let defaults = args
+                .next()
+                .expect("cli::help_for schema call should have defaults argument");
+            return Expr::CliHelpFor(CliHelpForExpr {
+                program: Box::new(self.lower_expr(program)),
+                defaults: Box::new(self.lower_expr(defaults)),
+                schema: self.lower_cli_schema(schema),
+                span,
+            });
+        }
+        if let Some(schema) = expr.cli_help_for_required_schema.as_ref() {
+            let program = expr
+                .args
+                .first()
+                .expect("cli::help_for_required schema call should have program argument");
+            return Expr::CliHelpForRequired(CliHelpForRequiredExpr {
+                program: Box::new(self.lower_expr(program)),
+                schema: self.lower_cli_schema(schema),
+                span,
+            });
+        }
         Expr::Call(CallExpr {
             callee: Box::new(self.lower_expr(&expr.callee)),
             args: expr.args.iter().map(|arg| self.lower_expr(arg)).collect(),
@@ -687,16 +1117,27 @@ impl TypedLowerer<'_> {
             pattern: MatchPattern::Variant(EnumVariantPattern {
                 enum_name,
                 variant_name: self.symbol(&pattern.variant_name),
-                binding: pattern.binding_name.as_ref().zip(pattern.binding).map(
-                    |(name, binding)| PatternBinding {
-                        name: self.symbol(name),
-                        binding,
-                    },
-                ),
+                payload: self.lower_match_pattern_payload(&pattern.payload),
                 span: pattern.span,
             }),
             value: self.lower_expr(&arm.value),
             span: arm.span,
+        }
+    }
+
+    fn lower_match_pattern_payload(
+        &mut self,
+        payload: &typed_hir::EnumVariantPatternPayload,
+    ) -> EnumVariantPatternPayload {
+        match payload {
+            typed_hir::EnumVariantPatternPayload::None => EnumVariantPatternPayload::None,
+            typed_hir::EnumVariantPatternPayload::Binding { name, binding } => {
+                EnumVariantPatternPayload::Binding(PatternBinding {
+                    name: self.symbol(name),
+                    binding: *binding,
+                })
+            }
+            typed_hir::EnumVariantPatternPayload::Discard => EnumVariantPatternPayload::Discard,
         }
     }
 
@@ -798,6 +1239,199 @@ impl TypedLowerer<'_> {
 
     fn symbol(&mut self, name: &str) -> Symbol {
         self.symbols.intern(name)
+    }
+
+    fn lower_cli_schema(&mut self, schema: &CliSchema) -> CliSchema {
+        let fallback = self.source_symbols.resolve(schema.type_name).to_string();
+        CliSchema {
+            type_name: schema
+                .package_item
+                .map(|item| self.package_item_symbol(item, &fallback))
+                .unwrap_or_else(|| self.symbol(&fallback)),
+            package_item: None,
+            about: schema.about.map(|about| self.source_symbol(about)),
+            fields: schema
+                .fields
+                .iter()
+                .map(|field| CliFieldSchema {
+                    name: self.source_symbol(field.name),
+                    option_name: self.source_symbol(field.option_name),
+                    short: field.short.map(|short| self.source_symbol(short)),
+                    position: field.position,
+                    value_source: field.value_source,
+                    aliases: field
+                        .aliases
+                        .iter()
+                        .map(|alias| self.source_symbol(*alias))
+                        .collect(),
+                    help: field.help.map(|help| self.source_symbol(help)),
+                    hidden: field.hidden,
+                    validation: field.validation.clone(),
+                    value: self.lower_cli_value_schema(&field.value),
+                })
+                .collect(),
+            commands: schema
+                .commands
+                .iter()
+                .map(|command| CliCommandVariantSchema {
+                    variant_name: self.source_symbol(command.variant_name),
+                    command_name: self.source_symbol(command.command_name),
+                    aliases: command
+                        .aliases
+                        .iter()
+                        .map(|alias| self.source_symbol(*alias))
+                        .collect(),
+                    about: command.about.map(|about| self.source_symbol(about)),
+                    hidden: command.hidden,
+                    payload: Box::new(self.lower_cli_schema(&command.payload)),
+                })
+                .collect(),
+            subcommand: schema
+                .subcommand
+                .as_ref()
+                .map(|subcommand| CliSubcommandSchema {
+                    field_name: self.source_symbol(subcommand.field_name),
+                    schema: Box::new(self.lower_cli_schema(&subcommand.schema)),
+                }),
+        }
+    }
+
+    fn lower_cli_value_schema(&mut self, schema: &CliValueSchema) -> CliValueSchema {
+        match schema {
+            CliValueSchema::String => CliValueSchema::String,
+            CliValueSchema::Int => CliValueSchema::Int,
+            CliValueSchema::Bool => CliValueSchema::Bool,
+            CliValueSchema::Option(item) => {
+                CliValueSchema::Option(Box::new(self.lower_cli_value_schema(item)))
+            }
+            CliValueSchema::StringList => CliValueSchema::StringList,
+            CliValueSchema::IntList => CliValueSchema::IntList,
+            CliValueSchema::BoolList => CliValueSchema::BoolList,
+            CliValueSchema::EnumList {
+                type_name,
+                package_item,
+                variants,
+            } => {
+                let fallback = self.source_symbols.resolve(*type_name).to_string();
+                CliValueSchema::EnumList {
+                    type_name: package_item
+                        .map(|item| self.package_item_symbol(item, &fallback))
+                        .unwrap_or_else(|| self.symbol(&fallback)),
+                    package_item: None,
+                    variants: variants
+                        .iter()
+                        .map(|variant| CliEnumVariantSchema {
+                            name: self.source_symbol(variant.name),
+                            tag: self.source_symbol(variant.tag),
+                        })
+                        .collect(),
+                }
+            }
+            CliValueSchema::Enum {
+                type_name,
+                package_item,
+                variants,
+            } => {
+                let fallback = self.source_symbols.resolve(*type_name).to_string();
+                CliValueSchema::Enum {
+                    type_name: package_item
+                        .map(|item| self.package_item_symbol(item, &fallback))
+                        .unwrap_or_else(|| self.symbol(&fallback)),
+                    package_item: None,
+                    variants: variants
+                        .iter()
+                        .map(|variant| CliEnumVariantSchema {
+                            name: self.source_symbol(variant.name),
+                            tag: self.source_symbol(variant.tag),
+                        })
+                        .collect(),
+                }
+            }
+        }
+    }
+
+    fn lower_json_decode_schema(&mut self, schema: &JsonDecodeSchema) -> JsonDecodeSchema {
+        match schema {
+            JsonDecodeSchema::String => JsonDecodeSchema::String,
+            JsonDecodeSchema::Int => JsonDecodeSchema::Int,
+            JsonDecodeSchema::Bool => JsonDecodeSchema::Bool,
+            JsonDecodeSchema::JsonValue => JsonDecodeSchema::JsonValue,
+            JsonDecodeSchema::StringList => JsonDecodeSchema::StringList,
+            JsonDecodeSchema::IntList => JsonDecodeSchema::IntList,
+            JsonDecodeSchema::BoolList => JsonDecodeSchema::BoolList,
+            JsonDecodeSchema::JsonObjectMap => JsonDecodeSchema::JsonObjectMap,
+            JsonDecodeSchema::Option(item) => {
+                JsonDecodeSchema::Option(Box::new(self.lower_json_decode_schema(item)))
+            }
+            JsonDecodeSchema::List(item) => {
+                JsonDecodeSchema::List(Box::new(self.lower_json_decode_schema(item)))
+            }
+            JsonDecodeSchema::TypedStringMap(item) => {
+                JsonDecodeSchema::TypedStringMap(Box::new(self.lower_json_decode_schema(item)))
+            }
+            JsonDecodeSchema::Record {
+                type_name,
+                package_item,
+                deny_unknown_fields,
+                fields,
+            } => {
+                let fallback = self.source_symbols.resolve(*type_name).to_string();
+                JsonDecodeSchema::Record {
+                    type_name: package_item
+                        .map(|item| self.package_item_symbol(item, &fallback))
+                        .unwrap_or_else(|| self.symbol(&fallback)),
+                    package_item: None,
+                    deny_unknown_fields: *deny_unknown_fields,
+                    fields: fields
+                        .iter()
+                        .map(|field| JsonDecodeFieldSchema {
+                            name: self.source_symbol(field.name),
+                            wire_name: field
+                                .wire_name
+                                .map(|wire_name| self.source_symbol(wire_name)),
+                            aliases: field
+                                .aliases
+                                .iter()
+                                .map(|alias| self.source_symbol(*alias))
+                                .collect(),
+                            validation: field.validation.clone(),
+                            schema: self.lower_json_decode_schema(&field.schema),
+                        })
+                        .collect(),
+                }
+            }
+            JsonDecodeSchema::Enum {
+                type_name,
+                package_item,
+                variants,
+            } => {
+                let fallback = self.source_symbols.resolve(*type_name).to_string();
+                JsonDecodeSchema::Enum {
+                    type_name: package_item
+                        .map(|item| self.package_item_symbol(item, &fallback))
+                        .unwrap_or_else(|| self.symbol(&fallback)),
+                    package_item: None,
+                    variants: variants
+                        .iter()
+                        .map(|variant| JsonDecodeVariantSchema {
+                            name: self.source_symbol(variant.name),
+                            wire_name: variant
+                                .wire_name
+                                .map(|wire_name| self.source_symbol(wire_name)),
+                            aliases: variant
+                                .aliases
+                                .iter()
+                                .map(|alias| self.source_symbol(*alias))
+                                .collect(),
+                            payload: variant
+                                .payload
+                                .as_ref()
+                                .map(|schema| self.lower_json_decode_schema(schema)),
+                        })
+                        .collect(),
+                }
+            }
+        }
     }
 }
 

@@ -1,0 +1,10 @@
+package app::std_env_temp_dir
+
+import std::env
+
+fn main(): String {
+  match env::temp_dir() {
+    Result::Ok(_) => "ok"
+    Result::Err(error) => error.kind
+  }
+}

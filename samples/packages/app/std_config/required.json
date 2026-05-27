@@ -1,0 +1,9 @@
+{
+  "owner": "Ada",
+  "server": {
+    "host": "api",
+    "port": 9090
+  },
+  "tags": ["strict", "config"],
+  "mode": "Prod"
+}

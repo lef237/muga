@@ -1,0 +1,12 @@
+package app::std_fs_path
+
+import std::fs
+import std::path
+
+fn main(): String {
+  missing = path::from_string("samples/packages/app/std_fs_path/missing.txt")
+  match fs::read_text_path(missing) {
+    Result::Ok(text) => text
+    Result::Err(error) => error.operation
+  }
+}

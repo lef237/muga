@@ -1,0 +1,55 @@
+package app::std_config
+
+import std::config
+import std::path
+import std::string
+
+enum Mode {
+  Dev
+  Prod
+}
+
+record Server {
+  host: String
+  port: Int
+}
+
+record Settings {
+  owner: String
+  server: Server
+  tags: List[String]
+  mode: Mode
+}
+
+fn mode_text(mode: Mode): String {
+  match mode {
+    Mode::Dev => "dev"
+    Mode::Prod => "prod"
+  }
+}
+
+fn default_settings(): Settings {
+  tags: List[String] = ["base"]
+  Settings {
+    owner: "fallback",
+    server: Server { host: "localhost", port: 8080 },
+    tags: tags,
+    mode: Mode::Dev
+  }
+}
+
+fn render(settings: Settings): String {
+  string::join([
+    settings.owner,
+    settings.server.host,
+    settings.server.port.to_string(),
+    settings.tags.len().to_string(),
+    mode_text(settings.mode)
+  ], "|")
+}
+
+fn main(): Result[String, config::Error] {
+  required: Settings = try config::load_json(path::from_string("samples/packages/app/std_config/required.json"))
+  overlay = try config::load_json_or(path::from_string("samples/packages/app/std_config/overlay.json"), default_settings())
+  Result::Ok(string::join([render(required), render(overlay)], " || "))
+}

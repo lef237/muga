@@ -1,0 +1,11 @@
+package app::std_path_parent
+
+import std::path
+
+fn main(): String {
+  file_path = path::from_string("samples/packages/app/std_path_parent/main.muga")
+  match path::parent(file_path) {
+    Option::Some(value) => path::as_string(value)
+    Option::None => "missing"
+  }
+}

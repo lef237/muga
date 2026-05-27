@@ -1,0 +1,29 @@
+// conformance: valid
+// spec: mini-language-spec-v1.md#Syntax
+// spec: spec/001-core-language.md#5-statements-and-expressions
+// spec: spec/013-enums-results.md
+// expect-main: 5
+
+fn read(value: Int): Result[Int, String] {
+  Result::Ok(value)
+}
+
+fn compute(value: Int): Result[Int, String] {
+  read_value = try read(value)
+  Result::Ok(read_value + 1)
+}
+
+fn main(): Int {
+  mut total: Int = 0
+  for item in [1, 2, 3] {
+    if item == 2 {
+      continue
+    }
+    total = total + item
+  }
+
+  match compute(total) {
+    Result::Ok(value) => value
+    Result::Err(message) => 0
+  }
+}

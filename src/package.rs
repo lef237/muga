@@ -9,6 +9,114 @@ use crate::interface::{PackageExportGraph, PackageInterface, PackageInterfaceGra
 use crate::span::Span;
 use crate::symbol::SymbolTable;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageArchiveOutput {
+    pub path: PathBuf,
+    pub content_hash: String,
+    pub package_name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageArchiveVerifyOutput {
+    pub path: PathBuf,
+    pub content_hash: String,
+    pub manifest: String,
+    pub sources: Vec<String>,
+    pub resources: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageArchiveMaterializationOutput {
+    pub root: PathBuf,
+    pub content_hash: String,
+    pub files: Vec<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectManifestMetadata {
+    pub manifest_path: PathBuf,
+    pub root: PathBuf,
+    pub source_root: PathBuf,
+    pub resource_root: Option<PathBuf>,
+    pub package_path: String,
+    pub direct_dependencies: Vec<String>,
+    pub dependencies: Vec<ProjectManifestDependencyMetadata>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectManifestDependencyMetadata {
+    pub package_path: String,
+    pub root: PathBuf,
+    pub source_root: PathBuf,
+    pub resource_root: Option<PathBuf>,
+    pub source_kind: PackageLockfileDependencySourceKind,
+    pub source: String,
+    pub hash: Option<String>,
+    pub dependencies: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageArchive {
+    pub content_hash: String,
+    pub manifest: PackageArchiveEntry,
+    pub sources: Vec<PackageArchiveEntry>,
+    pub resources: Vec<PackageArchiveResourceEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageArchiveEntry {
+    pub path: String,
+    pub contents: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageArchiveResourceEntry {
+    pub path: String,
+    pub contents: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageLockfileMetadata {
+    pub path: PathBuf,
+    pub text: String,
+    pub content_hash: String,
+    pub dependencies: Vec<PackageLockfileDependencyMetadata>,
+    pub archive_caches: Vec<PackageArchiveCacheMetadata>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageLockfileDependencyMetadata {
+    pub package_path: String,
+    pub source_kind: PackageLockfileDependencySourceKind,
+    pub source: String,
+    pub hash_kind: String,
+    pub hash: String,
+    pub dependencies: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageArchiveCacheMetadata {
+    pub package_path: String,
+    pub archive_path: PathBuf,
+    pub cache_root: PathBuf,
+    pub expected_content_hash: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackageLockfileDependencySourceKind {
+    Path,
+    Archive,
+}
+
+impl PackageLockfileDependencySourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Path => "path",
+            Self::Archive => "archive",
+        }
+    }
+}
+
 pub fn load_flattened_program_from_entry(path: &Path) -> Result<Program, Vec<Diagnostic>> {
     Ok(load_flattened_from_entry(path)?.program)
 }
@@ -26,6 +134,387 @@ pub fn import_paths_from_entry(path: &Path) -> Result<Vec<String>, Vec<Diagnosti
 pub fn entry_package_path_from_entry(path: &Path) -> Result<Option<String>, Vec<Diagnostic>> {
     let (entry_program, _) = parse_entry_program(path)?;
     Ok(entry_program.package.map(|package| package.path))
+}
+
+pub fn default_build_artifact_root_from_entry(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {
+    let project_root = discover_manifest(path)?
+        .map(|manifest| manifest.root)
+        .unwrap_or_else(|| {
+            path.parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."))
+        });
+    Ok(project_root.join(".muga").join("build"))
+}
+
+pub fn project_manifest_metadata_from_entry(
+    path: &Path,
+) -> Result<Option<ProjectManifestMetadata>, Vec<Diagnostic>> {
+    let Some(manifest) = discover_manifest(path)? else {
+        return Ok(None);
+    };
+    Ok(Some(project_manifest_metadata(&manifest)))
+}
+
+pub fn project_manifest_metadata_from_root(
+    root: &Path,
+) -> Result<ProjectManifestMetadata, Vec<Diagnostic>> {
+    let manifest_path = root.join("muga.toml");
+    if !manifest_path.is_file() {
+        return Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "project root `{}` must contain a muga.toml manifest",
+                root.display()
+            ),
+            Span::default(),
+        )]);
+    }
+    parse_manifest(&manifest_path).map(|manifest| project_manifest_metadata(&manifest))
+}
+
+pub fn write_lockfile_from_entry(path: &Path) -> Result<Option<PathBuf>, Vec<Diagnostic>> {
+    let Some(manifest) = discover_manifest(path)? else {
+        return Ok(None);
+    };
+    let text = manifest_lockfile_text(&manifest)?;
+    let lockfile_path = manifest.root.join("muga.lock");
+    match fs::read_to_string(&lockfile_path) {
+        Ok(existing) if existing == text => return Ok(Some(lockfile_path)),
+        Ok(existing) => validate_existing_lockfile(&existing, &lockfile_path)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(vec![Diagnostic::new(
+                "PK025",
+                format!(
+                    "failed to read package lockfile `{}`: {error}",
+                    lockfile_path.display()
+                ),
+                Span::default(),
+            )]);
+        }
+    }
+    fs::write(&lockfile_path, text).map_err(|error| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "failed to write package lockfile `{}`: {error}",
+                lockfile_path.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+    Ok(Some(lockfile_path))
+}
+
+pub fn lockfile_metadata_from_entry(
+    path: &Path,
+) -> Result<Option<PackageLockfileMetadata>, Vec<Diagnostic>> {
+    let Some(manifest) = discover_manifest(path)? else {
+        return Ok(None);
+    };
+    let text = manifest_lockfile_text(&manifest)?;
+    let content_hash = format!("sha256:{}", sha256_hex(text.as_bytes()));
+    let dependencies = manifest_lockfile_dependency_metadata(&manifest)?;
+    let archive_caches = manifest_archive_cache_metadata(&manifest);
+    Ok(Some(PackageLockfileMetadata {
+        path: manifest.root.join("muga.lock"),
+        text,
+        content_hash,
+        dependencies,
+        archive_caches,
+    }))
+}
+
+pub fn validate_lockfile_text(text: &str, path: &Path) -> Result<(), Vec<Diagnostic>> {
+    validate_existing_lockfile(text, path)
+}
+
+pub fn content_hash_for_bytes(bytes: &[u8]) -> String {
+    format!("sha256:{}", sha256_hex(bytes))
+}
+
+pub fn archive_dependency_cache_content_hash(cache_root: &Path) -> Result<String, Vec<Diagnostic>> {
+    package_archive_dependency_cache_content_hash(cache_root)
+}
+
+pub fn package_content_hash_from_entry(path: &Path) -> Result<Option<String>, Vec<Diagnostic>> {
+    let Some(manifest) = discover_manifest(path)? else {
+        return Ok(None);
+    };
+    let input = package_source_content_input(
+        &manifest.root,
+        &manifest.source_root,
+        manifest.resource_root.as_deref(),
+        "package content hash",
+    )?;
+    Ok(Some(format!("sha256:{}", sha256_hex(&input))))
+}
+
+pub fn write_package_archive_from_entry(
+    path: &Path,
+    archive_root: &Path,
+) -> Result<PackageArchiveOutput, Vec<Diagnostic>> {
+    let Some(manifest) = discover_manifest(path)? else {
+        return Err(vec![
+            Diagnostic::new(
+                "PK027",
+                "package archive emission requires a muga.toml manifest",
+                Span::default(),
+            )
+            .with_suggestion("run `emit-package-archive` from a manifest project entrypoint"),
+        ]);
+    };
+    let archive_bytes = package_source_content_input(
+        &manifest.root,
+        &manifest.source_root,
+        manifest.resource_root.as_deref(),
+        "package archive",
+    )?;
+    let content_hash = format!("sha256:{}", sha256_hex(&archive_bytes));
+    let path = package_archive_file_path(archive_root, &manifest.name, &content_hash);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            vec![Diagnostic::new(
+                "PK027",
+                format!(
+                    "failed to create package archive directory {}: {error}",
+                    parent.display()
+                ),
+                Span::default(),
+            )]
+        })?;
+    }
+    fs::write(&path, archive_bytes).map_err(|error| {
+        vec![Diagnostic::new(
+            "PK027",
+            format!(
+                "failed to write package archive `{}`: {error}",
+                path.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+    Ok(PackageArchiveOutput {
+        path,
+        content_hash,
+        package_name: manifest.name,
+    })
+}
+
+pub fn read_package_archive(
+    path: &Path,
+    expected_content_hash: Option<&str>,
+) -> Result<PackageArchive, Vec<Diagnostic>> {
+    let bytes = fs::read(path).map_err(|error| {
+        vec![package_archive_validation_diagnostic(format!(
+            "failed to read package archive `{}`: {error}",
+            path.display()
+        ))]
+    })?;
+    validate_package_archive_bytes(&bytes, expected_content_hash)
+}
+
+pub fn verify_package_archive(path: &Path) -> Result<PackageArchiveVerifyOutput, Vec<Diagnostic>> {
+    let expected_content_hash = expected_package_archive_hash_from_path(path)?;
+    verify_package_archive_with_expected_hash(path, &expected_content_hash)
+}
+
+pub fn verify_package_archive_with_expected_hash(
+    path: &Path,
+    expected_content_hash: &str,
+) -> Result<PackageArchiveVerifyOutput, Vec<Diagnostic>> {
+    let archive = read_package_archive(path, Some(expected_content_hash))?;
+    Ok(PackageArchiveVerifyOutput {
+        path: path.to_path_buf(),
+        content_hash: archive.content_hash,
+        manifest: archive.manifest.path,
+        sources: archive
+            .sources
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect(),
+        resources: archive
+            .resources
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect(),
+    })
+}
+
+pub fn validate_package_archive_bytes(
+    bytes: &[u8],
+    expected_content_hash: Option<&str>,
+) -> Result<PackageArchive, Vec<Diagnostic>> {
+    let content_hash = format!("sha256:{}", sha256_hex(bytes));
+    if let Some(expected) = expected_content_hash {
+        validate_expected_package_archive_hash(expected)?;
+        if expected != content_hash {
+            return Err(vec![
+                package_archive_validation_diagnostic(format!(
+                    "package archive hash mismatch: expected `{expected}`, got `{content_hash}`"
+                ))
+                .with_suggestion("fetch or emit the package archive again"),
+            ]);
+        }
+    }
+
+    let mut parser = PackageArchiveParser::new(bytes);
+    let mut manifest = None;
+    let mut sources = Vec::new();
+    let mut resources = Vec::new();
+    let mut seen_source_paths = HashSet::new();
+    let mut seen_resource_paths = HashSet::new();
+    let mut previous_source_path: Option<String> = None;
+    let mut previous_resource_path: Option<String> = None;
+
+    while let Some(raw_entry) = parser.next_entry()? {
+        match raw_entry.kind.as_str() {
+            "manifest" => {
+                if manifest.is_some() || !sources.is_empty() || !resources.is_empty() {
+                    return Err(vec![package_archive_validation_diagnostic(
+                        "package archive must contain exactly one leading manifest entry",
+                    )]);
+                }
+                if raw_entry.path != "muga.toml" {
+                    return Err(vec![package_archive_validation_diagnostic(format!(
+                        "package archive manifest entry must be `muga.toml`, got `{}`",
+                        raw_entry.path
+                    ))]);
+                }
+                let contents =
+                    package_archive_utf8_entry_contents(&raw_entry.path, &raw_entry.contents)?;
+                manifest = Some(PackageArchiveEntry {
+                    path: raw_entry.path,
+                    contents,
+                });
+            }
+            "file" => {
+                if manifest.is_none() {
+                    return Err(vec![package_archive_validation_diagnostic(
+                        "package archive file entries must follow the manifest entry",
+                    )]);
+                }
+                if !resources.is_empty() {
+                    return Err(vec![package_archive_validation_diagnostic(
+                        "package archive source entries must precede resource entries",
+                    )]);
+                }
+                validate_package_archive_source_path(&raw_entry.path)?;
+                if !seen_source_paths.insert(raw_entry.path.clone()) {
+                    return Err(vec![package_archive_validation_diagnostic(format!(
+                        "package archive contains duplicate source entry `{}`",
+                        raw_entry.path
+                    ))]);
+                }
+                if let Some(previous) = &previous_source_path
+                    && previous >= &raw_entry.path
+                {
+                    return Err(vec![package_archive_validation_diagnostic(format!(
+                        "package archive source entries must be sorted: `{}` appears after `{previous}`",
+                        raw_entry.path
+                    ))]);
+                }
+                previous_source_path = Some(raw_entry.path.clone());
+                let contents =
+                    package_archive_utf8_entry_contents(&raw_entry.path, &raw_entry.contents)?;
+                sources.push(PackageArchiveEntry {
+                    path: raw_entry.path,
+                    contents,
+                });
+            }
+            "resource" => {
+                if manifest.is_none() {
+                    return Err(vec![package_archive_validation_diagnostic(
+                        "package archive resource entries must follow the manifest entry",
+                    )]);
+                }
+                validate_package_archive_resource_path(&raw_entry.path)?;
+                if !seen_resource_paths.insert(raw_entry.path.clone()) {
+                    return Err(vec![package_archive_validation_diagnostic(format!(
+                        "package archive contains duplicate resource entry `{}`",
+                        raw_entry.path
+                    ))]);
+                }
+                if let Some(previous) = &previous_resource_path
+                    && previous >= &raw_entry.path
+                {
+                    return Err(vec![package_archive_validation_diagnostic(format!(
+                        "package archive resource entries must be sorted: `{}` appears after `{previous}`",
+                        raw_entry.path
+                    ))]);
+                }
+                previous_resource_path = Some(raw_entry.path.clone());
+                resources.push(PackageArchiveResourceEntry {
+                    path: raw_entry.path,
+                    contents: raw_entry.contents,
+                });
+            }
+            other => {
+                return Err(vec![package_archive_validation_diagnostic(format!(
+                    "unknown package archive entry kind `{other}`"
+                ))]);
+            }
+        }
+    }
+
+    let Some(manifest) = manifest else {
+        return Err(vec![package_archive_validation_diagnostic(
+            "package archive is missing manifest entry `muga.toml`",
+        )]);
+    };
+    if !resources.is_empty() {
+        let Some(_) = package_archive_manifest_resource_dir_with_diagnostic(
+            &manifest.contents,
+            package_archive_validation_diagnostic,
+        )?
+        else {
+            return Err(vec![package_archive_validation_diagnostic(
+                "package archive resource entries require [package] resources",
+            )]);
+        };
+    }
+
+    Ok(PackageArchive {
+        content_hash,
+        manifest,
+        sources,
+        resources,
+    })
+}
+
+pub fn materialize_package_archive(
+    path: &Path,
+    expected_content_hash: Option<&str>,
+    destination_root: &Path,
+) -> Result<PackageArchiveMaterializationOutput, Vec<Diagnostic>> {
+    let archive = read_package_archive(path, expected_content_hash)?;
+    materialize_validated_package_archive(&archive, destination_root)
+}
+
+pub fn unpack_package_archive(
+    path: &Path,
+    destination_root: &Path,
+) -> Result<PackageArchiveMaterializationOutput, Vec<Diagnostic>> {
+    let expected_content_hash = expected_package_archive_hash_from_path(path)?;
+    unpack_package_archive_with_expected_hash(path, &expected_content_hash, destination_root)
+}
+
+pub fn unpack_package_archive_with_expected_hash(
+    path: &Path,
+    expected_content_hash: &str,
+    destination_root: &Path,
+) -> Result<PackageArchiveMaterializationOutput, Vec<Diagnostic>> {
+    materialize_package_archive(path, Some(expected_content_hash), destination_root)
+}
+
+pub fn materialize_package_archive_bytes(
+    bytes: &[u8],
+    expected_content_hash: Option<&str>,
+    destination_root: &Path,
+) -> Result<PackageArchiveMaterializationOutput, Vec<Diagnostic>> {
+    let archive = validate_package_archive_bytes(bytes, expected_content_hash)?;
+    materialize_validated_package_archive(&archive, destination_root)
 }
 
 pub fn source_fingerprint_input_from_entry(path: &Path) -> Result<String, Vec<Diagnostic>> {
@@ -110,7 +599,7 @@ fn parse_entry_program(path: &Path) -> Result<(Program, Option<ProjectManifest>)
     };
     let entry_tokens = crate::lexer::lex(&entry_source)?;
     let manifest = discover_manifest(path)?;
-    let entry_program = if let Some(manifest) = &manifest {
+    let mut entry_program = if let Some(manifest) = &manifest {
         let inferred_package = infer_manifest_package_path(path, manifest)?;
         let program =
             crate::parser::parse_inferred_package(entry_tokens, inferred_package.clone())?;
@@ -131,7 +620,50 @@ fn parse_entry_program(path: &Path) -> Result<(Program, Option<ProjectManifest>)
     } else {
         crate::parser::parse(entry_tokens)?
     };
+    attach_doc_comments_from_source(&mut entry_program, &entry_source);
     Ok((entry_program, manifest))
+}
+
+fn attach_doc_comments_from_source(program: &mut Program, source: &str) {
+    let lines = source.lines().collect::<Vec<_>>();
+    for statement in &mut program.statements {
+        let doc_comments = doc_comments_before_line(&lines, statement.span().start.line);
+        match statement {
+            Stmt::RecordDecl(record) => record.doc_comments = doc_comments,
+            Stmt::EnumDecl(enumeration) => enumeration.doc_comments = doc_comments,
+            Stmt::OpaqueTypeDecl(opaque) => opaque.doc_comments = doc_comments,
+            Stmt::FuncDecl(function) => function.doc_comments = doc_comments,
+            _ => {}
+        }
+    }
+}
+
+fn doc_comments_before_line(lines: &[&str], line: usize) -> Vec<String> {
+    let mut docs = Vec::new();
+    let mut index = line.saturating_sub(1);
+    while index > 0 {
+        let text = lines[index - 1].trim_start();
+        if let Some(comment) = public_doc_comment_text(text) {
+            docs.push(comment.to_string());
+            index -= 1;
+            continue;
+        }
+        if text.starts_with('@') {
+            index -= 1;
+            continue;
+        }
+        break;
+    }
+    docs.reverse();
+    docs
+}
+
+fn public_doc_comment_text(text: &str) -> Option<&str> {
+    let comment = text.strip_prefix("///")?;
+    if comment.starts_with('/') {
+        return None;
+    }
+    Some(comment.strip_prefix(' ').unwrap_or(comment))
 }
 
 #[derive(Clone, Debug)]
@@ -193,6 +725,7 @@ pub struct LoadedPackage {
 
 #[derive(Clone, Debug)]
 pub struct LoadedPackageFile {
+    pub path: Option<PathBuf>,
     pub module_path: String,
     pub source: String,
     pub program: Program,
@@ -296,6 +829,7 @@ pub struct PackageItemInfo {
 pub enum PackageItemKind {
     Record,
     Enum,
+    OpaqueType,
     Function,
 }
 
@@ -427,6 +961,7 @@ impl<'a> PackageAwareChecker<'a> {
                 }
                 self.scan_func_decl(function);
             }
+            Stmt::OpaqueTypeDecl(_) => {}
             _ => self.scan_stmt(statement),
         }
     }
@@ -442,6 +977,7 @@ impl<'a> PackageAwareChecker<'a> {
             }
             Stmt::RecordDecl(record) => self.scan_record_decl(record),
             Stmt::EnumDecl(enumeration) => self.scan_enum_decl(enumeration),
+            Stmt::OpaqueTypeDecl(_) => {}
             Stmt::FuncDecl(function) => self.scan_func_decl(function),
             Stmt::If(stmt) => {
                 self.scan_expr(&stmt.condition);
@@ -454,6 +990,28 @@ impl<'a> PackageAwareChecker<'a> {
                 self.scan_expr(&stmt.condition);
                 self.scan_block(&stmt.body);
             }
+            Stmt::For(stmt) => {
+                self.scan_expr(&stmt.iterable);
+                self.push_scope();
+                self.insert_local(stmt.item.clone());
+                self.predeclare_nested_functions(&stmt.body.statements);
+                for statement in &stmt.body.statements {
+                    self.scan_stmt(statement);
+                }
+                self.pop_scope();
+            }
+            Stmt::Using(stmt) => {
+                self.scan_expr(&stmt.value);
+                self.push_scope();
+                self.insert_local(stmt.name.clone());
+                self.predeclare_nested_functions(&stmt.body.statements);
+                for statement in &stmt.body.statements {
+                    self.scan_stmt(statement);
+                }
+                self.pop_scope();
+            }
+            Stmt::Break(_) | Stmt::Continue(_) => {}
+            Stmt::Return(stmt) => self.scan_expr(&stmt.value),
             Stmt::Expr(stmt) => self.scan_expr(&stmt.expr),
         }
     }
@@ -566,7 +1124,7 @@ impl<'a> PackageAwareChecker<'a> {
                     let MatchPattern::Variant(pattern) = &arm.pattern;
                     self.check_type_name(&pattern.enum_name, pattern.span);
                     self.push_scope();
-                    if let Some(binding) = &pattern.binding {
+                    if let EnumVariantPatternPayload::Binding(binding) = &pattern.payload {
                         self.insert_local(binding.clone());
                     }
                     self.scan_expr(&arm.value);
@@ -662,7 +1220,11 @@ impl<'a> PackageAwareChecker<'a> {
             return;
         }
 
-        for kind in [PackageItemKind::Record, PackageItemKind::Enum] {
+        for kind in [
+            PackageItemKind::Record,
+            PackageItemKind::Enum,
+            PackageItemKind::OpaqueType,
+        ] {
             if let Some(item) = self.visible_same_package_item(name, kind)
                 && !visibility_can_expose(item.visibility, api_visibility)
             {
@@ -691,6 +1253,10 @@ impl<'a> PackageAwareChecker<'a> {
     }
 
     fn check_type_name(&mut self, name: &str, span: Span) {
+        if let Some(diagnostic) = fully_qualified_std_type_diagnostic(name, span) {
+            self.diagnostics.push(diagnostic);
+            return;
+        }
         if let Some((alias, item)) = split_qualified_name(name) {
             let _ = self.resolve_imported_type_item(alias, item, span);
             return;
@@ -700,6 +1266,9 @@ impl<'a> PackageAwareChecker<'a> {
             .is_some()
             || self
                 .visible_same_package_item(name, PackageItemKind::Enum)
+                .is_some()
+            || self
+                .visible_same_package_item(name, PackageItemKind::OpaqueType)
                 .is_some()
         {
             return;
@@ -714,6 +1283,11 @@ impl<'a> PackageAwareChecker<'a> {
             .cloned()
         {
             self.push_inaccessible_same_package_diagnostic(name, &item, "enum", span);
+        } else if let Some(item) = self
+            .inaccessible_same_package_item(name, PackageItemKind::OpaqueType)
+            .cloned()
+        {
+            self.push_inaccessible_same_package_diagnostic(name, &item, "opaque type", span);
         }
     }
 
@@ -772,6 +1346,11 @@ impl<'a> PackageAwareChecker<'a> {
                 .package_exports
                 .enum_by_name(package_id, item)
                 .is_some()
+            || self
+                .loaded
+                .package_exports
+                .opaque_type_by_name(package_id, item)
+                .is_some()
         {
             return true;
         }
@@ -785,6 +1364,11 @@ impl<'a> PackageAwareChecker<'a> {
             .cloned()
         {
             self.push_missing_export_diagnostic(&enumeration, "enum", span);
+        } else if let Some(opaque) = self
+            .package_item(package_id, item, PackageItemKind::OpaqueType)
+            .cloned()
+        {
+            self.push_missing_export_diagnostic(&opaque, "opaque type", span);
         } else {
             self.push_missing_export_name_diagnostic(package_id, item, "type", span);
         }
@@ -804,6 +1388,10 @@ impl<'a> PackageAwareChecker<'a> {
         let exported = match kind {
             PackageItemKind::Record => self.loaded.package_exports.record_by_name(package_id, item),
             PackageItemKind::Enum => self.loaded.package_exports.enum_by_name(package_id, item),
+            PackageItemKind::OpaqueType => self
+                .loaded
+                .package_exports
+                .opaque_type_by_name(package_id, item),
             PackageItemKind::Function => self
                 .loaded
                 .package_exports
@@ -1009,6 +1597,7 @@ impl<'a> PackageAwareChecker<'a> {
 }
 
 struct ParsedFile {
+    path: Option<PathBuf>,
     program: Program,
     module_path: String,
     source: String,
@@ -1022,14 +1611,67 @@ struct SourceFingerprintFile {
 
 #[derive(Clone, Debug)]
 struct ProjectManifest {
+    root: PathBuf,
     source_root: PathBuf,
+    resource_root: Option<PathBuf>,
     name: String,
+    direct_dependencies: Vec<String>,
+    dependencies: HashMap<String, ProjectDependency>,
+}
+
+#[derive(Clone, Debug)]
+struct ProjectDependency {
+    root: PathBuf,
+    source_root: PathBuf,
+    resource_root: Option<PathBuf>,
+    name: String,
+    source: ProjectDependencySource,
+    dependencies: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ProjectDependencySource {
+    Path,
+    Archive {
+        archive_path: PathBuf,
+        content_hash: String,
+    },
+}
+
+#[derive(Clone, Debug)]
+enum ManifestDependencySource {
+    Path(String),
+    Archive { archive: String, hash: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ParsedLockfilePackage {
+    alias: String,
+    dependencies: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ParsedLockfileSource {
+    Path(String),
+    Archive(String),
+}
+
+#[derive(Debug)]
+struct LockfilePackageBuilder {
+    line: usize,
+    alias: Option<String>,
+    path: Option<String>,
+    source: Option<ParsedLockfileSource>,
+    source_hash: Option<String>,
+    hash: Option<String>,
+    dependencies: Option<Vec<String>>,
 }
 
 struct PackageData {
     files: Vec<ParsedFile>,
     records: HashMap<String, Vec<PackageItemDecl>>,
     enums: HashMap<String, Vec<PackageItemDecl>>,
+    opaque_types: HashMap<String, Vec<PackageItemDecl>>,
     functions: HashMap<String, Vec<PackageItemDecl>>,
 }
 
@@ -1194,6 +1836,7 @@ impl PackageLoader {
                         .files
                         .iter()
                         .map(|file| LoadedPackageFile {
+                            path: file.path.clone(),
                             module_path: file.module_path.clone(),
                             source: file.source.clone(),
                             program: file.program.clone(),
@@ -1420,6 +2063,7 @@ impl PackageLoader {
             }
             let module_path = module_path_for_file(&file_path);
             files.push(ParsedFile {
+                path: Some(file_path),
                 program,
                 module_path,
                 source,
@@ -1444,6 +2088,7 @@ impl PackageLoader {
                 }
             };
             parsed.push(ParsedFile {
+                path: None,
                 program,
                 module_path: file.module_path.to_string(),
                 source,
@@ -1511,24 +2156,28 @@ impl PackageLoader {
         package_path: &str,
     ) -> Result<Program, Vec<Diagnostic>> {
         let tokens = crate::lexer::lex(source)?;
-        if self.manifest.is_some() {
-            crate::parser::parse_inferred_package(tokens, package_path.to_string())
+        let mut program = if self.manifest.is_some() {
+            crate::parser::parse_inferred_package(tokens, package_path.to_string())?
         } else {
-            crate::parser::parse(tokens)
-        }
+            crate::parser::parse(tokens)?
+        };
+        attach_doc_comments_from_source(&mut program, source);
+        Ok(program)
     }
 
     fn package_dir(&self, package_path: &str) -> PathBuf {
         if let Some(manifest) = &self.manifest {
-            if package_path == manifest.name {
-                return self.source_root.clone();
-            }
-            if let Some(rest) = package_path.strip_prefix(&(manifest.name.clone() + "::")) {
-                let mut path = self.source_root.clone();
-                for segment in split_package_path(rest) {
-                    path.push(segment);
-                }
+            if let Some(path) =
+                package_dir_under_root(package_path, &manifest.name, &manifest.source_root)
+            {
                 return path;
+            }
+            for dependency in manifest.dependencies.values() {
+                if let Some(path) =
+                    package_dir_under_root(package_path, &dependency.name, &dependency.source_root)
+                {
+                    return path;
+                }
             }
         }
 
@@ -1633,6 +2282,24 @@ impl PackageLoader {
                                 ),
                             });
                         }
+                        Stmt::OpaqueTypeDecl(opaque) => {
+                            let id = PackageItemId::new(items.len() as u32);
+                            items.push(PackageItemInfo {
+                                id,
+                                package: package_id,
+                                module: module_id,
+                                name: opaque.name.clone(),
+                                kind: PackageItemKind::OpaqueType,
+                                visibility: opaque.visibility,
+                                span: opaque.span,
+                                mangled_name: mangle_opaque_type_name_for_visibility(
+                                    package_path,
+                                    &file.module_path,
+                                    &opaque.name,
+                                    opaque.visibility,
+                                ),
+                            });
+                        }
                         Stmt::FuncDecl(func) => {
                             let id = PackageItemId::new(items.len() as u32);
                             items.push(PackageItemInfo {
@@ -1703,6 +2370,7 @@ impl PackageLoader {
                     .iter()
                     .map(|record| record.item)
                     .chain(interface.enums.iter().map(|enumeration| enumeration.item))
+                    .chain(interface.opaque_types.iter().map(|opaque| opaque.item))
                     .chain(interface.functions.iter().map(|function| function.item))
             })
             .map(|id| id.as_u32())
@@ -1806,6 +2474,34 @@ impl PackageLoader {
                                         &file.module_path,
                                         &enumeration.name,
                                         enumeration.visibility,
+                                    ),
+                                },
+                                &mut self.diagnostics,
+                            );
+                        }
+                        Stmt::OpaqueTypeDecl(opaque) => {
+                            let id = interface_item_id(
+                                package_interface,
+                                &opaque.name,
+                                PackageItemKind::OpaqueType,
+                                opaque.visibility,
+                            )
+                            .unwrap_or_else(|| allocate_package_item_id(&mut item_slots));
+                            insert_package_graph_item(
+                                &mut item_slots,
+                                PackageItemInfo {
+                                    id,
+                                    package: package_id,
+                                    module: module_id,
+                                    name: opaque.name.clone(),
+                                    kind: PackageItemKind::OpaqueType,
+                                    visibility: opaque.visibility,
+                                    span: opaque.span,
+                                    mangled_name: mangle_opaque_type_name_for_visibility(
+                                        package_path,
+                                        &file.module_path,
+                                        &opaque.name,
+                                        opaque.visibility,
                                     ),
                                 },
                                 &mut self.diagnostics,
@@ -1923,6 +2619,27 @@ impl PackageLoader {
                     &mut self.diagnostics,
                 );
             }
+            for opaque in &interface.opaque_types {
+                insert_package_graph_item(
+                    &mut item_slots,
+                    PackageItemInfo {
+                        id: opaque.item,
+                        package: package_id,
+                        module: module_id,
+                        name: opaque.name.clone(),
+                        kind: PackageItemKind::OpaqueType,
+                        visibility: Visibility::Public,
+                        span: opaque.span,
+                        mangled_name: mangle_opaque_type_name_for_visibility(
+                            &interface.path,
+                            INTERFACE_MODULE,
+                            &opaque.name,
+                            Visibility::Public,
+                        ),
+                    },
+                    &mut self.diagnostics,
+                );
+            }
             for function in &interface.functions {
                 insert_package_graph_item(
                     &mut item_slots,
@@ -2011,6 +2728,9 @@ impl<'a> PackageRewriter<'a> {
         match statement {
             Stmt::RecordDecl(record) => Stmt::RecordDecl(self.rewrite_record_decl(record)),
             Stmt::EnumDecl(enumeration) => Stmt::EnumDecl(self.rewrite_enum_decl(enumeration)),
+            Stmt::OpaqueTypeDecl(opaque) => {
+                Stmt::OpaqueTypeDecl(self.rewrite_opaque_type_decl(opaque))
+            }
             Stmt::FuncDecl(func) => Stmt::FuncDecl(self.rewrite_func_decl(func, true)),
             _ => statement.clone(),
         }
@@ -2038,11 +2758,14 @@ impl<'a> PackageRewriter<'a> {
                 record.visibility,
             ),
             visibility: Visibility::Private,
+            attributes: record.attributes.clone(),
+            doc_comments: record.doc_comments.clone(),
             type_params: record.type_params.clone(),
             fields: record
                 .fields
                 .iter()
                 .map(|field| RecordFieldDecl {
+                    attributes: field.attributes.clone(),
                     name: field.name.clone(),
                     type_name: self.rewrite_type_expr_with_params(
                         &field.type_name,
@@ -2082,11 +2805,14 @@ impl<'a> PackageRewriter<'a> {
                 enumeration.visibility,
             ),
             visibility: Visibility::Private,
+            attributes: enumeration.attributes.clone(),
+            doc_comments: enumeration.doc_comments.clone(),
             type_params: enumeration.type_params.clone(),
             variants: enumeration
                 .variants
                 .iter()
                 .map(|variant| EnumVariantDecl {
+                    attributes: variant.attributes.clone(),
                     name: variant.name.clone(),
                     payload: variant.payload.as_ref().map(|payload| {
                         self.rewrite_type_expr_with_params(
@@ -2099,6 +2825,22 @@ impl<'a> PackageRewriter<'a> {
                 })
                 .collect(),
             span: enumeration.span,
+        }
+    }
+
+    fn rewrite_opaque_type_decl(&mut self, opaque: &OpaqueTypeDecl) -> OpaqueTypeDecl {
+        OpaqueTypeDecl {
+            id: opaque.id,
+            package_item: self.package_item_id(&opaque.name, PackageItemKind::OpaqueType),
+            name: mangle_opaque_type_name_for_visibility(
+                &self.current_package,
+                &self.current_module,
+                &opaque.name,
+                opaque.visibility,
+            ),
+            visibility: Visibility::Private,
+            doc_comments: opaque.doc_comments.clone(),
+            span: opaque.span,
         }
     }
 
@@ -2190,6 +2932,8 @@ impl<'a> PackageRewriter<'a> {
                 func.name.clone()
             },
             visibility: Visibility::Private,
+            attributes: func.attributes.clone(),
+            doc_comments: func.doc_comments.clone(),
             type_params: func.type_params.clone(),
             params,
             return_type: func.return_type.as_ref().map(|type_name| {
@@ -2227,6 +2971,9 @@ impl<'a> PackageRewriter<'a> {
             }
             Stmt::RecordDecl(record) => Stmt::RecordDecl(self.rewrite_record_decl(record)),
             Stmt::EnumDecl(enumeration) => Stmt::EnumDecl(self.rewrite_enum_decl(enumeration)),
+            Stmt::OpaqueTypeDecl(opaque) => {
+                Stmt::OpaqueTypeDecl(self.rewrite_opaque_type_decl(opaque))
+            }
             Stmt::FuncDecl(func) => Stmt::FuncDecl(self.rewrite_func_decl(func, false)),
             Stmt::If(stmt) => Stmt::If(IfStmt {
                 id: stmt.id,
@@ -2242,6 +2989,67 @@ impl<'a> PackageRewriter<'a> {
                 id: stmt.id,
                 condition: self.rewrite_expr(&stmt.condition),
                 body: self.rewrite_block(&stmt.body),
+                span: stmt.span,
+            }),
+            Stmt::For(stmt) => {
+                let iterable = self.rewrite_expr(&stmt.iterable);
+                self.push_scope();
+                self.insert_local(stmt.item.clone());
+                self.predeclare_nested_functions(&stmt.body.statements);
+                let body_statements = stmt
+                    .body
+                    .statements
+                    .iter()
+                    .map(|statement| self.rewrite_stmt(statement))
+                    .collect();
+                self.pop_scope();
+                Stmt::For(ForStmt {
+                    id: stmt.id,
+                    item: stmt.item.clone(),
+                    item_span: stmt.item_span,
+                    iterable,
+                    body: Block {
+                        statements: body_statements,
+                        span: stmt.body.span,
+                    },
+                    span: stmt.span,
+                })
+            }
+            Stmt::Using(stmt) => {
+                let value = self.rewrite_expr(&stmt.value);
+                self.push_scope();
+                self.insert_local(stmt.name.clone());
+                self.predeclare_nested_functions(&stmt.body.statements);
+                let body_statements = stmt
+                    .body
+                    .statements
+                    .iter()
+                    .map(|statement| self.rewrite_stmt(statement))
+                    .collect();
+                self.pop_scope();
+                Stmt::Using(UsingStmt {
+                    id: stmt.id,
+                    name: stmt.name.clone(),
+                    name_span: stmt.name_span,
+                    value,
+                    body: Block {
+                        statements: body_statements,
+                        span: stmt.body.span,
+                    },
+                    span: stmt.span,
+                })
+            }
+            Stmt::Break(stmt) => Stmt::Break(BreakStmt {
+                id: stmt.id,
+                span: stmt.span,
+            }),
+            Stmt::Continue(stmt) => Stmt::Continue(ContinueStmt {
+                id: stmt.id,
+                span: stmt.span,
+            }),
+            Stmt::Return(stmt) => Stmt::Return(ReturnStmt {
+                id: stmt.id,
+                value: self.rewrite_expr(&stmt.value),
                 span: stmt.span,
             }),
             Stmt::Expr(stmt) => Stmt::Expr(ExprStmt {
@@ -2280,6 +3088,7 @@ impl<'a> PackageRewriter<'a> {
         ValueBlock {
             statements,
             expr,
+            terminal_return: block.terminal_return,
             span: block.span,
         }
     }
@@ -2357,6 +3166,11 @@ impl<'a> PackageRewriter<'a> {
             Expr::Call(expr) => Expr::Call(CallExpr {
                 id: expr.id,
                 callee: Box::new(self.rewrite_expr(&expr.callee)),
+                type_args: expr
+                    .type_args
+                    .iter()
+                    .map(|arg| self.rewrite_type_expr(arg, expr.span))
+                    .collect(),
                 args: expr.args.iter().map(|arg| self.rewrite_expr(arg)).collect(),
                 origin: expr.origin,
                 span: expr.span,
@@ -2386,7 +3200,7 @@ impl<'a> PackageRewriter<'a> {
             .map(|arm| {
                 self.push_scope();
                 let MatchPattern::Variant(pattern) = &arm.pattern;
-                if let Some(binding) = &pattern.binding {
+                if let EnumVariantPatternPayload::Binding(binding) = &pattern.payload {
                     self.insert_local(binding.clone());
                 }
                 let value = self.rewrite_expr(&arm.value);
@@ -2395,7 +3209,7 @@ impl<'a> PackageRewriter<'a> {
                     pattern: MatchPattern::Variant(EnumVariantPattern {
                         enum_name: self.rewrite_type_name(&pattern.enum_name, pattern.span),
                         variant_name: pattern.variant_name.clone(),
-                        binding: pattern.binding.clone(),
+                        payload: pattern.payload.clone(),
                         span: pattern.span,
                     }),
                     value,
@@ -2482,6 +3296,10 @@ impl<'a> PackageRewriter<'a> {
     }
 
     fn rewrite_type_name(&mut self, name: &str, span: Span) -> String {
+        if let Some(diagnostic) = fully_qualified_std_type_diagnostic(name, span) {
+            self.diagnostics.push(diagnostic);
+            return name.to_string();
+        }
         if let Some((alias, item)) = split_qualified_name(name) {
             return self.resolve_imported_type_item(alias, item, span);
         }
@@ -2501,6 +3319,18 @@ impl<'a> PackageRewriter<'a> {
             resolve_package_item(&self.current_package_data.enums, name, &self.current_module)
         {
             return mangle_enum_name_for_visibility(
+                &self.current_package,
+                &item.module_path,
+                name,
+                item.visibility,
+            );
+        }
+        if let Some(item) = resolve_package_item(
+            &self.current_package_data.opaque_types,
+            name,
+            &self.current_module,
+        ) {
+            return mangle_opaque_type_name_for_visibility(
                 &self.current_package,
                 &item.module_path,
                 name,
@@ -2539,6 +3369,27 @@ impl<'a> PackageRewriter<'a> {
                 )
                 .with_related(
                     format!("enum `{name}` is module-private to `{}`", item.module_path),
+                    item.span,
+                )
+                .with_suggestion("mark the declaration as `pkg` to share it within the package"),
+            );
+        }
+        if let Some(item) = inaccessible_package_item(&self.current_package_data.opaque_types, name)
+        {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "PK015",
+                    format!(
+                        "opaque type `{name}` is not visible from module `{}`",
+                        self.current_module
+                    ),
+                    span,
+                )
+                .with_related(
+                    format!(
+                        "opaque type `{name}` is module-private to `{}`",
+                        item.module_path
+                    ),
                     item.span,
                 )
                 .with_suggestion("mark the declaration as `pkg` to share it within the package"),
@@ -2668,6 +3519,25 @@ impl<'a> PackageRewriter<'a> {
                             span,
                         )
                         .with_related(format!("enum `{name}` is declared here"), item.span),
+                    );
+                }
+                if let Some(item) = resolve_package_item(
+                    &self.current_package_data.opaque_types,
+                    name,
+                    &self.current_module,
+                ) && !visibility_can_expose(item.visibility, api_visibility)
+                {
+                    let api = visibility_label(api_visibility);
+                    let item_visibility = visibility_label(item.visibility);
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            "PK012",
+                            format!(
+                                "{api} API may not expose {item_visibility} opaque type `{name}`"
+                            ),
+                            span,
+                        )
+                        .with_related(format!("opaque type `{name}` is declared here"), item.span),
                     );
                 }
             }
@@ -2807,11 +3677,34 @@ impl<'a> PackageRewriter<'a> {
         if let Some(export) = self.package_exports.enum_by_name(package_id, item) {
             return export.mangled_name.clone();
         }
+        if package_item_decl(&package.enums, item).is_some() {
+            self.diagnostics.push(missing_export_diagnostic(
+                package_path,
+                item,
+                "enum",
+                package_item_decl(&package.enums, item),
+                span,
+            ));
+            return format!("{alias}::{item}");
+        }
+        if let Some(export) = self.package_exports.opaque_type_by_name(package_id, item) {
+            return export.mangled_name.clone();
+        }
+        if package_item_decl(&package.opaque_types, item).is_some() {
+            self.diagnostics.push(missing_export_diagnostic(
+                package_path,
+                item,
+                "opaque type",
+                package_item_decl(&package.opaque_types, item),
+                span,
+            ));
+            return format!("{alias}::{item}");
+        }
         self.diagnostics.push(missing_export_diagnostic(
             package_path,
             item,
-            "enum",
-            package_item_decl(&package.enums, item),
+            "type",
+            None,
             span,
         ));
         format!("{alias}::{item}")
@@ -2857,6 +3750,7 @@ fn collect_package_data(
 ) -> PackageData {
     let mut records: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
     let mut enums: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
+    let mut opaque_types: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
     let mut functions: HashMap<String, Vec<PackageItemDecl>> = HashMap::new();
 
     for file in &files {
@@ -2890,6 +3784,20 @@ fn collect_package_data(
                         diagnostics,
                     );
                 }
+                Stmt::OpaqueTypeDecl(opaque) => {
+                    insert_package_item_decl(
+                        &mut opaque_types,
+                        PackageItemDeclInput {
+                            name: &opaque.name,
+                            visibility: opaque.visibility,
+                            module_path: &file.module_path,
+                            span: opaque.span,
+                            kind: PackageItemKind::OpaqueType,
+                            package_path,
+                        },
+                        diagnostics,
+                    );
+                }
                 Stmt::FuncDecl(func) => {
                     insert_package_item_decl(
                         &mut functions,
@@ -2913,6 +3821,7 @@ fn collect_package_data(
         files,
         records,
         enums,
+        opaque_types,
         functions,
     }
 }
@@ -2957,6 +3866,11 @@ fn interface_item_id(
             .iter()
             .find(|enumeration| enumeration.name == name)
             .map(|enumeration| enumeration.item),
+        PackageItemKind::OpaqueType => interface
+            .opaque_types
+            .iter()
+            .find(|opaque| opaque.name == name)
+            .map(|opaque| opaque.item),
         PackageItemKind::Function => interface
             .functions
             .iter()
@@ -3009,6 +3923,7 @@ fn insert_package_item_decl(
         let kind_name = match decl.kind {
             PackageItemKind::Record => "record",
             PackageItemKind::Enum => "enum",
+            PackageItemKind::OpaqueType => "opaque type",
             PackageItemKind::Function => "function",
         };
         diagnostics.push(
@@ -3114,6 +4029,7 @@ fn package_item_kind_label(kind: PackageItemKind) -> &'static str {
     match kind {
         PackageItemKind::Record => "record",
         PackageItemKind::Enum => "enum",
+        PackageItemKind::OpaqueType => "opaque type",
         PackageItemKind::Function => "function",
     }
 }
@@ -3180,6 +4096,32 @@ fn discover_manifest(entry_file: &Path) -> Result<Option<ProjectManifest>, Vec<D
 }
 
 fn parse_manifest(path: &Path) -> Result<ProjectManifest, Vec<Diagnostic>> {
+    let mut stack = Vec::new();
+    parse_manifest_inner(path, &mut stack)
+}
+
+fn parse_manifest_inner(
+    path: &Path,
+    stack: &mut Vec<PathBuf>,
+) -> Result<ProjectManifest, Vec<Diagnostic>> {
+    let identity = manifest_identity(path);
+    if stack.contains(&identity) {
+        return Err(vec![Diagnostic::new(
+            "PK014",
+            format!("local dependency cycle includes {}", path.display()),
+            Span::default(),
+        )]);
+    }
+    stack.push(identity);
+    let result = parse_manifest_inner_impl(path, stack);
+    stack.pop();
+    result
+}
+
+fn parse_manifest_inner_impl(
+    path: &Path,
+    stack: &mut Vec<PathBuf>,
+) -> Result<ProjectManifest, Vec<Diagnostic>> {
     let source = fs::read_to_string(path).map_err(|error| {
         vec![Diagnostic::new(
             "PK002",
@@ -3189,25 +4131,54 @@ fn parse_manifest(path: &Path) -> Result<ProjectManifest, Vec<Diagnostic>> {
     })?;
 
     let mut in_package = false;
+    let mut in_dependencies = false;
     let mut name = None;
     let mut source_dir = "src".to_string();
+    let mut resource_dir = None;
+    let mut dependency_sources = Vec::new();
 
     for raw_line in source.lines() {
-        let line = raw_line.split('#').next().unwrap_or("").trim();
+        let line = strip_manifest_comment(raw_line).trim();
         if line.is_empty() {
             continue;
         }
         if line.starts_with('[') && line.ends_with(']') {
             in_package = line == "[package]";
+            in_dependencies = line == "[dependencies]";
             continue;
         }
-        if !in_package {
+        if !in_package && !in_dependencies {
             continue;
         }
         let Some((key, value)) = line.split_once('=') else {
             continue;
         };
         let key = key.trim();
+        if in_dependencies {
+            let Some(package_name) = parse_manifest_key(key) else {
+                return Err(vec![Diagnostic::new(
+                    "PK014",
+                    format!(
+                        "manifest dependency key `{key}` in {} is invalid",
+                        path.display()
+                    ),
+                    Span::default(),
+                )]);
+            };
+            if !is_valid_package_path(&package_name) {
+                return Err(vec![Diagnostic::new(
+                    "PK014",
+                    format!(
+                        "manifest dependency name `{package_name}` is not a valid package path"
+                    ),
+                    Span::default(),
+                )]);
+            }
+            let dependency_source =
+                parse_manifest_dependency_source(value.trim(), path, &package_name)?;
+            dependency_sources.push((package_name, dependency_source));
+            continue;
+        }
         let Some(value) = parse_manifest_string(value.trim()) else {
             return Err(vec![Diagnostic::new(
                 "PK014",
@@ -3221,6 +4192,10 @@ fn parse_manifest(path: &Path) -> Result<ProjectManifest, Vec<Diagnostic>> {
         match key {
             "name" => name = Some(value),
             "source" => source_dir = value,
+            "resources" => {
+                validate_manifest_resource_dir(&value, path)?;
+                resource_dir = Some(value);
+            }
             _ => {}
         }
     }
@@ -3246,15 +4221,2203 @@ fn parse_manifest(path: &Path) -> Result<ProjectManifest, Vec<Diagnostic>> {
     } else {
         root.join(source_dir)
     };
+    let resource_root = resource_dir.map(|resource_dir| root.join(resource_dir));
+    let mut direct_dependencies = dependency_sources
+        .iter()
+        .map(|(name, _)| name.clone())
+        .collect::<Vec<_>>();
+    direct_dependencies.sort();
+    let dependencies = parse_manifest_dependencies(path, &root, &name, dependency_sources, stack)?;
 
-    Ok(ProjectManifest { source_root, name })
+    Ok(ProjectManifest {
+        root,
+        source_root,
+        resource_root,
+        name,
+        direct_dependencies,
+        dependencies,
+    })
+}
+
+fn validate_manifest_resource_dir(
+    value: &str,
+    manifest_path: &Path,
+) -> Result<(), Vec<Diagnostic>> {
+    if value.is_empty() || value == "." {
+        return Err(vec![
+            Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest field `resources` in {} must name a resource directory",
+                    manifest_path.display()
+                ),
+                Span::default(),
+            )
+            .with_suggestion("use `resources = \"resources\"` for package resource files"),
+        ]);
+    }
+    if Path::new(value).is_absolute() || value.contains('\\') || value.contains(':') {
+        return Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "manifest field `resources` in {} must be a relative slash-separated path",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]);
+    }
+    for segment in value.split('/') {
+        if segment.is_empty() || matches!(segment, "." | "..") {
+            return Err(vec![Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest field `resources` in {} must stay inside the package root",
+                    manifest_path.display()
+                ),
+                Span::default(),
+            )]);
+        }
+        if matches!(segment, ".git" | ".muga") {
+            return Err(vec![Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest field `resources` in {} must not use tool metadata directories",
+                    manifest_path.display()
+                ),
+                Span::default(),
+            )]);
+        }
+    }
+    Ok(())
+}
+
+fn parse_manifest_dependencies(
+    manifest_path: &Path,
+    root: &Path,
+    root_name: &str,
+    dependency_sources: Vec<(String, ManifestDependencySource)>,
+    stack: &mut Vec<PathBuf>,
+) -> Result<HashMap<String, ProjectDependency>, Vec<Diagnostic>> {
+    let mut dependencies = HashMap::new();
+    let mut diagnostics = Vec::new();
+
+    for (declared_name, dependency_source) in dependency_sources {
+        let (dependency_root, source) = match resolve_manifest_dependency_source(
+            root,
+            manifest_path,
+            &declared_name,
+            dependency_source,
+        ) {
+            Ok(resolved) => resolved,
+            Err(mut source_diagnostics) => {
+                diagnostics.append(&mut source_diagnostics);
+                continue;
+            }
+        };
+        let dependency_manifest_path = dependency_root.join("muga.toml");
+        if !dependency_manifest_path.is_file() {
+            diagnostics.push(Diagnostic::new(
+                "PK014",
+                format!(
+                    "local dependency `{declared_name}` in {} must point to a directory containing muga.toml",
+                    manifest_path.display()
+                ),
+                Span::default(),
+            ));
+            continue;
+        }
+
+        let dependency_manifest = match parse_manifest_inner(&dependency_manifest_path, stack) {
+            Ok(manifest) => manifest,
+            Err(mut dependency_diagnostics) => {
+                diagnostics.append(&mut dependency_diagnostics);
+                continue;
+            }
+        };
+        if dependency_manifest.name != declared_name {
+            diagnostics.push(Diagnostic::new(
+                "PK014",
+                format!(
+                    "local dependency `{declared_name}` in {} points to package `{}`",
+                    manifest_path.display(),
+                    dependency_manifest.name
+                ),
+                Span::default(),
+            ));
+            continue;
+        }
+
+        insert_manifest_dependency(
+            &mut dependencies,
+            ProjectDependency {
+                root: dependency_manifest.root.clone(),
+                source_root: dependency_manifest.source_root.clone(),
+                resource_root: dependency_manifest.resource_root.clone(),
+                name: dependency_manifest.name.clone(),
+                source,
+                dependencies: dependency_manifest.direct_dependencies.clone(),
+            },
+            &mut diagnostics,
+        );
+        for dependency in dependency_manifest.dependencies.values() {
+            insert_manifest_dependency(&mut dependencies, dependency.clone(), &mut diagnostics);
+        }
+    }
+
+    validate_manifest_dependency_prefixes(root_name, &dependencies, &mut diagnostics);
+    if diagnostics.is_empty() {
+        Ok(dependencies)
+    } else {
+        Err(diagnostics)
+    }
+}
+
+fn resolve_manifest_dependency_source(
+    root: &Path,
+    manifest_path: &Path,
+    declared_name: &str,
+    source: ManifestDependencySource,
+) -> Result<(PathBuf, ProjectDependencySource), Vec<Diagnostic>> {
+    match source {
+        ManifestDependencySource::Path(path_value) => {
+            let dependency_root = if Path::new(&path_value).is_absolute() {
+                PathBuf::from(path_value)
+            } else {
+                root.join(path_value)
+            };
+            Ok((dependency_root, ProjectDependencySource::Path))
+        }
+        ManifestDependencySource::Archive { archive, hash } => {
+            if archive.is_empty() {
+                return Err(vec![Diagnostic::new(
+                    "PK014",
+                    format!(
+                        "manifest archive dependency `{declared_name}` in {} must not be empty",
+                        manifest_path.display()
+                    ),
+                    Span::default(),
+                )]);
+            }
+            let archive_path = if Path::new(&archive).is_absolute() {
+                PathBuf::from(&archive)
+            } else {
+                root.join(&archive)
+            };
+            let cache_root = package_archive_dependency_cache_root(root, declared_name, &hash);
+            ensure_archive_dependency_cache(&archive_path, &hash, &cache_root)?;
+            Ok((
+                cache_root,
+                ProjectDependencySource::Archive {
+                    archive_path,
+                    content_hash: hash,
+                },
+            ))
+        }
+    }
+}
+
+fn ensure_archive_dependency_cache(
+    archive_path: &Path,
+    content_hash: &str,
+    cache_root: &Path,
+) -> Result<(), Vec<Diagnostic>> {
+    if cache_root.exists() {
+        if !cache_root.is_dir() {
+            return Err(vec![package_archive_dependency_diagnostic(format!(
+                "package archive dependency cache `{}` already exists and is not a directory",
+                cache_root.display()
+            ))]);
+        }
+        if !package_archive_dependency_cache_is_empty(cache_root)? {
+            return validate_archive_dependency_cache(cache_root, content_hash);
+        }
+    }
+
+    materialize_package_archive(archive_path, Some(content_hash), cache_root).map(|_| ())
+}
+
+fn package_archive_dependency_cache_is_empty(cache_root: &Path) -> Result<bool, Vec<Diagnostic>> {
+    let mut entries = fs::read_dir(cache_root).map_err(|error| {
+        vec![package_archive_dependency_diagnostic(format!(
+            "failed to read package archive dependency cache `{}`: {error}",
+            cache_root.display()
+        ))]
+    })?;
+    match entries.next() {
+        Some(entry) => {
+            entry.map_err(|error| {
+                vec![package_archive_dependency_diagnostic(format!(
+                    "failed to read package archive dependency cache `{}`: {error}",
+                    cache_root.display()
+                ))]
+            })?;
+            Ok(false)
+        }
+        None => Ok(true),
+    }
+}
+
+fn validate_archive_dependency_cache(
+    cache_root: &Path,
+    expected_content_hash: &str,
+) -> Result<(), Vec<Diagnostic>> {
+    let actual_content_hash = package_archive_dependency_cache_content_hash(cache_root)?;
+    if actual_content_hash != expected_content_hash {
+        return Err(vec![package_archive_dependency_diagnostic(format!(
+            "package archive dependency cache `{}` hash mismatch: expected `{expected_content_hash}`, got `{actual_content_hash}`",
+            cache_root.display()
+        ))]);
+    }
+    Ok(())
+}
+
+fn package_archive_dependency_cache_content_hash(
+    cache_root: &Path,
+) -> Result<String, Vec<Diagnostic>> {
+    let manifest = fs::read_to_string(cache_root.join("muga.toml")).map_err(|error| {
+        vec![package_archive_dependency_diagnostic(format!(
+            "failed to read package archive dependency cache manifest `{}`: {error}",
+            cache_root.join("muga.toml").display()
+        ))]
+    })?;
+    let source_dir = package_archive_manifest_source_dir(&manifest)?;
+    let resource_dir = package_archive_manifest_resource_dir(&manifest)?;
+    let resource_root = resource_dir
+        .as_ref()
+        .map(|resource_dir| cache_root.join(resource_dir));
+    let input = package_source_content_input(
+        cache_root,
+        &cache_root.join(source_dir),
+        resource_root.as_deref(),
+        "package archive dependency cache",
+    )?;
+    Ok(format!("sha256:{}", sha256_hex(&input)))
+}
+
+fn insert_manifest_dependency(
+    dependencies: &mut HashMap<String, ProjectDependency>,
+    dependency: ProjectDependency,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if let Some(existing) = dependencies.get(&dependency.name) {
+        if same_manifest_dependency(existing, &dependency) {
+            return;
+        }
+        diagnostics.push(Diagnostic::new(
+            "PK014",
+            format!(
+                "ambiguous local dependency package `{}` is declared at both {} and {}",
+                dependency.name,
+                existing.root.display(),
+                dependency.root.display()
+            ),
+            Span::default(),
+        ));
+        return;
+    }
+    dependencies.insert(dependency.name.clone(), dependency);
+}
+
+fn validate_manifest_dependency_prefixes(
+    root_name: &str,
+    dependencies: &HashMap<String, ProjectDependency>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut names = vec![root_name.to_string()];
+    names.extend(dependencies.keys().cloned());
+    names.sort();
+    for index in 0..names.len() {
+        for other in &names[index + 1..] {
+            if package_path_prefixes_overlap(&names[index], other) {
+                diagnostics.push(Diagnostic::new(
+                    "PK014",
+                    format!(
+                        "ambiguous local package roots `{}` and `{other}` overlap",
+                        names[index]
+                    ),
+                    Span::default(),
+                ));
+            }
+        }
+    }
+}
+
+fn same_manifest_dependency(left: &ProjectDependency, right: &ProjectDependency) -> bool {
+    left.root == right.root
+        && left.source_root == right.source_root
+        && left.resource_root == right.resource_root
+        && left.source == right.source
+}
+
+fn project_manifest_metadata(manifest: &ProjectManifest) -> ProjectManifestMetadata {
+    let mut direct_dependencies = manifest.direct_dependencies.clone();
+    direct_dependencies.sort();
+    let mut dependencies = manifest
+        .dependencies
+        .values()
+        .map(|dependency| project_manifest_dependency_metadata(manifest, dependency))
+        .collect::<Vec<_>>();
+    dependencies.sort_by(|left, right| left.package_path.cmp(&right.package_path));
+    ProjectManifestMetadata {
+        manifest_path: manifest.root.join("muga.toml"),
+        root: manifest.root.clone(),
+        source_root: manifest.source_root.clone(),
+        resource_root: manifest.resource_root.clone(),
+        package_path: manifest.name.clone(),
+        direct_dependencies,
+        dependencies,
+    }
+}
+
+fn project_manifest_dependency_metadata(
+    manifest: &ProjectManifest,
+    dependency: &ProjectDependency,
+) -> ProjectManifestDependencyMetadata {
+    let mut dependencies = dependency.dependencies.clone();
+    dependencies.sort();
+    let (source_kind, source, hash) = match &dependency.source {
+        ProjectDependencySource::Path => (
+            PackageLockfileDependencySourceKind::Path,
+            lockfile_dependency_path(&manifest.root, &dependency.root),
+            None,
+        ),
+        ProjectDependencySource::Archive {
+            archive_path,
+            content_hash,
+        } => (
+            PackageLockfileDependencySourceKind::Archive,
+            lockfile_dependency_path(&manifest.root, archive_path),
+            Some(content_hash.clone()),
+        ),
+    };
+    ProjectManifestDependencyMetadata {
+        package_path: dependency.name.clone(),
+        root: dependency.root.clone(),
+        source_root: dependency.source_root.clone(),
+        resource_root: dependency.resource_root.clone(),
+        source_kind,
+        source,
+        hash,
+        dependencies,
+    }
+}
+
+fn manifest_lockfile_text(manifest: &ProjectManifest) -> Result<String, Vec<Diagnostic>> {
+    let mut out = String::new();
+    out.push_str("# muga.lock -- generated by muga; do not edit by hand\n");
+    out.push_str("lockfile_version = 1\n");
+    out.push_str(&format!(
+        "muga_version = \"{}\"\n",
+        escape_lockfile_string(env!("CARGO_PKG_VERSION"))
+    ));
+
+    let mut dependencies = manifest.dependencies.values().collect::<Vec<_>>();
+    dependencies.sort_by(|left, right| left.name.cmp(&right.name));
+    for dependency in dependencies {
+        out.push('\n');
+        out.push_str("[[package]]\n");
+        out.push_str(&format!(
+            "alias = \"{}\"\n",
+            escape_lockfile_string(&dependency.name)
+        ));
+        out.push_str(&format!(
+            "path = \"{}\"\n",
+            escape_lockfile_string(&dependency.name)
+        ));
+        match &dependency.source {
+            ProjectDependencySource::Path => {
+                out.push_str(&format!(
+                    "source = {{ path = \"{}\" }}\n",
+                    escape_lockfile_string(&lockfile_dependency_path(
+                        &manifest.root,
+                        &dependency.root
+                    ))
+                ));
+                out.push_str(&format!(
+                    "source_hash = \"{}\"\n",
+                    local_dependency_source_hash(dependency)?
+                ));
+            }
+            ProjectDependencySource::Archive {
+                archive_path,
+                content_hash,
+            } => {
+                out.push_str(&format!(
+                    "source = {{ archive = \"{}\" }}\n",
+                    escape_lockfile_string(&lockfile_dependency_path(&manifest.root, archive_path))
+                ));
+                out.push_str(&format!(
+                    "hash = \"{}\"\n",
+                    escape_lockfile_string(content_hash)
+                ));
+            }
+        }
+        out.push_str(&format!(
+            "dependencies = [{}]\n",
+            lockfile_dependency_list(&dependency.dependencies)
+        ));
+    }
+
+    Ok(out)
+}
+
+fn manifest_lockfile_dependency_metadata(
+    manifest: &ProjectManifest,
+) -> Result<Vec<PackageLockfileDependencyMetadata>, Vec<Diagnostic>> {
+    let mut dependencies = manifest.dependencies.values().collect::<Vec<_>>();
+    dependencies.sort_by(|left, right| left.name.cmp(&right.name));
+    dependencies
+        .into_iter()
+        .map(|dependency| {
+            let mut dependency_paths = dependency.dependencies.clone();
+            dependency_paths.sort();
+            match &dependency.source {
+                ProjectDependencySource::Path => Ok(PackageLockfileDependencyMetadata {
+                    package_path: dependency.name.clone(),
+                    source_kind: PackageLockfileDependencySourceKind::Path,
+                    source: lockfile_dependency_path(&manifest.root, &dependency.root),
+                    hash_kind: "source".to_string(),
+                    hash: local_dependency_source_hash(dependency)?,
+                    dependencies: dependency_paths,
+                }),
+                ProjectDependencySource::Archive {
+                    archive_path,
+                    content_hash,
+                } => Ok(PackageLockfileDependencyMetadata {
+                    package_path: dependency.name.clone(),
+                    source_kind: PackageLockfileDependencySourceKind::Archive,
+                    source: lockfile_dependency_path(&manifest.root, archive_path),
+                    hash_kind: "archive".to_string(),
+                    hash: content_hash.clone(),
+                    dependencies: dependency_paths,
+                }),
+            }
+        })
+        .collect()
+}
+
+fn manifest_archive_cache_metadata(manifest: &ProjectManifest) -> Vec<PackageArchiveCacheMetadata> {
+    let mut dependencies = manifest.dependencies.values().collect::<Vec<_>>();
+    dependencies.sort_by(|left, right| left.name.cmp(&right.name));
+    dependencies
+        .into_iter()
+        .filter_map(|dependency| match &dependency.source {
+            ProjectDependencySource::Archive {
+                archive_path,
+                content_hash,
+            } => Some(PackageArchiveCacheMetadata {
+                package_path: dependency.name.clone(),
+                archive_path: archive_path.clone(),
+                cache_root: dependency.root.clone(),
+                expected_content_hash: content_hash.clone(),
+            }),
+            ProjectDependencySource::Path => None,
+        })
+        .collect()
+}
+
+fn validate_existing_lockfile(text: &str, path: &Path) -> Result<(), Vec<Diagnostic>> {
+    parse_lockfile_text(text, path)
+}
+
+fn parse_lockfile_text(text: &str, path: &Path) -> Result<(), Vec<Diagnostic>> {
+    let mut lockfile_version = None;
+    let mut muga_version = None;
+    let mut current_package = None;
+    let mut packages = Vec::new();
+
+    for (line_index, raw_line) in text.lines().enumerate() {
+        let line_number = line_index + 1;
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if line == "[[package]]" {
+            if let Some(package) = current_package.take() {
+                packages.push(finish_lockfile_package(package, path)?);
+            }
+            current_package = Some(LockfilePackageBuilder {
+                line: line_number,
+                alias: None,
+                path: None,
+                source: None,
+                source_hash: None,
+                hash: None,
+                dependencies: None,
+            });
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(lockfile_diagnostic(
+                path,
+                line_number,
+                "expected `key = value` entry",
+            ));
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if let Some(package) = current_package.as_mut() {
+            parse_lockfile_package_field(package, key, value, path, line_number)?;
+        } else {
+            match key {
+                "lockfile_version" => {
+                    if lockfile_version.replace(value.to_string()).is_some() {
+                        return Err(lockfile_diagnostic(
+                            path,
+                            line_number,
+                            "duplicate `lockfile_version`",
+                        ));
+                    }
+                    if value != "1" {
+                        return Err(lockfile_diagnostic(
+                            path,
+                            line_number,
+                            format!("unsupported `lockfile_version` `{value}`"),
+                        ));
+                    }
+                }
+                "muga_version" => {
+                    let version = parse_lockfile_string(value).ok_or_else(|| {
+                        lockfile_diagnostic(path, line_number, "`muga_version` must be a string")
+                    })?;
+                    if muga_version.replace(version).is_some() {
+                        return Err(lockfile_diagnostic(
+                            path,
+                            line_number,
+                            "duplicate `muga_version`",
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(lockfile_diagnostic(
+                        path,
+                        line_number,
+                        format!("unsupported lockfile header field `{key}`"),
+                    ));
+                }
+            }
+        }
+    }
+
+    if let Some(package) = current_package {
+        packages.push(finish_lockfile_package(package, path)?);
+    }
+    if lockfile_version.is_none() {
+        return Err(lockfile_diagnostic(
+            path,
+            1,
+            "missing `lockfile_version = 1`",
+        ));
+    }
+    if muga_version.is_none() {
+        return Err(lockfile_diagnostic(path, 1, "missing `muga_version`"));
+    }
+
+    validate_lockfile_package_graph(&packages, path)?;
+    Ok(())
+}
+
+fn parse_lockfile_package_field(
+    package: &mut LockfilePackageBuilder,
+    key: &str,
+    value: &str,
+    path: &Path,
+    line_number: usize,
+) -> Result<(), Vec<Diagnostic>> {
+    match key {
+        "alias" => {
+            let value = parse_lockfile_string(value).ok_or_else(|| {
+                lockfile_diagnostic(path, line_number, "`alias` must be a string")
+            })?;
+            set_lockfile_field(&mut package.alias, value, path, line_number, "alias")
+        }
+        "path" => {
+            let value = parse_lockfile_string(value)
+                .ok_or_else(|| lockfile_diagnostic(path, line_number, "`path` must be a string"))?;
+            set_lockfile_field(&mut package.path, value, path, line_number, "path")
+        }
+        "source" => {
+            let source = parse_lockfile_source(value, path, line_number)?;
+            set_lockfile_field(&mut package.source, source, path, line_number, "source")
+        }
+        "source_hash" => {
+            let source_hash = parse_lockfile_string(value).ok_or_else(|| {
+                lockfile_diagnostic(path, line_number, "`source_hash` must be a string")
+            })?;
+            validate_lockfile_hash(&source_hash, path, line_number, "source_hash")?;
+            set_lockfile_field(
+                &mut package.source_hash,
+                source_hash,
+                path,
+                line_number,
+                "source_hash",
+            )
+        }
+        "hash" => {
+            let hash = parse_lockfile_string(value)
+                .ok_or_else(|| lockfile_diagnostic(path, line_number, "`hash` must be a string"))?;
+            validate_lockfile_hash(&hash, path, line_number, "hash")?;
+            set_lockfile_field(&mut package.hash, hash, path, line_number, "hash")
+        }
+        "dependencies" => {
+            let dependencies = parse_lockfile_dependency_list(value, path, line_number)?;
+            set_lockfile_field(
+                &mut package.dependencies,
+                dependencies,
+                path,
+                line_number,
+                "dependencies",
+            )
+        }
+        _ => Err(lockfile_diagnostic(
+            path,
+            line_number,
+            format!("unsupported package field `{key}`"),
+        )),
+    }
+}
+
+fn finish_lockfile_package(
+    package: LockfilePackageBuilder,
+    path: &Path,
+) -> Result<ParsedLockfilePackage, Vec<Diagnostic>> {
+    let alias = required_lockfile_field(package.alias, path, package.line, "alias")?;
+    let package_path = required_lockfile_field(package.path, path, package.line, "path")?;
+    let source = required_lockfile_field(package.source, path, package.line, "source")?;
+    let dependencies =
+        required_lockfile_field(package.dependencies, path, package.line, "dependencies")?;
+
+    if !is_valid_package_path(&alias) {
+        return Err(lockfile_diagnostic(
+            path,
+            package.line,
+            format!("package alias `{alias}` is not a valid package path"),
+        ));
+    }
+    if !is_valid_package_path(&package_path) {
+        return Err(lockfile_diagnostic(
+            path,
+            package.line,
+            format!("package path `{package_path}` is not a valid package path"),
+        ));
+    }
+    if alias != package_path {
+        return Err(lockfile_diagnostic(
+            path,
+            package.line,
+            format!("local path lockfile entry uses alias `{alias}` but path `{package_path}`"),
+        ));
+    }
+    match source {
+        ParsedLockfileSource::Path(source_path) => {
+            let _source_hash =
+                required_lockfile_field(package.source_hash, path, package.line, "source_hash")?;
+            if package.hash.is_some() {
+                return Err(lockfile_diagnostic(
+                    path,
+                    package.line,
+                    "local path lockfile entry must use `source_hash`, not `hash`",
+                ));
+            }
+            if source_path.is_empty() {
+                return Err(lockfile_diagnostic(
+                    path,
+                    package.line,
+                    "local path lockfile entry has an empty source path",
+                ));
+            }
+        }
+        ParsedLockfileSource::Archive(archive_path) => {
+            let _hash = required_lockfile_field(package.hash, path, package.line, "hash")?;
+            if package.source_hash.is_some() {
+                return Err(lockfile_diagnostic(
+                    path,
+                    package.line,
+                    "archive lockfile entry must use `hash`, not `source_hash`",
+                ));
+            }
+            if archive_path.is_empty() {
+                return Err(lockfile_diagnostic(
+                    path,
+                    package.line,
+                    "archive lockfile entry has an empty archive path",
+                ));
+            }
+        }
+    }
+    for dependency in &dependencies {
+        if !is_valid_package_path(dependency) {
+            return Err(lockfile_diagnostic(
+                path,
+                package.line,
+                format!("dependency `{dependency}` is not a valid package path"),
+            ));
+        }
+    }
+
+    Ok(ParsedLockfilePackage {
+        alias,
+        dependencies,
+    })
+}
+
+fn validate_lockfile_package_graph(
+    packages: &[ParsedLockfilePackage],
+    path: &Path,
+) -> Result<(), Vec<Diagnostic>> {
+    let mut aliases = HashSet::new();
+    for package in packages {
+        if !aliases.insert(package.alias.clone()) {
+            return Err(lockfile_diagnostic(
+                path,
+                1,
+                format!("duplicate package alias `{}`", package.alias),
+            ));
+        }
+    }
+
+    for package in packages {
+        let mut dependencies = HashSet::new();
+        for dependency in &package.dependencies {
+            if !aliases.contains(dependency) {
+                return Err(lockfile_diagnostic(
+                    path,
+                    1,
+                    format!(
+                        "package `{}` depends on missing lockfile package `{dependency}`",
+                        package.alias
+                    ),
+                ));
+            }
+            if !dependencies.insert(dependency) {
+                return Err(lockfile_diagnostic(
+                    path,
+                    1,
+                    format!(
+                        "package `{}` lists dependency `{dependency}` more than once",
+                        package.alias
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn set_lockfile_field<T>(
+    slot: &mut Option<T>,
+    value: T,
+    path: &Path,
+    line_number: usize,
+    field: &str,
+) -> Result<(), Vec<Diagnostic>> {
+    if slot.replace(value).is_some() {
+        Err(lockfile_diagnostic(
+            path,
+            line_number,
+            format!("duplicate `{field}` field"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn required_lockfile_field<T>(
+    value: Option<T>,
+    path: &Path,
+    line_number: usize,
+    field: &str,
+) -> Result<T, Vec<Diagnostic>> {
+    value.ok_or_else(|| lockfile_diagnostic(path, line_number, format!("missing `{field}` field")))
+}
+
+fn parse_lockfile_source(
+    value: &str,
+    path: &Path,
+    line_number: usize,
+) -> Result<ParsedLockfileSource, Vec<Diagnostic>> {
+    let Some(body) = value
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+    else {
+        return Err(lockfile_diagnostic(
+            path,
+            line_number,
+            "`source` must use `{ path = \"...\" }` or `{ archive = \"...\" }`",
+        ));
+    };
+
+    let mut path_value = None;
+    let mut archive_value = None;
+    for field in split_manifest_inline_fields(body) {
+        let Some((key, value)) = field.split_once('=') else {
+            return Err(lockfile_diagnostic(
+                path,
+                line_number,
+                "`source` must contain `path = \"...\"` or `archive = \"...\"`",
+            ));
+        };
+        let key = key.trim();
+        let value = parse_lockfile_string(value.trim()).ok_or_else(|| {
+            lockfile_diagnostic(
+                path,
+                line_number,
+                format!("`source.{key}` must be a string"),
+            )
+        })?;
+        match key {
+            "path" => {
+                if path_value.replace(value).is_some() {
+                    return Err(lockfile_diagnostic(
+                        path,
+                        line_number,
+                        "duplicate `source.path` field",
+                    ));
+                }
+            }
+            "archive" => {
+                if archive_value.replace(value).is_some() {
+                    return Err(lockfile_diagnostic(
+                        path,
+                        line_number,
+                        "duplicate `source.archive` field",
+                    ));
+                }
+            }
+            _ => {
+                return Err(lockfile_diagnostic(
+                    path,
+                    line_number,
+                    format!("unsupported source field `{key}`"),
+                ));
+            }
+        }
+    }
+
+    match (path_value, archive_value) {
+        (Some(path_value), None) => Ok(ParsedLockfileSource::Path(path_value)),
+        (None, Some(archive_value)) => Ok(ParsedLockfileSource::Archive(archive_value)),
+        (None, None) => Err(lockfile_diagnostic(
+            path,
+            line_number,
+            "`source` must contain `path = \"...\"` or `archive = \"...\"`",
+        )),
+        (Some(_), Some(_)) => Err(lockfile_diagnostic(
+            path,
+            line_number,
+            "`source` must not contain both `path` and `archive`",
+        )),
+    }
+}
+
+fn parse_lockfile_dependency_list(
+    value: &str,
+    path: &Path,
+    line_number: usize,
+) -> Result<Vec<String>, Vec<Diagnostic>> {
+    let Some(body) = value
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+    else {
+        return Err(lockfile_diagnostic(
+            path,
+            line_number,
+            "`dependencies` must be a list of strings",
+        ));
+    };
+    let body = body.trim();
+    if body.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut dependencies = Vec::new();
+    for value in split_manifest_inline_fields(body) {
+        let dependency = parse_lockfile_string(value.trim()).ok_or_else(|| {
+            lockfile_diagnostic(
+                path,
+                line_number,
+                "`dependencies` must contain only strings",
+            )
+        })?;
+        dependencies.push(dependency);
+    }
+    Ok(dependencies)
+}
+
+fn parse_lockfile_string(value: &str) -> Option<String> {
+    let body = value.strip_prefix('"')?.strip_suffix('"')?;
+    let mut out = String::new();
+    let mut escaped = false;
+    for ch in body.chars() {
+        if escaped {
+            match ch {
+                '\\' | '"' => out.push(ch),
+                _ => return None,
+            }
+            escaped = false;
+        } else if ch == '\\' {
+            escaped = true;
+        } else if ch == '"' {
+            return None;
+        } else {
+            out.push(ch);
+        }
+    }
+    if escaped { None } else { Some(out) }
+}
+
+fn validate_lockfile_hash(
+    value: &str,
+    path: &Path,
+    line_number: usize,
+    field: &str,
+) -> Result<(), Vec<Diagnostic>> {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return Err(lockfile_diagnostic(
+            path,
+            line_number,
+            format!("`{field}` must start with `sha256:`"),
+        ));
+    };
+    if hex.len() != 64
+        || !hex
+            .chars()
+            .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
+    {
+        return Err(lockfile_diagnostic(
+            path,
+            line_number,
+            format!("`{field}` must be `sha256:` followed by 64 lowercase hexadecimal digits"),
+        ));
+    }
+    Ok(())
+}
+
+fn lockfile_diagnostic(
+    path: &Path,
+    line_number: usize,
+    message: impl Into<String>,
+) -> Vec<Diagnostic> {
+    vec![
+        Diagnostic::new(
+            "PK026",
+            format!(
+                "invalid package lockfile `{}` at line {}: {}",
+                path.display(),
+                line_number,
+                message.into()
+            ),
+            Span::default(),
+        )
+        .with_suggestion("restore the generated dependency lockfile format or delete muga.lock"),
+    ]
+}
+
+fn local_dependency_source_hash(dependency: &ProjectDependency) -> Result<String, Vec<Diagnostic>> {
+    let input = local_dependency_source_input(dependency)?;
+    Ok(format!("sha256:{}", sha256_hex(&input)))
+}
+
+fn local_dependency_source_input(
+    dependency: &ProjectDependency,
+) -> Result<Vec<u8>, Vec<Diagnostic>> {
+    package_source_content_input(
+        &dependency.root,
+        &dependency.source_root,
+        dependency.resource_root.as_deref(),
+        "lockfile",
+    )
+}
+
+fn package_source_content_input(
+    root: &Path,
+    source_root: &Path,
+    resource_root: Option<&Path>,
+    context: &str,
+) -> Result<Vec<u8>, Vec<Diagnostic>> {
+    let manifest_path = root.join("muga.toml");
+    let manifest_source = fs::read_to_string(&manifest_path).map_err(|error| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "failed to read package manifest `{}` for {context}: {error}",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+
+    let mut out = format!(
+        "manifest\tmuga.toml\t{}\n{}\n",
+        manifest_source.len(),
+        manifest_source
+    )
+    .into_bytes();
+    let mut files = Vec::new();
+    collect_package_source_files(source_root, source_root, &mut files, context)?;
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    for (relative_path, source) in files {
+        out.extend_from_slice(
+            format!("file\t{}\t{}\n{}\n", relative_path, source.len(), source).as_bytes(),
+        );
+    }
+    if let Some(resource_root) = resource_root {
+        let mut resources = Vec::new();
+        collect_package_resource_files(resource_root, resource_root, &mut resources, context)?;
+        resources.sort_by(|left, right| left.0.cmp(&right.0));
+        for (relative_path, contents) in resources {
+            out.extend_from_slice(
+                format!("resource\t{}\t{}\n", relative_path, contents.len()).as_bytes(),
+            );
+            out.extend_from_slice(&contents);
+            out.push(b'\n');
+        }
+    }
+    Ok(out)
+}
+
+fn materialize_validated_package_archive(
+    archive: &PackageArchive,
+    destination_root: &Path,
+) -> Result<PackageArchiveMaterializationOutput, Vec<Diagnostic>> {
+    let source_dir = package_archive_manifest_source_dir(&archive.manifest.contents)?;
+    let resource_dir = package_archive_manifest_resource_dir(&archive.manifest.contents)?;
+    let mut outputs = Vec::with_capacity(archive.sources.len() + archive.resources.len() + 1);
+    outputs.push((
+        destination_root.join("muga.toml"),
+        archive.manifest.contents.as_bytes().to_vec(),
+    ));
+    for source in &archive.sources {
+        outputs.push((
+            destination_root.join(&source_dir).join(&source.path),
+            source.contents.as_bytes().to_vec(),
+        ));
+    }
+    if let Some(resource_dir) = resource_dir {
+        for resource in &archive.resources {
+            outputs.push((
+                destination_root.join(&resource_dir).join(&resource.path),
+                resource.contents.clone(),
+            ));
+        }
+    } else if !archive.resources.is_empty() {
+        return Err(vec![package_archive_materialization_diagnostic(
+            "package archive resource entries require [package] resources",
+        )]);
+    }
+
+    preflight_package_archive_materialization(destination_root, &outputs)?;
+    fs::create_dir_all(destination_root).map_err(|error| {
+        vec![package_archive_materialization_diagnostic(format!(
+            "failed to create package archive materialization root `{}`: {error}",
+            destination_root.display()
+        ))]
+    })?;
+    for (path, contents) in &outputs {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                vec![package_archive_materialization_diagnostic(format!(
+                    "failed to create package archive materialization directory `{}`: {error}",
+                    parent.display()
+                ))]
+            })?;
+        }
+        fs::write(path, contents).map_err(|error| {
+            vec![package_archive_materialization_diagnostic(format!(
+                "failed to write package archive materialized file `{}`: {error}",
+                path.display()
+            ))]
+        })?;
+    }
+
+    Ok(PackageArchiveMaterializationOutput {
+        root: destination_root.to_path_buf(),
+        content_hash: archive.content_hash.clone(),
+        files: outputs.into_iter().map(|(path, _)| path).collect(),
+    })
+}
+
+fn preflight_package_archive_materialization(
+    destination_root: &Path,
+    outputs: &[(PathBuf, Vec<u8>)],
+) -> Result<(), Vec<Diagnostic>> {
+    if destination_root.exists() && !destination_root.is_dir() {
+        return Err(vec![package_archive_materialization_diagnostic(format!(
+            "package archive materialization root `{}` already exists and is not a directory",
+            destination_root.display()
+        ))]);
+    }
+    if destination_root.is_dir() {
+        let mut entries = fs::read_dir(destination_root).map_err(|error| {
+            vec![package_archive_materialization_diagnostic(format!(
+                "failed to read package archive materialization root `{}`: {error}",
+                destination_root.display()
+            ))]
+        })?;
+        if let Some(entry) = entries.next() {
+            entry.map_err(|error| {
+                vec![package_archive_materialization_diagnostic(format!(
+                    "failed to read package archive materialization root `{}`: {error}",
+                    destination_root.display()
+                ))]
+            })?;
+            return Err(vec![package_archive_materialization_diagnostic(format!(
+                "package archive materialization root `{}` must be empty",
+                destination_root.display()
+            ))]);
+        }
+    }
+
+    let mut seen = HashSet::new();
+    for (path, _) in outputs {
+        if !seen.insert(path.clone()) {
+            return Err(vec![package_archive_materialization_diagnostic(format!(
+                "package archive materialization would write `{}` more than once",
+                path.display()
+            ))]);
+        }
+        if path.exists() {
+            return Err(vec![package_archive_materialization_diagnostic(format!(
+                "package archive materialized file `{}` already exists",
+                path.display()
+            ))]);
+        }
+    }
+    Ok(())
+}
+
+fn package_archive_manifest_source_dir(manifest: &str) -> Result<PathBuf, Vec<Diagnostic>> {
+    let source_dir = package_archive_manifest_string_field_with_diagnostic(
+        manifest,
+        "source",
+        package_archive_materialization_diagnostic,
+    )?
+    .unwrap_or_else(|| "src".to_string());
+    package_archive_manifest_relative_dir_with_diagnostic(
+        "source",
+        &source_dir,
+        package_archive_materialization_diagnostic,
+    )
+}
+
+fn package_archive_manifest_resource_dir(
+    manifest: &str,
+) -> Result<Option<PathBuf>, Vec<Diagnostic>> {
+    package_archive_manifest_resource_dir_with_diagnostic(
+        manifest,
+        package_archive_materialization_diagnostic,
+    )
+}
+
+fn package_archive_manifest_resource_dir_with_diagnostic<F>(
+    manifest: &str,
+    diagnostic: F,
+) -> Result<Option<PathBuf>, Vec<Diagnostic>>
+where
+    F: Fn(String) -> Diagnostic,
+{
+    let Some(resource_dir) =
+        package_archive_manifest_string_field_with_diagnostic(manifest, "resources", &diagnostic)?
+    else {
+        return Ok(None);
+    };
+    package_archive_manifest_relative_dir_with_diagnostic("resources", &resource_dir, diagnostic)
+        .map(Some)
+}
+
+fn package_archive_manifest_string_field_with_diagnostic<F>(
+    manifest: &str,
+    field_name: &str,
+    diagnostic: F,
+) -> Result<Option<String>, Vec<Diagnostic>>
+where
+    F: Fn(String) -> Diagnostic,
+{
+    let mut in_package = false;
+
+    for raw_line in manifest.lines() {
+        let line = strip_manifest_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_package = line == "[package]";
+            continue;
+        }
+        if !in_package {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() != field_name {
+            continue;
+        }
+        let Some(value) = parse_manifest_string(value.trim()) else {
+            return Err(vec![diagnostic(format!(
+                "package archive manifest field `{field_name}` must be a string"
+            ))]);
+        };
+        return Ok(Some(value));
+    }
+
+    Ok(None)
+}
+
+fn package_archive_manifest_relative_dir_with_diagnostic<F>(
+    field_name: &str,
+    value: &str,
+    diagnostic: F,
+) -> Result<PathBuf, Vec<Diagnostic>>
+where
+    F: Fn(String) -> Diagnostic,
+{
+    if value.is_empty() {
+        return Err(vec![diagnostic(format!(
+            "package archive manifest field `{field_name}` must not be empty"
+        ))]);
+    }
+    if value.starts_with('/') || value.contains('\\') || value.contains(':') {
+        return Err(vec![diagnostic(format!(
+            "package archive manifest {field_name} `{value}` must be a relative slash-separated path"
+        ))]);
+    }
+    let mut path = PathBuf::new();
+    for segment in value.split('/') {
+        if segment.is_empty() || segment == ".." || (field_name == "resources" && segment == ".") {
+            return Err(vec![diagnostic(format!(
+                "package archive manifest {field_name} `{value}` must stay inside the materialization root"
+            ))]);
+        }
+        if segment == "." {
+            continue;
+        }
+        if matches!(segment, ".git" | ".muga") {
+            return Err(vec![diagnostic(format!(
+                "package archive manifest {field_name} `{value}` must not use tool metadata directories"
+            ))]);
+        }
+        path.push(segment);
+    }
+    Ok(path)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RawPackageArchiveEntry {
+    kind: String,
+    path: String,
+    contents: Vec<u8>,
+}
+
+struct PackageArchiveParser<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> PackageArchiveParser<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn next_entry(&mut self) -> Result<Option<RawPackageArchiveEntry>, Vec<Diagnostic>> {
+        if self.offset == self.bytes.len() {
+            return Ok(None);
+        }
+
+        let header_end = self.bytes[self.offset..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map(|relative| self.offset + relative)
+            .ok_or_else(|| {
+                vec![package_archive_validation_diagnostic(
+                    "package archive entry header is missing a newline",
+                )]
+            })?;
+        let header = &self.bytes[self.offset..header_end];
+        self.offset = header_end + 1;
+
+        let fields = header.split(|byte| *byte == b'\t').collect::<Vec<_>>();
+        if fields.len() != 3 {
+            return Err(vec![package_archive_validation_diagnostic(
+                "package archive entry header must have kind, path, and byte length",
+            )]);
+        }
+
+        let kind = archive_header_field(fields[0], "kind")?;
+        let path = archive_header_path(fields[1])?;
+        let byte_len = archive_header_byte_len(fields[2], &path)?;
+        let content_end = self.offset.checked_add(byte_len).ok_or_else(|| {
+            vec![package_archive_validation_diagnostic(format!(
+                "package archive entry `{path}` byte length is too large"
+            ))]
+        })?;
+        if content_end > self.bytes.len() {
+            return Err(vec![package_archive_validation_diagnostic(format!(
+                "package archive entry `{path}` declares {byte_len} bytes but the archive ends early"
+            ))]);
+        }
+
+        let contents = self.bytes[self.offset..content_end].to_vec();
+        self.offset = content_end;
+
+        if self.bytes.get(self.offset) != Some(&b'\n') {
+            return Err(vec![package_archive_validation_diagnostic(format!(
+                "package archive entry `{path}` is missing the newline after its contents"
+            ))]);
+        }
+        self.offset += 1;
+
+        Ok(Some(RawPackageArchiveEntry {
+            kind,
+            path,
+            contents,
+        }))
+    }
+}
+
+fn package_archive_utf8_entry_contents(
+    path: &str,
+    contents: &[u8],
+) -> Result<String, Vec<Diagnostic>> {
+    std::str::from_utf8(contents)
+        .map(str::to_string)
+        .map_err(|_| {
+            vec![package_archive_validation_diagnostic(format!(
+                "package archive entry `{path}` contents are not valid UTF-8"
+            ))]
+        })
+}
+
+fn archive_header_field(bytes: &[u8], field: &str) -> Result<String, Vec<Diagnostic>> {
+    std::str::from_utf8(bytes)
+        .map(ToString::to_string)
+        .map_err(|_| {
+            vec![package_archive_validation_diagnostic(format!(
+                "package archive entry {field} is not valid UTF-8"
+            ))]
+        })
+}
+
+fn archive_header_path(bytes: &[u8]) -> Result<String, Vec<Diagnostic>> {
+    std::str::from_utf8(bytes)
+        .map(ToString::to_string)
+        .map_err(|_| {
+            vec![package_archive_validation_diagnostic(
+                "package archive entry path is not valid UTF-8",
+            )]
+        })
+}
+
+fn archive_header_byte_len(bytes: &[u8], path: &str) -> Result<usize, Vec<Diagnostic>> {
+    if bytes.is_empty() || !bytes.iter().all(|byte| byte.is_ascii_digit()) {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive entry `{path}` has an invalid byte length"
+        ))]);
+    }
+    std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|text| text.parse::<usize>().ok())
+        .ok_or_else(|| {
+            vec![package_archive_validation_diagnostic(format!(
+                "package archive entry `{path}` byte length is too large"
+            ))]
+        })
+}
+
+fn validate_expected_package_archive_hash(hash: &str) -> Result<(), Vec<Diagnostic>> {
+    let Some(hex) = hash.strip_prefix("sha256:") else {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive expected hash `{hash}` must start with `sha256:`"
+        ))]);
+    };
+    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive expected hash `{hash}` must be `sha256:` followed by 64 hexadecimal digits"
+        ))]);
+    }
+    if !hex
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive expected hash `{hash}` must use lower-case hexadecimal"
+        ))]);
+    }
+    Ok(())
+}
+
+fn expected_package_archive_hash_from_path(path: &Path) -> Result<String, Vec<Diagnostic>> {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive path `{}` must have a valid UTF-8 file name",
+            path.display()
+        ))]);
+    };
+    let Some(stem) = file_name.strip_suffix(".mgp") else {
+        return Err(vec![
+            package_archive_validation_diagnostic(format!(
+                "package archive `{file_name}` must use the `.mgp` extension"
+            ))
+            .with_suggestion("use the archive file written by `muga emit-package-archive`"),
+        ]);
+    };
+    let Some((package, hash)) = stem.rsplit_once("-sha256-") else {
+        return Err(vec![
+            package_archive_validation_diagnostic(format!(
+                "package archive `{file_name}` must use a `*-sha256-<hash>.mgp` file name"
+            ))
+            .with_suggestion("use the archive file written by `muga emit-package-archive`"),
+        ]);
+    };
+    if package.is_empty() {
+        return Err(vec![
+            package_archive_validation_diagnostic(format!(
+                "package archive `{file_name}` must include a package name before `-sha256-`"
+            ))
+            .with_suggestion("use the archive file written by `muga emit-package-archive`"),
+        ]);
+    }
+    validate_package_archive_file_hash(hash, file_name)?;
+    Ok(format!("sha256:{hash}"))
+}
+
+fn validate_package_archive_file_hash(hash: &str, file_name: &str) -> Result<(), Vec<Diagnostic>> {
+    if hash.len() != 64 || !hash.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive `{file_name}` must contain 64 hexadecimal digits after `-sha256-`"
+        ))]);
+    }
+    if hash.chars().any(|ch| ch.is_ascii_uppercase()) {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive `{file_name}` hash must use lower-case hexadecimal"
+        ))]);
+    }
+    Ok(())
+}
+
+fn validate_package_archive_source_path(path: &str) -> Result<(), Vec<Diagnostic>> {
+    if path.is_empty() {
+        return Err(vec![package_archive_validation_diagnostic(
+            "package archive source entry path must not be empty",
+        )]);
+    }
+    if path == "muga.toml" || !path.ends_with(".muga") {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive source entry `{path}` must be a `.muga` source file"
+        ))]);
+    }
+    if path.starts_with('/') || path.contains('\\') {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive source entry `{path}` must be a relative slash-separated path"
+        ))]);
+    }
+    for segment in path.split('/') {
+        if segment.is_empty() || matches!(segment, "." | "..") {
+            return Err(vec![package_archive_validation_diagnostic(format!(
+                "package archive source entry `{path}` must stay inside the package source root"
+            ))]);
+        }
+        if matches!(segment, ".git" | ".muga") {
+            return Err(vec![package_archive_validation_diagnostic(format!(
+                "package archive source entry `{path}` must not include tool metadata directories"
+            ))]);
+        }
+    }
+    Ok(())
+}
+
+fn validate_package_archive_resource_path(path: &str) -> Result<(), Vec<Diagnostic>> {
+    if path.is_empty() {
+        return Err(vec![package_archive_validation_diagnostic(
+            "package archive resource entry path must not be empty",
+        )]);
+    }
+    if path.starts_with('/') || path.contains('\\') || path.contains(':') {
+        return Err(vec![package_archive_validation_diagnostic(format!(
+            "package archive resource entry `{path}` must be a relative slash-separated path"
+        ))]);
+    }
+    for segment in path.split('/') {
+        if segment.is_empty() || matches!(segment, "." | "..") {
+            return Err(vec![package_archive_validation_diagnostic(format!(
+                "package archive resource entry `{path}` must stay inside the package resource root"
+            ))]);
+        }
+        if matches!(segment, ".git" | ".muga") {
+            return Err(vec![package_archive_validation_diagnostic(format!(
+                "package archive resource entry `{path}` must not include tool metadata directories"
+            ))]);
+        }
+    }
+    Ok(())
+}
+
+fn package_archive_validation_diagnostic(message: impl Into<String>) -> Diagnostic {
+    Diagnostic::new("PK028", message, Span::default())
+        .with_suggestion("recreate the archive with `emit-package-archive`")
+}
+
+fn package_archive_materialization_diagnostic(message: impl Into<String>) -> Diagnostic {
+    Diagnostic::new("PK029", message, Span::default())
+        .with_suggestion("materialize into an empty destination or recreate the archive")
+}
+
+fn package_archive_dependency_diagnostic(message: impl Into<String>) -> Diagnostic {
+    Diagnostic::new("PK030", message, Span::default())
+        .with_suggestion("delete the archive dependency cache entry or update the dependency hash")
+}
+
+fn collect_package_source_files(
+    root: &Path,
+    current: &Path,
+    files: &mut Vec<(String, String)>,
+    context: &str,
+) -> Result<(), Vec<Diagnostic>> {
+    let entries = fs::read_dir(current).map_err(|error| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "failed to read package source directory `{}` for {context}: {error}",
+                current.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+    let mut paths = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            vec![Diagnostic::new(
+                "PK025",
+                format!(
+                    "failed to read package source directory `{}` for {context}: {error}",
+                    current.display()
+                ),
+                Span::default(),
+            )]
+        })?;
+        paths.push(entry.path());
+    }
+    paths.sort();
+
+    for path in paths {
+        if path.is_dir() {
+            if should_skip_package_source_directory(&path) {
+                continue;
+            }
+            collect_package_source_files(root, &path, files, context)?;
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension == "muga")
+        {
+            let relative_path = package_relative_source_path(root, &path)?;
+            let source = fs::read_to_string(&path).map_err(|error| {
+                vec![Diagnostic::new(
+                    "PK025",
+                    format!(
+                        "failed to read package source file `{}` for {context}: {error}",
+                        path.display()
+                    ),
+                    Span::default(),
+                )]
+            })?;
+            files.push((relative_path, source));
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_package_resource_files(
+    root: &Path,
+    current: &Path,
+    files: &mut Vec<(String, Vec<u8>)>,
+    context: &str,
+) -> Result<(), Vec<Diagnostic>> {
+    let entries = fs::read_dir(current).map_err(|error| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "failed to read package resource directory `{}` for {context}: {error}",
+                current.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+    let mut paths = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            vec![Diagnostic::new(
+                "PK025",
+                format!(
+                    "failed to read package resource directory `{}` for {context}: {error}",
+                    current.display()
+                ),
+                Span::default(),
+            )]
+        })?;
+        paths.push(entry.path());
+    }
+    paths.sort();
+
+    for path in paths {
+        if path.is_dir() {
+            if should_skip_package_source_directory(&path) {
+                continue;
+            }
+            collect_package_resource_files(root, &path, files, context)?;
+        } else if path.is_file() {
+            let relative_path = package_relative_resource_path(root, &path)?;
+            let contents = fs::read(&path).map_err(|error| {
+                vec![Diagnostic::new(
+                    "PK025",
+                    format!(
+                        "failed to read package resource file `{}` for {context}: {error}",
+                        path.display()
+                    ),
+                    Span::default(),
+                )]
+            })?;
+            files.push((relative_path, contents));
+        }
+    }
+
+    Ok(())
+}
+
+fn should_skip_package_source_directory(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| matches!(name, ".git" | ".muga"))
+}
+
+fn lockfile_dependency_path(project_root: &Path, dependency_root: &Path) -> String {
+    let project_root = canonical_or_self(project_root);
+    let dependency_root = canonical_or_self(dependency_root);
+    relative_path_string(&project_root, &dependency_root)
+        .unwrap_or_else(|| dependency_root.display().to_string())
+}
+
+fn package_relative_source_path(root: &Path, path: &Path) -> Result<String, Vec<Diagnostic>> {
+    let relative = path.strip_prefix(root).map_err(|_| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "package source file `{}` is outside source root `{}`",
+                path.display(),
+                root.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+    path_components_as_slashes(relative).ok_or_else(|| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "package source file `{}` contains non-UTF-8 path components",
+                path.display()
+            ),
+            Span::default(),
+        )]
+    })
+}
+
+fn package_relative_resource_path(root: &Path, path: &Path) -> Result<String, Vec<Diagnostic>> {
+    let relative = path.strip_prefix(root).map_err(|_| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "package resource file `{}` is outside resource root `{}`",
+                path.display(),
+                root.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+    path_components_as_slashes(relative).ok_or_else(|| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "package resource file `{}` contains non-UTF-8 path components",
+                path.display()
+            ),
+            Span::default(),
+        )]
+    })
+}
+
+fn canonical_or_self(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn relative_path_string(from: &Path, to: &Path) -> Option<String> {
+    let from = path_component_strings(from)?;
+    let to = path_component_strings(to)?;
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    if common == 0 {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    parts.extend(std::iter::repeat_n(
+        "..".to_string(),
+        from.len().saturating_sub(common),
+    ));
+    parts.extend(to[common..].iter().cloned());
+    if parts.is_empty() {
+        Some(".".to_string())
+    } else {
+        Some(parts.join("/"))
+    }
+}
+
+fn path_component_strings(path: &Path) -> Option<Vec<String>> {
+    path.components()
+        .map(|component| Some(component.as_os_str().to_str()?.to_string()))
+        .collect()
+}
+
+fn path_components_as_slashes(path: &Path) -> Option<String> {
+    let parts = path_component_strings(path)?;
+    if parts.is_empty() {
+        Some(".".to_string())
+    } else {
+        Some(parts.join("/"))
+    }
+}
+
+fn lockfile_dependency_list(dependencies: &[String]) -> String {
+    let mut dependencies = dependencies.to_vec();
+    dependencies.sort();
+    dependencies
+        .iter()
+        .map(|dependency| format!("\"{}\"", escape_lockfile_string(dependency)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn escape_lockfile_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn package_archive_file_path(root: &Path, package_name: &str, content_hash: &str) -> PathBuf {
+    let hash = content_hash
+        .strip_prefix("sha256:")
+        .unwrap_or(content_hash)
+        .replace(':', "-");
+    root.join(format!(
+        "{}-sha256-{}.mgp",
+        package_name.replace("::", "__"),
+        hash
+    ))
+}
+
+fn package_archive_dependency_cache_root(
+    project_root: &Path,
+    dependency_name: &str,
+    content_hash: &str,
+) -> PathBuf {
+    let hash = content_hash.strip_prefix("sha256:").unwrap_or(content_hash);
+    project_root.join(".muga").join("packages").join(format!(
+        "{}-sha256-{}",
+        dependency_name.replace("::", "__"),
+        hash
+    ))
+}
+
+pub(crate) fn sha256_hex(input: &[u8]) -> String {
+    const H0: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+
+    let mut message = input.to_vec();
+    let bit_len = (message.len() as u64) * 8;
+    message.push(0x80);
+    while (message.len() % 64) != 56 {
+        message.push(0);
+    }
+    message.extend_from_slice(&bit_len.to_be_bytes());
+
+    let mut hash = H0;
+    for chunk in message.chunks_exact(64) {
+        let mut words = [0_u32; 64];
+        for (index, word) in words.iter_mut().take(16).enumerate() {
+            let start = index * 4;
+            *word = u32::from_be_bytes([
+                chunk[start],
+                chunk[start + 1],
+                chunk[start + 2],
+                chunk[start + 3],
+            ]);
+        }
+        for index in 16..64 {
+            let s0 = words[index - 15].rotate_right(7)
+                ^ words[index - 15].rotate_right(18)
+                ^ (words[index - 15] >> 3);
+            let s1 = words[index - 2].rotate_right(17)
+                ^ words[index - 2].rotate_right(19)
+                ^ (words[index - 2] >> 10);
+            words[index] = words[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(words[index - 7])
+                .wrapping_add(s1);
+        }
+
+        let mut a = hash[0];
+        let mut b = hash[1];
+        let mut c = hash[2];
+        let mut d = hash[3];
+        let mut e = hash[4];
+        let mut f = hash[5];
+        let mut g = hash[6];
+        let mut h = hash[7];
+
+        for index in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ ((!e) & g);
+            let temp1 = h
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[index])
+                .wrapping_add(words[index]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let temp2 = s0.wrapping_add(maj);
+
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(temp1);
+            d = c;
+            c = b;
+            b = a;
+            a = temp1.wrapping_add(temp2);
+        }
+
+        hash[0] = hash[0].wrapping_add(a);
+        hash[1] = hash[1].wrapping_add(b);
+        hash[2] = hash[2].wrapping_add(c);
+        hash[3] = hash[3].wrapping_add(d);
+        hash[4] = hash[4].wrapping_add(e);
+        hash[5] = hash[5].wrapping_add(f);
+        hash[6] = hash[6].wrapping_add(g);
+        hash[7] = hash[7].wrapping_add(h);
+    }
+
+    hash.iter()
+        .map(|word| format!("{word:08x}"))
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+fn package_path_prefixes_overlap(left: &str, right: &str) -> bool {
+    left == right
+        || left
+            .strip_prefix(right)
+            .is_some_and(|rest| rest.starts_with("::"))
+        || right
+            .strip_prefix(left)
+            .is_some_and(|rest| rest.starts_with("::"))
+}
+
+fn parse_manifest_dependency_source(
+    value: &str,
+    manifest_path: &Path,
+    dependency_name: &str,
+) -> Result<ManifestDependencySource, Vec<Diagnostic>> {
+    let Some(body) = value
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+    else {
+        return Err(vec![unsupported_manifest_dependency_diagnostic(
+            manifest_path,
+            dependency_name,
+        )]);
+    };
+
+    let mut path_value = None;
+    let mut archive_value = None;
+    let mut hash_value = None;
+    for field in split_manifest_inline_fields(body) {
+        let Some((key, value)) = field.split_once('=') else {
+            return Err(vec![unsupported_manifest_dependency_diagnostic(
+                manifest_path,
+                dependency_name,
+            )]);
+        };
+        let key = key.trim();
+        let Some(value) = parse_manifest_string(value.trim()) else {
+            return Err(vec![Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest dependency `{dependency_name}` field `{key}` in {} must be a string",
+                    manifest_path.display()
+                ),
+                Span::default(),
+            )]);
+        };
+        match key {
+            "path" => {
+                if path_value.replace(value).is_some() {
+                    return Err(vec![Diagnostic::new(
+                        "PK014",
+                        format!(
+                            "manifest dependency `{dependency_name}` in {} has duplicate `path` fields",
+                            manifest_path.display()
+                        ),
+                        Span::default(),
+                    )]);
+                }
+            }
+            "archive" => {
+                if archive_value.replace(value).is_some() {
+                    return Err(vec![Diagnostic::new(
+                        "PK014",
+                        format!(
+                            "manifest dependency `{dependency_name}` in {} has duplicate `archive` fields",
+                            manifest_path.display()
+                        ),
+                        Span::default(),
+                    )]);
+                }
+            }
+            "hash" => {
+                validate_manifest_archive_dependency_hash(&value, manifest_path, dependency_name)?;
+                if hash_value.replace(value).is_some() {
+                    return Err(vec![Diagnostic::new(
+                        "PK014",
+                        format!(
+                            "manifest dependency `{dependency_name}` in {} has duplicate `hash` fields",
+                            manifest_path.display()
+                        ),
+                        Span::default(),
+                    )]);
+                }
+            }
+            _ => {
+                return Err(vec![Diagnostic::new(
+                    "PK014",
+                    format!(
+                        "manifest dependency `{dependency_name}` in {} currently supports only `path`, or `archive` with `hash`",
+                        manifest_path.display()
+                    ),
+                    Span::default(),
+                )]);
+            }
+        }
+    }
+
+    match (path_value, archive_value, hash_value) {
+        (Some(path_value), None, None) => Ok(ManifestDependencySource::Path(path_value)),
+        (None, Some(archive), Some(hash)) => {
+            Ok(ManifestDependencySource::Archive { archive, hash })
+        }
+        (Some(_), Some(_), _) => Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "manifest dependency `{dependency_name}` in {} must not combine `path` and `archive`",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]),
+        (Some(_), None, Some(_)) => Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "manifest dependency `{dependency_name}` in {} must not combine `path` and `hash`",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]),
+        (None, Some(_), None) => Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "manifest dependency `{dependency_name}` in {} archive form requires `hash`",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]),
+        (None, None, Some(_)) => Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "manifest dependency `{dependency_name}` in {} hash requires `archive`",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]),
+        (None, None, None) => Err(vec![unsupported_manifest_dependency_diagnostic(
+            manifest_path,
+            dependency_name,
+        )]),
+    }
+}
+
+fn validate_manifest_archive_dependency_hash(
+    value: &str,
+    manifest_path: &Path,
+    dependency_name: &str,
+) -> Result<(), Vec<Diagnostic>> {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "manifest dependency `{dependency_name}` hash in {} must start with `sha256:`",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]);
+    };
+    if hex.len() != 64
+        || !hex
+            .chars()
+            .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
+    {
+        return Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "manifest dependency `{dependency_name}` hash in {} must be `sha256:` followed by 64 lowercase hexadecimal digits",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]);
+    }
+    Ok(())
+}
+
+fn unsupported_manifest_dependency_diagnostic(
+    manifest_path: &Path,
+    dependency_name: &str,
+) -> Diagnostic {
+    Diagnostic::new(
+        "PK014",
+        format!(
+            "manifest dependency `{dependency_name}` in {} currently supports only local path or local archive forms",
+            manifest_path.display()
+        ),
+        Span::default(),
+    )
+    .with_suggestion(format!(
+        "use `{dependency_name} = {{ path = \"../{dependency_name}\" }}` or a local archive with `hash`"
+    ))
+}
+
+fn split_manifest_inline_fields(value: &str) -> Vec<&str> {
+    let mut fields = Vec::new();
+    let mut start = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (index, ch) in value.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+        } else if ch == '"' {
+            in_string = true;
+        } else if ch == ',' {
+            let field = value[start..index].trim();
+            if !field.is_empty() {
+                fields.push(field);
+            }
+            start = index + ch.len_utf8();
+        }
+    }
+    let field = value[start..].trim();
+    if !field.is_empty() {
+        fields.push(field);
+    }
+    fields
+}
+
+fn parse_manifest_key(value: &str) -> Option<String> {
+    if value.starts_with('"') {
+        parse_manifest_string(value)
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn strip_manifest_comment(value: &str) -> &str {
+    let mut in_string = false;
+    let mut escaped = false;
+    for (index, ch) in value.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+        } else if ch == '"' {
+            in_string = true;
+        } else if ch == '#' {
+            return &value[..index];
+        }
+    }
+    value
 }
 
 fn parse_manifest_string(value: &str) -> Option<String> {
-    value
-        .strip_prefix('"')
-        .and_then(|value| value.strip_suffix('"'))
-        .map(ToString::to_string)
+    let body = value.strip_prefix('"')?.strip_suffix('"')?;
+    let mut parsed = String::new();
+    let mut chars = body.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            return None;
+        }
+        if ch != '\\' {
+            parsed.push(ch);
+            continue;
+        }
+        let escaped = chars.next()?;
+        match escaped {
+            '"' => parsed.push('"'),
+            '\\' => parsed.push('\\'),
+            'n' => parsed.push('\n'),
+            'r' => parsed.push('\r'),
+            't' => parsed.push('\t'),
+            _ => return None,
+        }
+    }
+    Some(parsed)
+}
+
+fn manifest_identity(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn package_dir_under_root(
+    package_path: &str,
+    root_name: &str,
+    source_root: &Path,
+) -> Option<PathBuf> {
+    if package_path == root_name {
+        return Some(source_root.to_path_buf());
+    }
+    let rest = package_path.strip_prefix(&(root_name.to_string() + "::"))?;
+    let mut path = source_root.to_path_buf();
+    for segment in split_package_path(rest) {
+        path.push(segment);
+    }
+    Some(path)
 }
 
 fn infer_manifest_package_path(
@@ -3438,6 +6601,22 @@ fn mangle_enum_name_for_visibility(
     }
 }
 
+fn mangle_opaque_type_name(package_path: &str, name: &str) -> String {
+    format!("__muga_pkg__{}__{}", package_path.replace("::", "__"), name)
+}
+
+fn mangle_opaque_type_name_for_visibility(
+    package_path: &str,
+    module_path: &str,
+    name: &str,
+    visibility: Visibility,
+) -> String {
+    match visibility {
+        Visibility::Private => mangle_module_item_name(package_path, module_path, name),
+        Visibility::Package | Visibility::Public => mangle_opaque_type_name(package_path, name),
+    }
+}
+
 fn mangle_module_item_name(package_path: &str, module_path: &str, name: &str) -> String {
     format!(
         "__muga_mod__{}__{}__{}",
@@ -3463,12 +6642,51 @@ fn sanitize_mangle_segment(segment: &str) -> String {
 fn unknown_import_alias_diagnostic(alias: &str, span: Span) -> Diagnostic {
     let diagnostic = Diagnostic::new("PK009", format!("unknown import alias `{alias}`"), span);
     match alias {
+        "cli" => diagnostic.with_suggestion("add `import std::cli` before using `cli::...`"),
+        "env" => diagnostic.with_suggestion("add `import std::env` before using `env::...`"),
+        "fmt" => diagnostic.with_suggestion("add `import std::fmt` before using `fmt::...`"),
         "fs" => diagnostic.with_suggestion("add `import std::fs` before using `fs::...`"),
         "io" => diagnostic.with_suggestion("add `import std::io` before using `io::...`"),
+        "json" => diagnostic.with_suggestion("add `import std::json` before using `json::...`"),
+        "path" => diagnostic.with_suggestion("add `import std::path` before using `path::...`"),
+        "string" => {
+            diagnostic.with_suggestion("add `import std::string` before using `string::...`")
+        }
+        "time" => diagnostic.with_suggestion("add `import std::time` before using `time::...`"),
         _ => {
             diagnostic.with_suggestion("add an import declaration or use an existing import alias")
         }
     }
+}
+
+fn fully_qualified_std_type_diagnostic(name: &str, span: Span) -> Option<Diagnostic> {
+    let (module, item) = split_fully_qualified_std_item(name)?;
+    Some(
+        Diagnostic::new(
+            "PK009",
+            format!("cannot use full package path `{name}` as a type name"),
+            span,
+        )
+        .with_suggestion(format!(
+            "add `import std::{module}` and use `{module}::{item}`"
+        )),
+    )
+}
+
+fn split_fully_qualified_std_item(name: &str) -> Option<(&str, &str)> {
+    let mut parts = name.split("::");
+    let first = parts.next()?;
+    let module = parts.next()?;
+    let item = parts.next()?;
+    if first == "std" && is_std_import_alias(module) && parts.next().is_none() {
+        Some((module, item))
+    } else {
+        None
+    }
+}
+
+fn is_std_import_alias(alias: &str) -> bool {
+    matches!(alias, "env" | "fs" | "io" | "path" | "time")
 }
 
 fn is_builtin_name(name: &str) -> bool {
@@ -3477,4 +6695,17 @@ fn is_builtin_name(name: &str) -> bool {
 
 fn is_mangled_item_name(name: &str) -> bool {
     name.starts_with("__muga_pkg__") || name.starts_with("__muga_mod__")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sha256_hex;
+
+    #[test]
+    fn sha256_hex_matches_known_digest() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 }

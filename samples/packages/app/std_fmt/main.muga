@@ -1,0 +1,17 @@
+package app::std_fmt
+
+import std::fmt
+import std::string
+
+fn main(): String {
+  ruler = fmt::repeat("-", 3)
+  left = fmt::pad_left("Muga", 7, ".")
+  right = fmt::pad_right("go", 5, "*")
+  clipped = fmt::truncate_chars("abcdef", 4)
+  empty = fmt::truncate_chars("abcdef", 0)
+  rendered = match fmt::format_values("{} {{ok}} {}", ["Muga", "fmt"]) {
+    Result::Ok(value) => value
+    Result::Err(error) => "format error"
+  }
+  string::join([ruler, left, right, clipped, empty, rendered], "|")
+}

@@ -1,0 +1,11 @@
+package app::main
+
+import api::facade
+
+// conformance: package-artifact
+// spec: spec/006-packages.md
+// expect-main: 42
+
+fn main(): Int {
+  facade::default_age() + 1
+}

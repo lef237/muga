@@ -86,7 +86,13 @@ The v1 prelude currently provides:
 
 `println` accepts exactly one argument of type `Int`, `Bool`, or `String`, writes its textual representation to standard output as one line, and returns that same value.
 
-`Int.to_string()`, `Bool.to_string()`, and `String.to_string()` return `String`. `to_string` is explicit and intentionally does not introduce implicit string conversion.
+When the `print` or `println` argument type is ambiguous, diagnostics should suggest annotating the argument as `Int`, `Bool`, or `String`.
+
+When the direct `len` argument type is ambiguous, diagnostics should suggest annotating the argument as `List[T]` or `Map[K, V]`. When the direct `is_empty` argument type is ambiguous, diagnostics should suggest annotating the argument as `String`, `List[T]`, or `Map[K, V]`.
+
+When the direct `get` receiver type is ambiguous, diagnostics should suggest annotating the receiver as `List[T]` or `Map[K, V]`. When the direct `contains` receiver type is ambiguous, diagnostics should suggest annotating the receiver as `String` or `Map[K, V]`. When the direct `insert` or `remove` receiver type is ambiguous, diagnostics should suggest annotating the receiver as `Map[K, V]`.
+
+`Int.to_string()`, `Bool.to_string()`, and `String.to_string()` return `String`. `to_string` is explicit and intentionally does not introduce implicit string conversion. When the receiver type is ambiguous, diagnostics should suggest annotating the receiver as `Int`, `Bool`, or `String`.
 
 `String.is_empty()` returns `Bool`, `String.contains(needle)` returns `Bool`, `String.trim()` returns `String`, `String.char_count()` returns `Int`, `String.starts_with(prefix)` / `String.ends_with(suffix)` return `Bool`, `String.replace(old, new)` returns `String`, `String.split(separator)` returns `List[String]`, `String.concat(other)` returns `String`, `String.slice_chars(start, count)` returns `Result[String, String]`, `String.parse_int()` returns `Result[Int, String]`, and `String.parse_bool()` returns `Result[Bool, String]`. `String.char_count()` and `String.slice_chars(start, count)` count and index Unicode scalar values, not UTF-8 bytes or user-perceived grapheme clusters. `slice_chars` accepts zero-based `start` plus `count`; negative values or ranges beyond the string return `Result::Err("invalid slice range")`. `replace("", new)` returns the original string unchanged, and `split("")` returns a one-item list containing the original string.
 
@@ -99,6 +105,13 @@ The first compiler-provided standard packages are:
 ```muga
 import std::fs
 import std::io
+import std::json
+import std::list
+import std::map
+import std::option
+import std::path
+import std::result
+import std::string
 ```
 
 `std::io` exports:
@@ -111,18 +124,307 @@ pub record IOError {
   message: String
   raw_code: Option[Int]
 }
+
+pub record PathPairError {
+  operation: String
+  from_path: String
+  to_path: String
+  kind: String
+  message: String
+  raw_code: Option[Int]
+}
+```
+
+Source files name these records through an import alias, for example `import std::io` followed by `io::IOError` or `io::PathPairError`. Full package paths such as `std::io::IOError` are not valid type names in source; diagnostics suggest importing `std::io` and using the local alias form.
+
+`std::path` exports:
+
+```muga
+pub record Path {
+  text: String
+}
+
+pub fn from_string(text: String): Path
+pub fn as_string(path: Path): String
+pub fn join(base: Path, child: String): Path
+pub fn file_name(path: Path): Option[String]
+pub fn parent(path: Path): Option[Path]
+pub fn extension(path: Path): Option[String]
+pub fn file_stem(path: Path): Option[String]
+pub fn is_absolute(path: Path): Bool
 ```
 
 `std::fs` exports:
 
 ```muga
 pub fn read_text(path: String): Result[String, io::IOError]
+pub fn read_resource_text(package_path: String, resource_path: String): Result[String, io::IOError]
 pub fn write_text(path: String, text: String): Result[Unit, io::IOError]
+pub fn read_text_path(path: path::Path): Result[String, io::IOError]
+pub fn write_text_path(path: path::Path, text: String): Result[Unit, io::IOError]
+pub fn read_dir_path(path: path::Path): Result[List[path::Path], io::IOError]
+pub fn create_dir_path(path: path::Path): Result[Unit, io::IOError]
+pub fn create_dir_all_path(path: path::Path): Result[Unit, io::IOError]
+pub fn remove_file_path(path: path::Path): Result[Unit, io::IOError]
+pub fn remove_dir_path(path: path::Path): Result[Unit, io::IOError]
+pub fn copy_file_path(from_path: path::Path, to_path: path::Path): Result[Unit, io::PathPairError]
+pub fn exists_path(path: path::Path): Bool
+pub fn is_file_path(path: path::Path): Bool
+pub fn is_dir_path(path: path::Path): Bool
 ```
 
-`read_text` reads a UTF-8 text file into a `String`. `write_text` writes a `String` to a file and uses `Unit` as the success payload. Recoverable filesystem failures return `Result::Err(io::IOError)`. The current slice intentionally does not add resource handles, `Path`, binary `Bytes`, directory APIs, stdout/stderr handles, permissions APIs, or asynchronous IO.
+`std::option` exports ordinary value helpers:
 
-Because `print` and `println` accept several concrete types, neither one by itself makes an unconstrained parameter uniquely inferable.
+```muga
+pub fn is_some[T](value: Option[T]): Bool
+pub fn is_none[T](value: Option[T]): Bool
+pub fn map[T, U](value: Option[T], f: T -> U): Option[U]
+pub fn and_then[T, U](value: Option[T], f: T -> Option[U]): Option[U]
+pub fn value_or[T](value: Option[T], fallback: T): T
+```
+
+`std::result` exports ordinary value helpers:
+
+```muga
+pub fn is_ok[T, E](value: Result[T, E]): Bool
+pub fn is_err[T, E](value: Result[T, E]): Bool
+pub fn map[T, E, U](value: Result[T, E], f: T -> U): Result[U, E]
+pub fn map_err[T, E, F](value: Result[T, E], f: E -> F): Result[T, F]
+pub fn and_then[T, E, U](value: Result[T, E], f: T -> Result[U, E]): Result[U, E]
+pub fn value_or[T, E](value: Result[T, E], fallback: T): T
+```
+
+`std::string` exports pure text assembly helpers over explicit string lists:
+
+```muga
+pub fn concat_all(parts: List[String]): String
+pub fn join(parts: List[String], separator: String): String
+```
+
+`string::concat_all([])` returns `""`. `string::join(parts, separator)` inserts the
+separator only between parts and also returns `""` for an empty list. These
+helpers do not implicitly convert non-string values; callers use the existing
+`to_string()` helpers before adding values to the `List[String]`.
+
+`std::list` exports narrow value helpers:
+
+```muga
+pub fn map[T, U](items: List[T], f: T -> U): List[U]
+pub fn filter[T](items: List[T], predicate: T -> Bool): List[T]
+pub fn fold[T, U](items: List[T], initial: U, f: (U, T) -> U): U
+pub fn any[T](items: List[T], predicate: T -> Bool): Bool
+pub fn all[T](items: List[T], predicate: T -> Bool): Bool
+```
+
+`std::map` exports narrow key/value extraction helpers:
+
+```muga
+pub fn keys[K, V](items: Map[K, V]): List[K]
+pub fn values[K, V](items: Map[K, V]): List[V]
+```
+
+`std::json` exports explicit JSON data shapes, parse/encode helpers, integer
+number conversion, pure scalar/composite value/object-field
+accessor/default/required helpers, scalar array projection helpers, and typed
+JSON path traversal helpers:
+
+```muga
+pub enum Value {
+  Null
+  Bool(Bool)
+  Number(Number)
+  String(String)
+  Array(List[Value])
+  Object(Map[String, Value])
+}
+
+pub enum Number {
+  Int(Int)
+  Raw(String)
+}
+
+pub enum ErrorKind {
+  UnexpectedEnd
+  UnexpectedToken
+  InvalidEscape
+  InvalidNumber
+  NumberOutOfRange
+  DuplicateKey
+  TrailingCharacters
+  NestingLimitExceeded
+}
+
+pub record Error {
+  kind: ErrorKind
+  message: String
+  offset: Int
+}
+
+pub enum PathSegment {
+  Field(String)
+  Index(Int)
+}
+
+pub fn parse(text: String): Result[Value, Error]
+pub fn encode(value: Value): Result[String, Error]
+pub fn number_as_int(number: Number): Result[Int, Error]
+pub fn int(value: Int): Value
+pub fn as_bool(value: Value): Result[Bool, Error]
+pub fn as_string(value: Value): Result[String, Error]
+pub fn as_number(value: Value): Result[Number, Error]
+pub fn as_int(value: Value): Result[Int, Error]
+pub fn as_array(value: Value): Result[List[Value], Error]
+pub fn as_object(value: Value): Result[Map[String, Value], Error]
+pub fn at(value: Value, path: List[PathSegment]): Result[Option[Value], Error]
+pub fn at_required(value: Value, path: List[PathSegment]): Result[Value, Error]
+pub fn at_string(value: Value, path: List[PathSegment]): Result[Option[String], Error]
+pub fn at_string_or(value: Value, path: List[PathSegment], default_value: String): Result[String, Error]
+pub fn at_string_required(value: Value, path: List[PathSegment]): Result[String, Error]
+pub fn at_int(value: Value, path: List[PathSegment]): Result[Option[Int], Error]
+pub fn at_int_or(value: Value, path: List[PathSegment], default_value: Int): Result[Int, Error]
+pub fn at_int_required(value: Value, path: List[PathSegment]): Result[Int, Error]
+pub fn at_bool(value: Value, path: List[PathSegment]): Result[Option[Bool], Error]
+pub fn at_bool_or(value: Value, path: List[PathSegment], default_value: Bool): Result[Bool, Error]
+pub fn at_bool_required(value: Value, path: List[PathSegment]): Result[Bool, Error]
+pub fn at_array(value: Value, path: List[PathSegment]): Result[Option[List[Value]], Error]
+pub fn at_array_or(value: Value, path: List[PathSegment], default_value: List[Value]): Result[List[Value], Error]
+pub fn at_array_required(value: Value, path: List[PathSegment]): Result[List[Value], Error]
+pub fn at_object(value: Value, path: List[PathSegment]): Result[Option[Map[String, Value]], Error]
+pub fn at_object_or(value: Value, path: List[PathSegment], default_value: Map[String, Value]): Result[Map[String, Value], Error]
+pub fn at_object_required(value: Value, path: List[PathSegment]): Result[Map[String, Value], Error]
+pub fn at_string_array(value: Value, path: List[PathSegment]): Result[Option[List[String]], Error]
+pub fn at_string_array_or(value: Value, path: List[PathSegment], default_value: List[String]): Result[List[String], Error]
+pub fn at_string_array_required(value: Value, path: List[PathSegment]): Result[List[String], Error]
+pub fn at_int_array(value: Value, path: List[PathSegment]): Result[Option[List[Int]], Error]
+pub fn at_int_array_or(value: Value, path: List[PathSegment], default_value: List[Int]): Result[List[Int], Error]
+pub fn at_int_array_required(value: Value, path: List[PathSegment]): Result[List[Int], Error]
+pub fn at_bool_array(value: Value, path: List[PathSegment]): Result[Option[List[Bool]], Error]
+pub fn at_bool_array_or(value: Value, path: List[PathSegment], default_value: List[Bool]): Result[List[Bool], Error]
+pub fn at_bool_array_required(value: Value, path: List[PathSegment]): Result[List[Bool], Error]
+pub fn array_strings(values: List[Value]): Result[List[String], Error]
+pub fn array_ints(values: List[Value]): Result[List[Int], Error]
+pub fn array_bools(values: List[Value]): Result[List[Bool], Error]
+pub fn object_get(value: Value, key: String): Result[Option[Value], Error]
+pub fn object_array(value: Value, key: String): Result[Option[List[Value]], Error]
+pub fn object_array_or(value: Value, key: String, default_value: List[Value]): Result[List[Value], Error]
+pub fn object_array_required(value: Value, key: String): Result[List[Value], Error]
+pub fn object_string_array(value: Value, key: String): Result[Option[List[String]], Error]
+pub fn object_string_array_or(value: Value, key: String, default_value: List[String]): Result[List[String], Error]
+pub fn object_string_array_required(value: Value, key: String): Result[List[String], Error]
+pub fn object_int_array(value: Value, key: String): Result[Option[List[Int]], Error]
+pub fn object_int_array_or(value: Value, key: String, default_value: List[Int]): Result[List[Int], Error]
+pub fn object_int_array_required(value: Value, key: String): Result[List[Int], Error]
+pub fn object_bool_array(value: Value, key: String): Result[Option[List[Bool]], Error]
+pub fn object_bool_array_or(value: Value, key: String, default_value: List[Bool]): Result[List[Bool], Error]
+pub fn object_bool_array_required(value: Value, key: String): Result[List[Bool], Error]
+pub fn object_object(value: Value, key: String): Result[Option[Map[String, Value]], Error]
+pub fn object_object_or(value: Value, key: String, default_value: Map[String, Value]): Result[Map[String, Value], Error]
+pub fn object_object_required(value: Value, key: String): Result[Map[String, Value], Error]
+pub fn object_bool(value: Value, key: String): Result[Option[Bool], Error]
+pub fn object_bool_or(value: Value, key: String, default_value: Bool): Result[Bool, Error]
+pub fn object_bool_required(value: Value, key: String): Result[Bool, Error]
+pub fn object_string(value: Value, key: String): Result[Option[String], Error]
+pub fn object_string_or(value: Value, key: String, default_value: String): Result[String, Error]
+pub fn object_string_required(value: Value, key: String): Result[String, Error]
+pub fn object_int(value: Value, key: String): Result[Option[Int], Error]
+pub fn object_int_or(value: Value, key: String, default_value: Int): Result[Int, Error]
+pub fn object_int_required(value: Value, key: String): Result[Int, Error]
+pub fn decode_or[T](value: Value, fallback: T): Result[T, Error]
+pub fn decode[T](value: Value): Result[T, Error]
+```
+
+Source files name these values through an import alias, for example
+`import std::json` followed by `json::Value` or `json::Error`. Value and
+object-field accessor helpers return `json::Error` for wrong JSON shapes and
+missing required object fields. Scalar array projection helpers return
+`json::Error` with index-specific messages for wrong array item shapes. Direct
+scalar-array object-field helpers mirror the optional/default/required object
+field family and include both the object field key and item index in wrong-item
+shape diagnostics. JSON path helpers traverse objects and arrays by typed
+`Field` / `Index` segments, return `Option::None` for missing fields or
+out-of-range indexes, and return `json::Error` for wrong shapes or required
+missing paths with deterministic rendered paths such as `.metadata.owner` and
+`.items[0]`. String path parsing and JSONPath queries remain outside this
+explicit helper family. The compiler-owned `json::decode_or[T]` and
+`json::decode[T]` schema decoding helpers support `String`, `Int`, `Bool`,
+`Option[T]`, recursive `List[T]`, typed `Map[String, T]`,
+`Map[String, json::Value]`, concrete non-generic records over supported fields,
+and concrete non-generic enums over supported payloads. `json::decode_or[T]`
+preserves fallback fields for missing default-overlay record fields, while
+explicit JSON `null` decodes optional fields to `Option::None`.
+`json::decode[T]` requires an expected `Result[T, json::Error]` target and
+reports missing non-optional record fields as path-aware `json::Error` values.
+Concrete enum decoding uses zero-payload string tags and one-payload single-key
+objects. Nested `Option[Option[T]]`, generic
+record schemas, generic enum schemas, non-string map keys, field/variant
+renames, validation attributes, TOML, and config-file discovery remain
+deferred. The `std::json`
+helpers for typed JSON path scalar projection (`at_string*`, `at_int*`, and
+`at_bool*`) preserve the same
+optional/default/required missing-path behavior and report terminal scalar
+shape errors with the rendered path. Additional typed object value helper
+matrices, generated schema metadata, TOML, and config-file discovery remain
+deferred.
+The `std::json` helpers for typed JSON path collection projection (`at_array*`,
+`at_object*`, `at_string_array*`, `at_int_array*`, and `at_bool_array*`)
+preserve the same optional/default/required missing-path behavior, report
+terminal collection shape errors with the rendered path, and report scalar-array
+item shape errors with an appended index such as `.metadata.tags[1]`. Generic
+TOML and config-file discovery remain deferred.
+
+`std::config` exports JSON file loading over the same compiler-owned schema
+target set:
+
+```muga
+pub enum ErrorKind {
+  Read
+  Parse
+  Decode
+}
+
+pub record Error {
+  kind: ErrorKind
+  path: path::Path
+  message: String
+  offset: Int
+  raw_code: Option[Int]
+}
+
+pub fn load_json_or[T](file_path: path::Path, fallback: T): Result[T, Error]
+```
+
+`config::load_json_or[T]` reads a UTF-8 JSON file, parses it as `json::Value`,
+and decodes it with the same default-overlay semantics and structural target
+set as `json::decode_or[T]`. Decode failures map to `config::ErrorKind::Decode`.
+
+`std::cli` exports pure lookup and typed parsing helpers over explicit argument
+lists:
+
+```muga
+pub fn positional(args: List[String], index: Int): Option[String]
+pub fn positional_or(args: List[String], index: Int, default_value: String): String
+pub fn has_flag(args: List[String], name: String): Bool
+pub fn option(args: List[String], name: String): Option[String]
+pub fn option_or(args: List[String], name: String, default_value: String): String
+pub fn option_values(args: List[String], name: String): List[String]
+pub fn option_values_or(args: List[String], name: String, default_value: List[String]): List[String]
+pub fn positional_int(args: List[String], index: Int): Result[Option[Int], String]
+pub fn positional_int_or(args: List[String], index: Int, default_value: Int): Result[Int, String]
+pub fn option_int(args: List[String], name: String): Result[Option[Int], String]
+pub fn option_int_or(args: List[String], name: String, default_value: Int): Result[Int, String]
+pub fn positional_bool(args: List[String], index: Int): Result[Option[Bool], String]
+pub fn positional_bool_or(args: List[String], index: Int, default_value: Bool): Result[Bool, String]
+pub fn option_bool(args: List[String], name: String): Result[Option[Bool], String]
+pub fn option_bool_or(args: List[String], name: String, default_value: Bool): Result[Bool, String]
+```
+
+`list::map`, `list::filter`, and `map::keys` / `map::values` allocate new lists at the source level. `list::map`, `list::filter`, and `list::fold` process items in list order. `list::any` and `list::all` return `Bool` and may stop once the result is known. `map::keys` and `map::values` return lists in the map's deterministic entry order; replacing an existing key does not move that key. `List.contains` and `map::entries` remain deferred because v1 equality is scalar-only and map entries need a deliberate public record shape.
+
+`cli::has_flag(args, "verbose")` matches `--verbose`; `cli::option(args, "output")` matches `--output value` and `--output=value`; `cli::option_values(args, "tag")` collects repeated `--tag value` and `--tag=value` occurrences in encounter order. `--` stops flag and option parsing and makes later values positional. Before `--`, `cli::positional` counts values that do not start with `--`. A separate `--name` option with no non-option following value is skipped by the lookup helpers. The current slice intentionally has no global parser state, short flag parsing, generated help, typed repeated parsing, public CLI error type, or usage diagnostics.
+
+`path::join(base, child)` combines a `Path` with a child path string using host path semantics and returns a new `Path`. `path::parent(path)` returns the parent path as `Option[Path]`; paths without a meaningful parent return `Option::None`. `path::file_name(path)` returns the final path component as `Option[String]`; paths without a file name or with a non-Unicode file name return `Option::None`. `path::extension(path)` returns the final extension as `Option[String]`; paths without an extension or with a non-Unicode extension return `Option::None`. `path::file_stem(path)` returns the final file stem as `Option[String]`; paths without a file stem or with a non-Unicode file stem return `Option::None`. `path::is_absolute(path)` classifies the path using host path semantics. `read_text` and `read_text_path` read a UTF-8 text file into a `String`. `read_bytes` and `read_bytes_path` read a binary file into opaque `std::bytes::Bytes`. `write_bytes` and `write_bytes_path` write opaque `Bytes` as full-file binary output. `read_resource_text(package_path, resource_path)` reads a UTF-8 text resource from a manifest-declared package resource root without returning a host path. `read_resource_bytes(package_path, resource_path)` reads bytes from that same resource-root map and returns opaque `std::bytes::Bytes`; the first `std::bytes` helpers are `bytes::size`, `bytes::empty`, and zero-based `bytes::at(bytes, index): Option[Int]`. `hash::sha256_hex(bytes)` returns a 64-character lowercase SHA-256 hex digest for `Bytes`. `read_dir_path` lists direct directory entries as `path::Path` values in deterministic sorted order. `write_text`, `write_text_path`, `write_bytes`, `write_bytes_path`, `create_dir_path`, `create_dir_all_path`, `remove_file_path`, `remove_dir_path`, and `copy_file_path` use `Unit` as the success payload. Single-path recoverable filesystem failures return `Result::Err(io::IOError)`. Two-path recoverable filesystem failures return `Result::Err(io::PathPairError)` with `from_path` and `to_path` populated. `create_dir_path` creates exactly one directory and does not create missing parent directories. `create_dir_all_path` creates the full directory tree and succeeds when the target directory already exists. `remove_file_path` removes one filesystem file and reports missing paths, directories, permission failures, and other recoverable filesystem failures as `Result::Err(io::IOError)`. `remove_dir_path` removes one empty filesystem directory and reports missing paths, non-empty directories, file paths, permission failures, and other recoverable filesystem failures as `Result::Err(io::IOError)`. `copy_file_path` copies one filesystem file from `from_path` to `to_path`, overwrites an existing target file when the host filesystem permits it, and reports missing source paths, directory paths, permission failures, and other recoverable filesystem failures as `Result::Err(io::PathPairError)`. `exists_path`, `is_file_path`, and `is_dir_path` are non-throwing metadata predicates and return `false` for missing or inaccessible paths. `std::fs::File` is the current runtime-backed opaque handle. `open_text`, `create_text`, and `append_text` acquire read, write, and append handles; `read_text_from`, `write_text_to`, and `flush` borrow a handle and return recoverable `io::IOError` values for host IO or wrong-mode failures; `close` consumes the handle and returns `Result[Unit, io::IOError]`. Statement-form `using` may manage such handles when the enclosing function returns a compatible `Result[T, io::IOError]`. The current slice intentionally does not add binary file handles, byte mutation, codecs, streaming hash handles, broader cryptographic APIs, recursive removal APIs, rename APIs, directory copy APIs, stdout/stderr handles, permissions APIs, process/network APIs, streaming APIs, or asynchronous IO.
+
+Because `print`, `println`, `len`, and `is_empty` accept several concrete types, none of them by itself makes an unconstrained parameter uniquely inferable.
 
 Example:
 
@@ -202,6 +504,8 @@ fn show(x: Int, f) {
 ```
 
 because `println` accepts `Int`, `Bool`, or `String`, so the callback result type is not uniquely determined.
+
+When a function parameter or return type remains ambiguous after body checking, diagnostics should suggest adding parameter or return type annotations until the function signature is unique.
 
 An explicit arrow annotation remains valid and useful:
 
@@ -296,8 +600,23 @@ The built-in operator typing rules are:
 - `+`, `-`, `*`, `/` : `Int -> Int -> Int`
 - `<`, `<=`, `>`, `>=` : `Int -> Int -> Bool`
 - `==`, `!=` : allowed only for identical primitive types among `Int`, `Bool`, and `String`
+- `and`, `or` : `Bool -> Bool -> Bool`, evaluated left-to-right with short-circuiting
 
 String concatenation uses explicit `String.concat(other)`. The `+` operator remains `Int`-only.
+
+### 9.1 Equality Policy
+
+The v1 equality policy is intentionally scalar-only:
+
+- `Int == Int` / `Int != Int`
+- `Bool == Bool` / `Bool != Bool`
+- `String == String` / `String != String`
+
+Both operands must have the same supported scalar type. v1 does not define implicit conversions, cross-type equality, pointer/reference identity, or dynamic equality.
+
+Structural equality is not part of v1. `==` and `!=` are rejected for records, user-defined enums, `Option[T]`, `Result[T, E]`, `List[T]`, `Map[K, V]`, `Unit`, functions, and builtins. Compare scalar fields or payloads explicitly with `match`, field access, and scalar helpers. The `std::test` package follows the same policy by exposing only scalar equality assertions.
+
+`List.contains`, structural `assert_eq`, `Map.entries`, `Set[T]`, arbitrary `Map` key types, and any future derived equality/hash support must not be added merely by relying on runtime value shape. They require an explicit spec update for structural equality, hashing, package-interface persistence, diagnostics, and focused tests.
 
 ## 10. Inference Sources
 
@@ -385,7 +704,7 @@ The condition expression of:
 
 must have type `Bool`.
 
-For an `if` expression, both branches must produce the same result type.
+For an `if` expression, both branches must produce the same result type. `else if` chains are typed as nested `if` expressions, so each nested branch follows the same exact-match rule.
 
 Example:
 
@@ -401,7 +720,11 @@ fn abs(n: Int) {
 
 Both branches produce `Int`, so the `if` expression has type `Int`.
 
-For an `if` expression, the branch result types must match exactly.
+For an `if` expression, the branch result types must match exactly, and every value-producing `else if` chain must end in a final `else`.
+
+`for item in list` requires the iterable expression after `in` to have type `List[T]`. The loop item is a fresh immutable binding of type `T` scoped to the loop body. It follows the normal no-shadowing rule for bindings. When the iterable type is ambiguous, diagnostics should suggest annotating it as `List[T]`.
+
+`break` and `continue` are valid only inside a `while` or `for` loop. They target the nearest enclosing loop in the same function body. A nested named or anonymous function starts a new loop-control boundary, so loop-control statements inside that function do not target a loop in the caller.
 
 ## 13. Function Parameter Inference
 
@@ -441,11 +764,13 @@ fn apply(x: Int, f: Int -> Int): Int {
 
 ## 14. Function Return Inference
 
-The return type of a function is inferred from the final expression in the body.
+The return type of a function is inferred from the final expression in the body and from any explicit `return expr` statements.
 
 When control flow branches, the return type is inferred from the unified branch result type.
 
 If the body does not provide enough information to infer a unique return type, a return annotation is required.
+
+`return expr` is allowed only inside a named or anonymous function. The expression must match the enclosing function return type. A `return expr` inside a nested anonymous function returns from that anonymous function, not from the caller.
 
 ## 15. Inference Boundary
 

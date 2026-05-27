@@ -1,6 +1,6 @@
 # Packages and Modules Draft
 
-Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, a minimal `muga.toml` project mode that infers package paths from `name` and `source`, explicit `.mgi` / `.mgc` / `.mgb` artifact workflows, package-aware checking over the unflattened package graph, and artifact-backed package execution through MIR-lowered bytecode artifacts. Dependency manifests, registries, selective imports, automatic project-level artifact reuse, control-flow-oriented MIR, and any future per-field record visibility are still deferred.
+Status: draft with an implemented front-end subset. The current Rust compiler supports explicit `package`, `import`, `pkg`, `pub`, `alias::Name` lookup, directory-based packages, module/file identity for top-level items, top-level module-private visibility, public package-mode `pub opaque type` names including compiler-provided runtime-backed `std::fs::File`, a minimal `muga.toml` project mode that infers package paths from `name` and `source` and may declare `resources = "resources"` for package-owned UTF-8 text resources, local path dependencies through `[dependencies] name = { path = "..." }`, local archive dependencies through `[dependencies] name = { archive = "...", hash = "sha256:<hex>" }`, explicit `.mgi` / `.mgc` / `.mgb` artifact workflows, `muga build` emission to a default `.muga/build` artifact directory with unchanged-artifact reuse and written/reused status output, package-local source hashes in `.mgb` artifacts, public `.mgi` interface hashes that ignore diagnostic-only spans, dependency-level parallel package artifact builds, minimal `muga.lock` generation and validation with local path dependency `source_hash` metadata plus local archive dependency `hash` metadata, a library helper that computes the first canonical package content hash over `muga.toml` plus sorted `.muga` source files and declared resources, deterministic `.mgp` source/resource archive emission through `emit-package-archive` plus pasteable dependency snippet output through `--dependency-snippet`, library `.mgp` archive readback/hash validation, library materialization of validated `.mgp` bytes into absent or empty local source/resource trees, local `.mgp` archive dependency cache consumption and local cache/lockfile edge-case hardening through `.muga/packages`, read-only runtime package resource lookup through `std::fs::read_resource_text`, non-mutating app bundle emission through `emit-app-bundle --source-free` with bundle-local dependency trees, source-free app bundle execution through `run-app-bundle`, non-mutating app launcher and ownership metadata placement plus guarded owned updates/uninstalls through `install-app --replace-owned` and `uninstall-app`, source-free app completion package emission through `emit-app-completions`, deterministic `.mga` app archive emission/unpacking, explicit `check --built` / `run --built` consumption of that default artifact directory, package-aware checking over the unflattened package graph, and artifact-backed package execution through MIR-lowered bytecode artifacts. Registries, URL/Git dependency forms, remote package fetching, publishing/install workflows, full published-package lockfile enforcement, selective imports, full incremental project-level artifact reuse, control-flow-oriented MIR, broader runtime-backed resource handles, and any future per-field record visibility are still deferred.
 
 ## 1. Design Goals
 
@@ -95,7 +95,42 @@ package app::web
 
 This package path is expected to match the directory structure under a source root.
 
-Full dependency manifest syntax is deferred. The current implementation supports only a minimal `[package]` manifest with `name` and `source`.
+Full dependency manifest syntax is deferred. The current implementation supports
+`[package]` with `name`, `source`, and optional `resources`, plus local path and
+local `.mgp` archive forms in `[dependencies]`:
+
+```toml
+[package]
+name = "app"
+source = "src"
+resources = "resources"
+```
+
+The `resources` value opts into deterministic package resource inclusion. It
+must be a relative slash-separated directory path, and currently includes
+regular files in package content hashes, `.mgp` archives, materialization, local
+archive dependency cache validation, and source-backed app bundle emission.
+Runtime `std::fs::read_resource_text` lookup decodes only UTF-8 text resources.
+
+```toml
+[dependencies]
+shared = { path = "../shared" }
+archived_shared = { archive = "../archives/archived_shared-sha256-....mgp", hash = "sha256:..." }
+```
+
+The dependency key must match the target manifest's `[package] name`. Local archive dependencies are validated against the declared hash, materialized under `.muga/packages/<package>-sha256-<hash>`, and reused only when the cached source/resource tree re-hashes to the same content hash. Missing archive hashes, empty archive paths, `path`/`hash` combinations, cache path collisions, stale cache content, package-name mismatches, and malformed archive lockfile entries are rejected. `muga build` currently records local path dependency source descriptors plus SHA-256 `source_hash` metadata, and local archive source descriptors plus `hash` metadata, in `muga.lock`; it refreshes well-formed stale local metadata and rejects malformed or unsupported existing lockfiles with `PK026`. URL, Git, registry, version solving, remote fetching, publishing/install workflows, and full lockfile enforcement remain deferred.
+
+`pub opaque type` declarations for future runtime-backed handles are
+represented in `.mgi` as public nominal type names without exposing a field
+layout or runtime token. The interface-only slice is implemented for package
+mode, type checking, artifacts, docs, metadata, hover, completions, definition,
+references, and downstream loaded-interface checking. `.mgi` v5 also stores
+opaque `handleFacts` plus function-parameter `paramMode` metadata, and those
+facts are exposed through package metadata, hover/completion metadata, and
+generated docs. The typechecker rejects direct same-scope use-after-consume for
+loaded-interface `consume` parameters with `T026`. Runtime-backed handle values,
+source-level consuming parameter syntax, and broad effectful standard-library
+APIs remain deferred behind [opaque-resource-handles.md](../docs/opaque-resource-handles.md).
 
 ## 5. Package, Module, and Visibility Model
 
@@ -185,6 +220,7 @@ import_decl   := "import" package_path import_alias?
 import_alias  := "as" IDENT
 package_item  := visibility? record_decl
                | visibility? enum_decl
+               | "pub" "opaque" "type" IDENT
                | visibility? func_decl
 visibility    := "pub"
                | "pkg"
@@ -197,13 +233,15 @@ Additional parser rules for package mode:
 - without manifest inference, `package` is required
 - `import` declarations must come after `package` when it is present and before the first item
 - `pub` and `pkg` are valid on top-level `record`, `enum`, and `fn`
+- the current opaque type slice accepts only top-level `pub opaque type Name`;
+  `pkg opaque type` and module-private `opaque type` are deferred
 - top-level items are separated by newlines
 - type and value item qualification uses `alias::Name`
 - enum variant construction and patterns may use `alias::Enum::Variant`
 
 In package mode:
 
-- `record_decl`, `enum_decl`, and `func_decl` keep their existing meanings
+- `record_decl`, `enum_decl`, `pub opaque type`, and `func_decl` keep their existing meanings
 - `assign_like_stmt`, `if_stmt`, `while_stmt`, and `expr_stmt` are not allowed at the top level
 
 ## 7. Imports
@@ -246,6 +284,7 @@ Package files may contain only:
 
 - `record` declarations
 - `enum` declarations
+- `pub opaque type` declarations
 - `fn` declarations
 
 This means package mode explicitly excludes:
@@ -424,7 +463,7 @@ pub fn apply(x, f) {
 
 These are invalid without more annotations because the exported signature is ambiguous.
 
-### 11.2 Public records and enums
+### 11.2 Public records, enums, and opaque types
 
 `record` fields already require explicit types, so `pub record` introduces no additional annotation burden there.
 
@@ -434,10 +473,26 @@ In the committed v1 model, a `pub record` is transparent: its field names and fi
 
 If a representation should be hidden inside a module or package, keep the record itself non-public and expose functions that do not leak that non-public type across a wider visibility boundary.
 
-If a package later needs to expose a public type name while hiding its representation, the preferred future direction is an opaque representation feature:
+If a package needs to expose a public type name while hiding its representation, the current interface-only form is:
+
+```muga
+pub opaque type File
+```
+
+Importing packages can name this type in annotations and public signatures, but
+ordinary source code cannot construct it with a record literal, access fields,
+match on it, compare it structurally, or format it with `to_string`. The current
+slice has no type parameters for opaque type declarations and does not add
+runtime-backed values. Source-defined opaque types currently receive
+conservative `handleFacts` defaults: not runtime-backed, not copyable, not
+cloneable, not sendable, not shareable, not structurally comparable, not
+serializable, not closeable, and no named close function.
+
+The remaining opaque representation directions are:
 
 - `pub opaque record` for ordinary Muga data whose fields are visible only to the defining module
-- `pub opaque type` for runtime/native handles or values whose representation should not be source-level fields
+- runtime-backed values plus source syntax for consuming parameters and
+  capability metadata on `pub opaque type` handles
 
 Per-field visibility is a weaker candidate and should be reconsidered only if concrete code needs partially transparent public records.
 
@@ -457,7 +512,32 @@ The cost trade-off is explicit:
 - downstream packages can use the cached interface without reading those bodies again
 - first builds may do slightly more work, but incremental and dependency builds stay fast
 
-### 11.4 Public signatures may not leak non-public names
+### 11.4 Package interfaces as application contracts
+
+The same resolved public signatures should also support future application tooling.
+
+For compiler purposes, `.mgi` is the public package interface. For application tooling, the same artifact can be treated as a typed contract made of:
+
+- public transparent records and their field types
+- public enums, variants, payload types, and type parameters
+- public opaque type names with hidden representation
+- public function signatures with explicit parameter and return types
+- public `Result[T, E]` shapes where `E` is part of the failure contract
+- stable package/item identities and interface hashes
+
+Future generators may consume `.mgi` to produce API documentation, schema files, TypeScript clients, or service stubs. Those generators should not inspect private package bodies, depend on source file order, or infer protocol semantics from naming conventions.
+
+This is not a v1 requirement. Before implementing generators, the design must define:
+
+- stable external naming rules for packages, items, enum variants, and fields
+- supported type mappings for each target schema or client language
+- how `Option`, `Result`, `List`, `Map`, and generic user types are represented externally
+- how opaque future runtime handles are excluded or represented
+- how generated artifacts are invalidated from `.mgi` interface hashes
+
+Packages should opt into HTTP, RPC, or other external protocols through explicit adapter APIs. A plain `pub fn` should remain a package-level function contract, not automatically a network endpoint.
+
+### 11.5 Public signatures may not leak non-public names
 
 A public item may not mention a non-public top-level name in its visible type.
 
@@ -560,7 +640,7 @@ The exact CLI shape is deferred.
 Current implementation note:
 
 - `cargo run -- check path/to/entry.muga` already supports package files
-- `cargo run -- path/to/entry.muga` already runs a package graph by flattening imported packages into one internal program
+- `cargo run -- path/to/entry.muga` already runs a package graph through the package-aware typed HIR and MIR/bytecode VM path
 - the entry file identifies the entry package, and the compiler reads all `.muga` files in that package directory
 - the current file-based CLI accepts any package path, as long as the chosen entry package contains `fn main()`
 - the source root is currently inferred from the entry file path and the declared package path
@@ -703,10 +783,15 @@ The canonical archive contains:
 
 - `muga.toml`
 - every `.muga` file under the declared `source` root, in sorted path order
+- every regular file under the optional declared `resources` root, in sorted path order
 - the precomputed package interface file, if present
 - nothing else (no VCS metadata, no editor files, no build outputs)
 
 Hash representation: `sha256:` followed by lower-case hexadecimal. Other algorithms are reserved for future use behind the same `<algo>:<hex>` form.
+
+Current implementation note: `emit-package-archive --archive-root <dir> <entry>` writes the first deterministic Muga-native `.mgp` source/resource archive. Its bytes are the canonical local input containing `muga.toml`, sorted `.muga` files under the declared source root, and sorted regular files under the optional declared resource root; `.muga` and `.git` tool directories are ignored. The `sha256:<hex>` content hash is computed directly over those archive bytes and appears in the archive filename. The optional `--dependency-snippet` output keeps the archive bytes unchanged but prints a pasteable `[dependencies]` entry using the manifest package name, archive path, and content hash. Library readback validates `.mgp` bytes against optional expected `sha256:<hex>` values, parses manifest, source, and resource entries without trusting filenames, preserves arbitrary resource bytes, and rejects malformed length-prefixed entries, duplicate or unsorted source/resource paths, non-UTF-8 manifest/source entries, source/resource-root escapes, undeclared resource entries, tool metadata directories, and non-source file entries. Library materialization then writes validated archive bytes into an absent or empty local source/resource tree, preserves the validated content hash, rejects unsafe manifest `source` or `resources` roots, and rejects non-empty destinations. Local archive dependencies use the same verifier, materialize to `.muga/packages`, reject cached source/resource trees whose recomputed hash no longer matches the declared hash, and reject malformed archive dependency or lockfile metadata instead of silently repairing it. `emit-app-bundle --source-free --output-dir <dir> [--program <name>] <entry>` now can omit copied source files while keeping declared resources, bundle-local dependency manifests/resources under `.muga/bundle-deps`, `.muga/app-bundle` entry metadata, and `.muga/build` artifacts in a bundle with a `bin/<program>` launcher; without `--source-free`, the same command also copies root and dependency source trees plus source-hash `muga.lock` metadata for inspection. `run-app-bundle <bundle-dir>` executes the bundle from `muga.toml`, `.muga/app-bundle`, manifest resources, `.mgi` interfaces, and `.mgb` implementation artifacts without reading copied source files; `install-app [--replace-owned] --output-dir <bin-dir> [--program <name>] <bundle-dir>` writes a wrapper plus `<bin-dir>/.muga/installed-apps/<program>.toml` ownership metadata into an explicit bin directory without editing shell profiles, and only replaces an existing launcher/metadata when `--replace-owned` verifies prior Muga ownership; `uninstall-app --output-dir <bin-dir> --program <name>` removes only that ownership-verified launcher and metadata, leaving bundles and shell profiles untouched; `emit-app-completions --output-dir <dir> [--program <name>] --type <type> [--package <package>] <bundle-dir>` writes generated app completion packages from bundle `.mgi` interfaces without requiring source files; `emit-app-archive` and `unpack-app-archive` round-trip that bundle directory as a deterministic `.mga` file. The future registry security design must keep this `.mgp` hash as the package identity and treat registries as naming/discovery services rather than trust roots. This slice deliberately does not yet include precomputed interface bytes, URL/Git fetching, registries, publish workflows, shell-profile install workflows, or full published-package lockfile enforcement.
+
+Current edition/fingerprint note: Muga has no edition selector yet. Future package artifacts and lockfiles should record language edition and semantic feature-set fingerprints as semantic interpretation metadata while keeping `.mgp` `sha256:<hex>` values as package byte identity. The design in `docs/edition-feature-fingerprint-policy.md` is still design-only and does not add manifest syntax, cross-edition imports, artifact bytes, or edition migration tooling.
 
 Two consequences:
 
@@ -750,7 +835,7 @@ Required fields per form:
 | Git form | `git`, and one of `rev` or `version` | the other of `rev` or `version`, `hash` |
 | Path form | `path` | — |
 
-URL form does not prescribe a file extension or archive format. The URL must return archive bytes when fetched over HTTPS; supported formats include `.tar.gz`, `.tar.zst`, `.zip`, the Muga-native `.pkg`, and any future addition. The format is identified by the HTTP `Content-Type` header, falling back to magic bytes in the response body. This keeps URL form host-agnostic and format-agnostic — GitHub Releases, S3, self-hosted Artifactory, or a plain static file server are all valid.
+URL form does not prescribe a file extension or archive format. The URL must return archive bytes when fetched over HTTPS; supported formats include `.tar.gz`, `.tar.zst`, `.zip`, the Muga-native `.mgp`, and any future addition. The format is identified by the HTTP `Content-Type` header, falling back to magic bytes in the response body. This keeps URL form host-agnostic and format-agnostic — GitHub Releases, S3, self-hosted Artifactory, or a plain static file server are all valid.
 
 Git form accepts either `rev` (a full commit SHA, for exact-commit pinning) or `version` (a SemVer-shaped string the resolver matches against the repository's Git tags, accepting both `0.4.0` and `v0.4.0` forms). Tag-based resolution gives Go-like ergonomics: pointing at a repository and a version is enough, and the resolver records the resolved commit SHA in the lockfile so the build remains reproducible even if the tag is later moved or deleted.
 
@@ -801,6 +886,8 @@ The user reviews the diff to `muga.toml` and `muga.lock` and commits both to ver
 ### 17.4 Lockfile
 
 `muga.lock` is the source of truth for what actually gets built. It is generated by the resolver and should be committed to version control.
+
+Current implementation note: today, `muga build` writes the first minimal `muga.lock` metadata for manifest projects, focused on local path dependencies and local `.mgp` archive dependencies. Path entries record source descriptors plus `source_hash = "sha256:<hex>"` over the dependency `muga.toml`, `.muga` files under its source root, and declared resource bytes when present, using the same selection as `.mgp` archive emission. Archive entries record `source = { archive = "..." }` plus `hash = "sha256:<hex>"`, validate the archive bytes on first materialization, and reuse only cache entries whose source/resource tree re-hashes to the same content hash. Existing well-formed local lockfiles are refreshed when stale. Malformed, duplicate, graph-inconsistent, unsupported, or archive-hash-incomplete existing lockfiles are rejected with `PK026` and are not silently overwritten. Local path `source_hash` remains rebuild/review metadata for local development; local archive `hash` is the package content identity for the archive bytes. Current builds do not yet enforce the lockfile as the source of truth for URL/Git/registry package bytes.
 
 The lockfile records, for every direct and transitive dependency:
 
@@ -898,7 +985,8 @@ import shared::logging
 Path dependencies:
 
 - are resolved by reading the target directory directly
-- do not contribute a content hash to the lockfile; the path entry is recorded instead
+- do not contribute a published-package `hash` identity to the lockfile; the path entry is recorded instead
+- may record a local `source_hash` so rebuild planning and code review can see dependency source changes without pretending local paths are immutable published artifacts
 - must not appear in a published package; publishing fails if any direct or transitive dependency uses `path`
 
 ### 17.8 Publishing
@@ -951,15 +1039,18 @@ These layers are additive. None of them changes the meaning of the content hash,
 
 ### 17.11 Current Implementation Boundary
 
-The current implementation has a local package loader, minimal manifest mode, package identity data, in-memory package interface summaries, persisted package interface artifacts, explicit package check cache artifacts, and explicit MIR-lowered bytecode package implementation artifacts. It does not yet have dependency declarations, published-package content hashing, lockfiles, registries, package archives, or automatic project-level artifact reuse.
+The current implementation has a local package loader, minimal manifest mode with local path dependencies and local archive dependencies, optional manifest-declared package resources, package identity data, in-memory package interface summaries, persisted package interface artifacts with span-independent public hashes, explicit package check cache artifacts, explicit MIR-lowered bytecode package implementation artifacts with package-local source hashes, build-time reuse for unchanged generated artifacts with visible written/reused status, dependency-level parallel package artifact builds, generated/validated `muga.lock` metadata for local path dependency source descriptors plus `source_hash` values and local archive source descriptors plus `hash` values, the first library-level package content hash over `muga.toml` plus sorted source files and declared resources, deterministic `.mgp` source/resource archive emission with optional pasteable dependency snippet output, library `.mgp` readback/hash validation, library materialization of validated `.mgp` bytes into absent or empty local source/resource trees, local `.mgp` archive dependency cache consumption through `.muga/packages`, read-only runtime package resource lookup through `std::fs::read_resource_text`, non-mutating app bundle emission with optional source-free output through `emit-app-bundle --source-free`, source-free app bundle execution through `run-app-bundle`, non-mutating app launcher and ownership metadata placement plus guarded owned updates/uninstalls through `install-app --replace-owned` and `uninstall-app`, source-free app completion package emission through `emit-app-completions`, deterministic `.mga` app archive emission/unpacking, and focused local archive cache/lockfile failure coverage. It does not yet have URL/Git/registry dependency forms, remote package fetching, publishing/install workflows, full lockfile enforcement, registries, runtime `Bytes`, or full incremental project-level artifact reuse.
 
 It currently:
 
 - accepts a file entrypoint
 - discovers `muga.toml` by walking up from the entry file
-- supports `[package] name = "..."` and `source = "..."`
+- supports `[package] name = "..."`, `source = "..."`, and optional `resources = "..."`
+- supports `[dependencies] name = { path = "..." }` for local path dependencies whose target manifest name matches the dependency key
+- supports `[dependencies] name = { archive = "...", hash = "sha256:<hex>" }` for local `.mgp` archive dependencies whose materialized target manifest name matches the dependency key
 - infers package paths from source-root-relative directories in manifest project mode
 - infers the source root from the entry file path and declared package path in explicit file-based package mode
+- resolves imported package paths through the entry manifest's source root or declared local dependency roots, while keeping filesystem paths out of `.muga` source files
 - reads all `.muga` files in each loaded package directory
 - follows `import` declarations recursively within the local source tree
 - rejects import alias collisions
@@ -967,26 +1058,47 @@ It currently:
 - records package, module, and item identity in `PackageSymbolGraph`
 - routes public import lookup through `PackageExportGraph`
 - can return an unflattened package graph containing package files plus package/module/item/export metadata
-- can build source and module package signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility for records, enums, and functions
+- can build source and module package signatures from the unflattened graph while preserving package item identity and module/same-package/import visibility for records, enums, opaque types, and functions
 - can run package-aware module body resolver/typecheck passes against those source/module signatures, including per-module typed HIR outputs lowered with package binding identity
 - exposes package-wide typed HIR aggregated from unflattened module check outputs with remapped local IDs and symbols
 - can collect dependency signatures directly from loaded in-memory or persisted package interfaces for package-aware module checks without reading dependency implementation source
 - can build loaded-interface dependency package graph metadata directly from package interfaces without dependency AST stubs
-- routes `muga check --artifact-root` and `muga run --artifact-root` through explicit package artifact paths
+- routes `muga check --artifact-root`, `muga run --artifact-root`, `muga check --built`, and `muga run --built` through explicit package artifact paths
 - emits `.mgi` interface artifacts from the package-aware typed HIR aggregate
-- emits `.mgb` package implementation artifacts containing MIR-lowered bytecode bodies needed for artifact-backed execution
+- persists public opaque type names and `PackageOpaque` signature references in
+  `.mgi` interfaces while keeping runtime-backed handle values deferred
+- keeps `.mgi` public interface hashes stable across implementation-only body and diagnostic-span changes while preserving spans in the artifact text for diagnostics, and reports stale generic interface artifacts with artifact-root context plus regeneration-command suggestions
+- emits `.mgb` package implementation artifacts containing MIR-lowered bytecode bodies and package-local source hashes needed for artifact-backed execution and future rebuild planning
 - returns package-aware typed HIR from loaded/interface-artifact typed compilation paths
 - can lower package-aware typed HIR through the existing HIR/bytecode VM path
-- generates in-memory package interface summaries for public records, enums, functions, and direct interface dependencies
+- generates in-memory package interface summaries for public records, enums, opaque types, functions, and direct interface dependencies
 - validates typed package references against generated summaries
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
 - includes loaded direct/transitive dependency interface hashes in `.mgc` check cache keys
 - writes `.mgc` check cache artifacts only after package-aware artifact checking succeeds
+- writes `.mgi`, `.mgb`, and `.mgc` artifacts through `muga build` to `.muga/build` under the nearest manifest root, or under the entry file's directory when no manifest is present, reporting each artifact as `written` or `reused`
+- writes or updates `muga.lock` next to `muga.toml` during manifest `muga build`, preserving the file when generated content is unchanged, refreshing well-formed stale local metadata, and rejecting malformed or unsupported existing lockfiles with `PK026`
+- computes a `sha256:<hex>` package content hash over `muga.toml`, sorted `.muga` source files under the manifest source root, and sorted files under the optional manifest resource root
+- emits deterministic `.mgp` source/resource archives through `emit-package-archive --archive-root <dir> <entry>`, naming the archive with the package name and content hash, and can print a pasteable local archive dependency entry through `--dependency-snippet`
+- reads and validates `.mgp` source/resource archive bytes through library APIs, computing the hash from the bytes, optionally checking an expected `sha256:<hex>`, and rejecting malformed or non-canonical manifest/source/resource entry layout
+- materializes validated `.mgp` source/resource archive bytes into absent or empty local source/resource trees
+- consumes local `.mgp` archive dependencies by hash through `.muga/packages`, rejecting malformed declarations, mismatched archives, stale or colliding source/resource cache entries, package-name mismatches, and malformed archive lockfile metadata
+- reads manifest-declared UTF-8 package resources at runtime through `std::fs::read_resource_text(package_path, resource_path)`, including source trees, package tests, local archive dependency caches, and explicit built-artifact runs
+- emits a non-mutating app bundle through `emit-app-bundle [--source-free] --output-dir <dir> [--program <name>] <entry>`, copying source files and source-hash `muga.lock` metadata by default and omitting root/dependency source trees plus lockfile metadata with `--source-free` while keeping declared resources, bundle-local dependency manifests/resources, `muga.toml`, `.muga/app-bundle` entry metadata, `.muga/build` artifacts, and a `bin/<program>` launcher
+- executes app bundles through `run-app-bundle [--format text|json] <bundle-dir> [-- <program-arg>...]` from bundle-local manifests, `.muga/app-bundle`, resources, `.mgi` interfaces, and `.mgb` implementation artifacts without reading copied source files
+- installs or updates a non-mutating app bundle wrapper and `<bin-dir>/.muga/installed-apps/<program>.toml` ownership metadata through `install-app [--replace-owned] --output-dir <bin-dir> [--program <name>] <bundle-dir>`, replacing existing launchers/metadata only when ownership metadata matches and never editing shell startup files
+- uninstalls only ownership-verified launcher/metadata files through `uninstall-app --output-dir <bin-dir> --program <name>`, leaving bundle directories and shell profiles untouched
+- emits generated app completion packages from source-free app bundle interfaces through `emit-app-completions --output-dir <dir> [--program <name>] --type <type> [--package <package>] <bundle-dir>`
+- emits and unpacks deterministic `.mga` app bundle archives through `emit-app-archive --archive-root <dir> [--program <name>] <bundle-dir>` and `unpack-app-archive --output-dir <dir> <archive-file>`
+- builds package `.mgi` / `.mgb` artifacts by deterministic dependency levels and runs independent same-level package artifact work concurrently
+- records each `.mgb` package's own source hash separately from its public interface hash and dependency interface hashes
+- preserves unchanged generated `.mgi`, `.mgb`, and `.mgc` artifacts during `muga build`; interface reuse is keyed by the persisted interface hash, while implementation and check-cache reuse currently requires identical generated artifact text
+- consumes the same default `.muga/build` directory through `check --built` and `run --built`, reports missing/stale default artifact failures with `muga build <entry>` guidance, and leaves plain `check` and `run` source-compatible
 - validates `.mgb` artifacts against loaded `.mgi` interface hashes before artifact-backed execution and rejects missing, stale, hash-mismatched, structurally invalid, wrong-package, or dependency-interface-mismatched implementation artifacts without source-tree fallback
 - executes direct and transitive dependency bytecode from `.mgb` artifacts without reading dependency source files from the consumer source tree
 - remaps independently generated `.mgb` package item references onto the loaded `.mgi` interface identities and reserves private implementation item ids past the entry program's package item ids before bytecode merge
 
-Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns only package naming and source-root inference. Artifact-backed checking, running, and artifact emission are explicit CLI workflows through `--artifact-root`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. Project-level artifact-root config should be reconsidered after dependency declarations, lockfiles, and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.
+Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns package naming, source-root inference, and local path dependency roots. Artifact-backed checking, running, and custom-root artifact emission are explicit CLI workflows through `--artifact-root`, `--built`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. `muga build` is a fixed default-output convenience over the same artifact writer, and `--built` is a fixed default-input convenience over the same artifact-backed check/run paths; neither is manifest configuration. Project-level artifact-root config should be reconsidered after lockfiles and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.
 
 This is enough to validate the package surface and the next interface boundary. It is not the final compilation model. The dependency layers in 17.1 to 17.10 are target design, to be implemented incrementally on top of the existing manifest, package graph, typed HIR, and interface-summary work.
 

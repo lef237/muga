@@ -15,12 +15,22 @@ pub enum TokenKind {
     Fn,
     Record,
     Enum,
+    Opaque,
+    Type,
     Match,
     Mut,
     If,
     Else,
     While,
+    For,
+    In,
+    Break,
+    Continue,
+    Return,
     Try,
+    Using,
+    And,
+    Or,
     True,
     False,
     LParen,
@@ -29,6 +39,7 @@ pub enum TokenKind {
     RBracket,
     LBrace,
     RBrace,
+    At,
     Dot,
     DoubleColon,
     Comma,
@@ -81,6 +92,8 @@ impl TokenKind {
                 | TokenKind::GtEq
                 | TokenKind::EqEq
                 | TokenKind::BangEq
+                | TokenKind::And
+                | TokenKind::Or
         )
     }
 }

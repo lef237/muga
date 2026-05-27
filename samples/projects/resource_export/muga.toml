@@ -1,0 +1,4 @@
+[package]
+name = "resource_export"
+source = "src"
+resources = "resources"

@@ -1,0 +1,12 @@
+package app::std_time
+
+import std::time
+
+fn main(): String {
+  now = time::now_unix_millis()
+  if now.value > 0 {
+    "ok"
+  } else {
+    "bad"
+  }
+}

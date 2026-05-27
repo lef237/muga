@@ -1,0 +1,9 @@
+package app::std_path_with_file_name
+
+import std::path
+
+fn main(): String {
+  source = path::from_string("reports/daily.txt")
+  output = path::with_file_name(source, "summary.txt")
+  path::as_string(output)
+}

@@ -1,0 +1,6 @@
+[package]
+name = "local_app"
+source = "src"
+
+[dependencies]
+shared = { path = "../local_path_shared" }

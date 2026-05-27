@@ -1,0 +1,32 @@
+package app::std_result
+
+import std::result
+
+fn inc(value: Int): Int {
+  value + 1
+}
+
+fn keep_small(value: Int): Result[Int, String] {
+  if value < 10 {
+    Result::Ok(value * 2)
+  } else {
+    Result::Err("large")
+  }
+}
+
+fn tag_error(error: String): String {
+  error.concat("!")
+}
+
+fn main(): Int {
+  ok: Result[Int, String] = Result::Ok(3)
+  value = ok.result::map(inc).result::and_then(keep_small).result::value_or(0)
+  err: Result[Int, String] = Result::Err("bad")
+  mapped_err = err.result::map_err(tag_error)
+  probe: Result[Int, String] = Result::Ok(1)
+  if result::is_ok(probe) and result::is_err(mapped_err) {
+    value + mapped_err.result::value_or(7)
+  } else {
+    0
+  }
+}

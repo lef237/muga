@@ -1,0 +1,11 @@
+package app::std_env_current_dir
+
+import std::env
+import std::path
+
+fn main(): String {
+  match env::current_dir() {
+    Result::Ok(dir) => path::is_absolute(dir).to_string()
+    Result::Err(error) => error.operation
+  }
+}

@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{EnumDecl, FuncDecl, ImportDecl, RecordDecl, TypeExpr, Visibility},
+    ast::{EnumDecl, FuncDecl, ImportDecl, OpaqueTypeDecl, RecordDecl, TypeExpr, Visibility},
+    cli_schema::CliValueSource,
     diagnostic::Diagnostic,
     identity::{ModuleId, PackageId, PackageItemId},
+    interface::{OpaqueHandleFacts, PackageInterfaceGraph, PackageInterfaceParamMode},
+    json_decode::JsonDecodeValidationRule,
     known_enum,
     package::{LoadedPackageGraph, PackageItemInfo, PackageItemKind},
     span::Span,
@@ -17,6 +20,7 @@ pub struct PackageSignatureEnvironment {
     pub package_paths: HashMap<PackageId, String>,
     pub records: Vec<PackageRecordSignature>,
     pub enums: Vec<PackageEnumSignature>,
+    pub opaque_types: Vec<PackageOpaqueTypeSignature>,
     pub functions: Vec<PackageFunctionSignature>,
     pub modules: Vec<PackageModuleSignatureEnvironment>,
 }
@@ -28,6 +32,121 @@ impl PackageSignatureEnvironment {
         collector.finish()
     }
 
+    pub fn from_interfaces(interfaces: &PackageInterfaceGraph, symbols: SymbolTable) -> Self {
+        let mut package_paths = HashMap::new();
+        let mut records = Vec::new();
+        let mut enums = Vec::new();
+        let mut opaque_types = Vec::new();
+        let mut functions = Vec::new();
+
+        for package in &interfaces.packages {
+            package_paths.insert(package.package, package.path.clone());
+            for record in &package.records {
+                records.push(PackageRecordSignature {
+                    item: record.item,
+                    package: package.package,
+                    module: ModuleId::new(0),
+                    name: record.name.clone(),
+                    visibility: Visibility::Public,
+                    type_params: record.type_params.clone(),
+                    json_deny_unknown_fields: record.json_deny_unknown_fields,
+                    cli_about: record.cli_about.clone(),
+                    fields: record
+                        .fields
+                        .iter()
+                        .map(|field| PackageFieldSignature {
+                            name: field.name.clone(),
+                            json_rename: field.json_rename.clone(),
+                            json_aliases: field.json_aliases.clone(),
+                            json_validation: field.json_validation.clone(),
+                            cli_name: field.cli_name.clone(),
+                            cli_short: field.cli_short.clone(),
+                            cli_position: field.cli_position,
+                            cli_value_source: field.cli_value_source,
+                            cli_aliases: field.cli_aliases.clone(),
+                            cli_help: field.cli_help.clone(),
+                            cli_hidden: field.cli_hidden,
+                            cli_subcommand: field.cli_subcommand,
+                            ty: field.ty.clone(),
+                            span: field.span,
+                        })
+                        .collect(),
+                    span: record.span,
+                });
+            }
+            for enumeration in &package.enums {
+                enums.push(PackageEnumSignature {
+                    item: enumeration.item,
+                    package: package.package,
+                    module: ModuleId::new(0),
+                    name: enumeration.name.clone(),
+                    visibility: Visibility::Public,
+                    type_params: enumeration.type_params.clone(),
+                    cli_about: enumeration.cli_about.clone(),
+                    variants: enumeration
+                        .variants
+                        .iter()
+                        .map(|variant| PackageEnumVariantSignature {
+                            name: variant.name.clone(),
+                            json_rename: variant.json_rename.clone(),
+                            json_aliases: variant.json_aliases.clone(),
+                            cli_name: variant.cli_name.clone(),
+                            cli_aliases: variant.cli_aliases.clone(),
+                            cli_about: variant.cli_about.clone(),
+                            cli_hidden: variant.cli_hidden,
+                            payload: variant.payload.clone(),
+                            span: variant.span,
+                        })
+                        .collect(),
+                    span: enumeration.span,
+                });
+            }
+            for opaque in &package.opaque_types {
+                opaque_types.push(PackageOpaqueTypeSignature {
+                    item: opaque.item,
+                    package: package.package,
+                    module: ModuleId::new(0),
+                    name: opaque.name.clone(),
+                    visibility: Visibility::Public,
+                    handle_facts: opaque.handle_facts.clone(),
+                    span: opaque.span,
+                });
+            }
+            for function in &package.functions {
+                functions.push(PackageFunctionSignature {
+                    item: function.item,
+                    package: package.package,
+                    module: ModuleId::new(0),
+                    name: function.name.clone(),
+                    visibility: Visibility::Public,
+                    type_params: function.type_params.clone(),
+                    params: function
+                        .params
+                        .iter()
+                        .map(|param| PackageParamSignature {
+                            name: param.name.clone(),
+                            ty: Some(param.ty.clone()),
+                            mode: param.mode,
+                            span: param.span,
+                        })
+                        .collect(),
+                    ret: Some(function.ret.clone()),
+                    span: function.span,
+                });
+            }
+        }
+
+        Self {
+            symbols,
+            package_paths,
+            records,
+            enums,
+            opaque_types,
+            functions,
+            modules: Vec::new(),
+        }
+    }
+
     pub fn record(&self, item: PackageItemId) -> Option<&PackageRecordSignature> {
         self.records.iter().find(|record| record.item == item)
     }
@@ -36,6 +155,10 @@ impl PackageSignatureEnvironment {
         self.enums
             .iter()
             .find(|enumeration| enumeration.item == item)
+    }
+
+    pub fn opaque_type(&self, item: PackageItemId) -> Option<&PackageOpaqueTypeSignature> {
+        self.opaque_types.iter().find(|opaque| opaque.item == item)
     }
 
     pub fn function(&self, item: PackageItemId) -> Option<&PackageFunctionSignature> {
@@ -63,6 +186,8 @@ pub struct PackageRecordSignature {
     pub name: String,
     pub visibility: Visibility,
     pub type_params: Vec<String>,
+    pub json_deny_unknown_fields: bool,
+    pub cli_about: Option<String>,
     pub fields: Vec<PackageFieldSignature>,
     pub span: Span,
 }
@@ -70,6 +195,17 @@ pub struct PackageRecordSignature {
 #[derive(Clone, Debug)]
 pub struct PackageFieldSignature {
     pub name: String,
+    pub json_rename: Option<String>,
+    pub json_aliases: Vec<String>,
+    pub json_validation: Vec<JsonDecodeValidationRule>,
+    pub cli_name: Option<String>,
+    pub cli_short: Option<String>,
+    pub cli_position: Option<u32>,
+    pub cli_value_source: Option<CliValueSource>,
+    pub cli_aliases: Vec<String>,
+    pub cli_help: Option<String>,
+    pub cli_hidden: bool,
+    pub cli_subcommand: bool,
     pub ty: TypeInfo,
     pub span: Span,
 }
@@ -82,6 +218,7 @@ pub struct PackageEnumSignature {
     pub name: String,
     pub visibility: Visibility,
     pub type_params: Vec<String>,
+    pub cli_about: Option<String>,
     pub variants: Vec<PackageEnumVariantSignature>,
     pub span: Span,
 }
@@ -89,7 +226,24 @@ pub struct PackageEnumSignature {
 #[derive(Clone, Debug)]
 pub struct PackageEnumVariantSignature {
     pub name: String,
+    pub json_rename: Option<String>,
+    pub json_aliases: Vec<String>,
+    pub cli_name: Option<String>,
+    pub cli_aliases: Vec<String>,
+    pub cli_about: Option<String>,
+    pub cli_hidden: bool,
     pub payload: Option<TypeInfo>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct PackageOpaqueTypeSignature {
+    pub item: PackageItemId,
+    pub package: PackageId,
+    pub module: ModuleId,
+    pub name: String,
+    pub visibility: Visibility,
+    pub handle_facts: OpaqueHandleFacts,
     pub span: Span,
 }
 
@@ -110,6 +264,7 @@ pub struct PackageFunctionSignature {
 pub struct PackageParamSignature {
     pub name: String,
     pub ty: Option<TypeInfo>,
+    pub mode: PackageInterfaceParamMode,
     pub span: Span,
 }
 
@@ -120,6 +275,7 @@ pub struct PackageModuleSignatureEnvironment {
     pub module_path: String,
     pub records: Vec<PackageVisibleSignature>,
     pub enums: Vec<PackageVisibleSignature>,
+    pub opaque_types: Vec<PackageVisibleSignature>,
     pub functions: Vec<PackageVisibleSignature>,
 }
 
@@ -148,6 +304,18 @@ impl PackageModuleSignatureEnvironment {
         name: &str,
     ) -> Option<&'a PackageEnumSignature> {
         signatures.enumeration(self.enumeration(name)?.item)
+    }
+
+    pub fn opaque_type(&self, name: &str) -> Option<&PackageVisibleSignature> {
+        self.opaque_types.iter().find(|opaque| opaque.name == name)
+    }
+
+    pub fn opaque_type_signature<'a>(
+        &self,
+        signatures: &'a PackageSignatureEnvironment,
+        name: &str,
+    ) -> Option<&'a PackageOpaqueTypeSignature> {
+        signatures.opaque_type(self.opaque_type(name)?.item)
     }
 
     pub fn function(&self, name: &str) -> Option<&PackageVisibleSignature> {
@@ -188,6 +356,7 @@ struct SignatureCollector<'a> {
     current_module: ModuleId,
     records: Vec<PackageRecordSignature>,
     enums: Vec<PackageEnumSignature>,
+    opaque_types: Vec<PackageOpaqueTypeSignature>,
     functions: Vec<PackageFunctionSignature>,
     modules: Vec<PackageModuleSignatureEnvironment>,
 }
@@ -205,6 +374,7 @@ impl<'a> SignatureCollector<'a> {
             current_module: ModuleId::new(0),
             records: Vec::new(),
             enums: Vec::new(),
+            opaque_types: Vec::new(),
             functions: Vec::new(),
             modules: Vec::new(),
         }
@@ -242,6 +412,9 @@ impl<'a> SignatureCollector<'a> {
                     match statement {
                         crate::ast::Stmt::RecordDecl(record) => self.collect_record(record),
                         crate::ast::Stmt::EnumDecl(enumeration) => self.collect_enum(enumeration),
+                        crate::ast::Stmt::OpaqueTypeDecl(opaque) => {
+                            self.collect_opaque_type(opaque)
+                        }
                         crate::ast::Stmt::FuncDecl(function) => self.collect_function(function),
                         _ => {}
                     }
@@ -272,6 +445,17 @@ impl<'a> SignatureCollector<'a> {
                     .iter()
                     .map(|field| PackageFieldSignature {
                         name: field.name.clone(),
+                        json_rename: field.json_rename.clone(),
+                        json_aliases: field.json_aliases.clone(),
+                        json_validation: field.json_validation.clone(),
+                        cli_name: field.cli_name.clone(),
+                        cli_short: field.cli_short.clone(),
+                        cli_position: field.cli_position,
+                        cli_value_source: field.cli_value_source,
+                        cli_aliases: field.cli_aliases.clone(),
+                        cli_help: field.cli_help.clone(),
+                        cli_hidden: field.cli_hidden,
+                        cli_subcommand: field.cli_subcommand,
                         ty: self.interface_type_info(&field.ty, &interfaces.symbols),
                         span: field.span,
                     })
@@ -283,6 +467,8 @@ impl<'a> SignatureCollector<'a> {
                     name: record.name.clone(),
                     visibility: Visibility::Public,
                     type_params: record.type_params.clone(),
+                    json_deny_unknown_fields: record.json_deny_unknown_fields,
+                    cli_about: record.cli_about.clone(),
                     fields,
                     span: record.span,
                 });
@@ -300,6 +486,12 @@ impl<'a> SignatureCollector<'a> {
                     .iter()
                     .map(|variant| PackageEnumVariantSignature {
                         name: variant.name.clone(),
+                        json_rename: variant.json_rename.clone(),
+                        json_aliases: variant.json_aliases.clone(),
+                        cli_name: variant.cli_name.clone(),
+                        cli_aliases: variant.cli_aliases.clone(),
+                        cli_about: variant.cli_about.clone(),
+                        cli_hidden: variant.cli_hidden,
                         payload: variant
                             .payload
                             .as_ref()
@@ -314,8 +506,23 @@ impl<'a> SignatureCollector<'a> {
                     name: enumeration.name.clone(),
                     visibility: Visibility::Public,
                     type_params: enumeration.type_params.clone(),
+                    cli_about: enumeration.cli_about.clone(),
                     variants,
                     span: enumeration.span,
+                });
+            }
+            for opaque in &interface.opaque_types {
+                let Some(item) = self.loaded.package_graph.item(opaque.item) else {
+                    continue;
+                };
+                self.opaque_types.push(PackageOpaqueTypeSignature {
+                    item: opaque.item,
+                    package: item.package,
+                    module: item.module,
+                    name: opaque.name.clone(),
+                    visibility: Visibility::Public,
+                    handle_facts: opaque.handle_facts.clone(),
+                    span: opaque.span,
                 });
             }
             for function in &interface.functions {
@@ -328,6 +535,7 @@ impl<'a> SignatureCollector<'a> {
                     .map(|param| PackageParamSignature {
                         name: param.name.clone(),
                         ty: Some(self.interface_type_info(&param.ty, &interfaces.symbols)),
+                        mode: param.mode,
                         span: param.span,
                     })
                     .collect();
@@ -361,6 +569,7 @@ impl<'a> SignatureCollector<'a> {
                 package_paths,
                 records: self.records,
                 enums: self.enums,
+                opaque_types: self.opaque_types,
                 functions: self.functions,
                 modules: self.modules,
             })
@@ -376,6 +585,7 @@ impl<'a> SignatureCollector<'a> {
             module_path: module_path.to_string(),
             records: Vec::new(),
             enums: Vec::new(),
+            opaque_types: Vec::new(),
             functions: Vec::new(),
         };
 
@@ -391,6 +601,7 @@ impl<'a> SignatureCollector<'a> {
             match item.kind {
                 PackageItemKind::Record => environment.records.push(visible),
                 PackageItemKind::Enum => environment.enums.push(visible),
+                PackageItemKind::OpaqueType => environment.opaque_types.push(visible),
                 PackageItemKind::Function => environment.functions.push(visible),
             }
         }
@@ -416,6 +627,16 @@ impl<'a> SignatureCollector<'a> {
                 environment.enums.push(PackageVisibleSignature {
                     name: format!("{}::{}", import.alias, enumeration.name),
                     item: enumeration.item,
+                    source: PackageSignatureSource::Imported {
+                        alias: import.alias.clone(),
+                        package: package_id,
+                    },
+                });
+            }
+            for opaque in &exports.opaque_types {
+                environment.opaque_types.push(PackageVisibleSignature {
+                    name: format!("{}::{}", import.alias, opaque.name),
+                    item: opaque.item,
                     source: PackageSignatureSource::Imported {
                         alias: import.alias.clone(),
                         package: package_id,
@@ -503,6 +724,17 @@ impl<'a> SignatureCollector<'a> {
             .iter()
             .map(|field| PackageFieldSignature {
                 name: field.name.clone(),
+                json_rename: json_rename_from_attributes(&field.attributes),
+                json_aliases: json_aliases_from_attributes(&field.attributes),
+                json_validation: json_validation_from_attributes(&field.attributes),
+                cli_name: cli_name_from_attributes(&field.attributes),
+                cli_short: cli_short_from_attributes(&field.attributes),
+                cli_position: cli_position_from_attributes(&field.attributes),
+                cli_value_source: cli_value_source_from_attributes(&field.attributes),
+                cli_aliases: cli_aliases_from_attributes(&field.attributes),
+                cli_help: cli_help_from_attributes(&field.attributes),
+                cli_hidden: cli_hidden_from_attributes(&field.attributes),
+                cli_subcommand: cli_subcommand_from_attributes(&field.attributes),
                 ty: self.type_info_from_type_expr(
                     &field.type_name,
                     field.span,
@@ -518,6 +750,8 @@ impl<'a> SignatureCollector<'a> {
             name: record.name.clone(),
             visibility: record.visibility,
             type_params: record.type_params.clone(),
+            json_deny_unknown_fields: json_deny_unknown_fields_from_attributes(&record.attributes),
+            cli_about: cli_about_from_attributes(&record.attributes),
             fields,
             span: record.span,
         });
@@ -536,6 +770,12 @@ impl<'a> SignatureCollector<'a> {
             .iter()
             .map(|variant| PackageEnumVariantSignature {
                 name: variant.name.clone(),
+                json_rename: json_rename_from_attributes(&variant.attributes),
+                json_aliases: json_aliases_from_attributes(&variant.attributes),
+                cli_name: cli_name_from_attributes(&variant.attributes),
+                cli_aliases: cli_aliases_from_attributes(&variant.attributes),
+                cli_about: cli_about_from_attributes(&variant.attributes),
+                cli_hidden: cli_hidden_from_attributes(&variant.attributes),
                 payload: variant.payload.as_ref().map(|payload| {
                     self.type_info_from_type_expr(payload, variant.span, &enumeration.type_params)
                 }),
@@ -549,9 +789,53 @@ impl<'a> SignatureCollector<'a> {
             name: enumeration.name.clone(),
             visibility: enumeration.visibility,
             type_params: enumeration.type_params.clone(),
+            cli_about: cli_about_from_attributes(&enumeration.attributes),
             variants,
             span: enumeration.span,
         });
+    }
+
+    fn collect_opaque_type(&mut self, opaque: &OpaqueTypeDecl) {
+        let Some(item) = self.item_id(
+            self.current_module,
+            &opaque.name,
+            PackageItemKind::OpaqueType,
+        ) else {
+            return;
+        };
+        self.opaque_types.push(PackageOpaqueTypeSignature {
+            item,
+            package: self.current_package,
+            module: self.current_module,
+            name: opaque.name.clone(),
+            visibility: opaque.visibility,
+            handle_facts: self.package_opaque_handle_facts(&opaque.name),
+            span: opaque.span,
+        });
+    }
+
+    fn package_opaque_handle_facts(&self, opaque_name: &str) -> OpaqueHandleFacts {
+        if self.current_package_path() == Some(crate::std_package::FS_PACKAGE)
+            && opaque_name == "File"
+        {
+            OpaqueHandleFacts {
+                runtime_backed: true,
+                copyable: false,
+                cloneable: false,
+                sendable: false,
+                shareable: false,
+                structurally_comparable: false,
+                serializable: false,
+                closeable: true,
+                close_function: self.item_id(
+                    self.current_module,
+                    "close",
+                    PackageItemKind::Function,
+                ),
+            }
+        } else {
+            OpaqueHandleFacts::default()
+        }
     }
 
     fn collect_function(&mut self, function: &FuncDecl) {
@@ -570,6 +854,7 @@ impl<'a> SignatureCollector<'a> {
                 ty: param.type_name.as_ref().map(|type_name| {
                     self.type_info_from_type_expr(type_name, param.span, &function.type_params)
                 }),
+                mode: self.package_param_mode(&function.name, &param.name),
                 span: param.span,
             })
             .collect();
@@ -587,6 +872,28 @@ impl<'a> SignatureCollector<'a> {
             ret,
             span: function.span,
         });
+    }
+
+    fn package_param_mode(
+        &self,
+        function_name: &str,
+        param_name: &str,
+    ) -> PackageInterfaceParamMode {
+        if self.current_package_path() == Some(crate::std_package::FS_PACKAGE)
+            && function_name == "close"
+            && param_name == "file"
+        {
+            PackageInterfaceParamMode::Consume
+        } else {
+            PackageInterfaceParamMode::Borrow
+        }
+    }
+
+    fn current_package_path(&self) -> Option<&str> {
+        self.loaded
+            .package_graph
+            .package(self.current_package)
+            .map(|package| package.path.as_str())
     }
 
     fn type_info_from_type_expr(
@@ -678,6 +985,16 @@ impl<'a> SignatureCollector<'a> {
             let symbol = self.symbol(name);
             return TypeInfo::PackageEnum { symbol, item, args };
         }
+        if let Some(item) = self
+            .visible_same_package_item(name, PackageItemKind::OpaqueType)
+            .map(|item| item.id)
+        {
+            if !self.validate_opaque_arg_count(name, args.len(), span) {
+                return TypeInfo::Error;
+            }
+            let symbol = self.symbol(name);
+            return TypeInfo::PackageOpaque { symbol, item };
+        }
         self.diagnostics.push(Diagnostic::new(
             "T007",
             format!("unknown type `{name}`"),
@@ -724,6 +1041,20 @@ impl<'a> SignatureCollector<'a> {
             }
             let symbol = self.symbol(name);
             return TypeInfo::PackageEnum { symbol, item, args };
+        }
+        if let Some(export) = self
+            .loaded
+            .package_exports
+            .opaque_type_by_name(package_id, name)
+        {
+            if !self.validate_opaque_arg_count(name, args.len(), span) {
+                return TypeInfo::Error;
+            }
+            let symbol = self.symbol(name);
+            return TypeInfo::PackageOpaque {
+                symbol,
+                item: export.item,
+            };
         }
         self.diagnostics.push(Diagnostic::new(
             "PK010",
@@ -786,7 +1117,7 @@ impl<'a> SignatureCollector<'a> {
         }
         self.diagnostics.push(Diagnostic::new(
             "T022",
-            format!("record `{name}` expects exactly {expected} type arguments"),
+            format!("record `{name}` expects exactly {expected} type arguments but found {actual}"),
             span,
         ));
         false
@@ -805,7 +1136,19 @@ impl<'a> SignatureCollector<'a> {
         }
         self.diagnostics.push(Diagnostic::new(
             "T022",
-            format!("enum `{name}` expects exactly {expected} type arguments"),
+            format!("enum `{name}` expects exactly {expected} type arguments but found {actual}"),
+            span,
+        ));
+        false
+    }
+
+    fn validate_opaque_arg_count(&mut self, name: &str, actual: usize, span: Span) -> bool {
+        if actual == 0 {
+            return true;
+        }
+        self.diagnostics.push(Diagnostic::new(
+            "T022",
+            format!("opaque type `{name}` expects exactly 0 type arguments but found {actual}"),
             span,
         ));
         false
@@ -844,6 +1187,10 @@ impl<'a> SignatureCollector<'a> {
                     .iter()
                     .map(|arg| self.interface_type_info(arg, symbols))
                     .collect(),
+            },
+            TypeInfo::PackageOpaque { symbol, item } => TypeInfo::PackageOpaque {
+                symbol: self.interface_symbol(*symbol, symbols),
+                item: *item,
             },
             TypeInfo::List(item) => {
                 TypeInfo::List(Box::new(self.interface_type_info(item, symbols)))
@@ -894,12 +1241,209 @@ impl<'a> SignatureCollector<'a> {
 fn unknown_import_alias_diagnostic(alias: &str, span: Span) -> Diagnostic {
     let diagnostic = Diagnostic::new("PK009", format!("unknown import alias `{alias}`"), span);
     match alias {
+        "cli" => diagnostic.with_suggestion("add `import std::cli` before using `cli::...`"),
+        "env" => diagnostic.with_suggestion("add `import std::env` before using `env::...`"),
+        "fmt" => diagnostic.with_suggestion("add `import std::fmt` before using `fmt::...`"),
         "fs" => diagnostic.with_suggestion("add `import std::fs` before using `fs::...`"),
         "io" => diagnostic.with_suggestion("add `import std::io` before using `io::...`"),
+        "json" => diagnostic.with_suggestion("add `import std::json` before using `json::...`"),
+        "path" => diagnostic.with_suggestion("add `import std::path` before using `path::...`"),
+        "string" => {
+            diagnostic.with_suggestion("add `import std::string` before using `string::...`")
+        }
+        "time" => diagnostic.with_suggestion("add `import std::time` before using `time::...`"),
         _ => {
             diagnostic.with_suggestion("add an import declaration or use an existing import alias")
         }
     }
+}
+
+fn json_rename_from_attributes(attributes: &[crate::ast::Attribute]) -> Option<String> {
+    attributes.iter().find_map(|attribute| {
+        if attribute.name == "json" {
+            attribute
+                .arguments
+                .iter()
+                .find(|argument| argument.name == "rename")
+                .and_then(|argument| argument.string_value().map(ToOwned::to_owned))
+        } else {
+            None
+        }
+    })
+}
+
+fn json_aliases_from_attributes(attributes: &[crate::ast::Attribute]) -> Vec<String> {
+    attributes
+        .iter()
+        .filter(|attribute| attribute.name == "json")
+        .flat_map(|attribute| {
+            attribute
+                .arguments
+                .iter()
+                .filter(|argument| argument.name == "alias")
+                .filter_map(|argument| argument.string_value().map(ToOwned::to_owned))
+        })
+        .collect()
+}
+
+fn cli_name_from_attributes(attributes: &[crate::ast::Attribute]) -> Option<String> {
+    attributes.iter().find_map(|attribute| {
+        if attribute.name == "cli" {
+            attribute
+                .arguments
+                .iter()
+                .find(|argument| argument.name == "name")
+                .and_then(|argument| argument.string_value().map(ToOwned::to_owned))
+        } else {
+            None
+        }
+    })
+}
+
+fn cli_short_from_attributes(attributes: &[crate::ast::Attribute]) -> Option<String> {
+    attributes.iter().find_map(|attribute| {
+        if attribute.name == "cli" {
+            attribute
+                .arguments
+                .iter()
+                .find(|argument| argument.name == "short")
+                .and_then(|argument| argument.string_value().map(ToOwned::to_owned))
+        } else {
+            None
+        }
+    })
+}
+
+fn cli_position_from_attributes(attributes: &[crate::ast::Attribute]) -> Option<u32> {
+    attributes.iter().find_map(|attribute| {
+        if attribute.name == "cli" {
+            attribute
+                .arguments
+                .iter()
+                .find(|argument| argument.name == "positional")
+                .and_then(|argument| {
+                    argument
+                        .int_value()
+                        .and_then(|value| u32::try_from(value).ok())
+                        .filter(|value| *value > 0)
+                })
+        } else {
+            None
+        }
+    })
+}
+
+fn cli_value_source_from_attributes(
+    attributes: &[crate::ast::Attribute],
+) -> Option<CliValueSource> {
+    attributes.iter().find_map(|attribute| {
+        if attribute.name == "cli" {
+            attribute
+                .arguments
+                .iter()
+                .find(|argument| argument.name == "value_source")
+                .and_then(|argument| argument.string_value())
+                .and_then(|value| CliValueSource::from_artifact_token(value).ok())
+        } else {
+            None
+        }
+    })
+}
+
+fn cli_aliases_from_attributes(attributes: &[crate::ast::Attribute]) -> Vec<String> {
+    attributes
+        .iter()
+        .filter(|attribute| attribute.name == "cli")
+        .flat_map(|attribute| {
+            attribute
+                .arguments
+                .iter()
+                .filter(|argument| argument.name == "alias")
+                .filter_map(|argument| argument.string_value().map(ToOwned::to_owned))
+        })
+        .collect()
+}
+
+fn cli_help_from_attributes(attributes: &[crate::ast::Attribute]) -> Option<String> {
+    attributes.iter().find_map(|attribute| {
+        if attribute.name == "cli" {
+            attribute
+                .arguments
+                .iter()
+                .find(|argument| argument.name == "help")
+                .and_then(|argument| argument.string_value().map(ToOwned::to_owned))
+        } else {
+            None
+        }
+    })
+}
+
+fn cli_about_from_attributes(attributes: &[crate::ast::Attribute]) -> Option<String> {
+    attributes.iter().find_map(|attribute| {
+        if attribute.name == "cli" {
+            attribute
+                .arguments
+                .iter()
+                .find(|argument| argument.name == "about")
+                .and_then(|argument| argument.string_value().map(ToOwned::to_owned))
+        } else {
+            None
+        }
+    })
+}
+
+fn cli_hidden_from_attributes(attributes: &[crate::ast::Attribute]) -> bool {
+    attributes.iter().any(|attribute| {
+        attribute.name == "cli"
+            && attribute
+                .arguments
+                .iter()
+                .any(|argument| argument.name == "hidden" && argument.value.is_none())
+    })
+}
+
+fn cli_subcommand_from_attributes(attributes: &[crate::ast::Attribute]) -> bool {
+    attributes.iter().any(|attribute| {
+        attribute.name == "cli"
+            && attribute
+                .arguments
+                .iter()
+                .any(|argument| argument.name == "subcommand" && argument.value.is_none())
+    })
+}
+
+fn json_validation_from_attributes(
+    attributes: &[crate::ast::Attribute],
+) -> Vec<JsonDecodeValidationRule> {
+    attributes
+        .iter()
+        .filter(|attribute| attribute.name == "validate")
+        .flat_map(|attribute| attribute.arguments.iter())
+        .filter_map(json_validation_rule_from_argument)
+        .collect()
+}
+
+fn json_validation_rule_from_argument(
+    argument: &crate::ast::AttributeArgument,
+) -> Option<JsonDecodeValidationRule> {
+    match argument.name.as_str() {
+        "non_empty" => Some(JsonDecodeValidationRule::NonEmpty),
+        "min" => argument.int_value().map(JsonDecodeValidationRule::Min),
+        "max" => argument.int_value().map(JsonDecodeValidationRule::Max),
+        "min_len" => argument.int_value().map(JsonDecodeValidationRule::MinLen),
+        "max_len" => argument.int_value().map(JsonDecodeValidationRule::MaxLen),
+        _ => None,
+    }
+}
+
+fn json_deny_unknown_fields_from_attributes(attributes: &[crate::ast::Attribute]) -> bool {
+    attributes.iter().any(|attribute| {
+        attribute.name == "json"
+            && attribute
+                .arguments
+                .iter()
+                .any(|argument| argument.name == "deny_unknown_fields" && argument.value.is_none())
+    })
 }
 
 fn split_qualified_name(name: &str) -> Option<(&str, &str)> {

@@ -1,0 +1,9 @@
+package app::std_path_normalize
+
+import std::path
+
+fn main(): String {
+  source = path::from_string("reports/./2026/../daily.txt")
+  normalized = path::normalize(source)
+  path::as_string(normalized)
+}

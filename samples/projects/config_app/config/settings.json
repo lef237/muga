@@ -1,0 +1,24 @@
+{
+  "name": "Ada",
+  "port": 4040,
+  "verbose": false,
+  "tags": ["tool", "service"],
+  "owner": {
+    "name": "ops",
+    "team": null
+  },
+  "servers": [
+    {
+      "name": "api",
+      "port": 9000
+    },
+    {
+      "name": "worker",
+      "port": 9001
+    }
+  ],
+  "limits": {
+    "workers": 4,
+    "retries": 2
+  }
+}

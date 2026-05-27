@@ -7,13 +7,17 @@ fn main(): String {
         if "".is_empty() {
           if parts.len() == 2 {
             if text.char_count() == 8 {
-              match text.slice_chars(4, 4) {
-                Result::Ok(part) => if part == "Muga" {
-                  text
-                } else {
-                  "slice failed"
+              if text.byte_len() == 8 {
+                match text.slice_chars(4, 4) {
+                  Result::Ok(part) => if part == "Muga" {
+                    text
+                  } else {
+                    "slice failed"
+                  }
+                  Result::Err(message) => message
                 }
-                Result::Err(message) => message
+              } else {
+                "byte len failed"
               }
             } else {
               "char count failed"

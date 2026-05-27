@@ -1,0 +1,9 @@
+// conformance: reject
+// spec: spec/002-name-resolution.md
+// expect-error: E001
+
+fn main(): Int {
+  value = 1
+  value = 2
+  value
+}

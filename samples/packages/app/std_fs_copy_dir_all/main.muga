@@ -1,0 +1,35 @@
+package app::std_fs_copy_dir_all
+
+import std::fs
+import std::path
+
+fn copied_payload_summary(base: path::Path, target: path::Path): String {
+  copied_payload = path::join(path::join(target, "nested"), "payload.txt")
+  text = match fs::read_text_path(copied_payload) {
+    Result::Ok(value) => value
+    Result::Err(error) => error.operation
+  }
+  removed = match fs::remove_dir_all_path(base) {
+    Result::Ok(value) => true
+    Result::Err(error) => false
+  }
+  text.concat("|").concat(removed.to_string()).concat("|").concat(fs::exists_path(base).to_string())
+}
+
+fn main(): String {
+  base = path::from_string("samples/packages/app/std_fs_copy_dir_all/generated")
+  source = path::join(base, "source")
+  nested = path::join(source, "nested")
+  target = path::join(base, "target")
+  payload = path::join(nested, "payload.txt")
+  match fs::create_dir_all_path(nested) {
+    Result::Ok(created) => match fs::write_text_path(payload, "payload") {
+      Result::Ok(written) => match fs::copy_dir_all_path(source, target) {
+        Result::Ok(copied) => copied_payload_summary(base, target)
+        Result::Err(error) => error.operation
+      }
+      Result::Err(error) => error.operation
+    }
+    Result::Err(error) => error.operation
+  }
+}

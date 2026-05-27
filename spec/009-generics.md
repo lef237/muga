@@ -192,6 +192,8 @@ Box {
 }
 ```
 
+If an expected generic record type is already known, the instantiated field types are propagated into contextual field values such as empty list literals, `Map.empty()`, and `Option::None`.
+
 If the type arguments are not unique, the compiler requires an annotation.
 
 ## 7. Generic Functions
@@ -284,7 +286,8 @@ parsed: Result[Int, String] = Result::Ok(1)
 `Option[T]` construction and consumption are implemented as `Option::Some(value)`, `Option::None`, and exhaustive Option `match`. `Result[T, E]` construction and consumption are implemented as `Result::Ok(value)`, `Result::Err(error)`, and exhaustive Result `match`. General user-defined enum declarations are implemented for the current MVP shape.
 
 `T?` is reserved as possible future shorthand for `Option[T]`, but `Option[T]` is the canonical v1 spelling.
-Result propagation uses visible prefix `try expr` syntax rather than postfix `?`.
+Any future `?.` syntax should be Option-only optional chaining.
+Result propagation uses visible `try` syntax rather than postfix Result propagation `expr?`: prefix `try expr` is implemented, and future dot-chain propagation should use postfix keyword `expr.try`.
 
 ## 11. Recursion
 

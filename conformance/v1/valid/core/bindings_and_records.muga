@@ -1,0 +1,22 @@
+// conformance: valid
+// spec: mini-language-spec-v1.md#Core Rules
+// spec: spec/001-core-language.md#3-core-binding-forms
+// spec: spec/005-records.md
+// expect-main: 2
+
+record Counter {
+  value: Int
+}
+
+fn increment(counter: Counter): Counter {
+  counter.with(value: counter.value + 1)
+}
+
+fn main(): Int {
+  mut total: Int = 0
+  total = total + 1
+  counter = Counter {
+    value: total
+  }
+  increment(counter).value
+}

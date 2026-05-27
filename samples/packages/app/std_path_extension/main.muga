@@ -1,0 +1,11 @@
+package app::std_path_extension
+
+import std::path
+
+fn main(): String {
+  file_path = path::from_string("samples/packages/app/std_path_extension/main.muga")
+  match path::extension(file_path) {
+    Option::Some(value) => value
+    Option::None => "missing"
+  }
+}

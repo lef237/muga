@@ -1,0 +1,31 @@
+package app::std_list
+
+import std::list
+
+fn inc(value: Int): Int {
+  value + 1
+}
+
+fn keep_even(value: Int): Bool {
+  (value / 2) * 2 == value
+}
+
+fn add(acc: Int, value: Int): Int {
+  acc + value
+}
+
+fn positive(value: Int): Bool {
+  value > 0
+}
+
+fn main(): Int {
+  values = [1, 2, 3, 4]
+  mapped = values.list::map(inc)
+  filtered = mapped.list::filter(keep_even)
+  sum = filtered.list::fold(0, add)
+  if values.list::any(keep_even) and values.list::all(positive) {
+    sum + mapped.len() + values.len()
+  } else {
+    0
+  }
+}

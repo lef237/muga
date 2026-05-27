@@ -1,0 +1,14 @@
+package app::std_fs_read_dir
+
+import std::fs
+import std::io
+import std::path
+
+fn main(): Result[String, io::IOError] {
+  dir_path = path::from_string("samples/packages/app/std_fs_read_dir")
+  entries = try fs::read_dir_path(dir_path)
+  match entries.get(0) {
+    Option::Some(value) => Result::Ok(path::as_string(value))
+    Option::None => Result::Ok("missing")
+  }
+}

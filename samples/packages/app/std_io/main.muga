@@ -1,0 +1,26 @@
+package app::std_io
+
+import std::io
+
+fn describe(error: io::IOError): String {
+  error.operation.concat(":").concat(error.kind)
+}
+
+fn main(): String {
+  error = io::IOError {
+    operation: "read_text",
+    path: "missing.txt",
+    kind: "not_found",
+    message: "missing",
+    raw_code: Option::None
+  }
+  pair = io::PathPairError {
+    operation: "copy_file",
+    from_path: "from.txt",
+    to_path: "to.txt",
+    kind: "not_found",
+    message: "missing",
+    raw_code: Option::None
+  }
+  describe(error).concat("|").concat(pair.operation)
+}

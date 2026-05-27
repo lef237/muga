@@ -1,0 +1,13 @@
+package model::user
+
+pub record User {
+  name: String
+  age: Int
+}
+
+pub fn default_user(): User {
+  User {
+    name: "Ada"
+    age: 41
+  }
+}

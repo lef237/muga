@@ -12,16 +12,24 @@ Follow semantic versioning (`MAJOR.MINOR.PATCH`):
 | Backwards-compatible new features | MINOR | `0.1.3` → `0.2.0` |
 | Breaking changes | MAJOR | `0.1.3` → `1.0.0` |
 
+Before `1.0.0`, use `0.x` releases to communicate that the language and package
+specifications may still change. Reserve `1.0.0-rc.N` and `1.0.0` for the point
+where the project is ready to make the v1 compatibility promise explicit.
+
 The current version is in the `version` field of `Cargo.toml`.
 
 ## Release Flow
 
 ### 1. Run pre-release checks
 
+When preparing a release, run the offline release gate. For v1 release
+candidates and later, also confirm the scope in
+[docs/v1-release-checklist.md](./docs/v1-release-checklist.md) and the
+GitHub Actions alignment in
+[docs/release-gate-alignment.md](./docs/release-gate-alignment.md).
+
 ```bash
-cargo fmt --check
-cargo test --locked
-cargo publish --dry-run --locked
+scripts/v1-release-gate.sh
 ```
 
 Fix any errors before proceeding.
@@ -47,7 +55,17 @@ git add Cargo.toml Cargo.lock
 git commit -m "chore: bump version to vX.Y.Z"
 ```
 
-### 4. Create an annotated tag
+### 4. Run the publish dry run
+
+After the version bump commit and before tagging, run the full release gate with the crates.io publish dry run:
+
+```bash
+scripts/v1-release-gate.sh --with-publish-dry-run
+```
+
+This may contact crates.io. Fix any errors before tagging.
+
+### 5. Create an annotated tag
 
 ```bash
 git tag -a vX.Y.Z -m "muga vX.Y.Z"
@@ -59,16 +77,18 @@ Verify the tag was created correctly:
 git tag -n | tail -5
 ```
 
-### 5. Push
+### 6. Push
 
 ```bash
 git push origin main
 git push origin vX.Y.Z
 ```
 
-Pushing a `v*` tag triggers the `release.yml` GitHub Actions workflow, which tests the crate, verifies the package, publishes it to crates.io, and creates a GitHub Release.
+Pushing a `v*` tag triggers the `release.yml` GitHub Actions workflow, which
+runs `scripts/v1-release-gate.sh --with-publish-dry-run`, publishes it to
+crates.io, and creates a GitHub Release.
 
-### 6. Verify the release
+### 7. Verify the release
 
 1. Check the Actions tab on GitHub and confirm the workflow succeeded.
 2. Confirm the new version appears on [crates.io/crates/muga](https://crates.io/crates/muga).

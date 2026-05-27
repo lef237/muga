@@ -1,0 +1,166 @@
+import std::cli
+import std::config
+import std::env
+import std::path
+import std::result
+import std::string
+
+pub record Owner {
+  name: Option[String]
+  team: Option[String]
+}
+
+pub record Server {
+  name: String
+  port: Int
+}
+
+pub record Settings {
+  @cli(help: "Application display name")
+  name: String
+  @cli(help: "HTTP listen port")
+  port: Int
+  @cli(help: "Enable verbose logging")
+  verbose: Bool
+  @cli(name: "tag", alias: "tags", help: "Tag value")
+  tags: List[String]
+  owner: Owner
+  servers: List[Server]
+  limits: Map[String, Int]
+}
+
+fn default_owner(): Owner {
+  name: Option[String] = Option::None
+  team: Option[String] = Option::None
+  Owner { name: name, team: team }
+}
+
+fn default_servers(): List[Server] {
+  [Server { name: "local", port: 8080 }]
+}
+
+fn default_limits(): Map[String, Int] {
+  limits: Map[String, Int] = Map.empty()
+  limits.insert("workers", 1).insert("retries", 1)
+}
+
+fn default_settings(): Settings {
+  tags: List[String] = []
+  Settings { name: "Muga", port: 8080, verbose: false, tags: tags, owner: default_owner(), servers: default_servers(), limits: default_limits() }
+}
+
+fn config_error_kind_name(kind: config::ErrorKind): String {
+  match kind {
+    config::ErrorKind::Read => "Read"
+    config::ErrorKind::Parse => "Parse"
+    config::ErrorKind::Decode => "Decode"
+  }
+}
+
+fn config_error_message(error: config::Error): String {
+  string::concat_all(["config ", config_error_kind_name(error.kind), " ", error.offset.to_string(), ": ", error.message])
+}
+
+fn discovered_config_path(): String {
+  match env::get_var("MUGA_CONFIG_PATH") {
+    Option::Some(value) => value
+    Option::None => "samples/projects/config_app/config/settings.json"
+  }
+}
+
+fn cli_error_kind_name(kind: cli::ErrorKind): String {
+  match kind {
+    cli::ErrorKind::UnknownArgument => "UnknownArgument"
+    cli::ErrorKind::MissingArgument => "MissingArgument"
+    cli::ErrorKind::MissingValue => "MissingValue"
+    cli::ErrorKind::InvalidValue => "InvalidValue"
+    cli::ErrorKind::Validation => "Validation"
+    cli::ErrorKind::UnsupportedTarget => "UnsupportedTarget"
+  }
+}
+
+fn cli_error_message(error: cli::Error): String {
+  string::concat_all(["cli ", cli_error_kind_name(error.kind), " ", error.argument, ": ", error.message])
+}
+
+fn config_value_follows(args: List[String], index: Int): Bool {
+  match args.get(index + 1) {
+    Option::Some(value) => !value.starts_with("--")
+    Option::None => false
+  }
+}
+
+fn settings_args(args: List[String]): List[String] {
+  mut out: List[String] = []
+  mut index = 0
+  mut skip_next = false
+  for arg in args {
+    if skip_next {
+      skip_next = false
+    } else {
+      if arg == "--" {
+        return out
+      }
+      if arg == "--config" {
+        skip_next = config_value_follows(args, index)
+      } else if arg.starts_with("--config=") {
+      } else {
+        out = out.push(arg)
+      }
+    }
+    index = index + 1
+  }
+  out
+}
+
+fn emit_usage(usage: String): Result[String, String] {
+  printed = println(usage)
+  Result::Ok(usage)
+}
+
+fn option_string(value: Option[String], fallback: String): String {
+  match value {
+    Option::Some(text) => text
+    Option::None => fallback
+  }
+}
+
+fn first_server_port(servers: List[Server]): Int {
+  match servers.get(0) {
+    Option::Some(server) => server.port
+    Option::None => 0
+  }
+}
+
+fn limit_or(limits: Map[String, Int], key: String, fallback: Int): Int {
+  match limits.get(key) {
+    Option::Some(value) => value
+    Option::None => fallback
+  }
+}
+
+fn render_settings(settings: Settings): String {
+  owner = option_string(settings.owner.name, "unknown")
+  team = option_string(settings.owner.team, "none")
+  first_port = first_server_port(settings.servers)
+  workers = limit_or(settings.limits, "workers", 0)
+  string::join([settings.name, settings.port.to_string(), settings.verbose.to_string(), settings.tags.len().to_string(), owner, team, settings.servers.len().to_string(), first_port.to_string(), workers.to_string()], "|")
+}
+
+fn run_config(args: List[String]): Result[String, String] {
+  config_path = path::from_string(cli::option_or(args, "config", discovered_config_path()))
+  configured = try result::map_err(config::load_json_or(config_path, default_settings()), config_error_message)
+  settings = try result::map_err(cli::parse_or(settings_args(args), configured), cli_error_message)
+  rendered = render_settings(settings)
+  printed = println(string::concat_all(["config ", rendered]))
+  Result::Ok(rendered)
+}
+
+fn main(): Result[String, String] {
+  args = env::args()
+  request = try result::map_err(cli::parse_request_or(settings_args(args), "config-app", default_settings()), cli_error_message)
+  match request {
+    cli::Request::Help(usage) => emit_usage(string::concat_all([usage, "\n  --config <Path>  default: $MUGA_CONFIG_PATH or samples/projects/config_app/config/settings.json"]))
+    cli::Request::Parsed(_) => run_config(args)
+  }
+}

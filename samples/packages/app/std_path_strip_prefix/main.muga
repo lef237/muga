@@ -1,0 +1,12 @@
+package app::std_path_strip_prefix
+
+import std::path
+
+fn main(): String {
+  source = path::from_string("reports/2026/daily.txt")
+  base = path::from_string("reports")
+  match path::strip_prefix(source, base) {
+    Option::Some(relative) => path::as_string(relative)
+    Option::None => "missing"
+  }
+}

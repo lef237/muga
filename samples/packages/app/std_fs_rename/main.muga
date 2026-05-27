@@ -1,0 +1,13 @@
+package app::std_fs_rename
+
+import std::fs
+import std::path
+
+fn main(): String {
+  source = path::from_string("samples/packages/app/std_fs_rename/missing.txt")
+  target = path::from_string("samples/packages/app/std_fs_rename/renamed.txt")
+  match fs::rename_path(source, target) {
+    Result::Ok(value) => "renamed"
+    Result::Err(error) => error.operation
+  }
+}

@@ -9,4 +9,13 @@ repository = "https://github.com/lef237/muga"
 readme = "README.md"
 keywords = ["language", "compiler", "interpreter"]
 
+[lints.rust]
+warnings = "deny"
+
+[lints.clippy]
+all = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
 [dependencies]

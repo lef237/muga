@@ -74,7 +74,8 @@ impl Parser {
             }
 
             while !self.is_eof() {
-                statements.push(self.parse_package_item()?);
+                let attributes = self.parse_attributes()?;
+                statements.push(self.parse_package_item(attributes)?);
                 self.consume_package_boundary()?;
                 self.skip_newlines();
             }
@@ -87,7 +88,8 @@ impl Parser {
         }
 
         while !self.is_eof() {
-            statements.push(self.parse_top_stmt()?);
+            let attributes = self.parse_attributes()?;
+            statements.push(self.parse_top_stmt(attributes)?);
             self.consume_statement_boundary()?;
             self.skip_newlines();
         }
@@ -126,7 +128,8 @@ impl Parser {
         }
 
         while !self.is_eof() {
-            statements.push(self.parse_package_item()?);
+            let attributes = self.parse_attributes()?;
+            statements.push(self.parse_package_item(attributes)?);
             self.consume_package_boundary()?;
             self.skip_newlines();
         }
@@ -138,8 +141,11 @@ impl Parser {
         })
     }
 
-    fn parse_top_stmt(&mut self) -> Result<Stmt, Diagnostic> {
+    fn parse_top_stmt(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, Diagnostic> {
         match self.peek_kind() {
+            TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self
+                .parse_func_decl_with_visibility(Visibility::Private, attributes)
+                .map(Stmt::FuncDecl),
             TokenKind::Pub | TokenKind::Pkg => Err(self.package_mode_required_diagnostic(
                 "`pub` and `pkg` are only allowed in package mode",
             )),
@@ -154,11 +160,15 @@ impl Parser {
             )
             .with_suggestion("move the `package` declaration before imports and declarations")),
             TokenKind::Record => self
-                .parse_record_decl_with_visibility(Visibility::Private)
+                .parse_record_decl_with_visibility(Visibility::Private, attributes)
                 .map(Stmt::RecordDecl),
             TokenKind::Enum => self
-                .parse_enum_decl_with_visibility(Visibility::Private)
+                .parse_enum_decl_with_visibility(Visibility::Private, attributes)
                 .map(Stmt::EnumDecl),
+            _ if !attributes.is_empty() => Err(self.attribute_target_diagnostic(&attributes[0])),
+            TokenKind::Opaque => Err(self.package_mode_required_diagnostic(
+                "`pub opaque type` is only allowed in package mode",
+            )),
             _ => self.parse_stmt(),
         }
     }
@@ -202,7 +212,7 @@ impl Parser {
         })
     }
 
-    fn parse_package_item(&mut self) -> Result<Stmt, Diagnostic> {
+    fn parse_package_item(&mut self, attributes: Vec<Attribute>) -> Result<Stmt, Diagnostic> {
         let visibility = match self.peek_kind() {
             TokenKind::Pub => {
                 self.advance();
@@ -215,21 +225,805 @@ impl Parser {
             _ => Visibility::Private,
         };
         match self.peek_kind() {
+            TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self
+                .parse_func_decl_with_visibility(visibility, attributes)
+                .map(Stmt::FuncDecl),
             TokenKind::Record => self
-                .parse_record_decl_with_visibility(visibility)
+                .parse_record_decl_with_visibility(visibility, attributes)
                 .map(Stmt::RecordDecl),
             TokenKind::Enum => self
-                .parse_enum_decl_with_visibility(visibility)
+                .parse_enum_decl_with_visibility(visibility, attributes)
                 .map(Stmt::EnumDecl),
-            TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self
-                .parse_func_decl_with_visibility(visibility)
-                .map(Stmt::FuncDecl),
+            _ if !attributes.is_empty() => Err(self.attribute_target_diagnostic(&attributes[0])),
+            TokenKind::Opaque if visibility == Visibility::Public => self
+                .parse_opaque_type_decl_with_visibility(visibility)
+                .map(Stmt::OpaqueTypeDecl),
+            TokenKind::Opaque => Err(Diagnostic::new(
+                "P014",
+                "opaque type declarations must be public in this slice",
+                self.current_span(),
+            )
+            .with_suggestion("write `pub opaque type Name`")),
             _ => Err(Diagnostic::new(
                 "P014",
-                "package mode allows only top-level `record`, `enum`, and `fn` declarations",
+                "package mode allows only top-level `record`, `enum`, `fn`, and `pub opaque type` declarations",
                 self.current_span(),
             )),
         }
+    }
+
+    fn parse_attributes(&mut self) -> Result<Vec<Attribute>, Diagnostic> {
+        let mut attributes = Vec::new();
+        while matches!(self.peek_kind(), TokenKind::At) {
+            let start = self.current_span();
+            self.advance();
+            let (name, name_span) = self.expect_ident()?;
+            let mut span = start.merge(name_span);
+            let mut arguments = Vec::new();
+            if self.matches_simple(&TokenKind::LParen) {
+                if !matches!(self.peek_kind(), TokenKind::RParen) {
+                    loop {
+                        let arg_start = self.current_span();
+                        let (arg_name, arg_name_span) = self.expect_ident()?;
+                        let (value, span) = if self.matches_simple(&TokenKind::Colon) {
+                            let (value, value_span) = self.parse_attribute_argument_value()?;
+                            (
+                                Some(value),
+                                arg_start.merge(arg_name_span).merge(value_span),
+                            )
+                        } else {
+                            (None, arg_start.merge(arg_name_span))
+                        };
+                        arguments.push(AttributeArgument {
+                            name: arg_name,
+                            value,
+                            span,
+                        });
+                        if !self.matches_simple(&TokenKind::Comma) {
+                            break;
+                        }
+                    }
+                }
+                let end = self.expect_simple(TokenKind::RParen, "expected `)` after attribute")?;
+                span = span.merge(end);
+            }
+            match name.as_str() {
+                "test" if arguments.is_empty() => {}
+                "test" => {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "attribute `@test` does not take arguments",
+                        span,
+                    )
+                    .with_suggestion("write `@test` directly before a function declaration"));
+                }
+                "json" => self.validate_json_attribute_arguments(&arguments, span)?,
+                "cli" => self.validate_cli_attribute_arguments(&arguments, span)?,
+                "validate" => self.validate_validate_attribute_arguments(&arguments, span)?,
+                _ => {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        format!("unknown attribute `@{name}`"),
+                        span,
+                    )
+                    .with_suggestion("use a supported attribute or remove it"));
+                }
+            }
+            attributes.push(Attribute {
+                name,
+                arguments,
+                span,
+            });
+            self.skip_newlines();
+        }
+        Ok(attributes)
+    }
+
+    fn parse_attribute_argument_value(
+        &mut self,
+    ) -> Result<(AttributeArgumentValue, Span), Diagnostic> {
+        let minus_span = if matches!(self.peek_kind(), TokenKind::Minus) {
+            Some(self.advance().span)
+        } else {
+            None
+        };
+        let value_token = self.advance();
+        match value_token.kind {
+            TokenKind::String(value) if minus_span.is_none() => {
+                Ok((AttributeArgumentValue::String(value), value_token.span))
+            }
+            TokenKind::Int(text) => {
+                let text = if minus_span.is_some() {
+                    format!("-{text}")
+                } else {
+                    text
+                };
+                let value = text.parse::<i64>().map_err(|_| {
+                    Diagnostic::new(
+                        "P014",
+                        "attribute integer value is outside Int range",
+                        minus_span
+                            .map(|span| span.merge(value_token.span))
+                            .unwrap_or(value_token.span),
+                    )
+                })?;
+                Ok((
+                    AttributeArgumentValue::Int(value),
+                    minus_span
+                        .map(|span| span.merge(value_token.span))
+                        .unwrap_or(value_token.span),
+                ))
+            }
+            _ => Err(Diagnostic::new(
+                "P014",
+                "attribute argument values require string or integer literals",
+                minus_span
+                    .map(|span| span.merge(value_token.span))
+                    .unwrap_or(value_token.span),
+            )),
+        }
+    }
+
+    fn validate_json_attribute_arguments(
+        &self,
+        arguments: &[AttributeArgument],
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        if arguments.is_empty() {
+            return Err(
+                Diagnostic::new("P014", "attribute `@json` requires a supported option", span)
+                    .with_suggestion(
+                        "write `@json(rename: \"wire_name\")` or `@json(alias: \"legacy_name\")` on a field or variant, or `@json(deny_unknown_fields)` on a record",
+                    ),
+            );
+        }
+        if arguments
+            .iter()
+            .any(|argument| argument.name == "deny_unknown_fields")
+        {
+            if arguments.len() == 1
+                && arguments[0].name == "deny_unknown_fields"
+                && arguments[0].value.is_none()
+            {
+                return Ok(());
+            }
+            return Err(Diagnostic::new(
+                "P014",
+                "JSON deny_unknown_fields is a record-level flag",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "deny_unknown_fields")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            )
+            .with_suggestion("write `@json(deny_unknown_fields)` by itself on a record"));
+        }
+
+        let mut rename_count = 0usize;
+        let mut alias_count = 0usize;
+        let mut rename_value = None;
+        for argument in arguments {
+            match argument.name.as_str() {
+                "rename" => {
+                    rename_count += 1;
+                    rename_value = argument
+                        .value
+                        .as_ref()
+                        .and_then(AttributeArgumentValue::as_string);
+                }
+                "alias" => {
+                    alias_count += 1;
+                }
+                _ => {
+                    return Err(
+                        Diagnostic::new("P014", "attribute `@json` requires a supported option", argument.span)
+                            .with_suggestion(
+                                "write `rename: \"wire_name\"` or repeated `alias: \"legacy_name\"` arguments",
+                            ),
+                    );
+                }
+            }
+            let Some(value) = argument
+                .value
+                .as_ref()
+                .and_then(AttributeArgumentValue::as_string)
+            else {
+                return Err(Diagnostic::new(
+                    "P014",
+                    "JSON rename and alias values require string literals",
+                    argument.span,
+                )
+                .with_suggestion("write `@json(rename: \"wire_name\", alias: \"legacy_name\")`"));
+            };
+            if value.is_empty() || value.chars().any(|ch| matches!(ch, '\n' | '\r' | '\t')) {
+                return Err(Diagnostic::new(
+                    "P014",
+                    "JSON rename and alias values must be non-empty and may not contain tabs or newlines",
+                    argument.span,
+                ));
+            }
+        }
+        if rename_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "JSON rename may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "rename")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        if alias_count > 0 && rename_value == Some("-") {
+            return Err(Diagnostic::new(
+                "P014",
+                "JSON rename `-` may not be combined with aliases",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "rename")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_cli_attribute_arguments(
+        &self,
+        arguments: &[AttributeArgument],
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        if arguments.is_empty() {
+            return Err(
+                Diagnostic::new("P014", "attribute `@cli` requires a supported option", span)
+                    .with_suggestion(
+                        "write `@cli(about: \"Command summary\")` on a record, `@cli(name: \"long-option\", short: \"x\", positional: 1, value_source: \"file\", alias: \"old-name\", help: \"Description\", hidden)` on a record field, or `@cli(subcommand)` on a wrapper record field",
+                    ),
+            );
+        }
+
+        let mut name_count = 0usize;
+        let mut short_count = 0usize;
+        let mut positional_count = 0usize;
+        let mut value_source_count = 0usize;
+        let mut help_count = 0usize;
+        let mut hidden_count = 0usize;
+        let mut about_count = 0usize;
+        let mut subcommand_count = 0usize;
+        for argument in arguments {
+            match argument.name.as_str() {
+                "name" | "alias" => {
+                    if argument.name == "name" {
+                        name_count += 1;
+                    }
+                    let Some(value) = argument
+                        .value
+                        .as_ref()
+                        .and_then(AttributeArgumentValue::as_string)
+                    else {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI option names and aliases require string literals",
+                            argument.span,
+                        )
+                        .with_suggestion(
+                            "write `@cli(name: \"long-option\", alias: \"old-name\")`",
+                        ));
+                    };
+                    if !is_cli_long_option_token(value) {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI option names and aliases must be long-option tokens without leading dashes",
+                            argument.span,
+                        )
+                        .with_suggestion("use letters, digits, `_`, or `-`, starting with a letter"));
+                    }
+                }
+                "short" => {
+                    short_count += 1;
+                    let Some(value) = argument
+                        .value
+                        .as_ref()
+                        .and_then(AttributeArgumentValue::as_string)
+                    else {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI short option names require string literals",
+                            argument.span,
+                        )
+                        .with_suggestion("write `@cli(short: \"x\")`"));
+                    };
+                    if !is_cli_short_option_token(value) {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI short option names must be one ASCII letter without a leading dash",
+                            argument.span,
+                        )
+                        .with_suggestion("write `@cli(short: \"x\")`"));
+                    }
+                }
+                "positional" => {
+                    positional_count += 1;
+                    let Some(value) = argument
+                        .value
+                        .as_ref()
+                        .and_then(AttributeArgumentValue::as_int)
+                    else {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI positional indexes require integer literals",
+                            argument.span,
+                        )
+                        .with_suggestion("write `@cli(positional: 1)`"));
+                    };
+                    if value <= 0 || value > i64::from(u32::MAX) {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI positional indexes must be positive 32-bit integers",
+                            argument.span,
+                        )
+                        .with_suggestion("write `@cli(positional: 1)`"));
+                    }
+                }
+                "value_source" => {
+                    value_source_count += 1;
+                    let Some(value) = argument
+                        .value
+                        .as_ref()
+                        .and_then(AttributeArgumentValue::as_string)
+                    else {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI value sources require string literals",
+                            argument.span,
+                        )
+                        .with_suggestion(
+                            "write `@cli(value_source: \"file\")` or `@cli(value_source: \"directory\")`",
+                        ));
+                    };
+                    if !matches!(value, "file" | "directory") {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI value sources support only `file` or `directory`",
+                            argument.span,
+                        )
+                        .with_suggestion(
+                            "write `@cli(value_source: \"file\")` or `@cli(value_source: \"directory\")`",
+                        ));
+                    }
+                }
+                "help" | "about" => {
+                    if argument.name == "help" {
+                        help_count += 1;
+                    } else {
+                        about_count += 1;
+                    }
+                    let Some(value) = argument
+                        .value
+                        .as_ref()
+                        .and_then(AttributeArgumentValue::as_string)
+                    else {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI help and about metadata require string literals",
+                            argument.span,
+                        )
+                        .with_suggestion(
+                            "write `@cli(help: \"Description\")` on a field or `@cli(about: \"Command summary\")` on a record",
+                        ));
+                    };
+                    if value.is_empty() || value.chars().any(|ch| matches!(ch, '\n' | '\r' | '\t'))
+                    {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI help and about metadata must be non-empty and may not contain tabs or newlines",
+                            argument.span,
+                        ));
+                    }
+                }
+                "hidden" => {
+                    hidden_count += 1;
+                    if argument.value.is_some() {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI hidden is a flag and does not take a value",
+                            argument.span,
+                        )
+                        .with_suggestion("write `@cli(hidden)`"));
+                    }
+                }
+                "subcommand" => {
+                    subcommand_count += 1;
+                    if argument.value.is_some() {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "CLI subcommand is a flag and does not take a value",
+                            argument.span,
+                        )
+                        .with_suggestion("write `@cli(subcommand)`"));
+                    }
+                }
+                _ => {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "attribute `@cli` requires a supported option",
+                        argument.span,
+                    )
+                    .with_suggestion("write record-level `about`, field-level `name`, `short`, `positional`, `value_source`, repeated `alias`, `help`, `hidden`, or field-level `subcommand`"));
+                }
+            }
+        }
+        if name_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "CLI name may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "name")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        if short_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "CLI short option may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "short")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        if positional_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "CLI positional may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "positional")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        if value_source_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "CLI value source may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "value_source")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        if help_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "CLI help may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "help")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        if hidden_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "CLI hidden may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "hidden")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        if about_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "CLI about may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "about")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        if subcommand_count > 1 {
+            return Err(Diagnostic::new(
+                "P014",
+                "CLI subcommand may be specified only once",
+                arguments
+                    .iter()
+                    .find(|argument| argument.name == "subcommand")
+                    .map(|argument| argument.span)
+                    .unwrap_or(span),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_validate_attribute_arguments(
+        &self,
+        arguments: &[AttributeArgument],
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        if arguments.is_empty() {
+            return Err(
+                Diagnostic::new("P014", "attribute `@validate` requires a supported option", span)
+                    .with_suggestion(
+                        "write `@validate(non_empty)`, `@validate(min: 1)`, or `@validate(max_len: 255)` on a record field",
+                    ),
+            );
+        }
+        for argument in arguments {
+            match argument.name.as_str() {
+                "non_empty" => {
+                    if argument.value.is_some() {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "validation flag `non_empty` does not take a value",
+                            argument.span,
+                        )
+                        .with_suggestion("write `@validate(non_empty)`"));
+                    }
+                }
+                "min" | "max" | "min_len" | "max_len" => {
+                    if argument
+                        .value
+                        .as_ref()
+                        .is_none_or(|value| value.as_int().is_none())
+                    {
+                        return Err(Diagnostic::new(
+                            "P014",
+                            "validation bounds require integer literals",
+                            argument.span,
+                        )
+                        .with_suggestion("write `@validate(min: 1, max_len: 255)`"));
+                    }
+                }
+                _ => {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "attribute `@validate` requires a supported option",
+                        argument.span,
+                    )
+                    .with_suggestion("write `non_empty`, `min`, `max`, `min_len`, or `max_len`"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn attribute_target_diagnostic(&self, attribute: &Attribute) -> Diagnostic {
+        match attribute.name.as_str() {
+            "test" => Diagnostic::new(
+                "P014",
+                "attribute `@test` is allowed only on function declarations",
+                attribute.span,
+            )
+            .with_suggestion("move the attribute directly before a `fn` declaration"),
+            "json" => Diagnostic::new(
+                "P014",
+                "attribute `@json` is allowed only on record declarations, record fields, and enum variants",
+                attribute.span,
+            )
+            .with_suggestion("move the attribute directly before a record declaration, record field, or enum variant"),
+            "cli" => Diagnostic::new(
+                "P014",
+                "attribute `@cli` is allowed only on record declarations, enum declarations, record fields, and enum variants",
+                attribute.span,
+            )
+            .with_suggestion("move the attribute directly before a record declaration, enum declaration, record field, or enum variant"),
+            "validate" => Diagnostic::new(
+                "P014",
+                "attribute `@validate` is allowed only on record fields",
+                attribute.span,
+            )
+            .with_suggestion("move the attribute directly before a record field"),
+            _ => Diagnostic::new(
+                "P014",
+                format!(
+                    "attribute `@{}` is not supported on this declaration",
+                    attribute.name
+                ),
+                attribute.span,
+            ),
+        }
+    }
+
+    fn validate_function_attributes(&self, attributes: &[Attribute]) -> Result<(), Diagnostic> {
+        for attribute in attributes {
+            if attribute.name != "test" {
+                return Err(self.attribute_target_diagnostic(attribute));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_record_attributes(&self, attributes: &[Attribute]) -> Result<(), Diagnostic> {
+        let mut json_attribute = None;
+        let mut cli_attribute = None;
+        for attribute in attributes {
+            if !matches!(attribute.name.as_str(), "json" | "cli") {
+                return Err(self.attribute_target_diagnostic(attribute));
+            }
+            if attribute.name == "json" {
+                if let Some(previous) = json_attribute.replace(attribute.span) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "duplicate `@json` attribute",
+                        attribute.span,
+                    )
+                    .with_related("previous `@json` attribute is here", previous));
+                }
+                if !json_attribute_is_deny_unknown_fields(attribute) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "record declarations support only `@json(deny_unknown_fields)`",
+                        attribute.span,
+                    )
+                    .with_suggestion(
+                        "move `@json(rename: \"...\", alias: \"...\")` directly before a record field",
+                    ));
+                }
+            } else if attribute.name == "cli" {
+                if let Some(previous) = cli_attribute.replace(attribute.span) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "duplicate `@cli` attribute",
+                        attribute.span,
+                    )
+                    .with_related("previous `@cli` attribute is here", previous));
+                }
+                if !cli_attribute_is_record_metadata(attribute) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "record declarations support only `@cli(about: \"...\")`",
+                        attribute.span,
+                    )
+                    .with_suggestion(
+                        "move `@cli(name: \"...\", short: \"x\", positional: 1, value_source: \"file\", alias: \"...\", help: \"...\", hidden)` directly before a record field",
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_enum_attributes(&self, attributes: &[Attribute]) -> Result<(), Diagnostic> {
+        let mut cli_attribute = None;
+        for attribute in attributes {
+            if attribute.name != "cli" {
+                return Err(self.attribute_target_diagnostic(attribute));
+            }
+            if let Some(previous) = cli_attribute.replace(attribute.span) {
+                return Err(
+                    Diagnostic::new("P014", "duplicate `@cli` attribute", attribute.span)
+                        .with_related("previous `@cli` attribute is here", previous),
+                );
+            }
+            if !cli_attribute_is_enum_metadata(attribute) {
+                return Err(Diagnostic::new(
+                    "P014",
+                    "enum declarations support only `@cli(about: \"...\")`",
+                    attribute.span,
+                )
+                .with_suggestion(
+                    "move `@cli(name: \"...\", alias: \"...\", about: \"...\", hidden)` directly before an enum variant",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_record_field_attributes(&self, attributes: &[Attribute]) -> Result<(), Diagnostic> {
+        let mut json_attribute = None;
+        let mut cli_attribute = None;
+        let mut validate_attribute = None;
+        for attribute in attributes {
+            if !matches!(attribute.name.as_str(), "json" | "cli" | "validate") {
+                return Err(self.attribute_target_diagnostic(attribute));
+            }
+            if attribute.name == "json" {
+                if let Some(previous) = json_attribute.replace(attribute.span) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "duplicate `@json` attribute",
+                        attribute.span,
+                    )
+                    .with_related("previous `@json` attribute is here", previous));
+                }
+                if !json_attribute_is_json_schema_metadata(attribute) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "record fields support only `@json(rename: \"...\", alias: \"...\")`",
+                        attribute.span,
+                    )
+                    .with_suggestion(
+                        "move `@json(deny_unknown_fields)` directly before a record declaration",
+                    ));
+                }
+            } else if attribute.name == "cli" {
+                if let Some(previous) = cli_attribute.replace(attribute.span) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "duplicate `@cli` attribute",
+                        attribute.span,
+                    )
+                    .with_related("previous `@cli` attribute is here", previous));
+                }
+                if !cli_attribute_is_field_metadata(attribute) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "record fields support only `@cli(name: \"...\", short: \"x\", positional: 1, value_source: \"file\", alias: \"...\", help: \"...\", hidden)` or `@cli(subcommand)`",
+                        attribute.span,
+                    )
+                    .with_suggestion(
+                        "move `@cli(about: \"...\")` directly before a record declaration",
+                    ));
+                }
+            } else if let Some(previous) = validate_attribute.replace(attribute.span) {
+                return Err(Diagnostic::new(
+                    "P014",
+                    "duplicate `@validate` attribute",
+                    attribute.span,
+                )
+                .with_related("previous `@validate` attribute is here", previous));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_enum_variant_attributes(&self, attributes: &[Attribute]) -> Result<(), Diagnostic> {
+        let mut json_attribute = None;
+        let mut cli_attribute = None;
+        for attribute in attributes {
+            if !matches!(attribute.name.as_str(), "json" | "cli") {
+                return Err(self.attribute_target_diagnostic(attribute));
+            }
+            if attribute.name == "json" {
+                if let Some(previous) = json_attribute.replace(attribute.span) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "duplicate `@json` attribute",
+                        attribute.span,
+                    )
+                    .with_related("previous `@json` attribute is here", previous));
+                }
+                if !json_attribute_is_json_schema_metadata(attribute) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "enum variants support only `@json(rename: \"...\", alias: \"...\")`",
+                        attribute.span,
+                    )
+                    .with_suggestion(
+                        "move `@json(deny_unknown_fields)` directly before a record declaration",
+                    ));
+                }
+            } else {
+                if let Some(previous) = cli_attribute.replace(attribute.span) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "duplicate `@cli` attribute",
+                        attribute.span,
+                    )
+                    .with_related("previous `@cli` attribute is here", previous));
+                }
+                if !cli_attribute_is_command_variant_metadata(attribute) {
+                    return Err(Diagnostic::new(
+                        "P014",
+                        "enum variants support only `@cli(name: \"...\", alias: \"...\", about: \"...\", hidden)`",
+                        attribute.span,
+                    )
+                    .with_suggestion(
+                        "move `@cli(about: \"...\")` directly before an enum declaration",
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, Diagnostic> {
@@ -254,10 +1048,15 @@ impl Parser {
                 "move the `pub` or `pkg` declaration to the top level of a package file",
             )),
             TokenKind::Fn if matches!(self.peek_kind_n(1), TokenKind::Ident(_)) => self
-                .parse_func_decl_with_visibility(Visibility::Private)
+                .parse_func_decl_with_visibility(Visibility::Private, Vec::new())
                 .map(Stmt::FuncDecl),
             TokenKind::If => self.parse_if_stmt_or_expr_stmt(),
             TokenKind::While => self.parse_while_stmt().map(Stmt::While),
+            TokenKind::For => self.parse_for_stmt().map(Stmt::For),
+            TokenKind::Using => self.parse_using_stmt().map(Stmt::Using),
+            TokenKind::Break => self.parse_break_stmt().map(Stmt::Break),
+            TokenKind::Continue => self.parse_continue_stmt().map(Stmt::Continue),
+            TokenKind::Return => self.parse_return_stmt().map(Stmt::Return),
             TokenKind::Ident(_)
                 if matches!(self.peek_kind_n(1), TokenKind::Eq | TokenKind::Colon) =>
             {
@@ -296,8 +1095,10 @@ impl Parser {
     fn parse_record_decl_with_visibility(
         &mut self,
         visibility: Visibility,
+        attributes: Vec<Attribute>,
     ) -> Result<RecordDecl, Diagnostic> {
         let start = self.current_span();
+        self.validate_record_attributes(&attributes)?;
         self.expect_simple(TokenKind::Record, "expected `record`")?;
         let (name, _) = self.expect_ident()?;
         let type_params = if self.matches_simple(&TokenKind::LBracket) {
@@ -309,11 +1110,17 @@ impl Parser {
         self.skip_newlines();
         let mut fields = Vec::new();
         while !matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
-            let field_start = self.current_span();
+            let attributes = self.parse_attributes()?;
+            self.validate_record_field_attributes(&attributes)?;
+            let field_start = attributes
+                .first()
+                .map(|attribute| attribute.span)
+                .unwrap_or_else(|| self.current_span());
             let (field_name, _) = self.expect_ident()?;
             self.expect_simple(TokenKind::Colon, "expected `:` after field name")?;
             let (type_name, type_span) = self.parse_type_expr()?;
             fields.push(RecordFieldDecl {
+                attributes,
                 name: field_name,
                 type_name,
                 span: field_start.merge(type_span),
@@ -330,6 +1137,8 @@ impl Parser {
             name,
             package_item: None,
             visibility,
+            attributes,
+            doc_comments: Vec::new(),
             type_params,
             fields,
             span: start.merge(end),
@@ -339,8 +1148,10 @@ impl Parser {
     fn parse_enum_decl_with_visibility(
         &mut self,
         visibility: Visibility,
+        attributes: Vec<Attribute>,
     ) -> Result<EnumDecl, Diagnostic> {
         let start = self.current_span();
+        self.validate_enum_attributes(&attributes)?;
         self.expect_simple(TokenKind::Enum, "expected `enum`")?;
         let (name, _) = self.expect_ident()?;
         let type_params = if self.matches_simple(&TokenKind::LBracket) {
@@ -365,6 +1176,8 @@ impl Parser {
             name,
             package_item: None,
             visibility,
+            attributes,
+            doc_comments: Vec::new(),
             type_params,
             variants,
             span: start.merge(end),
@@ -392,7 +1205,12 @@ impl Parser {
     }
 
     fn parse_enum_variant_decl(&mut self) -> Result<EnumVariantDecl, Diagnostic> {
-        let start = self.current_span();
+        let attributes = self.parse_attributes()?;
+        self.validate_enum_variant_attributes(&attributes)?;
+        let start = attributes
+            .first()
+            .map(|attribute| attribute.span)
+            .unwrap_or_else(|| self.current_span());
         let (name, name_span) = self.expect_ident()?;
         let mut span = start.merge(name_span);
         let payload = if self.matches_simple(&TokenKind::LParen) {
@@ -414,16 +1232,37 @@ impl Parser {
             None
         };
         Ok(EnumVariantDecl {
+            attributes,
             name,
             payload,
             span,
         })
     }
 
+    fn parse_opaque_type_decl_with_visibility(
+        &mut self,
+        visibility: Visibility,
+    ) -> Result<OpaqueTypeDecl, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::Opaque, "expected `opaque`")?;
+        self.expect_simple(TokenKind::Type, "expected `type` after `opaque`")?;
+        let (name, name_span) = self.expect_ident()?;
+        Ok(OpaqueTypeDecl {
+            id: self.stmt_id(),
+            name,
+            package_item: None,
+            visibility,
+            doc_comments: Vec::new(),
+            span: start.merge(name_span),
+        })
+    }
+
     fn parse_func_decl_with_visibility(
         &mut self,
         visibility: Visibility,
+        attributes: Vec<Attribute>,
     ) -> Result<FuncDecl, Diagnostic> {
+        self.validate_function_attributes(&attributes)?;
         let start = self.current_span();
         self.expect_simple(TokenKind::Fn, "expected `fn`")?;
         let (name, _) = self.expect_ident()?;
@@ -443,6 +1282,8 @@ impl Parser {
             name,
             package_item: None,
             visibility,
+            attributes,
+            doc_comments: Vec::new(),
             type_params,
             params,
             return_type,
@@ -594,22 +1435,33 @@ impl Parser {
         let condition = self.parse_expr_without_struct_literal()?;
         let then_block = self.parse_block()?;
         if self.matches_simple(&TokenKind::Else) {
-            let else_block = self.parse_block()?;
-            let then_branch = block_to_value_block(then_block)?;
-            let else_branch = block_to_value_block(else_block)?;
-            let expr = Expr::If(IfExpr {
-                id: self.expr_id(),
-                condition: Box::new(condition),
-                span: start.merge(else_branch.span),
-                then_branch,
-                else_branch,
-            });
-            let span = expr.span();
-            Ok(Stmt::Expr(ExprStmt {
-                id: self.stmt_id(),
-                expr,
-                span,
-            }))
+            let else_branch = self.parse_else_branch_for_stmt()?;
+            let span = start.merge(else_branch.span());
+            let then_value_block = self.block_to_value_block(then_block.clone());
+            let else_value_block = self.else_branch_into_value_block(else_branch.clone());
+            match (then_value_block, else_value_block) {
+                (Ok(then_branch), Ok(else_branch)) => {
+                    let expr = Expr::If(IfExpr {
+                        id: self.expr_id(),
+                        condition: Box::new(condition),
+                        span,
+                        then_branch,
+                        else_branch,
+                    });
+                    Ok(Stmt::Expr(ExprStmt {
+                        id: self.stmt_id(),
+                        expr,
+                        span,
+                    }))
+                }
+                _ => Ok(Stmt::If(IfStmt {
+                    id: self.stmt_id(),
+                    condition,
+                    then_branch: then_block,
+                    else_branch: Some(else_branch.into_block()),
+                    span,
+                })),
+            }
         } else {
             let span = start.merge(then_block.span);
             Ok(Stmt::If(IfStmt {
@@ -619,6 +1471,15 @@ impl Parser {
                 else_branch: None,
                 span,
             }))
+        }
+    }
+
+    fn parse_else_branch_for_stmt(&mut self) -> Result<ElseBranch, Diagnostic> {
+        if matches!(self.peek_kind(), TokenKind::If) {
+            self.parse_if_stmt_or_expr_stmt()
+                .map(|stmt| ElseBranch::If(Box::new(stmt)))
+        } else {
+            self.parse_block().map(ElseBranch::Block)
         }
     }
 
@@ -632,6 +1493,72 @@ impl Parser {
             condition,
             span: start.merge(body.span),
             body,
+        })
+    }
+
+    fn parse_for_stmt(&mut self) -> Result<ForStmt, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::For, "expected `for`")?;
+        let (item, item_span) = self.expect_ident()?;
+        self.expect_simple(TokenKind::In, "expected `in` after loop item")?;
+        let iterable = self.parse_expr_without_struct_literal()?;
+        let body = self.parse_block()?;
+        let span = start.merge(body.span);
+        Ok(ForStmt {
+            id: self.stmt_id(),
+            item,
+            item_span,
+            iterable,
+            body,
+            span,
+        })
+    }
+
+    fn parse_using_stmt(&mut self) -> Result<UsingStmt, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::Using, "expected `using`")?;
+        let (name, name_span) = self.expect_ident()?;
+        self.expect_simple(TokenKind::Eq, "expected `=` after `using` binding name")?;
+        let value = self.parse_expr_without_struct_literal()?;
+        let body = self.parse_block()?;
+        let span = start.merge(body.span);
+        Ok(UsingStmt {
+            id: self.stmt_id(),
+            name,
+            name_span,
+            value,
+            body,
+            span,
+        })
+    }
+
+    fn parse_break_stmt(&mut self) -> Result<BreakStmt, Diagnostic> {
+        let span = self.current_span();
+        self.expect_simple(TokenKind::Break, "expected `break`")?;
+        Ok(BreakStmt {
+            id: self.stmt_id(),
+            span,
+        })
+    }
+
+    fn parse_continue_stmt(&mut self) -> Result<ContinueStmt, Diagnostic> {
+        let span = self.current_span();
+        self.expect_simple(TokenKind::Continue, "expected `continue`")?;
+        Ok(ContinueStmt {
+            id: self.stmt_id(),
+            span,
+        })
+    }
+
+    fn parse_return_stmt(&mut self) -> Result<ReturnStmt, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::Return, "expected `return`")?;
+        let value = self.parse_expr()?;
+        let span = start.merge(value.span());
+        Ok(ReturnStmt {
+            id: self.stmt_id(),
+            value,
+            span,
         })
     }
 
@@ -675,7 +1602,7 @@ impl Parser {
 
     fn parse_value_block(&mut self) -> Result<ValueBlock, Diagnostic> {
         let block = self.parse_block()?;
-        block_to_value_block(block)
+        self.block_to_value_block(block)
     }
 
     fn parse_expr(&mut self) -> Result<Expr, Diagnostic> {
@@ -685,7 +1612,39 @@ impl Parser {
         if matches!(self.peek_kind(), TokenKind::Match) {
             return self.parse_match_expr();
         }
-        self.parse_equality()
+        self.parse_or()
+    }
+
+    fn parse_or(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_and()?;
+        while self.matches_simple(&TokenKind::Or) {
+            let right = self.parse_and()?;
+            let span = expr.span().merge(right.span());
+            expr = Expr::Binary(BinaryExpr {
+                id: self.expr_id(),
+                op: BinaryOp::Or,
+                left: Box::new(expr),
+                right: Box::new(right),
+                span,
+            });
+        }
+        Ok(expr)
+    }
+
+    fn parse_and(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_equality()?;
+        while self.matches_simple(&TokenKind::And) {
+            let right = self.parse_equality()?;
+            let span = expr.span().merge(right.span());
+            expr = Expr::Binary(BinaryExpr {
+                id: self.expr_id(),
+                op: BinaryOp::And,
+                left: Box::new(expr),
+                right: Box::new(right),
+                span,
+            });
+        }
+        Ok(expr)
     }
 
     fn parse_if_expr(&mut self) -> Result<Expr, Diagnostic> {
@@ -694,7 +1653,7 @@ impl Parser {
         let condition = self.parse_expr_without_struct_literal()?;
         let then_branch = self.parse_value_block()?;
         self.expect_simple(TokenKind::Else, "expected `else` in `if` expression")?;
-        let else_branch = self.parse_value_block()?;
+        let else_branch = self.parse_else_branch_for_expr()?;
         Ok(Expr::If(IfExpr {
             id: self.expr_id(),
             condition: Box::new(condition),
@@ -702,6 +1661,104 @@ impl Parser {
             then_branch,
             else_branch,
         }))
+    }
+
+    fn parse_else_branch_for_expr(&mut self) -> Result<ValueBlock, Diagnostic> {
+        if matches!(self.peek_kind(), TokenKind::If) {
+            let expr = self.parse_if_expr()?;
+            let span = expr.span();
+            Ok(ValueBlock {
+                statements: Vec::new(),
+                expr: Box::new(expr),
+                terminal_return: false,
+                span,
+            })
+        } else {
+            self.parse_value_block()
+        }
+    }
+
+    fn block_to_value_block(&mut self, block: Block) -> Result<ValueBlock, Diagnostic> {
+        if block.statements.is_empty() {
+            return Err(Diagnostic::new(
+                "P007",
+                "value block requires a final expression",
+                block.span,
+            ));
+        }
+
+        let mut prefix = Vec::new();
+        let mut iter = block.statements.into_iter().peekable();
+        while let Some(stmt) = iter.next() {
+            if iter.peek().is_none() {
+                match stmt {
+                    Stmt::Expr(expr_stmt) => {
+                        return Ok(ValueBlock {
+                            statements: prefix,
+                            expr: Box::new(expr_stmt.expr),
+                            terminal_return: false,
+                            span: block.span,
+                        });
+                    }
+                    Stmt::Return(return_stmt) => {
+                        let span = return_stmt.span;
+                        prefix.push(Stmt::Return(return_stmt));
+                        return Ok(ValueBlock {
+                            statements: prefix,
+                            expr: Box::new(Expr::Unit(UnitExpr {
+                                id: self.expr_id(),
+                                span,
+                            })),
+                            terminal_return: true,
+                            span: block.span,
+                        });
+                    }
+                    other => {
+                        return Err(Diagnostic::new(
+                            "P008",
+                            "value block must end with an expression",
+                            other.span(),
+                        ));
+                    }
+                }
+            }
+            if matches!(stmt, Stmt::Expr(_)) {
+                return Err(Diagnostic::new(
+                    "P009",
+                    "only the final item in a value block may be an expression",
+                    stmt.span(),
+                ));
+            }
+            prefix.push(stmt);
+        }
+
+        Err(Diagnostic::new(
+            "P007",
+            "value block requires a final expression",
+            block.span,
+        ))
+    }
+
+    fn else_branch_into_value_block(
+        &mut self,
+        branch: ElseBranch,
+    ) -> Result<ValueBlock, Diagnostic> {
+        match branch {
+            ElseBranch::Block(block) => self.block_to_value_block(block),
+            ElseBranch::If(stmt) => match *stmt {
+                Stmt::Expr(expr_stmt) => Ok(ValueBlock {
+                    statements: Vec::new(),
+                    expr: Box::new(expr_stmt.expr),
+                    terminal_return: false,
+                    span: expr_stmt.span,
+                }),
+                other => Err(Diagnostic::new(
+                    "P008",
+                    "value block must end with an expression",
+                    other.span(),
+                )),
+            },
+        }
     }
 
     fn parse_match_expr(&mut self) -> Result<Expr, Diagnostic> {
@@ -748,18 +1805,23 @@ impl Parser {
             ));
         };
 
-        let (binding, span) = if self.matches_simple(&TokenKind::LParen) {
+        let (payload, span) = if self.matches_simple(&TokenKind::LParen) {
             let (binding, binding_span) = self.expect_ident()?;
             let end = self.expect_simple(TokenKind::RParen, "expected `)` after match binding")?;
-            (Some(binding), name_span.merge(binding_span).merge(end))
+            let payload = if binding == "_" {
+                EnumVariantPatternPayload::Discard
+            } else {
+                EnumVariantPatternPayload::Binding(binding)
+            };
+            (payload, name_span.merge(binding_span).merge(end))
         } else {
-            (None, name_span)
+            (EnumVariantPatternPayload::None, name_span)
         };
 
         Ok(MatchPattern::Variant(EnumVariantPattern {
             enum_name,
             variant_name,
-            binding,
+            payload,
             span,
         }))
     }
@@ -912,6 +1974,35 @@ impl Parser {
     fn parse_call(&mut self) -> Result<Expr, Diagnostic> {
         let mut expr = self.parse_primary()?;
         loop {
+            if matches!(self.peek_kind(), TokenKind::LBracket)
+                && self.call_type_args_are_followed_by_lparen()
+            {
+                self.expect_simple(TokenKind::LBracket, "expected `[` before type arguments")?;
+                let (type_args, _) = self.parse_type_args()?;
+                let mut args = Vec::new();
+                self.expect_simple(TokenKind::LParen, "expected `(` after call type arguments")?;
+                if !matches!(self.peek_kind(), TokenKind::RParen) {
+                    loop {
+                        args.push(self.parse_expr_allowing_struct_literal()?);
+                        if !self.matches_simple(&TokenKind::Comma) {
+                            break;
+                        }
+                    }
+                }
+                let end =
+                    self.expect_simple(TokenKind::RParen, "expected `)` after call arguments")?;
+                let span = expr.span().merge(end);
+                expr = Expr::Call(CallExpr {
+                    id: self.expr_id(),
+                    callee: Box::new(expr),
+                    type_args,
+                    args,
+                    origin: CallOrigin::Ordinary,
+                    span,
+                });
+                continue;
+            }
+
             if self.matches_simple(&TokenKind::LParen) {
                 let mut args = Vec::new();
                 if !matches!(self.peek_kind(), TokenKind::RParen) {
@@ -928,6 +2019,7 @@ impl Parser {
                 expr = Expr::Call(CallExpr {
                     id: self.expr_id(),
                     callee: Box::new(expr),
+                    type_args: Vec::new(),
                     args,
                     origin: CallOrigin::Ordinary,
                     span,
@@ -1012,6 +2104,7 @@ impl Parser {
                     expr = Expr::Call(CallExpr {
                         id: self.expr_id(),
                         callee: Box::new(callee),
+                        type_args: Vec::new(),
                         args: call_args,
                         origin,
                         span: base_span.merge(start).merge(end),
@@ -1055,6 +2148,35 @@ impl Parser {
             break;
         }
         Ok(expr)
+    }
+
+    fn call_type_args_are_followed_by_lparen(&self) -> bool {
+        if !matches!(self.peek_kind(), TokenKind::LBracket)
+            || !matches!(self.peek_kind_n(1), TokenKind::Ident(_))
+        {
+            return false;
+        }
+
+        let mut index = self.current + 1;
+        let mut depth = 1usize;
+        while let Some(token) = self.tokens.get(index) {
+            match token.kind {
+                TokenKind::LBracket => depth += 1,
+                TokenKind::RBracket => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return matches!(
+                            self.tokens.get(index + 1).map(|token| &token.kind),
+                            Some(TokenKind::LParen)
+                        );
+                    }
+                }
+                TokenKind::Eof | TokenKind::Newline => return false,
+                _ => {}
+            }
+            index += 1;
+        }
+        false
     }
 
     fn parse_primary(&mut self) -> Result<Expr, Diagnostic> {
@@ -1441,47 +2563,111 @@ impl Parser {
     }
 }
 
-fn block_to_value_block(block: Block) -> Result<ValueBlock, Diagnostic> {
-    if block.statements.is_empty() {
-        return Err(Diagnostic::new(
-            "P007",
-            "value block requires a final expression",
-            block.span,
-        ));
+#[derive(Clone, Debug)]
+enum ElseBranch {
+    Block(Block),
+    If(Box<Stmt>),
+}
+
+impl ElseBranch {
+    fn span(&self) -> Span {
+        match self {
+            Self::Block(block) => block.span,
+            Self::If(stmt) => stmt.span(),
+        }
     }
 
-    let mut prefix = Vec::new();
-    let mut iter = block.statements.into_iter().peekable();
-    while let Some(stmt) = iter.next() {
-        if iter.peek().is_none() {
-            if let Stmt::Expr(expr_stmt) = stmt {
-                return Ok(ValueBlock {
-                    statements: prefix,
-                    expr: Box::new(expr_stmt.expr),
-                    span: block.span,
-                });
+    fn into_block(self) -> Block {
+        match self {
+            Self::Block(block) => block,
+            Self::If(stmt) => {
+                let span = stmt.span();
+                Block {
+                    statements: vec![*stmt],
+                    span,
+                }
             }
-            return Err(Diagnostic::new(
-                "P008",
-                "value block must end with an expression",
-                stmt.span(),
-            ));
         }
-        if matches!(stmt, Stmt::Expr(_)) {
-            return Err(Diagnostic::new(
-                "P009",
-                "only the final item in a value block may be an expression",
-                stmt.span(),
-            ));
-        }
-        prefix.push(stmt);
     }
+}
 
-    Err(Diagnostic::new(
-        "P007",
-        "value block requires a final expression",
-        block.span,
-    ))
+fn json_attribute_is_json_schema_metadata(attribute: &Attribute) -> bool {
+    attribute.name == "json"
+        && !attribute.arguments.is_empty()
+        && attribute.arguments.iter().all(|argument| {
+            matches!(argument.name.as_str(), "rename" | "alias")
+                && argument
+                    .value
+                    .as_ref()
+                    .is_some_and(|value| value.as_string().is_some())
+        })
+}
+
+fn json_attribute_is_deny_unknown_fields(attribute: &Attribute) -> bool {
+    attribute.name == "json"
+        && attribute.arguments.len() == 1
+        && attribute.arguments[0].name == "deny_unknown_fields"
+        && attribute.arguments[0].value.is_none()
+}
+
+fn cli_attribute_is_record_metadata(attribute: &Attribute) -> bool {
+    attribute.name == "cli"
+        && attribute.arguments.len() == 1
+        && attribute.arguments[0].name == "about"
+        && attribute.arguments[0]
+            .value
+            .as_ref()
+            .is_some_and(|value| value.as_string().is_some())
+}
+
+fn cli_attribute_is_enum_metadata(attribute: &Attribute) -> bool {
+    cli_attribute_is_record_metadata(attribute)
+}
+
+fn cli_attribute_is_field_metadata(attribute: &Attribute) -> bool {
+    attribute.name == "cli"
+        && !attribute.arguments.is_empty()
+        && attribute.arguments.iter().all(|argument| {
+            matches!(
+                argument.name.as_str(),
+                "name"
+                    | "short"
+                    | "positional"
+                    | "value_source"
+                    | "alias"
+                    | "help"
+                    | "hidden"
+                    | "subcommand"
+            )
+        })
+}
+
+fn cli_attribute_is_command_variant_metadata(attribute: &Attribute) -> bool {
+    attribute.name == "cli"
+        && !attribute.arguments.is_empty()
+        && attribute.arguments.iter().all(|argument| {
+            matches!(
+                argument.name.as_str(),
+                "name" | "alias" | "about" | "hidden"
+            )
+        })
+}
+
+fn is_cli_long_option_token(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphabetic()
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+}
+
+fn is_cli_short_option_token(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    chars.next().is_none() && first.is_ascii_alphabetic()
 }
 
 fn split_variant_name(name: &str) -> Option<(String, String)> {

@@ -1,0 +1,23 @@
+package app::std_fs_read_dir_recursive
+
+import std::fs
+import std::io
+import std::path
+
+fn relative_or_empty(base: path::Path, items: List[path::Path], index: Int): String {
+  match items.get(index) {
+    Option::Some(value) => match path::strip_prefix(value, base) {
+      Option::Some(relative) => path::as_string(relative)
+      Option::None => path::as_string(value)
+    }
+    Option::None => ""
+  }
+}
+
+fn main(): Result[String, io::IOError] {
+  root = path::from_string("samples/packages/app/std_fs_read_dir_recursive")
+  entries = try fs::read_dir_recursive_path(root)
+  first = relative_or_empty(root, entries, 0)
+  third = relative_or_empty(root, entries, 2)
+  Result::Ok(first.concat("|").concat(third).concat("|").concat(entries.len().to_string()))
+}

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use crate::{
+    cli_schema::CliSchema,
     identity::{BindingId, BindingKind, LocalId, PackageItemId},
+    json_decode::JsonDecodeSchema,
     mir,
     span::Span,
     symbol::{Symbol, SymbolTable},
@@ -99,6 +101,9 @@ pub enum Instruction {
     LoadIndex {
         span: Span,
     },
+    ListLen {
+        span: Span,
+    },
     UpdateRecord {
         fields: Vec<Symbol>,
         span: Span,
@@ -129,6 +134,62 @@ pub enum Instruction {
     },
     Call {
         argc: usize,
+        span: Span,
+    },
+    DecodeJson {
+        schema: JsonDecodeSchema,
+        span: Span,
+    },
+    DecodeJsonRequired {
+        schema: JsonDecodeSchema,
+        span: Span,
+    },
+    JsonToValue {
+        schema: JsonDecodeSchema,
+        span: Span,
+    },
+    JsonEncodeTyped {
+        schema: JsonDecodeSchema,
+        span: Span,
+    },
+    LoadJsonConfigRequired {
+        schema: JsonDecodeSchema,
+        span: Span,
+    },
+    LoadJsonConfig {
+        schema: JsonDecodeSchema,
+        span: Span,
+    },
+    CliParse {
+        schema: CliSchema,
+        span: Span,
+    },
+    CliParseOr {
+        schema: CliSchema,
+        span: Span,
+    },
+    CliParseRequest {
+        schema: CliSchema,
+        span: Span,
+    },
+    CliParseRequestOr {
+        schema: CliSchema,
+        span: Span,
+    },
+    CliUsageFor {
+        schema: CliSchema,
+        span: Span,
+    },
+    CliUsageForRequired {
+        schema: CliSchema,
+        span: Span,
+    },
+    CliHelpFor {
+        schema: CliSchema,
+        span: Span,
+    },
+    CliHelpForRequired {
+        schema: CliSchema,
         span: Span,
     },
     JumpIfFalse {
@@ -377,6 +438,7 @@ impl ProgramMerger {
                 span: *span,
             },
             Instruction::LoadIndex { span } => Instruction::LoadIndex { span: *span },
+            Instruction::ListLen { span } => Instruction::ListLen { span: *span },
             Instruction::UpdateRecord { fields, span } => Instruction::UpdateRecord {
                 fields: fields
                     .iter()
@@ -415,6 +477,64 @@ impl ProgramMerger {
             },
             Instruction::Call { argc, span } => Instruction::Call {
                 argc: *argc,
+                span: *span,
+            },
+            Instruction::DecodeJson { schema, span } => Instruction::DecodeJson {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::DecodeJsonRequired { schema, span } => Instruction::DecodeJsonRequired {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::JsonToValue { schema, span } => Instruction::JsonToValue {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::JsonEncodeTyped { schema, span } => Instruction::JsonEncodeTyped {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::LoadJsonConfigRequired { schema, span } => {
+                Instruction::LoadJsonConfigRequired {
+                    schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                    span: *span,
+                }
+            }
+            Instruction::LoadJsonConfig { schema, span } => Instruction::LoadJsonConfig {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::CliParse { schema, span } => Instruction::CliParse {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::CliParseOr { schema, span } => Instruction::CliParseOr {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::CliParseRequest { schema, span } => Instruction::CliParseRequest {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::CliParseRequestOr { schema, span } => Instruction::CliParseRequestOr {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::CliUsageFor { schema, span } => Instruction::CliUsageFor {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::CliUsageForRequired { schema, span } => Instruction::CliUsageForRequired {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::CliHelpFor { schema, span } => Instruction::CliHelpFor {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
+                span: *span,
+            },
+            Instruction::CliHelpForRequired { schema, span } => Instruction::CliHelpForRequired {
+                schema: schema.map_symbols(&mut |symbol| self.symbol(program, symbol)),
                 span: *span,
             },
             Instruction::JumpIfFalse { target, span } => Instruction::JumpIfFalse {
@@ -616,6 +736,28 @@ struct Compiler {
     package_function_bindings: HashMap<PackageItemId, BindingId>,
     next_match_temp: usize,
     next_synthetic_local: u32,
+    scope_depth: usize,
+    loop_stack: Vec<LoopContext>,
+    cleanup_stack: Vec<CleanupContext>,
+}
+
+#[derive(Clone, Debug)]
+struct LoopContext {
+    continue_target: Option<usize>,
+    scope_depth: usize,
+    break_jumps: Vec<usize>,
+    continue_jumps: Vec<usize>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CleanupContext {
+    scope_depth: usize,
+    handle: NameRef,
+    close: NameRef,
+    result_enum: Symbol,
+    ok_variant: Symbol,
+    err_variant: Symbol,
+    span: Span,
 }
 
 impl Compiler {
@@ -627,10 +769,16 @@ impl Compiler {
             package_function_bindings: HashMap::new(),
             next_match_temp: 0,
             next_synthetic_local,
+            scope_depth: 0,
+            loop_stack: Vec::new(),
+            cleanup_stack: Vec::new(),
         }
     }
 
     fn compile_entry_body(&mut self, body: &mir::Body) -> Chunk {
+        debug_assert_eq!(self.scope_depth, 0);
+        debug_assert!(self.loop_stack.is_empty());
+        debug_assert!(self.cleanup_stack.is_empty());
         let mut chunk = Chunk::default();
         self.compile_function_defs(&body.function_defs, &mut chunk);
         self.compile_scope_statements(&body.statements, &mut chunk);
@@ -641,10 +789,16 @@ impl Compiler {
                 chunk.instructions.push(Instruction::Pop);
             }
         }
+        debug_assert_eq!(self.scope_depth, 0);
+        debug_assert!(self.loop_stack.is_empty());
+        debug_assert!(self.cleanup_stack.is_empty());
         chunk
     }
 
     fn compile_function(&mut self, function: &mir::Function) {
+        debug_assert_eq!(self.scope_depth, 0);
+        debug_assert!(self.loop_stack.is_empty());
+        debug_assert!(self.cleanup_stack.is_empty());
         if self.functions.len() <= function.id {
             self.functions
                 .resize_with(function.id + 1, placeholder_function);
@@ -668,6 +822,9 @@ impl Compiler {
             chunk,
             span: function.span,
         };
+        debug_assert_eq!(self.scope_depth, 0);
+        debug_assert!(self.loop_stack.is_empty());
+        debug_assert!(self.cleanup_stack.is_empty());
     }
 
     fn compile_function_defs(&mut self, function_defs: &[mir::FunctionDef], chunk: &mut Chunk) {
@@ -704,6 +861,15 @@ impl Compiler {
             }
             mir::Stmt::If(stmt) => self.compile_if_stmt(stmt, chunk),
             mir::Stmt::While(stmt) => self.compile_while_stmt(stmt, chunk),
+            mir::Stmt::For(stmt) => self.compile_for_stmt(stmt, chunk),
+            mir::Stmt::Using(stmt) => self.compile_using_stmt(stmt, chunk),
+            mir::Stmt::Break(_) => self.compile_break_stmt(chunk),
+            mir::Stmt::Continue(_) => self.compile_continue_stmt(chunk),
+            mir::Stmt::Return(stmt) => {
+                self.compile_expr(&stmt.value, chunk);
+                self.emit_scope_unwind_to(chunk, 0);
+                chunk.instructions.push(Instruction::Return);
+            }
             mir::Stmt::Expr(stmt) => {
                 self.compile_expr(&stmt.expr, chunk);
                 chunk.instructions.push(Instruction::Pop);
@@ -731,27 +897,225 @@ impl Compiler {
         let loop_start = chunk.instructions.len();
         self.compile_expr(&stmt.condition, chunk);
         let exit_jump = self.emit_jump_if_false(chunk, stmt.condition.span());
+        let loop_scope_depth = self.scope_depth;
+        self.loop_stack.push(LoopContext {
+            continue_target: Some(loop_start),
+            scope_depth: loop_scope_depth,
+            break_jumps: Vec::new(),
+            continue_jumps: Vec::new(),
+        });
         self.compile_block(&stmt.body, chunk);
         chunk
             .instructions
             .push(Instruction::Jump { target: loop_start });
         let loop_end = chunk.instructions.len();
+        let loop_context = self
+            .loop_stack
+            .pop()
+            .expect("while compilation should have pushed a loop context");
+        for break_jump in loop_context.break_jumps {
+            self.patch_jump(chunk, break_jump, loop_end);
+        }
+        for continue_jump in loop_context.continue_jumps {
+            self.patch_jump(chunk, continue_jump, loop_start);
+        }
         self.patch_jump_if_false(chunk, exit_jump, loop_end);
     }
 
+    fn compile_for_stmt(&mut self, stmt: &mir::ForStmt, chunk: &mut Chunk) {
+        let list_symbol = self.temp_symbol("for_list");
+        let index_symbol = self.temp_symbol("for_index");
+        let list_ref = self.synthetic_name_ref(list_symbol);
+        let index_ref = self.synthetic_name_ref(index_symbol);
+
+        self.push_scope(chunk);
+        self.compile_expr(&stmt.iterable, chunk);
+        chunk.instructions.push(Instruction::Assign {
+            target: list_ref,
+            mutable: false,
+            is_update: false,
+            span: stmt.iterable.span(),
+        });
+        chunk.instructions.push(Instruction::LoadInt(0));
+        chunk.instructions.push(Instruction::Assign {
+            target: index_ref,
+            mutable: true,
+            is_update: false,
+            span: stmt.span,
+        });
+
+        let loop_start = chunk.instructions.len();
+        chunk.instructions.push(Instruction::LoadName {
+            target: index_ref,
+            span: stmt.span,
+        });
+        chunk.instructions.push(Instruction::LoadName {
+            target: list_ref,
+            span: stmt.iterable.span(),
+        });
+        chunk.instructions.push(Instruction::ListLen {
+            span: stmt.iterable.span(),
+        });
+        chunk.instructions.push(Instruction::Binary {
+            op: BinaryOp::Lt,
+            span: stmt.span,
+        });
+        let exit_jump = self.emit_jump_if_false(chunk, stmt.span);
+
+        let loop_scope_depth = self.scope_depth;
+        self.loop_stack.push(LoopContext {
+            continue_target: None,
+            scope_depth: loop_scope_depth,
+            break_jumps: Vec::new(),
+            continue_jumps: Vec::new(),
+        });
+
+        self.push_scope(chunk);
+        self.compile_function_defs(&stmt.body.function_defs, chunk);
+        chunk.instructions.push(Instruction::LoadName {
+            target: list_ref,
+            span: stmt.iterable.span(),
+        });
+        chunk.instructions.push(Instruction::LoadName {
+            target: index_ref,
+            span: stmt.span,
+        });
+        chunk.instructions.push(Instruction::LoadIndex {
+            span: stmt.iterable.span(),
+        });
+        chunk.instructions.push(Instruction::Assign {
+            target: self.name_ref(stmt.item_binding, stmt.item),
+            mutable: false,
+            is_update: false,
+            span: stmt.span,
+        });
+        self.compile_scope_statements(&stmt.body.statements, chunk);
+        self.pop_scope(chunk);
+
+        let continue_target = chunk.instructions.len();
+        let continue_jumps = {
+            let loop_context = self
+                .loop_stack
+                .last_mut()
+                .expect("for compilation should have pushed a loop context");
+            loop_context.continue_target = Some(continue_target);
+            std::mem::take(&mut loop_context.continue_jumps)
+        };
+        for continue_jump in continue_jumps {
+            self.patch_jump(chunk, continue_jump, continue_target);
+        }
+
+        chunk.instructions.push(Instruction::LoadName {
+            target: index_ref,
+            span: stmt.span,
+        });
+        chunk.instructions.push(Instruction::LoadInt(1));
+        chunk.instructions.push(Instruction::Binary {
+            op: BinaryOp::Add,
+            span: stmt.span,
+        });
+        chunk.instructions.push(Instruction::Assign {
+            target: index_ref,
+            mutable: true,
+            is_update: true,
+            span: stmt.span,
+        });
+        chunk
+            .instructions
+            .push(Instruction::Jump { target: loop_start });
+
+        let loop_end = chunk.instructions.len();
+        let loop_context = self
+            .loop_stack
+            .pop()
+            .expect("for compilation should have pushed a loop context");
+        for break_jump in loop_context.break_jumps {
+            self.patch_jump(chunk, break_jump, loop_end);
+        }
+        for continue_jump in loop_context.continue_jumps {
+            self.patch_jump(chunk, continue_jump, continue_target);
+        }
+        self.patch_jump_if_false(chunk, exit_jump, loop_end);
+        self.pop_scope(chunk);
+    }
+
+    fn compile_using_stmt(&mut self, stmt: &mir::UsingStmt, chunk: &mut Chunk) {
+        self.push_scope(chunk);
+        self.compile_expr(&stmt.value, chunk);
+        let handle = self.name_ref(stmt.binding, stmt.name);
+        chunk.instructions.push(Instruction::Assign {
+            target: handle,
+            mutable: false,
+            is_update: false,
+            span: stmt.span,
+        });
+        let cleanup = CleanupContext {
+            scope_depth: self.scope_depth,
+            handle,
+            close: self.name_ref_for_ident_target(stmt.cleanup.target, stmt.cleanup.name),
+            result_enum: stmt.result_enum,
+            ok_variant: stmt.ok_variant,
+            err_variant: stmt.err_variant,
+            span: stmt.cleanup.span,
+        };
+        self.cleanup_stack.push(cleanup);
+        self.compile_block(&stmt.body, chunk);
+        let popped = self
+            .cleanup_stack
+            .pop()
+            .expect("using compilation should have pushed cleanup context");
+        debug_assert_eq!(popped.scope_depth, cleanup.scope_depth);
+        let remaining_cleanups = self.cleanup_stack.iter().rev().copied().collect::<Vec<_>>();
+        self.emit_cleanup_call(chunk, cleanup, &remaining_cleanups);
+        self.pop_scope(chunk);
+    }
+
+    fn compile_break_stmt(&mut self, chunk: &mut Chunk) {
+        let Some(loop_index) = self.loop_stack.len().checked_sub(1) else {
+            debug_assert!(false, "typechecker should reject `break` outside loops");
+            return;
+        };
+        let target_scope_depth = self.loop_stack[loop_index].scope_depth;
+        self.emit_scope_unwind_to(chunk, target_scope_depth);
+        let jump = self.emit_jump(chunk);
+        self.loop_stack[loop_index].break_jumps.push(jump);
+    }
+
+    fn compile_continue_stmt(&mut self, chunk: &mut Chunk) {
+        let Some(loop_context) = self.loop_stack.last() else {
+            debug_assert!(false, "typechecker should reject `continue` outside loops");
+            return;
+        };
+        let target_scope_depth = loop_context.scope_depth;
+        let continue_target = loop_context.continue_target;
+        self.emit_scope_unwind_to(chunk, target_scope_depth);
+        if let Some(continue_target) = continue_target {
+            chunk.instructions.push(Instruction::Jump {
+                target: continue_target,
+            });
+        } else {
+            let jump = self.emit_jump(chunk);
+            let loop_context = self
+                .loop_stack
+                .last_mut()
+                .expect("typechecker should reject `continue` outside loops");
+            loop_context.continue_jumps.push(jump);
+        }
+    }
+
     fn compile_block(&mut self, block: &mir::Block, chunk: &mut Chunk) {
-        chunk.instructions.push(Instruction::PushScope);
+        self.push_scope(chunk);
         self.compile_function_defs(&block.function_defs, chunk);
         self.compile_scope_statements(&block.statements, chunk);
-        chunk.instructions.push(Instruction::PopScope);
+        self.pop_scope(chunk);
     }
 
     fn compile_value_block(&mut self, block: &mir::ValueBlock, chunk: &mut Chunk) {
-        chunk.instructions.push(Instruction::PushScope);
+        self.push_scope(chunk);
         self.compile_function_defs(&block.function_defs, chunk);
         self.compile_scope_statements(&block.statements, chunk);
         self.compile_expr(&block.expr, chunk);
-        chunk.instructions.push(Instruction::PopScope);
+        self.pop_scope(chunk);
     }
 
     fn compile_expr(&mut self, expr: &mir::Expr, chunk: &mut Chunk) {
@@ -824,6 +1188,114 @@ impl Compiler {
                     span: expr.span,
                 });
             }
+            mir::Expr::JsonDecodeOr(expr) => {
+                self.compile_expr(&expr.value, chunk);
+                self.compile_expr(&expr.fallback, chunk);
+                chunk.instructions.push(Instruction::DecodeJson {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::JsonDecode(expr) => {
+                self.compile_expr(&expr.value, chunk);
+                chunk.instructions.push(Instruction::DecodeJsonRequired {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::JsonToValue(expr) => {
+                self.compile_expr(&expr.value, chunk);
+                chunk.instructions.push(Instruction::JsonToValue {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::JsonEncodeTyped(expr) => {
+                self.compile_expr(&expr.value, chunk);
+                chunk.instructions.push(Instruction::JsonEncodeTyped {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::ConfigLoadJson(expr) => {
+                self.compile_expr(&expr.path, chunk);
+                chunk
+                    .instructions
+                    .push(Instruction::LoadJsonConfigRequired {
+                        schema: expr.schema.clone(),
+                        span: expr.span,
+                    });
+            }
+            mir::Expr::ConfigLoadJsonOr(expr) => {
+                self.compile_expr(&expr.path, chunk);
+                self.compile_expr(&expr.fallback, chunk);
+                chunk.instructions.push(Instruction::LoadJsonConfig {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::CliParseOr(expr) => {
+                self.compile_expr(&expr.args, chunk);
+                self.compile_expr(&expr.defaults, chunk);
+                chunk.instructions.push(Instruction::CliParseOr {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::CliParse(expr) => {
+                self.compile_expr(&expr.args, chunk);
+                chunk.instructions.push(Instruction::CliParse {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::CliParseRequest(expr) => {
+                self.compile_expr(&expr.args, chunk);
+                self.compile_expr(&expr.program, chunk);
+                chunk.instructions.push(Instruction::CliParseRequest {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::CliParseRequestOr(expr) => {
+                self.compile_expr(&expr.args, chunk);
+                self.compile_expr(&expr.program, chunk);
+                self.compile_expr(&expr.defaults, chunk);
+                chunk.instructions.push(Instruction::CliParseRequestOr {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::CliUsageFor(expr) => {
+                self.compile_expr(&expr.program, chunk);
+                self.compile_expr(&expr.defaults, chunk);
+                chunk.instructions.push(Instruction::CliUsageFor {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::CliUsageForRequired(expr) => {
+                self.compile_expr(&expr.program, chunk);
+                chunk.instructions.push(Instruction::CliUsageForRequired {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::CliHelpFor(expr) => {
+                self.compile_expr(&expr.program, chunk);
+                self.compile_expr(&expr.defaults, chunk);
+                chunk.instructions.push(Instruction::CliHelpFor {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
+            mir::Expr::CliHelpForRequired(expr) => {
+                self.compile_expr(&expr.program, chunk);
+                chunk.instructions.push(Instruction::CliHelpForRequired {
+                    schema: expr.schema.clone(),
+                    span: expr.span,
+                });
+            }
             mir::Expr::Unary(expr) => {
                 self.compile_expr(&expr.expr, chunk);
                 chunk.instructions.push(match expr.op {
@@ -832,6 +1304,17 @@ impl Compiler {
                 });
             }
             mir::Expr::Binary(expr) => {
+                match expr.op {
+                    mir::BinaryOp::And => {
+                        self.compile_and_expr(expr, chunk);
+                        return;
+                    }
+                    mir::BinaryOp::Or => {
+                        self.compile_or_expr(expr, chunk);
+                        return;
+                    }
+                    _ => {}
+                }
                 self.compile_expr(&expr.left, chunk);
                 self.compile_expr(&expr.right, chunk);
                 chunk.instructions.push(Instruction::Binary {
@@ -846,6 +1329,9 @@ impl Compiler {
                         mir::BinaryOp::GtEq => BinaryOp::GtEq,
                         mir::BinaryOp::EqEq => BinaryOp::EqEq,
                         mir::BinaryOp::BangEq => BinaryOp::BangEq,
+                        mir::BinaryOp::And | mir::BinaryOp::Or => {
+                            unreachable!("short-circuit boolean operators are lowered with jumps")
+                        }
                     },
                     span: expr.span,
                 });
@@ -881,10 +1367,34 @@ impl Compiler {
         self.patch_jump(chunk, end_jump, end_target);
     }
 
+    fn compile_and_expr(&mut self, expr: &mir::BinaryExpr, chunk: &mut Chunk) {
+        self.compile_expr(&expr.left, chunk);
+        let false_jump = self.emit_jump_if_false(chunk, expr.left.span());
+        self.compile_expr(&expr.right, chunk);
+        let end_jump = self.emit_jump(chunk);
+        let false_target = chunk.instructions.len();
+        self.patch_jump_if_false(chunk, false_jump, false_target);
+        chunk.instructions.push(Instruction::LoadBool(false));
+        let end_target = chunk.instructions.len();
+        self.patch_jump(chunk, end_jump, end_target);
+    }
+
+    fn compile_or_expr(&mut self, expr: &mir::BinaryExpr, chunk: &mut Chunk) {
+        self.compile_expr(&expr.left, chunk);
+        let right_jump = self.emit_jump_if_false(chunk, expr.left.span());
+        chunk.instructions.push(Instruction::LoadBool(true));
+        let end_jump = self.emit_jump(chunk);
+        let right_target = chunk.instructions.len();
+        self.patch_jump_if_false(chunk, right_jump, right_target);
+        self.compile_expr(&expr.right, chunk);
+        let end_target = chunk.instructions.len();
+        self.patch_jump(chunk, end_jump, end_target);
+    }
+
     fn compile_try_expr(&mut self, expr: &mir::TryExpr, chunk: &mut Chunk) {
         let temp = self.match_temp_symbol();
         let temp_ref = self.synthetic_name_ref(temp);
-        chunk.instructions.push(Instruction::PushScope);
+        self.push_scope(chunk);
         self.compile_expr(&expr.expr, chunk);
         chunk.instructions.push(Instruction::Assign {
             target: temp_ref,
@@ -917,6 +1427,7 @@ impl Compiler {
             expr.err_variant,
             expr.expr.span(),
         );
+        self.emit_scope_unwind_to(chunk, 0);
         chunk.instructions.push(Instruction::MakeEnum {
             enum_name: expr.result_enum,
             variant_name: expr.err_variant,
@@ -934,14 +1445,14 @@ impl Compiler {
 
         let end_target = chunk.instructions.len();
         self.patch_jump(chunk, end_jump, end_target);
-        chunk.instructions.push(Instruction::PopScope);
+        self.pop_scope(chunk);
     }
 
     fn compile_match_expr(&mut self, expr: &mir::MatchExpr, chunk: &mut Chunk) {
         let enum_name = self.pattern_enum_symbol(expr);
         let temp = self.match_temp_symbol();
         let temp_ref = self.synthetic_name_ref(temp);
-        chunk.instructions.push(Instruction::PushScope);
+        self.push_scope(chunk);
         self.compile_expr(&expr.value, chunk);
         chunk.instructions.push(Instruction::Assign {
             target: temp_ref,
@@ -977,24 +1488,27 @@ impl Compiler {
         for jump in end_jumps {
             self.patch_jump(chunk, jump, end_target);
         }
-        chunk.instructions.push(Instruction::PopScope);
+        self.pop_scope(chunk);
     }
 
     fn compile_match_arm(&mut self, arm: &mir::MatchArm, chunk: &mut Chunk) {
-        chunk.instructions.push(Instruction::PushScope);
-        if self.pattern_binding(&arm.pattern).is_some() {
-            let (binding, span) = self
-                .pattern_binding(&arm.pattern)
-                .expect("typechecked payload variant arm should bind payload");
-            chunk.instructions.push(Instruction::Assign {
-                target: binding,
-                mutable: false,
-                is_update: false,
-                span,
-            });
+        self.push_scope(chunk);
+        match self.pattern_payload(&arm.pattern) {
+            mir::EnumVariantPatternPayload::Binding(binding) => {
+                chunk.instructions.push(Instruction::Assign {
+                    target: self.name_ref(binding.binding, binding.name),
+                    mutable: false,
+                    is_update: false,
+                    span: self.pattern_span(&arm.pattern),
+                });
+            }
+            mir::EnumVariantPatternPayload::Discard => {
+                chunk.instructions.push(Instruction::Pop);
+            }
+            mir::EnumVariantPatternPayload::None => {}
         }
         self.compile_expr(&arm.value, chunk);
-        chunk.instructions.push(Instruction::PopScope);
+        self.pop_scope(chunk);
     }
 
     fn pattern_enum_symbol(&self, expr: &mir::MatchExpr) -> Symbol {
@@ -1006,12 +1520,17 @@ impl Compiler {
         pattern.enum_name
     }
 
-    fn pattern_binding(&self, pattern: &mir::MatchPattern) -> Option<(NameRef, Span)> {
+    fn pattern_payload<'a>(
+        &self,
+        pattern: &'a mir::MatchPattern,
+    ) -> &'a mir::EnumVariantPatternPayload {
         let mir::MatchPattern::Variant(pattern) = pattern;
-        pattern
-            .binding
-            .as_ref()
-            .map(|binding| (self.name_ref(binding.binding, binding.name), pattern.span))
+        &pattern.payload
+    }
+
+    fn pattern_span(&self, pattern: &mir::MatchPattern) -> Span {
+        let mir::MatchPattern::Variant(pattern) = pattern;
+        pattern.span
     }
 
     fn pattern_variant_symbols(&self, pattern: &mir::MatchPattern) -> (Symbol, Symbol) {
@@ -1057,6 +1576,316 @@ impl Compiler {
         }
     }
 
+    fn push_scope(&mut self, chunk: &mut Chunk) {
+        chunk.instructions.push(Instruction::PushScope);
+        self.scope_depth += 1;
+    }
+
+    fn pop_scope(&mut self, chunk: &mut Chunk) {
+        debug_assert!(self.scope_depth > 0);
+        self.scope_depth -= 1;
+        chunk.instructions.push(Instruction::PopScope);
+    }
+
+    fn emit_scope_unwind_to(&mut self, chunk: &mut Chunk, target_depth: usize) {
+        debug_assert!(target_depth <= self.scope_depth);
+        let cleanups = self
+            .cleanup_stack
+            .iter()
+            .rev()
+            .copied()
+            .filter(|cleanup| cleanup.scope_depth > target_depth)
+            .collect::<Vec<_>>();
+        self.emit_cleanup_unwind_sequence(chunk, &cleanups);
+        for _ in target_depth..self.scope_depth {
+            chunk.instructions.push(Instruction::PopScope);
+        }
+    }
+
+    fn emit_cleanup_unwind_sequence(&mut self, chunk: &mut Chunk, cleanups: &[CleanupContext]) {
+        let Some(first_cleanup) = cleanups.first().copied() else {
+            return;
+        };
+        let failed_symbol = self.temp_symbol("using_cleanup_failed");
+        let error_symbol = self.temp_symbol("using_cleanup_error");
+        let failed = self.synthetic_name_ref(failed_symbol);
+        let error = self.synthetic_name_ref(error_symbol);
+        chunk.instructions.push(Instruction::LoadBool(false));
+        chunk.instructions.push(Instruction::Assign {
+            target: failed,
+            mutable: true,
+            is_update: false,
+            span: first_cleanup.span,
+        });
+
+        for cleanup in cleanups {
+            self.emit_cleanup_call_recording_first_error(chunk, *cleanup, failed, error);
+        }
+
+        chunk.instructions.push(Instruction::LoadName {
+            target: failed,
+            span: first_cleanup.span,
+        });
+        let no_error_jump = self.emit_jump_if_false(chunk, first_cleanup.span);
+        chunk.instructions.push(Instruction::LoadName {
+            target: error,
+            span: first_cleanup.span,
+        });
+        chunk.instructions.push(Instruction::MakeEnum {
+            enum_name: first_cleanup.result_enum,
+            variant_name: first_cleanup.err_variant,
+            has_payload: true,
+            span: first_cleanup.span,
+        });
+        chunk.instructions.push(Instruction::Return);
+        let no_error_target = chunk.instructions.len();
+        self.patch_jump_if_false(chunk, no_error_jump, no_error_target);
+    }
+
+    fn emit_cleanup_call(
+        &mut self,
+        chunk: &mut Chunk,
+        cleanup: CleanupContext,
+        remaining_cleanups: &[CleanupContext],
+    ) {
+        let temp = self.temp_symbol("using_close");
+        let temp_ref = self.synthetic_name_ref(temp);
+        chunk.instructions.push(Instruction::LoadName {
+            target: cleanup.close,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::LoadName {
+            target: cleanup.handle,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::Call {
+            argc: 1,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::Assign {
+            target: temp_ref,
+            mutable: false,
+            is_update: false,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::LoadName {
+            target: temp_ref,
+            span: cleanup.span,
+        });
+        let err_jump = self.emit_jump_if_not_enum_variant(
+            chunk,
+            cleanup.result_enum,
+            cleanup.ok_variant,
+            cleanup.span,
+        );
+        chunk.instructions.push(Instruction::Pop);
+        let end_jump = self.emit_jump(chunk);
+
+        let err_target = chunk.instructions.len();
+        self.patch_jump_if_not_enum_variant(chunk, err_jump, err_target);
+        chunk.instructions.push(Instruction::LoadName {
+            target: temp_ref,
+            span: cleanup.span,
+        });
+        let exhausted_jump = self.emit_jump_if_not_enum_variant(
+            chunk,
+            cleanup.result_enum,
+            cleanup.err_variant,
+            cleanup.span,
+        );
+        self.emit_cleanup_ignore_errors_sequence(chunk, remaining_cleanups);
+        chunk.instructions.push(Instruction::MakeEnum {
+            enum_name: cleanup.result_enum,
+            variant_name: cleanup.err_variant,
+            has_payload: true,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::Return);
+
+        let exhausted_target = chunk.instructions.len();
+        self.patch_jump_if_not_enum_variant(chunk, exhausted_jump, exhausted_target);
+        chunk.instructions.push(Instruction::MatchExhausted {
+            enum_name: cleanup.result_enum,
+            span: cleanup.span,
+        });
+
+        let end_target = chunk.instructions.len();
+        self.patch_jump(chunk, end_jump, end_target);
+    }
+
+    fn emit_cleanup_call_recording_first_error(
+        &mut self,
+        chunk: &mut Chunk,
+        cleanup: CleanupContext,
+        failed: NameRef,
+        error: NameRef,
+    ) {
+        let temp = self.temp_symbol("using_close");
+        let temp_ref = self.synthetic_name_ref(temp);
+        chunk.instructions.push(Instruction::LoadName {
+            target: cleanup.close,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::LoadName {
+            target: cleanup.handle,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::Call {
+            argc: 1,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::Assign {
+            target: temp_ref,
+            mutable: false,
+            is_update: false,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::LoadName {
+            target: temp_ref,
+            span: cleanup.span,
+        });
+        let err_jump = self.emit_jump_if_not_enum_variant(
+            chunk,
+            cleanup.result_enum,
+            cleanup.ok_variant,
+            cleanup.span,
+        );
+        chunk.instructions.push(Instruction::Pop);
+        let end_jump = self.emit_jump(chunk);
+
+        let err_target = chunk.instructions.len();
+        self.patch_jump_if_not_enum_variant(chunk, err_jump, err_target);
+        chunk.instructions.push(Instruction::LoadName {
+            target: temp_ref,
+            span: cleanup.span,
+        });
+        let exhausted_jump = self.emit_jump_if_not_enum_variant(
+            chunk,
+            cleanup.result_enum,
+            cleanup.err_variant,
+            cleanup.span,
+        );
+        self.emit_record_first_cleanup_error(chunk, cleanup.span, failed, error);
+        let err_end_jump = self.emit_jump(chunk);
+
+        let exhausted_target = chunk.instructions.len();
+        self.patch_jump_if_not_enum_variant(chunk, exhausted_jump, exhausted_target);
+        chunk.instructions.push(Instruction::MatchExhausted {
+            enum_name: cleanup.result_enum,
+            span: cleanup.span,
+        });
+
+        let end_target = chunk.instructions.len();
+        self.patch_jump(chunk, end_jump, end_target);
+        self.patch_jump(chunk, err_end_jump, end_target);
+    }
+
+    fn emit_record_first_cleanup_error(
+        &mut self,
+        chunk: &mut Chunk,
+        span: Span,
+        failed: NameRef,
+        error: NameRef,
+    ) {
+        chunk.instructions.push(Instruction::LoadName {
+            target: failed,
+            span,
+        });
+        let set_error_jump = self.emit_jump_if_false(chunk, span);
+        chunk.instructions.push(Instruction::Pop);
+        let end_jump = self.emit_jump(chunk);
+
+        let set_error_target = chunk.instructions.len();
+        self.patch_jump_if_false(chunk, set_error_jump, set_error_target);
+        chunk.instructions.push(Instruction::Assign {
+            target: error,
+            mutable: false,
+            is_update: false,
+            span,
+        });
+        chunk.instructions.push(Instruction::LoadBool(true));
+        chunk.instructions.push(Instruction::Assign {
+            target: failed,
+            mutable: true,
+            is_update: true,
+            span,
+        });
+
+        let end_target = chunk.instructions.len();
+        self.patch_jump(chunk, end_jump, end_target);
+    }
+
+    fn emit_cleanup_ignore_errors_sequence(
+        &mut self,
+        chunk: &mut Chunk,
+        cleanups: &[CleanupContext],
+    ) {
+        for cleanup in cleanups {
+            self.emit_cleanup_call_ignoring_error(chunk, *cleanup);
+        }
+    }
+
+    fn emit_cleanup_call_ignoring_error(&mut self, chunk: &mut Chunk, cleanup: CleanupContext) {
+        let temp = self.temp_symbol("using_close");
+        let temp_ref = self.synthetic_name_ref(temp);
+        chunk.instructions.push(Instruction::LoadName {
+            target: cleanup.close,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::LoadName {
+            target: cleanup.handle,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::Call {
+            argc: 1,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::Assign {
+            target: temp_ref,
+            mutable: false,
+            is_update: false,
+            span: cleanup.span,
+        });
+        chunk.instructions.push(Instruction::LoadName {
+            target: temp_ref,
+            span: cleanup.span,
+        });
+        let err_jump = self.emit_jump_if_not_enum_variant(
+            chunk,
+            cleanup.result_enum,
+            cleanup.ok_variant,
+            cleanup.span,
+        );
+        chunk.instructions.push(Instruction::Pop);
+        let end_jump = self.emit_jump(chunk);
+
+        let err_target = chunk.instructions.len();
+        self.patch_jump_if_not_enum_variant(chunk, err_jump, err_target);
+        chunk.instructions.push(Instruction::LoadName {
+            target: temp_ref,
+            span: cleanup.span,
+        });
+        let exhausted_jump = self.emit_jump_if_not_enum_variant(
+            chunk,
+            cleanup.result_enum,
+            cleanup.err_variant,
+            cleanup.span,
+        );
+        chunk.instructions.push(Instruction::Pop);
+        let err_end_jump = self.emit_jump(chunk);
+
+        let exhausted_target = chunk.instructions.len();
+        self.patch_jump_if_not_enum_variant(chunk, exhausted_jump, exhausted_target);
+        chunk.instructions.push(Instruction::MatchExhausted {
+            enum_name: cleanup.result_enum,
+            span: cleanup.span,
+        });
+
+        let end_target = chunk.instructions.len();
+        self.patch_jump(chunk, end_jump, end_target);
+        self.patch_jump(chunk, err_end_jump, end_target);
+    }
+
     fn emit_jump_if_false(&self, chunk: &mut Chunk, span: Span) -> usize {
         let index = chunk.instructions.len();
         chunk
@@ -1082,10 +1911,14 @@ impl Compiler {
         index
     }
 
-    fn match_temp_symbol(&mut self) -> Symbol {
-        let name = format!("__muga_match_value_{}", self.next_match_temp);
+    fn temp_symbol(&mut self, prefix: &str) -> Symbol {
+        let name = format!("__muga_{prefix}_{}", self.next_match_temp);
         self.next_match_temp += 1;
         self.symbols.intern(&name)
+    }
+
+    fn match_temp_symbol(&mut self) -> Symbol {
+        self.temp_symbol("match_value")
     }
 
     fn emit_jump(&self, chunk: &mut Chunk) -> usize {

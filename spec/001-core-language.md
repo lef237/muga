@@ -102,6 +102,9 @@ The language has the following core constructs:
 - function declarations
 - `if` statements and `if` expressions
 - `while` statements
+- `for item in list` statements over `List[T]`
+- `break` and `continue` statements inside loops
+- `return expr` statements inside functions
 - expression statements
 - record literals
 - field access, chained dot calls, and record updates
@@ -110,11 +113,11 @@ The language has the following core constructs:
 To keep the grammar unambiguous, v1 distinguishes:
 
 - statement blocks, which contain ordinary statements
-- value blocks, which end in a required final expression and therefore produce a value
+- value blocks, which end in a required final expression or terminal `return expr`
 
-Function bodies and `if` expressions use value blocks.
+Function bodies and `if` expressions use value blocks. `return expr` exits the nearest named or anonymous function and is not allowed at top level. `break` and `continue` target the nearest enclosing loop and do not cross a nested named or anonymous function boundary.
 
-`if` without `else` is statement-only. `if` with `else` may appear in expression position and yields the branch result value.
+`if` without `else` is statement-only. `if` with `else` may appear in expression position and yields the branch result value. `else if` is accepted as readable nested-`if` sugar in both forms; value-producing chains must still end in a final `else`.
 
 Example:
 
@@ -170,7 +173,14 @@ Reserved keywords are:
 - `if`
 - `else`
 - `while`
+- `for`
+- `in`
+- `break`
+- `continue`
+- `return`
 - `try`
+- `and`
+- `or`
 - `true`
 - `false`
 
@@ -196,8 +206,12 @@ The v1 operator set is:
 - additive: `+`, `-`
 - comparison: `<`, `<=`, `>`, `>=`
 - equality: `==`, `!=`
+- boolean: `and`, `or`
 
-All binary operators are left-associative.
+All binary operators are left-associative. `and` and `or` are short-circuiting:
+the right operand of `left and right` is evaluated only when `left` is `true`,
+and the right operand of `left or right` is evaluated only when `left` is
+`false`.
 
 Precedence, from strongest to weakest:
 
@@ -207,6 +221,8 @@ Precedence, from strongest to weakest:
 4. additive
 5. comparison
 6. equality
+7. `and`
+8. `or`
 
 `=` is not an expression operator. It appears only in assign-like statements.
 
@@ -234,6 +250,10 @@ stmt              := assign_like_stmt
                    | func_decl
                    | if_stmt
                    | while_stmt
+                   | for_stmt
+                   | break_stmt
+                   | continue_stmt
+                   | return_stmt
                    | expr_stmt
 
 assign_like_stmt  := "mut" IDENT type_annot? "=" expr
@@ -258,19 +278,27 @@ param             := IDENT
                    | IDENT ":" type_expr
 
 while_stmt        := "while" expr stmt_block
-if_stmt           := "if" expr stmt_block ("else" stmt_block)?
+for_stmt          := "for" IDENT "in" expr stmt_block
+if_stmt           := "if" expr stmt_block ("else" (stmt_block | if_stmt))?
+break_stmt        := "break"
+continue_stmt     := "continue"
+return_stmt       := "return" expr
 expr_stmt         := expr
 
 expr              := if_expr
                    | match_expr
-                   | equality_expr
+                   | or_expr
 
-if_expr           := "if" expr value_block "else" value_block
+if_expr           := "if" expr value_block "else" (value_block | if_expr)
 match_expr        := "match" expr "{" match_arm* "}"
 match_arm         := variant_pattern "=>" expr
 variant_pattern   := qualified_name
-                   | qualified_name "(" IDENT ")"
+                   | qualified_name "(" pattern_payload ")"
+pattern_payload   := IDENT
+                   | "_"
 
+or_expr           := and_expr ("or" and_expr)*
+and_expr          := equality_expr ("and" equality_expr)*
 equality_expr     := comparison_expr (("==" | "!=") comparison_expr)*
 comparison_expr   := additive_expr (("<" | "<=" | ">" | ">=") additive_expr)*
 additive_expr     := multiplicative_expr (("+" | "-") multiplicative_expr)*
@@ -304,25 +332,31 @@ literal           := INT_LIT
 
 anon_fn           := "fn" "(" params? ")" return_annot? value_block
 stmt_block        := "{" stmt* "}"
-value_block       := "{" non_expr_stmt* expr "}"
+value_block       := "{" value_block_stmt* (expr | return_stmt) "}"
+value_block_stmt  := non_expr_stmt
+                   | return_stmt
 non_expr_stmt     := assign_like_stmt
                    | func_decl
                    | if_stmt
                    | while_stmt
+                   | for_stmt
+                   | break_stmt
+                   | continue_stmt
 ```
 
-In a value block, only non-expression statements may appear before the final expression. This reserves a single trailing expression slot and keeps final-expression return syntax deterministic.
+In a value block, only non-expression statements may appear before the final expression or terminal `return expr`. This reserves a single trailing value slot and keeps final-expression return syntax deterministic. `break` and `continue` may appear before that final slot when the value block is inside a loop, but they are not valid terminal values.
 
 ### 8.1 Record literal disambiguation in conditions
 
-The grammar above lists `record_lit` as one form of `primary_expr`, but the surface forms `if expr stmt_block` and `while expr stmt_block` are syntactically ambiguous when `expr` ends with an identifier and `stmt_block` begins with `{`. v1 resolves this ambiguity by disallowing a top-level record literal in the condition position of `if` and `while`. To use a record literal there, wrap it in parentheses:
+The grammar above lists `record_lit` as one form of `primary_expr`, but the surface forms `if expr stmt_block`, `while expr stmt_block`, and `for item in expr stmt_block` are syntactically ambiguous when `expr` ends with an identifier and `stmt_block` begins with `{`. v1 resolves this ambiguity by disallowing a top-level record literal in the condition position of `if` / `while` and the iterable position of `for`. To use a record literal there, wrap it in parentheses:
 
 ```txt
 if (P { x: 1 }) { ... }
 while (P { x: 1 }) { ... }
+for item in (P { x: 1 }) { ... }
 ```
 
-Because every `if`/`while` condition must have type `Bool`, a parenthesized record literal still fails type checking. The restriction therefore costs nothing in practice and preserves stable, locally readable surface syntax.
+Because every `if`/`while` condition must have type `Bool` and every `for` iterable must have type `List[T]`, a parenthesized record literal still fails type checking in these positions. The restriction therefore costs nothing in practice and preserves stable, locally readable surface syntax.
 
 ## 9. Execution-Oriented Summary
 
@@ -341,10 +375,13 @@ The core language model is:
 - `expr.with(field: value, ...)` is a record-only non-destructive update expression
 - `expr[index]` indexes a list value
 - `match` is exhaustive over enum variants in the v1 MVP
+- `Variant(_)` discards a one-payload enum variant payload without introducing a binding; broad catch-all `_ =>` arms are not part of v1
 - `try expr` propagates `Result[T, E]` errors from the nearest function
 - the value of a function body is the final expression in that body
 - `if` without `else` is statement-only
 - `while` is statement-only
+- `for item in list` is statement-only and iterates `List[T]` values in list order
+- `break` and `continue` are statement-only and target the nearest enclosing loop
 - the top-level program does not produce a value
 
 ## 10. Examples

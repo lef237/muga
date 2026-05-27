@@ -1,0 +1,8 @@
+package app::std_path
+
+import std::path
+
+fn main(): String {
+  value = path::from_string("notes/todo.txt")
+  path::as_string(value)
+}

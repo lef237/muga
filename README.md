@@ -1,286 +1,450 @@
 # Muga
 
-Muga is a compiler-first programming language project named after the Japanese idea of muga, often translated as selflessness. Its current design emphasizes readable local reasoning through immutable-by-default bindings, local type inference, value semantics, records plus functions, and predictable package boundaries.
+Muga is a compiler-first programming language for small, readable application
+programs. The current implementation emphasizes immutable-by-default bindings,
+local type inference, value semantics, records plus functions, explicit
+`Option[T]` / `Result[T, E]`, and package interfaces that can be checked without
+reading dependency implementation bodies.
 
-This repository tracks the language design, examples, and the current Rust compiler/runtime implementation as Muga moves toward v1.
+This repository contains the language design, examples, and Rust
+compiler/runtime implementation as Muga moves toward v1.
 
-## Installation
+## Current Status
 
-Install the published command with Cargo:
+Muga is in a v1 hardening phase. The v1 release priority is to keep the promise narrow: source-compatible `check` / `run`, explicit package artifacts, actionable
+diagnostics, generated project starters, and stable machine-readable command
+contracts. The detailed scope lives in [docs/v1-release-checklist.md](./docs/v1-release-checklist.md),
+and release gate alignment lives in [docs/release-gate-alignment.md](./docs/release-gate-alignment.md).
+
+The explicit package artifact workflow remains the v1 package boundary. Plain `check` and `run` remain source-compatible. `check --built` and `run --built` consume artifacts from `.muga/build` only when requested.
+Manifest projects may declare `[package] resources = "resources"` to include
+text or binary resource files in package content hashes, deterministic `.mgp`
+archives, `muga unpack-package-archive [--format text|json] [--expected-hash sha256:<hex>]`, and
+local archive dependency caches.
+`std::fs::read_resource_text` reads manifest-declared UTF-8 resources at
+runtime for source, test, local archive dependency, and explicit built-artifact
+runs.
+`std::fs::read_resource_bytes` reads the same manifest-declared resources as
+opaque `std::bytes::Bytes`; `bytes::size` and `bytes::empty` are the initial
+inspection helpers.
+`std::fs::read_bytes` / `read_bytes_path` read local binary files into `Bytes`;
+`std::fs::write_bytes` / `write_bytes_path` write the same opaque payload as
+full-file binary output, with `bytes::at` for inspection.
+`std::hash::sha256_hex` computes lowercase SHA-256 hex digests for `Bytes`.
+`muga emit-app-bundle [--format text|json] [--source-free] --output-dir <dir> [--program <name>] <entry>`
+writes a non-mutating app bundle for manifest projects, including local path
+and local archive dependencies, manifest-declared resources, `.muga/build`
+artifacts, and a `bin/<program>` launcher. Source-backed bundles also include
+`muga.lock`; `--source-free` omits copied source files and source-hash
+lockfile metadata.
+`muga install-app [--format text|json] [--replace-owned] --output-dir <bin-dir> [--program <name>] <bundle-dir>`
+writes a wrapper plus ownership metadata into a chosen bin directory without shell startup edits;
+`--replace-owned` verifies prior Muga ownership. `muga list-installed-apps [--format text|json] --output-dir <bin-dir>`
+reports owned launcher state, and `muga uninstall-app [--format text|json] --output-dir <bin-dir> --program <name>` removes matching launcher/metadata files.
+`muga emit-app-completions [--format text|json] --output-dir <dir> [--program <name>] --type <type> <bundle-dir>`
+emits shell and JSON completion files from source-free bundle interfaces.
+`muga run-app-bundle [--format text|json] <bundle-dir> [-- <program-arg>...]`
+executes the bundle from its manifest, resources, and `.muga/build` artifacts
+without reading copied source files.
+`muga emit-app-archive [--format text|json] --archive-root <dir> [--program <name>] <bundle-dir>`
+and `muga unpack-app-archive [--format text|json] [--expected-hash sha256:<hex>] --output-dir <dir> <archive-file>`
+provide a deterministic `.mga` transport form.
+`muga verify-app-archive [--format text|json] [--expected-hash sha256:<hex>] <archive-file>`
+validates archive bytes without writing files; unpack validates either the
+generated `*-sha256-<hash>.mga` file name or an explicit expected hash before
+writing files.
+
+Artifact roles:
+
+- `.mgi`: public package interface for downstream checking.
+- `.mgc`: entry package check-cache proof.
+- `.mgb`: MIR-lowered bytecode implementation artifact for artifact-backed run.
+
+Deferred work includes broad platform APIs, registry publishing, TOML parsing,
+shell-profile installer mutation, full incremental project reuse, control-flow
+MIR, native backend work, wildcard-heavy pattern matching, broad collection
+APIs, concurrency syntax, schema-backed shell completion packaging beyond the
+explicit completion package emitter, dynamic completion value producers, formatting
+templates, interpolation, builders, binary streams/codecs,
+broader cryptographic APIs, `Float`, `Decimal`, process APIs,
+HTTP/SSE/WebSocket/RPC, streaming APIs, broader resource handles, and
+release/publish automation.
+
+## Install
+
+Install the published command:
 
 ```bash
 cargo install muga
 ```
 
-Run a source file with:
+Install this checkout:
 
 ```bash
-muga path/to/file.muga
+cargo install --path . --locked
+```
+
+Development without installing:
+
+```bash
+cargo run --locked -- --version
+cargo run --locked -- samples/println_sum.muga
+```
+
+More installation, version-check, shell completions, `muga doctor`, generated
+app completions, and first-project guidance is in
+[docs/installation-and-onboarding.md](./docs/installation-and-onboarding.md).
+`muga shell-completions <bash|zsh|fish>` and `muga doctor [--format text|json]`
+are tool-only commands.
+
+## Quickstart
+
+Create a simple app under `~/tmp/`:
+
+```bash
+muga new --template app ~/tmp/muga-hello
+muga run ~/tmp/muga-hello/src/main/main.muga
+muga run ~/tmp/muga-hello/src/main/main.muga -- Ada
+muga check ~/tmp/muga-hello/src/main/main.muga
+muga build ~/tmp/muga-hello/src/main/main.muga
+muga run --built ~/tmp/muga-hello/src/main/main.muga -- --name=Ada
+muga emit-app-bundle --format json --source-free --output-dir ~/tmp/muga-hello-bundle --program hello ~/tmp/muga-hello/src/main/main.muga
+sh ~/tmp/muga-hello-bundle/bin/hello --name=Ada
+muga run-app-bundle ~/tmp/muga-hello-bundle -- --name=Ada
+muga install-app --format json --replace-owned --output-dir ~/tmp/muga-bin --program hello ~/tmp/muga-hello-bundle
+muga list-installed-apps --format json --output-dir ~/tmp/muga-bin
+sh ~/tmp/muga-bin/hello --name=Ada
+muga uninstall-app --format json --output-dir ~/tmp/muga-bin --program hello
+muga emit-app-archive --format json --archive-root ~/tmp/muga-archives --program hello ~/tmp/muga-hello-bundle
+muga verify-app-archive ~/tmp/muga-archives/hello-sha256-....mga
+MUGA_PROGRAM=hello MUGA_INSTALL_DIR=~/tmp/muga-bin sh ~/tmp/muga-hello/scripts/package-app.sh
+```
+
+Create a typed JSON config app:
+
+```bash
+muga new --template config-app ~/tmp/muga-config
+muga run ~/tmp/muga-config/src/main/main.muga -- --help
+muga run ~/tmp/muga-config/src/main/main.muga -- --config ~/tmp/muga-config/config/settings.json --port=5050
+MUGA_CONFIG_PATH=~/tmp/muga-config/config/settings.json muga run ~/tmp/muga-config/src/main/main.muga -- --tag=ops
+sh ~/tmp/muga-config/scripts/run-with-config.sh --tag=ops
+sh ~/tmp/muga-config/scripts/package-config-app.sh
+```
+
+Try the strict CLI starter and generated app completions:
+
+```bash
+muga new --template cli-tool ~/tmp/muga-cli
+muga run ~/tmp/muga-cli/src/main/main.muga -- --help
+muga cli-completions fish --program cli-tool --type Root ~/tmp/muga-cli/src/main/main.muga
+muga emit-cli-completions --format json --output-dir ~/tmp/muga-cli/completions --program cli-tool --type Root ~/tmp/muga-cli/src/main/main.muga
+cd ~/tmp/muga-cli
+sh scripts/package-cli-tool.sh
+```
+
+## Common Commands
+
+```bash
+muga --version
+muga --help
+muga doctor
+muga doctor --format json
+muga shell-completions bash
+muga explain E001
+muga syntax --format json path/to/file.muga
 muga check path/to/file.muga
+muga check --format json path/to/file.muga
+muga run --format json path/to/file.muga -- arg1 arg2
+muga test path/to/file.muga
+muga test --format json path/to/file.muga
+muga fmt --check path/to/file.muga
+muga doc path/to/package/main.muga
+muga metadata --format json path/to/package/main.muga
+muga workspace --format json path/to/package/main.muga
+muga completions --format json path/to/package/main.muga
+muga definition --format json --line 4 --column 8 path/to/package/main.muga
+muga references --format json --line 4 --column 8 path/to/package/main.muga
+muga hover --format json --line 2 --column 12 path/to/package/main.muga
+muga schema --format json path/to/package/main.muga
+muga cli-completions fish --program cli-tool --type Root path/to/package/main.muga
+muga cli-completions --format json --program cli-tool --type Root path/to/package/main.muga
+muga emit-cli-completions --format json --output-dir completions --program cli-tool --type Root path/to/package/main.muga
+muga new --list-templates
+muga new --template app path/to/project
+muga new --template report-app path/to/report-project
+muga build path/to/package/main.muga
+muga build --format json path/to/package/main.muga
+muga why-rebuild --built path/to/package/main.muga
+muga why-rebuild --format json --built path/to/package/main.muga
+muga emit-package-archive --format json --archive-root path/to/archives --dependency-snippet path/to/package/main.muga
+muga verify-package-archive --format json --expected-hash sha256:... path/to/archives/package.mgp
+muga unpack-package-archive --format json --expected-hash sha256:... --output-dir path/to/unpacked-package path/to/archives/package.mgp
+muga check --built path/to/package/main.muga
+muga run --built path/to/package/main.muga
+muga emit-app-bundle --format json --source-free --output-dir path/to/bundle --program my-app path/to/package/main.muga
+muga run-app-bundle path/to/bundle -- arg
+muga install-app --format json --replace-owned --output-dir path/to/bin --program my-app path/to/bundle
+muga list-installed-apps --format json --output-dir path/to/bin
+muga uninstall-app --format json --output-dir path/to/bin --program my-app
+muga emit-app-completions --format json --output-dir path/to/completions --type Root path/to/bundle
+muga emit-app-archive --format json --archive-root path/to/app-archives --program my-app path/to/bundle
+muga verify-app-archive --format json path/to/app-archives/my-app-sha256-....mga
+muga verify-app-archive --format json --expected-hash sha256:... path/to/app-archives/my-app.mga
+muga unpack-app-archive --format json --expected-hash sha256:... --output-dir path/to/unpacked-renamed path/to/app-archives/my-app.mga
+muga unpack-app-archive --output-dir path/to/unpacked path/to/app-archives/my-app-sha256-....mga
 muga emit-artifacts --artifact-root path/to/artifacts path/to/package/main.muga
 muga emit-interface --artifact-root path/to/artifacts --package util::numbers path/to/package/main.muga
 muga emit-check-cache --artifact-root path/to/artifacts path/to/package/main.muga
+muga api-diff --old-artifact-root old-artifacts --new-artifact-root new-artifacts --package util::numbers --format json --fail-on breaking
 muga check --artifact-root path/to/artifacts path/to/package/main.muga
 muga run --artifact-root path/to/artifacts path/to/package/main.muga
 ```
 
-## Quickstart
+Key command scopes:
 
-Prerequisites: Rust 1.95 or later.
+- `muga explain <diagnostic-code>` prints the matching `errors.md` catalog entry
+  or diagnostic family.
+- `muga syntax --format json <entry>` lexes and parses one source file for
+  faster editor feedback.
+- `muga test` for compiler-recognized `@test` functions runs script or package
+  tests with `std::test` helpers such as `test::assert_eq_int`.
+- `muga doc` emits Markdown documentation for public package records, enums,
+  opaque types, and functions from the same public interface graph. Public source comments written as `///` are included.
+- `muga new --list-templates [--format json]` lists starter templates; `muga new
+  [--template app|lib|test|config-app|cli-tool|report-app|resource-export|package-app] <project-dir>` creates an app, library, package-with-test, config app, strict CLI tool, report app, resource export, or local package app skeleton.
 
-Clone the repository and run one of the bundled samples:
-
-```bash
-git clone https://github.com/lef237/muga.git
-cd muga
-cargo run -- samples/println_sum.muga
-```
-
-Expected output (the first line is `println`, the second line is the return value of `main`):
-
-```text
-10
-10
-```
-
-Try another sample that chains function calls:
-
-```bash
-cargo run -- samples/number_chain.muga
-# => 4
-```
-
-Only validate the front end (parse, name resolution, typing) without executing:
-
-```bash
-cargo run -- check samples/println_sum.muga
-# => ok
-```
-
-Package mode is also available through a file entrypoint:
-
-```bash
-cargo run -- check samples/packages/app/main/main.muga
-cargo run -- samples/packages/app/main/main.muga
-```
-
-For explicit artifact-backed package workflows, `emit-artifacts` writes reachable `.mgi` interface files, reachable `.mgb` package implementation artifacts containing MIR-lowered bytecode bodies, and the entry package `.mgc` check cache file. `emit-check-cache` writes `.mgc` only after the package checks successfully against the available `.mgi` artifacts. Use `emit-interface` with `--package` only when you want to restrict interface emission to one package.
-
-```bash
-artifact_root=$(mktemp -d)
-cargo run -- emit-artifacts --artifact-root "$artifact_root" samples/packages/app/artifact_facade/main.muga
-cargo run -- check --artifact-root "$artifact_root" samples/packages/app/artifact_facade/main.muga
-cargo run -- run --artifact-root "$artifact_root" samples/packages/app/artifact_facade/main.muga
-```
-
-Artifact roles are deliberately separate:
-
-- `.mgi` is the public interface artifact used to check downstream packages without reading dependency implementation bodies.
-- `.mgc` is the entry package check-cache proof keyed by entry source plus direct and transitive dependency interface hashes.
-- `.mgb` is the dependency execution artifact. It stores MIR-lowered bytecode bodies, is structurally validated on load, and is rejected when missing, stale, hash-mismatched, for the wrong package, or inconsistent with loaded dependency interface hashes.
-
-Run your own file by pointing `cargo run` at any `.muga` source. `run` is the default subcommand, so it can be omitted:
-
-```bash
-cargo run -- run path/to/file.muga
-cargo run -- path/to/file.muga
-```
-
-A program may either define a zero-argument `main()` or run top-level statements directly. When `main()` exists, its return value is printed after execution:
-
-```muga
-fn main(): Int {
-  println(1 + 2)
-}
-```
-
-For more entry points, browse the [Samples](#samples) section below.
+Machine-readable command output is documented in
+[docs/diagnostics-and-output.md](./docs/diagnostics-and-output.md). The
+workspace JSON includes manifest roots, source roots, resource roots, and
+dependency source/resource roots for project-aware editor, CI, and wrapper
+tooling. Artifact state explanation is
+documented in
+[docs/artifact-cache-explanations.md](./docs/artifact-cache-explanations.md).
+The JSON-backed editor workflow is documented in
+[docs/editor-json-workflow.md](./docs/editor-json-workflow.md).
 
 ## Language Shape
 
-- no `let`; bindings are immutable by default and `mut` opts into mutation
-- `x = e` is resolved statically as either a new immutable binding or an update to an existing mutable binding
-- shadowing and mutation across function boundaries are rejected
-- type inference is local-first; annotations are required only when inference is ambiguous or intentionally bounded by the current implementation
-- comments use `//`; statements are newline-separated
-- data uses nominal `record` declarations; behavior uses functions
-- `expr.name` is field access, `expr.name(...)` is chained-call syntax, and `expr.with(...)` is record update
-- classes, inheritance, function-valued record fields, traits, protocols, typeclasses, overloaded dispatch, and ordinary source-level references are out of scope for v1
-- source values use value semantics; the implementation may share immutable storage internally when that is not observable
-- recoverable failures use explicit `Result[T, E]`; prefix `try expr` propagates `Result` errors, while postfix `?` remains out of scope for v1
+- No `let`; bindings are immutable by default, and `mut` opts into mutation.
+- Shadowing and mutation across function boundaries are rejected.
+- Type inference is local-first.
+- Data uses nominal `record`; behavior uses functions.
+- `expr.name` is field access, `expr.name(...)` is chained-call syntax, and
+  `expr.with(...)` is value-returning record update.
+- `List[T]`, `Map[K, V]`, `Option[T]`, `Result[T, E]`, user-defined `enum`,
+  exhaustive `match`, and prefix `try expr` are implemented.
+- `and` / `or` are Bool-only, left-to-right, short-circuiting keyword
+  operators.
+- Equality is scalar-only for `Int`, `Bool`, and `String`; structural equality remains deferred.
+- Classes, inheritance, traits, protocols, typeclasses, overloaded dispatch,
+  ordinary source-level references, postfix Result propagation `expr?`, broad
+  wildcard matching, map literals, `Set[T]`, arbitrary `Map` keys, iterator
+  protocols, `T?`, and `?.` are outside v1.
 
-## Documentation
+The compact v1 language reference is [mini-language-spec-v1.md](./mini-language-spec-v1.md).
+The split specs live under [spec/](./spec/).
 
-- Language overview: [mini-language-spec-v1.md](./mini-language-spec-v1.md)
-- Split specification:
-  - [spec/001-core-language.md](./spec/001-core-language.md)
-  - [spec/002-name-resolution.md](./spec/002-name-resolution.md)
-  - [spec/003-typing.md](./spec/003-typing.md)
-  - [spec/004-functions.md](./spec/004-functions.md)
-  - [spec/005-records.md](./spec/005-records.md)
-  - [spec/006-packages.md](./spec/006-packages.md) (draft)
-  - [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) (draft)
-  - [spec/008-collections.md](./spec/008-collections.md) (draft)
-  - [spec/009-generics.md](./spec/009-generics.md) (draft)
-  - [spec/010-references-draft.md](./spec/010-references-draft.md) (decision note)
-  - [spec/011-value-semantics.md](./spec/011-value-semantics.md) (draft)
-  - [spec/012-protocols-deferred.md](./spec/012-protocols-deferred.md) (decision note)
-  - [spec/013-enums-results.md](./spec/013-enums-results.md) (draft)
-- Error catalog: [errors.md](./errors.md)
-- Implementation roadmap and next priority: [ROADMAP.md](./ROADMAP.md)
-- Practical language readiness backlog: [docs/practical-language-readiness.md](./docs/practical-language-readiness.md)
-- Implementation ledger, resume checklist, and next-slice test plan: [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md)
-- Ideal compiler architecture: [docs/ideal-compiler-architecture.md](./docs/ideal-compiler-architecture.md)
-- Language design reference: [docs/language-design-reference.md](./docs/language-design-reference.md)
-- Syntax marker case study: [docs/syntax-marker-case-study.md](./docs/syntax-marker-case-study.md)
-- Compiler identity note: [docs/internal/identity-model.md](./docs/internal/identity-model.md)
+## Implemented Standard Library Surface
 
-## Examples
+The current compiler-provided packages include:
 
-### Valid
+- `std::io`, `std::fs`, and `std::path` for typed text/binary file/path workflows,
+  including `std::fs::File` handles, recursive directory listing/size metadata/copy/removal/move, `FileMetadata`, `PathInfo`, `PathMetadata`/`PathSizeMetadata`, package resources, and `using` cleanup.
+- `std::env`, `std::cli`, and `std::time` for argument/env access, typed CLI parsing/help/completions, and `time::UnixMillis`.
+- `std::test` with scalar assertions.
+- `std::option`, `std::result`, `std::string`, `std::fmt`, `std::list`, and `std::map`.
+- `std::json` and `std::config` for typed JSON/config workflows, including `config::load_json_or` and `config::load_json`.
+- `std::bytes` with opaque `Bytes`, `bytes::size`, `bytes::empty`, and `bytes::at`.
+- `std::hash` with `hash::sha256_hex` for `Bytes`.
 
-- [examples/valid/001-basic-bindings.md](./examples/valid/001-basic-bindings.md)
-- [examples/valid/002-read-from-outer-scope.md](./examples/valid/002-read-from-outer-scope.md)
-- [examples/valid/003-local-mutable-loop.md](./examples/valid/003-local-mutable-loop.md)
-- [examples/valid/004-inferred-parameter-type.md](./examples/valid/004-inferred-parameter-type.md)
-- [examples/valid/005-recursive-function.md](./examples/valid/005-recursive-function.md)
-- [examples/valid/006-mutual-recursion.md](./examples/valid/006-mutual-recursion.md)
-- [examples/valid/007-record-with-update.md](./examples/valid/007-record-with-update.md)
-- [examples/valid/008-local-higher-order-inference.md](./examples/valid/008-local-higher-order-inference.md)
-- [examples/valid/009-explicit-arrow-callback.md](./examples/valid/009-explicit-arrow-callback.md)
+Useful helper names include `option::map`, `option::and_then`,
+`option::value_or`, `result::map`, `result::map_err`, `result::and_then`,
+`result::value_or`, `string::concat_all`, `string::join`, `list::map`,
+`list::filter`, `list::fold`, `list::any`, `list::all`, `map::keys`, and
+`map::values`.
 
-### Invalid
+The first `std::json` boundary is intentionally Result-oriented and keeps
+scalar/collection mapping, schema evolution, diagnostics, JSON Schema export,
+typed decoding, and typed encoding explicit. It does not open schema generation
+for services, HTTP APIs, `Float`, `Decimal`, `Bytes`, streaming APIs, or broad
+resource handles. See [docs/std-json-first-slice.md](./docs/std-json-first-slice.md),
+[docs/std-json-implementation-audit.md](./docs/std-json-implementation-audit.md),
+[docs/json-schema-decoding.md](./docs/json-schema-decoding.md),
+[docs/json-required-decoding.md](./docs/json-required-decoding.md),
+[docs/json-decoder-target-expansion.md](./docs/json-decoder-target-expansion.md),
+[docs/json-config-schema-polish.md](./docs/json-config-schema-polish.md),
+[docs/json-config-strict-unknown-fields.md](./docs/json-config-strict-unknown-fields.md),
+[docs/json-config-alias-metadata.md](./docs/json-config-alias-metadata.md),
+[docs/json-config-validation-attributes.md](./docs/json-config-validation-attributes.md),
+[docs/json-config-schema-export.md](./docs/json-config-schema-export.md), and
+[docs/json-typed-encoding.md](./docs/json-typed-encoding.md).
 
-- [examples/invalid/001-immutable-update.md](./examples/invalid/001-immutable-update.md)
-- [examples/invalid/002-duplicate-mutable-binding.md](./examples/invalid/002-duplicate-mutable-binding.md)
-- [examples/invalid/003-shadowing-in-block.md](./examples/invalid/003-shadowing-in-block.md)
-- [examples/invalid/004-outer-scope-mutation.md](./examples/invalid/004-outer-scope-mutation.md)
-- [examples/invalid/005-ambiguous-identity.md](./examples/invalid/005-ambiguous-identity.md)
-- [examples/invalid/006-unannotated-recursion.md](./examples/invalid/006-unannotated-recursion.md)
-- [examples/invalid/007-unannotated-mutual-recursion.md](./examples/invalid/007-unannotated-mutual-recursion.md)
-- [examples/invalid/008-invalid-record-update.md](./examples/invalid/008-invalid-record-update.md)
-- [examples/invalid/009-ambiguous-higher-order-parameter.md](./examples/invalid/009-ambiguous-higher-order-parameter.md)
-- [examples/invalid/010-ambiguous-println-callback.md](./examples/invalid/010-ambiguous-println-callback.md)
+The stdlib package docs and samples review is
+[docs/stdlib-package-samples-review.md](./docs/stdlib-package-samples-review.md).
+Standard-library review rules are in
+[docs/standard-library-review-rules.md](./docs/standard-library-review-rules.md).
 
-## Rust Implementation
+## Project And Package Workflow
 
-Implemented:
+Manifest projects use `muga.toml`:
 
-- lexer, parser, resolver, typechecker, typed HIR lowering, MIR lowering, bytecode compilation, and VM runtime
-- `check` for front-end validation and `run` for VM execution
-- `Unit` type with the `()` literal for effect-only success values
-- compiler-provided `std::io` / `std::fs` package slice with `IOError`, `fs::read_text`, and `fs::write_text`
-- `print` / `println` prelude builtins for `Int`, `Bool`, and `String`
-- records, field access, `record.with(...)`, chained calls, package-qualified chained calls, arrow function types, local binding annotations, and local bidirectional inference for selected higher-order cases
-- `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]` type expressions
-- list literals, direct list indexing, `len`, `is_empty`, `push`, `get`, and `set`
-- string helpers `is_empty`, `contains`, `trim`, `char_count`, `starts_with`, `ends_with`, `replace`, `split`, `concat`, `slice_chars`, `parse_int`, and `parse_bool`
-- explicit formatting helpers `to_string` for `Int`, `Bool`, and `String`
-- `Option::Some`, `Option::None`, `Result::Ok`, `Result::Err`, and exhaustive `match` for `Option` and `Result`
-- user-defined `enum` declarations with optional unconstrained type parameters, zero-payload and one-payload variants, qualified construction/patterns, exhaustive `match`, VM execution, typed HIR, and in-memory package interface summaries
-- prefix `try expr` propagation for `Result[T, E]` with exact error-type matching
-- `Map.empty`, `contains`, `get`, `insert`, and `remove` for `Int`, `Bool`, and `String` keys
-- file-based package mode with `package`, `import`, `pkg`, `pub`, `as`, module-private top-level items, and `alias::Name`
-- minimal `muga.toml` project mode with `[package] name/source`
-- unflattened package graph loading for package/module/item/export metadata, used by the default package-aware checking path
-- typed HIR with resolved call shape, call origin, expression types, local binding identity, and package item identity
-- in-memory package interface summaries for public records/enums/functions plus validation of public package references against those summaries
-- hardened enum diagnostics, package enum visibility checks, imported `alias::Enum::Variant` constructors/patterns, and package enum call-target identity
-- deterministic v2 package interface text persistence with stable artifact package/item IDs, content hashes, direct dependency metadata, file write/read helpers, artifact path naming, round-trip validation, and loaded-interface validation for public records/enums/functions
-- downstream typed checking can use loaded package interfaces or discovered `.mgi` artifacts, including transitive public-signature type dependencies, without reading dependency implementation bodies
-- package check cache keys combine entry package source content with loaded direct/transitive dependency interface hashes, and `.mgc` check artifacts are rejected when missing or stale
-- `muga check --artifact-root <dir>` validates package entries through package-aware checks against `.mgi` and `.mgc` artifacts without reading dependency implementation bodies
-- `muga emit-interface` and `muga emit-artifacts` write reachable `.mgi` interfaces from package-aware typed HIR; `emit-artifacts` also writes `.mgb` package implementation artifacts as MIR-lowered bytecode programs and the entry `.mgc` check cache
-- `muga run --artifact-root <dir>` validates `.mgi` / `.mgc` / structurally checked `.mgb` artifacts and executes direct and transitive package dependencies without reading dependency source files from the source tree
-- artifact-backed `run` remaps independently generated `.mgb` package item references onto the loaded `.mgi` interface identities, while reserving private implementation item ids so dependency bodies do not collide with the entry package during bytecode merge
-- structured diagnostics with related notes and suggestions in selected resolver, typechecker, record, and package errors
-- library-only package-aware checking entrypoint that validates package boundary, import, visibility, and public-signature rules over the unflattened package graph before package-aware module checking
-- package-aware source and per-module signature environments derived from the unflattened package graph, preserving package item identity, module/same-package/import visibility, and generic enum signature arity
-- package-aware module body resolution/typechecking against those module signature environments, with per-module resolver/typecheck outputs and typed HIR programs retained by the package-aware API
-- package-aware checks aggregate per-module typed HIR from the unflattened module check outputs instead of the legacy flattened typed path
-- package-aware checking and loaded/interface-artifact typed compilation collect dependency signatures directly from in-memory or persisted package interfaces without reading dependency source bodies
-- loaded-interface package-aware checks build dependency package graph metadata directly from package interfaces instead of loading dependency AST stubs
-- package-aware typed HIR can lower through the MIR/bytecode VM path, including imported package records/enums/functions
-- default package `run` lowers package-aware typed HIR through MIR before bytecode generation
-- bytecode/runtime name references carry semantic binding identity, lowered local identity, and display symbols; runtime environments are slot-backed by lowered `LocalId`
-- user-defined generic records and generic functions with explicit declaration type parameters, ordinary call/literal inference, and persisted package-interface support for public generic signatures
-- public package signature types remain available for value checking across imports, so `fs::read_text` errors can be matched and their `IOError` fields read even when `std::io` is not directly imported; import `std::io` when you want to name `io::IOError` in source annotations
+```toml
+[package]
+name = "my_app"
+source = "src"
 
-Not implemented yet:
+[dependencies]
+shared = { path = "../shared" }
+archived_shared = { archive = "../archives/shared-sha256-....mgp", hash = "sha256:..." }
+```
 
-- map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
-- public-signature inference for `pub fn`; public functions currently need explicit signatures
-- resource handles, `Path`, binary `Bytes`, directory APIs, stdout/stderr handles, project-mode artifact-root config, dependency declarations, registries, full incremental package artifact reuse, control-flow-oriented MIR, and native code generation
+Local path dependencies, local `.mgp` archive dependencies, deterministic
+package content hashing, deterministic `.mgp` source/resource archive
+emission, non-mutating package archive verification, CLI package archive
+unpacking/materialization, manifest-declared text/binary resource inclusion,
+UTF-8 runtime resource lookup, source-backed app bundle emission with bundle-local
+dependencies, install ownership metadata, installed-app inventory, generated
+package-helper install hooks, archive emission JSON, guarded uninstall, source-free app completion package emission, minimal local `muga.lock` metadata, and malformed
+lockfile rejection are implemented.
+URL/Git/registry dependency forms, remote fetching, publishing/install
+workflows, package signing, and full published-package lockfile enforcement
+remain deferred.
 
-## Planned Priority
+## Documentation Map
 
-The explicit package artifact workflow remains the v1 package boundary: artifact-backed `check` consumes `.mgi` and `.mgc` artifacts without dependency implementation bodies, and artifact-backed `run` consumes `.mgi`, `.mgc`, and structurally validated MIR-lowered bytecode `.mgb` artifacts without reading dependency source files from the source tree. With generic records/functions, `Result` propagation, first string helpers, explicit scalar formatting, `Unit`, and the first `std::io` / `std::fs` text-file slice now landed, the next priority is hardening practical stdlib/package behavior without expanding into handles, `Path`, binary IO, or control-flow MIR prematurely.
+Start here:
 
-Control-flow MIR, native backend work, wildcard-heavy pattern matching, broad collection APIs, and full incremental project artifact reuse remain deferred. The detailed breakdown lives in [ROADMAP.md](./ROADMAP.md), [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md), and the practical-language backlog in [docs/practical-language-readiness.md](./docs/practical-language-readiness.md).
+- [docs/README.md](./docs/README.md): documentation map and reading order.
+- [docs/strategy-and-implementation-plan.md](./docs/strategy-and-implementation-plan.md):
+  north star, phase sequence, and non-goals.
+- [ROADMAP.md](./ROADMAP.md): current implementation priority.
+- [docs/implementation-resume-plan.md](./docs/implementation-resume-plan.md):
+  implementation ledger, resume checklist, and next-slice test plan.
+- [docs/practical-language-readiness.md](./docs/practical-language-readiness.md):
+  practical post-v1 backlog and boundaries.
+- [docs/muga-by-example.md](./docs/muga-by-example.md): learning path through
+  bindings, records, `Result`, packages, tests, local dependencies, and
+  artifact-backed builds.
+
+Maintenance and trust:
+
+- [errors.md](./errors.md)
+- [docs/mgi-api-diff.md](./docs/mgi-api-diff.md)
+- [docs/fuzzing-malformed-input-plan.md](./docs/fuzzing-malformed-input-plan.md)
+- [docs/benchmark-health-checks.md](./docs/benchmark-health-checks.md)
+- [docs/registry-security-design.md](./docs/registry-security-design.md)
+- [docs/edition-feature-fingerprint-policy.md](./docs/edition-feature-fingerprint-policy.md)
+- [docs/release-gate-alignment.md](./docs/release-gate-alignment.md)
+- [conformance/README.md](./conformance/README.md)
+
+Design boundaries:
+
+- [docs/opaque-resource-handles.md](./docs/opaque-resource-handles.md)
+- [docs/text-output-file-handles.md](./docs/text-output-file-handles.md)
+- [docs/lexical-resource-cleanup.md](./docs/lexical-resource-cleanup.md)
+- [docs/cli-parser-schema.md](./docs/cli-parser-schema.md)
+- [docs/strict-cli-parser-schema.md](./docs/strict-cli-parser-schema.md)
+- [docs/strict-cli-no-default-usage.md](./docs/strict-cli-no-default-usage.md)
+- [docs/cli-field-metadata.md](./docs/cli-field-metadata.md)
+- [docs/cli-command-metadata.md](./docs/cli-command-metadata.md)
+- [docs/cli-short-option-metadata.md](./docs/cli-short-option-metadata.md)
+- [docs/cli-positional-field-metadata.md](./docs/cli-positional-field-metadata.md)
+- [docs/cli-built-in-help-policy.md](./docs/cli-built-in-help-policy.md)
+- [docs/parse-integrated-cli-help-workflow.md](./docs/parse-integrated-cli-help-workflow.md)
+- [docs/compact-cli-short-option-syntax.md](./docs/compact-cli-short-option-syntax.md)
+- [docs/cli-subcommand-metadata.md](./docs/cli-subcommand-metadata.md)
+- [docs/cli-wrapper-root-options.md](./docs/cli-wrapper-root-options.md)
+- [docs/cli-schema-shell-completions.md](./docs/cli-schema-shell-completions.md)
+- [docs/cli-completion-json-spec.md](./docs/cli-completion-json-spec.md)
+- [docs/cli-completion-value-sources.md](./docs/cli-completion-value-sources.md)
+- [docs/cli-completion-installer-integration.md](./docs/cli-completion-installer-integration.md)
+- [docs/config-path-discovery.md](./docs/config-path-discovery.md)
+- [docs/config-app-run-helper.md](./docs/config-app-run-helper.md)
+- [docs/workspace-manifest-metadata.md](./docs/workspace-manifest-metadata.md)
+- [docs/std-config-json-loading.md](./docs/std-config-json-loading.md)
+
+Historical decision logs are kept as evidence, not as the main reading path.
+Use [docs/README.md](./docs/README.md) to find the active reading path and to
+understand when a historical log can be removed safely.
 
 ## Samples
 
-- [samples/sum_to.muga](./samples/sum_to.muga)
-- [samples/println_sum.muga](./samples/println_sum.muga)
-- [samples/inferred_types.muga](./samples/inferred_types.muga) (runnable sample showing that parameter and return type annotations can be omitted when inference succeeds)
-- [samples/no_main.muga](./samples/no_main.muga) (runnable sample showing that `main()` is optional — top-level statements run directly)
-- [samples/closure_capture.muga](./samples/closure_capture.muga)
-- [samples/record_field_access.muga](./samples/record_field_access.muga) (runnable sample for `record` and field access)
-- [samples/record_counter_loop.muga](./samples/record_counter_loop.muga) (runnable sample for mutable bindings and `record.with(...)`)
-- [samples/nested_record_access.muga](./samples/nested_record_access.muga) (runnable sample for nested record access)
-- [samples/record_with_update.muga](./samples/record_with_update.muga) (runnable sample for `record`, field access, and `record.with(...)`)
-- [samples/record_user.muga](./samples/record_user.muga) (runnable sample for record declarations, receiver-shaped parameters, and chained calls)
-- [samples/method_chain_user.muga](./samples/method_chain_user.muga) (runnable sample for chained UFCS-style calls)
-- [samples/number_chain.muga](./samples/number_chain.muga) (runnable sample for chaining plain functions on `Int`)
-- [samples/println_chain.muga](./samples/println_chain.muga) (runnable sample for chaining through builtin `println`)
-- [samples/print_then_println.muga](./samples/print_then_println.muga) (runnable sample for mixing `print` and `println`)
-- [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga) (runnable sample that mixes UFCS calls, record update, and field access)
-- [samples/string_helpers.muga](./samples/string_helpers.muga) (runnable sample for `String` helper builtins, including `String.char_count()` / `String.slice_chars()`, and chained calls)
-- [samples/string_format_helpers.muga](./samples/string_format_helpers.muga) (runnable sample for explicit `to_string()` plus `String.concat()`)
-- [samples/string_parse_int.muga](./samples/string_parse_int.muga) (runnable sample for `String.parse_int()` and `try` propagation)
-- [samples/string_parse_bool.muga](./samples/string_parse_bool.muga) (runnable sample for `String.parse_bool()` and `try` propagation)
-- [samples/unit_result.muga](./samples/unit_result.muga) (runnable sample for `Unit` as a `Result` success value)
-- [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) (runnable sample for higher-order functions with minimal annotations)
-- [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga) (runnable sample for locally inferred higher-order parameters and anonymous functions)
-- [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga) (runnable sample for explicit arrow annotations on callbacks)
-- [samples/generic_box.muga](./samples/generic_box.muga) (runnable sample for generic records, generic functions, and record literal type-argument inference)
-- [samples/packages/app/main/main.muga](./samples/packages/app/main/main.muga) (runnable package entrypoint that imports `util::numbers` and `util::users`, and demonstrates `expr.alias::name(...)` chained calls)
-- [samples/packages/app/split_main/main.muga](./samples/packages/app/split_main/main.muga) (runnable package sample where the entry package is split across multiple files)
-- [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga) (runnable package sample that uses `import ... as ...` to avoid alias collisions)
-- [samples/packages/app/enum_demo/main.muga](./samples/packages/app/enum_demo/main.muga) (runnable package sample that exports and consumes a public generic enum)
-- [samples/packages/app/artifact_facade/main.muga](./samples/packages/app/artifact_facade/main.muga) (runnable package sample with `app -> api -> model` imports, useful for artifact-backed transitive execution)
-- [samples/projects/my_service/src/main/main.muga](./samples/projects/my_service/src/main/main.muga) (runnable manifest project sample where package declarations are inferred from `muga.toml` and directories)
+Runnable sample entrypoints and support files live under `samples/`.
+Future-looking snippets that are not valid v1 source live under
+`docs/design-snippets/`.
 
-Planned concurrency draft samples:
+Important sample paths:
 
-- [samples/planned_concurrency_group.muga](./samples/planned_concurrency_group.muga) (recommended Phase 1 direction: `group` / `spawn` / `join`)
-- [samples/planned_concurrency_channels.muga](./samples/planned_concurrency_channels.muga) (later-phase extension after the structured task core is stable)
+- `samples/println_sum.muga`
+- `samples/result_try.muga`
+- `samples/packages/app/main/main.muga`
+- `samples/packages/app/artifact_facade/main.muga`
+- `samples/projects/local_path_app/src/main/main.muga`
+- `samples/projects/report_app/src/main/main.muga`
+- `samples/projects/config_app/src/main/main.muga`
+- `samples/projects/cli_tool/src/main/main.muga`
+- `samples/projects/resource_export/src/main/main.muga`
+- `samples/packages/app/std_io/main.muga`
+- `samples/packages/app/std_path/main.muga`
+- `samples/packages/app/std_path_join/main.muga`
+- `samples/packages/app/std_path_normalize/main.muga`
+- `samples/packages/app/std_path_file_name/main.muga`
+- `samples/packages/app/std_path_with_file_name/main.muga`
+- `samples/packages/app/std_path_parent/main.muga`
+- `samples/packages/app/std_path_strip_prefix/main.muga`
+- `samples/packages/app/std_path_extension/main.muga`
+- `samples/packages/app/std_path_file_stem/main.muga`
+- `samples/packages/app/std_path_with_extension/main.muga`
+- `samples/packages/app/std_path_is_absolute/main.muga`
+- `samples/packages/app/std_fs_path/main.muga`
+- `samples/packages/app/std_fs_read_dir/main.muga`
+- `samples/packages/app/std_fs_metadata/main.muga`
+- `samples/packages/app/std_fs_path_metadata/main.muga`
+- `samples/packages/app/std_fs_path_size_metadata/main.muga`
+- `samples/packages/app/std_fs_read_dir_recursive/main.muga` and `samples/packages/app/std_fs_directory_size_metadata/main.muga`
+- `samples/packages/app/std_fs_create_dir/main.muga`
+- `samples/packages/app/std_fs_create_dir_all/main.muga`
+- `samples/packages/app/std_fs_remove_file/main.muga`
+- `samples/packages/app/std_fs_remove_dir/main.muga` and `samples/packages/app/std_fs_remove_dir_all/main.muga`
+- `samples/packages/app/std_fs_copy_file/main.muga`, `samples/packages/app/std_fs_copy_dir_all/main.muga`, and `samples/packages/app/std_fs_move_dir_all/main.muga`
+- `samples/packages/app/std_fs_rename/main.muga`
+- `samples/packages/app/std_fs_file_size/main.muga`
+- `samples/packages/app/std_fs_modified_time/main.muga`
+- `samples/packages/app/std_fs_file_metadata/main.muga`
+- `samples/packages/app/std_fs_canonicalize/main.muga`
+- `samples/packages/app/std_env/main.muga`
+- `samples/packages/app/std_env_args/main.muga`
+- `samples/packages/app/std_env_current_dir/main.muga`
+- `samples/packages/app/std_env_temp_dir/main.muga`
+- `samples/packages/app/std_cli/main.muga`
+- `samples/packages/app/std_cli_schema/main.muga`
+- `samples/packages/app/std_time/main.muga`
+- `samples/packages/app/std_string/main.muga` and `samples/packages/app/std_fmt/main.muga`
+- `samples/packages/app/std_json/main.muga`
+- `samples/packages/app/std_hash/main.muga`
+- `samples/packages/app/std_list/main.muga`
+- `samples/packages/app/std_map/main.muga`
+- `samples/packages/app/std_option/main.muga`
+- `samples/packages/app/std_result/main.muga`
 
-Sample note:
+Example-driven learning is in [docs/muga-by-example.md](./docs/muga-by-example.md).
 
-- In [samples/mixed_chain_pipeline.muga](./samples/mixed_chain_pipeline.muga), `10.start().inc().inc().value.double()` has the same meaning as `double(inc(inc(start(10))).value)`. Both chain style and ordinary call style are valid.
+## Validation
 
-Higher-order annotation guide:
+Local offline release-quality gate:
 
-- Omit an arrow annotation when the callback type is uniquely determined inside the same function body, as in [samples/higher_order_functions.muga](./samples/higher_order_functions.muga) and [samples/higher_order_local_inference.muga](./samples/higher_order_local_inference.muga).
-- Keep an arrow annotation when local inference is still ambiguous, or when you want the callback contract to be obvious at the declaration site, as in [samples/higher_order_explicit_arrow.muga](./samples/higher_order_explicit_arrow.muga).
-- Current `pub fn` declarations require explicit signatures for v1. A post-v1 direction is to infer public signatures in the defining package and store resolved signatures in package interfaces.
+```bash
+scripts/v1-release-gate.sh
+```
 
-Package alias note:
+Release-time dry run, for maintainers only:
 
-- `import company::analytics::numbers` gives the default local alias `numbers`.
-- If two imports would produce the same alias, the file is rejected with `PK007`.
-- Use `as` to disambiguate, as shown in [samples/packages/app/alias_demo/main.muga](./samples/packages/app/alias_demo/main.muga).
+```bash
+scripts/v1-release-gate.sh --with-publish-dry-run
+```
 
-Package layout note:
+Release-neutral benchmark health checks:
 
-- Muga's package draft uses `directory = package` and `file = module`.
-- Source files import logical package paths such as `my_service::users`, not filesystem paths such as `../users`.
-- In manifest project mode, `name = "my_service"` and `source = "src"` let `src/users/` map to `my_service::users` without nesting another `my_service/` directory under `src/`.
-- Without a nearby `muga.toml`, a package file must start with an explicit `package ...` declaration before it can use `import`, `pub`, or `pkg`.
-- The target distribution model is manifest-based and should use cached package interfaces and implementation artifacts for fast rebuilds. The compiler library and CLI can emit and consume `.mgi`, `.mgb`, and `.mgc` artifacts for explicit artifact-backed checks and runs, but project-mode artifact-root config and automatic artifact reuse are not implemented yet.
-- See [spec/006-packages.md](./spec/006-packages.md) for the large-project layout and distribution model.
-
-## License
-
-Licensed under the [MIT License](./LICENSE.txt).
+```bash
+scripts/benchmark-health-check.sh
+```

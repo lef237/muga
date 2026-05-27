@@ -1,0 +1,31 @@
+import std::fs
+import std::io
+import std::path
+
+pub record Report {
+  title: String
+  body: String
+}
+
+pub fn load_report(file_path: path::Path): Result[Report, io::IOError] {
+  text = try fs::read_text_path(file_path)
+  Result::Ok(Report {
+    title: "daily",
+    body: text.trim()
+  })
+}
+
+pub fn summarize(report: Report): String {
+  report.title.concat(":").concat(report.body)
+}
+
+pub fn render_summary(summary: String, source_path: String): String {
+  "summary: ".concat(summary).concat("\nsource: ").concat(source_path).concat("\n")
+}
+
+pub fn error_operation(file_path: path::Path): String {
+  match fs::read_text_path(file_path) {
+    Result::Ok(text) => text
+    Result::Err(error) => error.operation
+  }
+}

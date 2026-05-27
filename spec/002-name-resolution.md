@@ -9,6 +9,7 @@ The language uses lexical scopes arranged as a tree.
 - the program root is a scope
 - in package mode, each file is also a module boundary
 - each block introduces a child scope
+- each `for item in list` body introduces a child scope containing `item`
 - each function body introduces a child scope
 - function parameters belong to the function-body scope
 
@@ -119,7 +120,19 @@ This enables:
 
 Function bodies are then resolved against that completed function-binding set.
 
-## 6.1 Record Name Predeclaration
+## 6.1 For Loop Item Bindings
+
+`for item in list { ... }` introduces `item` as an immutable binding in the loop body scope.
+
+The item binding:
+
+- is visible throughout the loop body, including nested blocks
+- is not visible after the loop body
+- may be read by nested named or anonymous functions
+- may not shadow any existing value binding
+- may not be updated by assignment
+
+## 6.2 Record Name Predeclaration
 
 Top-level record declarations are entered into the type namespace before type expressions and record literals that refer to them are validated.
 

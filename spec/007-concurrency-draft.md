@@ -368,7 +368,43 @@ This draft does not yet fix the full design of:
 
 Those topics should be decided after the compiler core is stronger and after benchmarking data exists.
 
-## 11. Performance Target
+## 11. Runtime And IO Integration Path
+
+The task model and the IO runtime are separate decisions.
+
+`group`, `spawn`, and `join` should establish task lifetime, result collection, failure propagation, cancellation, and capture rules. They do not by themselves define scalable socket IO, timers, backpressure, or service shutdown. Muga should avoid treating concurrency syntax as proof of runtime performance.
+
+After the structured task core exists, the IO path should be:
+
+1. define opaque resource handles for sockets, listeners, timers, files, and process-like OS resources
+2. specify handle ownership, close/drop behavior, and task send/share rules
+3. integrate handles with cancellation so a cancelled task can stop pending IO promptly
+4. distinguish scheduler-aware nonblocking APIs from host APIs that may block an OS thread
+5. add deadlines and timeouts as ordinary typed APIs that compose with task cancellation
+6. use bounded channels, stream APIs, or explicit readiness to represent backpressure
+7. benchmark large numbers of mostly-idle connections before designing higher-level service APIs
+
+HTTP, SSE, WebSocket, and any future RPC streaming support should be layered above these lower decisions. They should not smuggle scheduler, cancellation, or backpressure semantics into framework conventions.
+
+Recommended resource-style shape, not a committed syntax:
+
+```muga
+group {
+  conn = try tcp::connect(addr)
+  response_task = spawn handle_connection(conn)
+  response_task.join()
+}
+```
+
+The important constraints are:
+
+- IO failures remain visible as `Result[T, E]`
+- resource handles are opaque values, not transparent records
+- cancellation behavior is specified at the API boundary
+- hidden async suspension does not become ordinary function-call behavior
+- task and resource facts can be represented in typed HIR, MIR, and package interfaces
+
+## 12. Performance Target
 
 The performance goal is ambitious:
 
@@ -393,7 +429,7 @@ So the right policy is:
 - make the semantics structured and safe
 - validate performance through benchmarks rather than assumptions
 
-## 12. Recommendation
+## 13. Recommendation
 
 The recommended Muga concurrency direction is:
 

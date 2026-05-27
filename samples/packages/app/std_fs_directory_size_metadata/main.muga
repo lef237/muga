@@ -1,0 +1,13 @@
+package app::std_fs_directory_size_metadata
+
+import std::fs
+import std::io
+import std::path
+
+fn main(): Result[String, io::IOError] {
+  root = path::from_string("samples/packages/app/std_fs_directory_size_metadata/data")
+  metadata: fs::DirectorySizeMetadata = try fs::directory_size_metadata_path(root)
+  first = metadata.size.to_string().concat("|").concat(metadata.file_count.to_string())
+  second = first.concat("|").concat(metadata.directory_count.to_string())
+  Result::Ok(second.concat("|").concat(metadata.other_count.to_string()))
+}

@@ -1,0 +1,7 @@
+package api::facade
+
+import model::user
+
+pub fn default_age(): Int {
+  user::default_user().age
+}

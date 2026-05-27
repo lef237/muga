@@ -1,0 +1,27 @@
+package app::std_option
+
+import std::option
+
+fn inc(value: Int): Int {
+  value + 1
+}
+
+fn keep_positive(value: Int): Option[Int] {
+  if value > 0 {
+    Option::Some(value)
+  } else {
+    Option::None
+  }
+}
+
+fn main(): Int {
+  present: Option[Int] = Option::Some(1)
+  mapped = present.option::map(inc)
+  kept = mapped.option::and_then(keep_positive)
+  missing: Option[Int] = Option::None
+  if option::is_some(kept) and option::is_none(missing) {
+    kept.option::value_or(0) + missing.option::value_or(5)
+  } else {
+    0
+  }
+}

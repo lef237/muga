@@ -1,0 +1,16 @@
+package app::std_fs_file_metadata
+
+import std::fs
+import std::path
+
+fn main(): String {
+  file_path = path::from_string("samples/packages/app/std_hash/payload.bin")
+  match fs::file_metadata_path(file_path) {
+    Result::Ok(metadata) => metadata.size.to_string().concat("/").concat(if metadata.modified.value > 0 {
+      "ok"
+    } else {
+      "invalid"
+    })
+    Result::Err(error) => error.operation
+  }
+}

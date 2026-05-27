@@ -1,0 +1,12 @@
+package app::std_fs_create_dir
+
+import std::fs
+import std::path
+
+fn main(): String {
+  existing = path::from_string("samples/packages/app/std_fs_create_dir")
+  match fs::create_dir_path(existing) {
+    Result::Ok(value) => "created"
+    Result::Err(error) => error.operation
+  }
+}

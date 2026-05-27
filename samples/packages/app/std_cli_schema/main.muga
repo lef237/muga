@@ -1,0 +1,57 @@
+package app::std_cli_schema
+
+import std::cli
+import std::string
+
+pub enum Mode {
+  Serve
+  Batch
+}
+
+@cli(about: "Configure the schema sample")
+pub record Settings {
+  @json(rename: "server_host")
+  @cli(name: "host", short: "H", alias: "server-host", help: "Server host name")
+  @validate(non_empty)
+  host: String
+  @json(rename: "profile_name")
+  profile: String
+  @cli(name: "tag", short: "t", alias: "tags", help: "Filter tag")
+  tags: List[String]
+  @cli(short: "b", help: "Enable batch mode")
+  batch: Bool
+  mode: Mode
+  @cli(short: "s", hidden)
+  token: Option[String]
+}
+
+fn token_text(value: Option[String]): String {
+  match value {
+    Option::Some(text) => text
+    Option::None => "none"
+  }
+}
+
+fn mode_text(value: Mode): String {
+  match value {
+    Mode::Serve => "Serve"
+    Mode::Batch => "Batch"
+  }
+}
+
+fn defaults(): Settings {
+  tags: List[String] = []
+  token: Option[String] = Option::None
+  Settings { host: "localhost", profile: "default", tags: tags, batch: false, mode: Mode::Serve, token: token }
+}
+
+fn main(): Result[String, cli::Error] {
+  args = ["-H", "api", "--profile_name", "compat", "-t", "blue", "--tags=green", "-b", "--mode", "Batch", "-s", "secret"]
+  settings = try cli::parse_or(args, defaults())
+  usage = cli::usage_for("cli-schema", defaults())
+  hidden_is_omitted = (!usage.contains("--token")).to_string()
+  alias_is_documented = usage.contains("aliases: --server-host").to_string()
+  about_is_documented = usage.contains("Configure the schema sample").to_string()
+  text = string::join([settings.host, settings.profile, settings.tags.len().to_string(), settings.tags[0], settings.tags[1], settings.batch.to_string(), mode_text(settings.mode), token_text(settings.token), hidden_is_omitted, alias_is_documented, about_is_documented], "|")
+  Result::Ok(text)
+}

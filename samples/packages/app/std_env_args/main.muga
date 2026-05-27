@@ -1,0 +1,7 @@
+package app::std_env_args
+
+import std::env
+
+fn main(): String {
+  env::args().len().to_string()
+}

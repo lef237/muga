@@ -1,0 +1,13 @@
+package app::std_fs_copy_file
+
+import std::fs
+import std::path
+
+fn main(): String {
+  source = path::from_string("samples/packages/app/std_fs_copy_file/missing.txt")
+  target = path::from_string("samples/packages/app/std_fs_copy_file/copied.txt")
+  match fs::copy_file_path(source, target) {
+    Result::Ok(value) => "copied"
+    Result::Err(error) => error.operation
+  }
+}

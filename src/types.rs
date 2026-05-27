@@ -22,6 +22,10 @@ pub enum TypeInfo {
         item: PackageItemId,
         args: Vec<TypeInfo>,
     },
+    PackageOpaque {
+        symbol: Symbol,
+        item: PackageItemId,
+    },
     List(Box<TypeInfo>),
     Map(Box<TypeInfo>, Box<TypeInfo>),
     Option(Box<TypeInfo>),

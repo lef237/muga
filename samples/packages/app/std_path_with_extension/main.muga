@@ -1,0 +1,9 @@
+package app::std_path_with_extension
+
+import std::path
+
+fn main(): String {
+  source = path::from_string("reports/daily.txt")
+  output = path::with_extension(source, "json")
+  path::as_string(output)
+}

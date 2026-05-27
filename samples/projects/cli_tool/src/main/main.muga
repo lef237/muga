@@ -1,0 +1,132 @@
+import std::cli
+import std::env
+import std::result
+import std::string
+
+pub enum Action {
+  Audit
+  Apply
+}
+
+@cli(about: "Run a typed strict CLI tool")
+pub record Root {
+  @cli(name: "profile", short: "p", help: "Execution profile")
+  profile: Option[String]
+  @cli(subcommand)
+  command: Command
+}
+
+@cli(about: "Run a typed strict CLI tool")
+pub enum Command {
+  @cli(name: "run", alias: "r", about: "Run the main action")
+  Run(RunCommand)
+  @cli(name: "inspect", alias: "i", about: "Inspect one target")
+  Inspect(InspectCommand)
+}
+
+@cli(about: "Run the main action")
+pub record RunCommand {
+  @cli(positional: 1, help: "Target resource name")
+  @validate(non_empty)
+  target: String
+  @cli(name: "count", short: "c", help: "Number of items to process")
+  @validate(min: 1, max: 10)
+  count: Int
+  @cli(short: "a", help: "Command action")
+  action: Action
+  @cli(name: "dry-run", short: "d", help: "Preview changes without applying them")
+  dry_run: Bool
+  @cli(name: "tag", short: "T", alias: "tags", help: "Tag filter")
+  tags: List[String]
+  @cli(short: "o", help: "Optional owner")
+  owner: Option[String]
+}
+
+@cli(about: "Inspect one target")
+pub record InspectCommand {
+  @cli(positional: 1, help: "Target resource name")
+  @validate(non_empty)
+  target: String
+  @cli(short: "v", help: "Show verbose inspection details")
+  verbose: Bool
+}
+
+fn action_text(action: Action): String {
+  match action {
+    Action::Audit => "Audit"
+    Action::Apply => "Apply"
+  }
+}
+
+fn option_text(value: Option[String]): String {
+  match value {
+    Option::Some(text) => text
+    Option::None => "none"
+  }
+}
+
+fn tags_text(tags: List[String]): String {
+  if tags.len() == 0 {
+    "none"
+  } else {
+    string::join(tags, ",")
+  }
+}
+
+fn render_run(command: RunCommand): String {
+  string::join(["run", command.target, command.count.to_string(), action_text(command.action), command.dry_run.to_string(), tags_text(command.tags), option_text(command.owner)], "|")
+}
+
+fn render_inspect(command: InspectCommand): String {
+  string::join(["inspect", command.target, command.verbose.to_string()], "|")
+}
+
+fn render_command(command: Command): String {
+  match command {
+    Command::Run(run_options) => render_run(run_options)
+    Command::Inspect(inspect_command) => render_inspect(inspect_command)
+  }
+}
+
+fn render_root(root: Root): String {
+  rendered = render_command(root.command)
+  match root.profile {
+    Option::Some(profile) => string::join(["profile", profile, rendered], "|")
+    Option::None => rendered
+  }
+}
+
+fn cli_error_kind_name(kind: cli::ErrorKind): String {
+  match kind {
+    cli::ErrorKind::UnknownArgument => "UnknownArgument"
+    cli::ErrorKind::MissingArgument => "MissingArgument"
+    cli::ErrorKind::MissingValue => "MissingValue"
+    cli::ErrorKind::InvalidValue => "InvalidValue"
+    cli::ErrorKind::Validation => "Validation"
+    cli::ErrorKind::UnsupportedTarget => "UnsupportedTarget"
+  }
+}
+
+fn cli_error_message(error: cli::Error): String {
+  string::concat_all(["cli ", cli_error_kind_name(error.kind), " ", error.argument, ": ", error.message])
+}
+
+fn emit_usage(usage: String): Result[String, String] {
+  printed = println(usage)
+  Result::Ok(usage)
+}
+
+fn run_command(root: Root): Result[String, String] {
+  rendered = render_root(root)
+  printed = println(string::concat_all(["cli-tool ", rendered]))
+  Result::Ok(rendered)
+}
+
+fn main(): Result[String, String] {
+  args = env::args()
+  request = try result::map_err(cli::parse_request[Root](args, "cli-tool"), cli_error_message)
+  match request {
+    cli::Request::Help(usage) => emit_usage(usage)
+    cli::Request::Parsed(root) => run_command(root)
+  }
+}

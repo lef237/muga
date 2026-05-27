@@ -1,0 +1,32 @@
+package app::std_fs_path_size_metadata
+
+import std::fs
+import std::io
+import std::path
+
+fn kind_name(kind: fs::PathKind): String {
+  match kind {
+    fs::PathKind::Missing => "missing"
+    fs::PathKind::File => "file"
+    fs::PathKind::Directory => "directory"
+    fs::PathKind::Other => "other"
+  }
+}
+
+fn size_text(size: Option[Int]): String {
+  match size {
+    Option::Some(value) => value.to_string()
+    Option::None => "none"
+  }
+}
+
+fn main(): Result[String, io::IOError] {
+  source = path::from_string("samples/packages/app/std_hash/payload.bin")
+  folder = path::from_string("samples/packages/app/std_fs_path_size_metadata")
+  source_metadata: fs::PathSizeMetadata = try fs::path_size_metadata_path(source)
+  folder_metadata = try fs::path_size_metadata_path(folder)
+  modified_text = source_metadata.modified.value.to_string()
+  first = kind_name(source_metadata.kind).concat("/").concat(source_metadata.status.is_file.to_string()).concat("/").concat(size_text(source_metadata.size))
+  second = first.concat("/").concat(kind_name(folder_metadata.kind)).concat("/").concat(folder_metadata.status.is_dir.to_string()).concat("/").concat(size_text(folder_metadata.size))
+  Result::Ok(second.concat("/").concat(modified_text.is_empty().to_string()))
+}

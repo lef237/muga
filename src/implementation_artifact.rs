@@ -9,20 +9,34 @@ use crate::{
     bytecode::{
         self, BinaryOp, BindingDef, Chunk, Function, Instruction, LocalDef, LocalKind, NameRef,
     },
-    diagnostic::Diagnostic,
+    cli_schema::CliSchema,
+    diagnostic::{
+        Diagnostic, artifact_file_context, artifact_hash_context, regeneration_command_context,
+    },
     identity::{BindingId, BindingKind, LocalId, PackageItemId},
     interface::{PackageInterfaceGraph, stable_hash_hex},
+    json_decode::JsonDecodeSchema,
     package::{PackageItemKind, PackageSymbolGraph},
     span::{Position, Span},
     symbol::{Symbol, SymbolTable},
 };
 
 const PERSISTED_IMPLEMENTATION_HEADER: &str = "muga-package-implementation-bytecode-v1";
+const REGENERATE_PACKAGE_ARTIFACTS_SUGGESTION: &str =
+    "regenerate package artifacts with `muga build` or `muga emit-artifacts`";
+const REGENERATE_PACKAGE_ARTIFACT_COMMANDS: [(&str, &str); 2] = [
+    ("default-build", "muga build <entry>"),
+    (
+        "artifact-root",
+        "muga emit-artifacts --artifact-root <dir> <entry>",
+    ),
+];
 
 #[derive(Clone, Debug)]
 pub struct PackageImplementationArtifact {
     pub package_path: String,
     pub interface_hash: String,
+    pub source_hash: String,
     pub dependency_interfaces: Vec<PackageImplementationDependencyHash>,
     pub item_refs: Vec<PackageImplementationItemRef>,
     pub program: bytecode::Program,
@@ -47,6 +61,7 @@ pub struct PackageImplementationItemRef {
 impl PackageImplementationArtifact {
     pub fn from_bytecode_package(
         package_path: &str,
+        source_hash: String,
         interfaces: &PackageInterfaceGraph,
         interface_symbols: &SymbolTable,
         package_graph: &PackageSymbolGraph,
@@ -86,6 +101,7 @@ impl PackageImplementationArtifact {
         Ok(Self {
             package_path: package_path.to_string(),
             interface_hash,
+            source_hash,
             dependency_interfaces,
             item_refs,
             program,
@@ -119,16 +135,23 @@ impl PackageImplementationArtifact {
         };
         let actual_hash = stable_hash_hex(&body);
         if expected_hash != actual_hash {
-            return Err(vec![
-                Diagnostic::new(
-                    "PK022",
-                    format!(
-                        "package implementation artifact hash mismatch: expected `{expected_hash}` but found `{actual_hash}`"
-                    ),
-                    Span::default(),
-                )
-                .with_suggestion("regenerate the package implementation artifact"),
-            ]);
+            let mut diagnostic = Diagnostic::new(
+                "PK022",
+                format!(
+                    "package implementation artifact hash mismatch: expected `{expected_hash}` but found `{actual_hash}`"
+                ),
+                Span::default(),
+            )
+            .with_context(artifact_hash_context(
+                "expected",
+                "artifact",
+                None,
+                expected_hash,
+            ))
+            .with_context(artifact_hash_context("actual", "artifact", None, actual_hash))
+            .with_suggestion(REGENERATE_PACKAGE_ARTIFACTS_SUGGESTION);
+            add_package_artifact_regeneration_context(&mut diagnostic);
+            return Err(vec![diagnostic]);
         }
 
         let artifact = Self::from_body_lines(&lines[2..])?;
@@ -167,10 +190,25 @@ impl PackageImplementationArtifact {
         let mut diagnostics = Vec::new();
         match interfaces.stable_hash_for_package(&self.package_path, symbols) {
             Some(expected) if expected == self.interface_hash => {}
-            Some(expected) => diagnostics.push(stale_implementation_artifact_diagnostic(format!(
-                "stale package implementation artifact for `{}`: expected interface hash `{expected}` but found `{}`",
-                self.package_path, self.interface_hash
-            ))),
+            Some(expected) => {
+                let mut diagnostic = stale_implementation_artifact_diagnostic(format!(
+                    "stale package implementation artifact for `{}`: expected interface hash `{expected}` but found `{}`",
+                    self.package_path, self.interface_hash
+                ));
+                diagnostic.add_context(artifact_hash_context(
+                    "expected",
+                    "interface",
+                    Some(&self.package_path),
+                    expected,
+                ));
+                diagnostic.add_context(artifact_hash_context(
+                    "actual",
+                    "interface",
+                    Some(&self.package_path),
+                    &self.interface_hash,
+                ));
+                diagnostics.push(diagnostic);
+            }
             None => diagnostics.push(implementation_artifact_diagnostic(format!(
                 "missing loaded package interface for `{}`",
                 self.package_path
@@ -179,28 +217,95 @@ impl PackageImplementationArtifact {
 
         let expected_dependencies = interfaces
             .package_by_path(&self.package_path)
-            .map(|interface| interface.dependencies.clone())
+            .map(|interface| {
+                interface
+                    .dependencies
+                    .iter()
+                    .cloned()
+                    .collect::<HashSet<_>>()
+            })
             .unwrap_or_default();
-        let actual_dependencies = self
+        let expected_dependency_hashes = expected_dependencies
+            .iter()
+            .filter_map(|dependency| {
+                interfaces
+                    .stable_hash_for_package(dependency, symbols)
+                    .map(|hash| (dependency.clone(), hash))
+            })
+            .collect::<HashMap<_, _>>();
+        let actual_dependency_hashes = self
             .dependency_interfaces
             .iter()
-            .map(|dependency| dependency.package_path.clone())
-            .collect::<Vec<_>>();
+            .map(|dependency| {
+                (
+                    dependency.package_path.clone(),
+                    dependency.interface_hash.clone(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let actual_dependencies = actual_dependency_hashes
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
         if expected_dependencies != actual_dependencies {
-            diagnostics.push(stale_implementation_artifact_diagnostic(format!(
+            let mut diagnostic = stale_implementation_artifact_diagnostic(format!(
                 "stale package implementation artifact for `{}`: dependency interface set changed",
                 self.package_path
-            )));
+            ));
+            let mut missing_dependencies = expected_dependencies
+                .difference(&actual_dependencies)
+                .cloned()
+                .collect::<Vec<_>>();
+            missing_dependencies.sort();
+            for dependency in missing_dependencies {
+                if let Some(expected_hash) = expected_dependency_hashes.get(&dependency) {
+                    diagnostic.add_context(artifact_hash_context(
+                        "expected",
+                        "dependencyInterface",
+                        Some(dependency.as_str()),
+                        expected_hash.clone(),
+                    ));
+                }
+            }
+            let mut extra_dependencies = actual_dependencies
+                .difference(&expected_dependencies)
+                .cloned()
+                .collect::<Vec<_>>();
+            extra_dependencies.sort();
+            for dependency in extra_dependencies {
+                if let Some(actual_hash) = actual_dependency_hashes.get(&dependency) {
+                    diagnostic.add_context(artifact_hash_context(
+                        "actual",
+                        "dependencyInterface",
+                        Some(dependency.as_str()),
+                        actual_hash.clone(),
+                    ));
+                }
+            }
+            diagnostics.push(diagnostic);
         }
 
         for dependency in &self.dependency_interfaces {
             match interfaces.stable_hash_for_package(&dependency.package_path, symbols) {
                 Some(expected) if expected == dependency.interface_hash => {}
                 Some(expected) => {
-                    diagnostics.push(stale_implementation_artifact_diagnostic(format!(
+                    let mut diagnostic = stale_implementation_artifact_diagnostic(format!(
                         "stale package implementation artifact for `{}`: dependency `{}` expected interface hash `{expected}` but found `{}`",
                         self.package_path, dependency.package_path, dependency.interface_hash
-                    )));
+                    ));
+                    diagnostic.add_context(artifact_hash_context(
+                        "expected",
+                        "dependencyInterface",
+                        Some(&dependency.package_path),
+                        expected,
+                    ));
+                    diagnostic.add_context(artifact_hash_context(
+                        "actual",
+                        "dependencyInterface",
+                        Some(&dependency.package_path),
+                        &dependency.interface_hash,
+                    ));
+                    diagnostics.push(diagnostic);
                 }
                 None => diagnostics.push(implementation_artifact_diagnostic(format!(
                     "missing loaded dependency interface for `{}`",
@@ -256,6 +361,7 @@ impl PackageImplementationArtifact {
         let mut out = String::new();
         out.push_str(&format!("package\t{}\n", escape_field(&self.package_path)));
         out.push_str(&format!("interface\t{}\n", self.interface_hash));
+        out.push_str(&format!("source\t{}\n", self.source_hash));
         out.push_str(&format!("deps\t{}\n", self.dependency_interfaces.len()));
         for dependency in &self.dependency_interfaces {
             out.push_str(&format!(
@@ -283,12 +389,18 @@ impl PackageImplementationArtifact {
 
 pub fn read_persisted_file(path: &Path) -> Result<PackageImplementationArtifact, Vec<Diagnostic>> {
     let text = fs::read_to_string(path).map_err(|error| {
-        vec![implementation_artifact_diagnostic(format!(
-            "failed to read package implementation artifact `{}`: {error}",
-            path.display()
-        ))]
+        vec![
+            implementation_artifact_diagnostic(format!(
+                "failed to read package implementation artifact `{}`: {error}",
+                path.display()
+            ))
+            .with_context(implementation_artifact_file_context(path, "implementation")),
+        ]
     })?;
-    PackageImplementationArtifact::from_persisted_text(&text)
+    PackageImplementationArtifact::from_persisted_text(&text).map_err(|mut diagnostics| {
+        add_implementation_artifact_context(&mut diagnostics, path, None);
+        diagnostics
+    })
 }
 
 pub fn read_persisted_artifacts(
@@ -325,7 +437,19 @@ pub fn read_persisted_artifacts_reserving_program_items(
                     ),
                     Span::default(),
                 )
-                .with_suggestion("regenerate package artifacts with `emit-artifacts`"),
+                .with_context(implementation_artifact_file_context(
+                    &artifact_path,
+                    "dependency-implementation",
+                ))
+                .with_suggestion(REGENERATE_PACKAGE_ARTIFACTS_SUGGESTION)
+                .with_context(regeneration_command_context(
+                    "default-build",
+                    "muga build <entry>",
+                ))
+                .with_context(regeneration_command_context(
+                    "artifact-root",
+                    "muga emit-artifacts --artifact-root <dir> <entry>",
+                )),
             );
             continue;
         }
@@ -333,30 +457,49 @@ pub fn read_persisted_artifacts_reserving_program_items(
         match read_persisted_file(&artifact_path) {
             Ok(artifact) => {
                 if artifact.package_path != interface.path {
-                    diagnostics.push(implementation_artifact_diagnostic(format!(
-                        "package implementation artifact `{}` contains `{}` instead of `{}`",
-                        artifact_path.display(),
-                        artifact.package_path,
-                        interface.path
-                    )));
+                    diagnostics.push(
+                        implementation_artifact_diagnostic(format!(
+                            "package implementation artifact `{}` contains `{}` instead of `{}`",
+                            artifact_path.display(),
+                            artifact.package_path,
+                            interface.path
+                        ))
+                        .with_context(
+                            implementation_artifact_file_context(
+                                &artifact_path,
+                                "dependency-implementation",
+                            ),
+                        ),
+                    );
                     continue;
                 }
-                diagnostics.extend(artifact.validate_against_interfaces(interfaces, symbols));
+                let mut validation_diagnostics =
+                    artifact.validate_against_interfaces(interfaces, symbols);
+                add_implementation_artifact_context(
+                    &mut validation_diagnostics,
+                    &artifact_path,
+                    Some(&interface.path),
+                );
+                diagnostics.extend(validation_diagnostics);
                 match artifact.remap_package_items(interfaces, &mut next_private_item) {
                     Ok(artifact) => artifacts.push(artifact),
-                    Err(mut errors) => diagnostics.append(&mut errors),
+                    Err(mut errors) => {
+                        add_implementation_artifact_context(
+                            &mut errors,
+                            &artifact_path,
+                            Some(&interface.path),
+                        );
+                        diagnostics.append(&mut errors);
+                    }
                 }
             }
-            Err(errors) => {
-                for mut error in errors {
-                    error.message = format!(
-                        "{} in `{}` for `{}`",
-                        error.message,
-                        artifact_path.display(),
-                        interface.path
-                    );
-                    diagnostics.push(error);
-                }
+            Err(mut errors) => {
+                add_implementation_artifact_context(
+                    &mut errors,
+                    &artifact_path,
+                    Some(&interface.path),
+                );
+                diagnostics.append(&mut errors);
             }
         }
     }
@@ -366,6 +509,36 @@ pub fn read_persisted_artifacts_reserving_program_items(
     } else {
         Err(diagnostics)
     }
+}
+
+fn add_implementation_artifact_context(
+    diagnostics: &mut [Diagnostic],
+    artifact_path: &Path,
+    package_path: Option<&str>,
+) {
+    let path_marker = format!("`{}`", artifact_path.display());
+    for diagnostic in diagnostics {
+        diagnostic.add_context(implementation_artifact_file_context(
+            artifact_path,
+            "dependency-implementation",
+        ));
+        if !diagnostic.message.contains(&path_marker) {
+            diagnostic.message = format!("{} in {}", diagnostic.message, path_marker);
+        }
+        if let Some(package_path) = package_path {
+            let package_marker = format!("for `{package_path}`");
+            if !diagnostic.message.contains(&package_marker) {
+                diagnostic.message = format!("{} {package_marker}", diagnostic.message);
+            }
+        }
+    }
+}
+
+fn implementation_artifact_file_context(
+    artifact_path: &Path,
+    role: &str,
+) -> crate::diagnostic::DiagnosticContext {
+    artifact_file_context(role, "implementation", artifact_path)
 }
 
 pub fn programs_from_artifacts(
@@ -571,6 +744,9 @@ fn push_instruction(out: &mut String, instruction: &Instruction) {
         Instruction::LoadIndex { span } => {
             out.push_str(&format!("ins\tLoadIndex\t{}\n", span_text(*span)));
         }
+        Instruction::ListLen { span } => {
+            out.push_str(&format!("ins\tListLen\t{}\n", span_text(*span)));
+        }
         Instruction::UpdateRecord { fields, span } => out.push_str(&format!(
             "ins\tUpdateRecord\t{}\t{}\t{}\n",
             symbol_list_text(fields),
@@ -619,6 +795,104 @@ fn push_instruction(out: &mut String, instruction: &Instruction) {
         )),
         Instruction::Call { argc, span } => {
             out.push_str(&format!("ins\tCall\t{argc}\t{}\n", span_text(*span)));
+        }
+        Instruction::DecodeJson { schema, span } => {
+            out.push_str(&format!(
+                "ins\tDecodeJson\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::DecodeJsonRequired { schema, span } => {
+            out.push_str(&format!(
+                "ins\tDecodeJsonRequired\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::JsonToValue { schema, span } => {
+            out.push_str(&format!(
+                "ins\tJsonToValue\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::JsonEncodeTyped { schema, span } => {
+            out.push_str(&format!(
+                "ins\tJsonEncodeTyped\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::LoadJsonConfigRequired { schema, span } => {
+            out.push_str(&format!(
+                "ins\tLoadJsonConfigRequired\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::LoadJsonConfig { schema, span } => {
+            out.push_str(&format!(
+                "ins\tLoadJsonConfig\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::CliParseOr { schema, span } => {
+            out.push_str(&format!(
+                "ins\tCliParseOr\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::CliParse { schema, span } => {
+            out.push_str(&format!(
+                "ins\tCliParse\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::CliParseRequest { schema, span } => {
+            out.push_str(&format!(
+                "ins\tCliParseRequest\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::CliParseRequestOr { schema, span } => {
+            out.push_str(&format!(
+                "ins\tCliParseRequestOr\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::CliUsageFor { schema, span } => {
+            out.push_str(&format!(
+                "ins\tCliUsageFor\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::CliUsageForRequired { schema, span } => {
+            out.push_str(&format!(
+                "ins\tCliUsageForRequired\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::CliHelpFor { schema, span } => {
+            out.push_str(&format!(
+                "ins\tCliHelpFor\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
+        }
+        Instruction::CliHelpForRequired { schema, span } => {
+            out.push_str(&format!(
+                "ins\tCliHelpForRequired\t{}\t{}\n",
+                schema.artifact_text(),
+                span_text(*span)
+            ));
         }
         Instruction::JumpIfFalse { target, span } => out.push_str(&format!(
             "ins\tJumpIfFalse\t{}\t{}\n",
@@ -684,6 +958,7 @@ impl<'a> ArtifactParser<'a> {
     fn parse_inner(&mut self) -> Result<PackageImplementationArtifact, Diagnostic> {
         let package_path = self.field("package")?;
         let interface_hash = self.field("interface")?;
+        let source_hash = self.optional_field("source")?.unwrap_or_default();
         let dep_count = self.count("deps")?;
         let mut dependency_interfaces = Vec::with_capacity(dep_count);
         for _ in 0..dep_count {
@@ -718,6 +993,7 @@ impl<'a> ArtifactParser<'a> {
         Ok(PackageImplementationArtifact {
             package_path,
             interface_hash,
+            source_hash,
             dependency_interfaces,
             item_refs,
             program,
@@ -844,6 +1120,9 @@ impl<'a> ArtifactParser<'a> {
             "LoadIndex" if parts.len() == 3 => Instruction::LoadIndex {
                 span: parse_span(parts[2])?,
             },
+            "ListLen" if parts.len() == 3 => Instruction::ListLen {
+                span: parse_span(parts[2])?,
+            },
             "UpdateRecord" if parts.len() == 5 => Instruction::UpdateRecord {
                 fields: parse_symbol_list(parts[2], parse_usize(parts[3], "field count")?)?,
                 span: parse_span(parts[4])?,
@@ -874,6 +1153,118 @@ impl<'a> ArtifactParser<'a> {
             },
             "Call" if parts.len() == 4 => Instruction::Call {
                 argc: parse_usize(parts[2], "argument count")?,
+                span: parse_span(parts[3])?,
+            },
+            "DecodeJson" if parts.len() == 4 => Instruction::DecodeJson {
+                schema: JsonDecodeSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid JSON decoder schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "DecodeJsonRequired" if parts.len() == 4 => Instruction::DecodeJsonRequired {
+                schema: JsonDecodeSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid required JSON decoder schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "JsonToValue" if parts.len() == 4 => Instruction::JsonToValue {
+                schema: JsonDecodeSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid typed JSON value schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "JsonEncodeTyped" if parts.len() == 4 => Instruction::JsonEncodeTyped {
+                schema: JsonDecodeSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid typed JSON encoder schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "LoadJsonConfigRequired" if parts.len() == 4 => Instruction::LoadJsonConfigRequired {
+                schema: JsonDecodeSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid required JSON config decoder schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "LoadJsonConfig" if parts.len() == 4 => Instruction::LoadJsonConfig {
+                schema: JsonDecodeSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid JSON config decoder schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "CliParseOr" if parts.len() == 4 => Instruction::CliParseOr {
+                schema: CliSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid CLI parser schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "CliParse" if parts.len() == 4 => Instruction::CliParse {
+                schema: CliSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid strict CLI parser schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "CliParseRequest" if parts.len() == 4 => Instruction::CliParseRequest {
+                schema: CliSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid strict CLI request schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "CliParseRequestOr" if parts.len() == 4 => Instruction::CliParseRequestOr {
+                schema: CliSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid CLI request schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "CliUsageFor" if parts.len() == 4 => Instruction::CliUsageFor {
+                schema: CliSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid CLI usage schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "CliUsageForRequired" if parts.len() == 4 => Instruction::CliUsageForRequired {
+                schema: CliSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid strict CLI usage schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "CliHelpFor" if parts.len() == 4 => Instruction::CliHelpFor {
+                schema: CliSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid CLI help schema: {message}"
+                    ))
+                })?,
+                span: parse_span(parts[3])?,
+            },
+            "CliHelpForRequired" if parts.len() == 4 => Instruction::CliHelpForRequired {
+                schema: CliSchema::from_artifact_text(parts[2]).map_err(|message| {
+                    implementation_artifact_diagnostic(format!(
+                        "invalid strict CLI help schema: {message}"
+                    ))
+                })?,
                 span: parse_span(parts[3])?,
             },
             "JumpIfFalse" if parts.len() == 4 => Instruction::JumpIfFalse {
@@ -910,6 +1301,23 @@ impl<'a> ArtifactParser<'a> {
     fn field(&mut self, prefix: &str) -> Result<String, Diagnostic> {
         let parts = self.parts(prefix, 2)?;
         unescape_field(parts[1])
+    }
+
+    fn optional_field(&mut self, prefix: &str) -> Result<Option<String>, Diagnostic> {
+        let Some(line) = self.lines.get(self.index) else {
+            return Ok(None);
+        };
+        let parts = line.split('\t').collect::<Vec<_>>();
+        if parts.first().copied() != Some(prefix) {
+            return Ok(None);
+        }
+        if parts.len() != 2 {
+            return Err(implementation_artifact_diagnostic(format!(
+                "invalid package implementation `{prefix}` line"
+            )));
+        }
+        self.index += 1;
+        unescape_field(parts[1]).map(Some)
     }
 
     fn count(&mut self, prefix: &str) -> Result<usize, Diagnostic> {
@@ -1159,6 +1567,7 @@ fn validate_chunk_structure(
             | Instruction::LoadString(_)
             | Instruction::LoadUnit
             | Instruction::LoadIndex { .. }
+            | Instruction::ListLen { .. }
             | Instruction::UnaryNeg { .. }
             | Instruction::UnaryNot { .. }
             | Instruction::Binary { .. }
@@ -1168,6 +1577,188 @@ fn validate_chunk_structure(
             | Instruction::Pop
             | Instruction::Return
             | Instruction::MakeList { .. } => {}
+            Instruction::DecodeJson { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} JSON decoder schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::DecodeJsonRequired { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} required JSON decoder schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::JsonToValue { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} typed JSON value schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::JsonEncodeTyped { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} typed JSON encoder schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::LoadJsonConfigRequired { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} required JSON config decoder schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::LoadJsonConfig { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} JSON config decoder schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::CliParseOr { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} CLI parser schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::CliParse { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} strict CLI parser schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::CliParseRequest { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} strict CLI request schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::CliParseRequestOr { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} CLI request schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::CliUsageFor { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} CLI usage schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::CliUsageForRequired { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} strict CLI usage schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::CliHelpFor { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} CLI help schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
+            Instruction::CliHelpForRequired { schema, .. } => {
+                let mut schema_diagnostics = Vec::new();
+                schema.validate_symbols(
+                    validation.symbol_count,
+                    &format!("{context} strict CLI help schema"),
+                    &mut schema_diagnostics,
+                );
+                diagnostics.extend(
+                    schema_diagnostics
+                        .into_iter()
+                        .map(invalid_bytecode_diagnostic),
+                );
+            }
             Instruction::MakeRecord {
                 type_name, fields, ..
             } => {
@@ -1412,6 +2003,7 @@ fn next_private_package_item_id(interfaces: &PackageInterfaceGraph) -> u32 {
                 .iter()
                 .map(|record| record.item)
                 .chain(interface.enums.iter().map(|enumeration| enumeration.item))
+                .chain(interface.opaque_types.iter().map(|opaque| opaque.item))
                 .chain(interface.functions.iter().map(|function| function.item))
         })
         .map(|item| item.as_u32())
@@ -1446,6 +2038,11 @@ fn interface_item_id(
             .iter()
             .find(|enumeration| enumeration.name == item_ref.name)
             .map(|enumeration| enumeration.item),
+        PackageItemKind::OpaqueType => interface
+            .opaque_types
+            .iter()
+            .find(|opaque| opaque.name == item_ref.name)
+            .map(|opaque| opaque.item),
         PackageItemKind::Function => interface
             .functions
             .iter()
@@ -1662,6 +2259,7 @@ fn package_item_kind_text(kind: PackageItemKind) -> &'static str {
     match kind {
         PackageItemKind::Record => "record",
         PackageItemKind::Enum => "enum",
+        PackageItemKind::OpaqueType => "opaque-type",
         PackageItemKind::Function => "function",
     }
 }
@@ -1674,6 +2272,7 @@ fn parse_package_item_kind(text: &str) -> Result<PackageItemKind, Diagnostic> {
     match text {
         "record" => Ok(PackageItemKind::Record),
         "enum" => Ok(PackageItemKind::Enum),
+        "opaque-type" => Ok(PackageItemKind::OpaqueType),
         "function" => Ok(PackageItemKind::Function),
         _ => Err(implementation_artifact_diagnostic(
             "invalid package implementation item kind",
@@ -1767,8 +2366,10 @@ fn unescape_field(value: &str) -> Result<String, Diagnostic> {
 }
 
 fn implementation_artifact_diagnostic(message: impl Into<String>) -> Diagnostic {
-    Diagnostic::new("PK022", message, Span::default())
-        .with_suggestion("regenerate the package implementation artifact")
+    let mut diagnostic = Diagnostic::new("PK022", message, Span::default())
+        .with_suggestion(REGENERATE_PACKAGE_ARTIFACTS_SUGGESTION);
+    add_package_artifact_regeneration_context(&mut diagnostic);
+    diagnostic
 }
 
 fn invalid_bytecode_diagnostic(message: impl Into<String>) -> Diagnostic {
@@ -1779,6 +2380,14 @@ fn invalid_bytecode_diagnostic(message: impl Into<String>) -> Diagnostic {
 }
 
 fn stale_implementation_artifact_diagnostic(message: impl Into<String>) -> Diagnostic {
-    Diagnostic::new("PK023", message, Span::default())
-        .with_suggestion("regenerate the package implementation artifact")
+    let mut diagnostic = Diagnostic::new("PK023", message, Span::default())
+        .with_suggestion(REGENERATE_PACKAGE_ARTIFACTS_SUGGESTION);
+    add_package_artifact_regeneration_context(&mut diagnostic);
+    diagnostic
+}
+
+fn add_package_artifact_regeneration_context(diagnostic: &mut Diagnostic) {
+    for (role, command) in REGENERATE_PACKAGE_ARTIFACT_COMMANDS {
+        diagnostic.add_context(regeneration_command_context(role, command));
+    }
 }

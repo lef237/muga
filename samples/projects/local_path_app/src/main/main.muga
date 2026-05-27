@@ -1,0 +1,5 @@
+import shared::logging as logging
+
+fn main(): Int {
+  logging::value() + 1
+}

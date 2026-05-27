@@ -1,0 +1,11 @@
+package app::std_path_file_stem
+
+import std::path
+
+fn main(): String {
+  file_path = path::from_string("samples/packages/app/std_path_file_stem/main.muga")
+  match path::file_stem(file_path) {
+    Option::Some(value) => value
+    Option::None => "missing"
+  }
+}

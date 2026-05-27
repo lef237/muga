@@ -1,0 +1,15 @@
+package app::std_fs_canonicalize
+
+import std::fs
+import std::path
+
+fn main(): String {
+  source = path::from_string("samples/packages/app/std_fs_canonicalize/main.muga")
+  match fs::canonicalize_path(source) {
+    Result::Ok(resolved) => match path::file_name(resolved) {
+      Option::Some(name) => name
+      Option::None => "missing"
+    }
+    Result::Err(error) => error.operation
+  }
+}

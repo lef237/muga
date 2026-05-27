@@ -246,6 +246,7 @@ impl Resolver {
             Stmt::Assign(stmt) => self.resolve_assign(stmt),
             Stmt::RecordDecl(_) => {}
             Stmt::EnumDecl(_) => {}
+            Stmt::OpaqueTypeDecl(_) => {}
             Stmt::FuncDecl(stmt) => self.resolve_func_decl(stmt),
             Stmt::If(stmt) => {
                 self.resolve_expr(&stmt.condition);
@@ -258,8 +259,70 @@ impl Resolver {
                 self.resolve_expr(&stmt.condition);
                 self.resolve_block(&stmt.body);
             }
+            Stmt::For(stmt) => self.resolve_for_stmt(stmt),
+            Stmt::Using(stmt) => self.resolve_using_stmt(stmt),
+            Stmt::Break(_) | Stmt::Continue(_) => {}
+            Stmt::Return(stmt) => self.resolve_expr(&stmt.value),
             Stmt::Expr(stmt) => self.resolve_expr(&stmt.expr),
         }
+    }
+
+    fn resolve_for_stmt(&mut self, stmt: &ForStmt) {
+        self.resolve_expr(&stmt.iterable);
+        self.push_scope(false);
+        let name = self.symbol(&stmt.item);
+        if let Some(binding) = self.current_scope_binding(name) {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "E002",
+                    format!("duplicate binding `{}` in the current scope", stmt.item),
+                    stmt.item_span,
+                )
+                .with_related("previous binding is here", binding.span),
+            );
+        } else if let Some(binding) = self.any_enclosing_scope_lookup(name).copied() {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "E003",
+                    format!("shadowing is prohibited for `{}`", stmt.item),
+                    stmt.item_span,
+                )
+                .with_related("shadowed binding is here", binding.span),
+            );
+        } else {
+            self.insert_current(name, BindingKind::Immutable, stmt.item_span);
+        }
+        self.resolve_scope_statements(&stmt.body.statements);
+        self.pop_scope();
+    }
+
+    fn resolve_using_stmt(&mut self, stmt: &UsingStmt) {
+        self.resolve_expr(&stmt.value);
+        self.push_scope(false);
+        let name = self.symbol(&stmt.name);
+        if let Some(binding) = self.current_scope_binding(name) {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "E002",
+                    format!("duplicate binding `{}` in the current scope", stmt.name),
+                    stmt.name_span,
+                )
+                .with_related("previous binding is here", binding.span),
+            );
+        } else if let Some(binding) = self.any_enclosing_scope_lookup(name).copied() {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    "E003",
+                    format!("shadowing is prohibited for `{}`", stmt.name),
+                    stmt.name_span,
+                )
+                .with_related("shadowed binding is here", binding.span),
+            );
+        } else {
+            self.insert_current(name, BindingKind::Immutable, stmt.name_span);
+        }
+        self.resolve_scope_statements(&stmt.body.statements);
+        self.pop_scope();
     }
 
     fn resolve_assign(&mut self, stmt: &AssignStmt) {
@@ -440,7 +503,7 @@ impl Resolver {
                 for arm in &expr.arms {
                     self.push_scope(false);
                     let MatchPattern::Variant(pattern) = &arm.pattern;
-                    if let Some(binding) = &pattern.binding {
+                    if let EnumVariantPatternPayload::Binding(binding) = &pattern.payload {
                         self.resolve_pattern_binding(binding, pattern.span);
                     }
                     self.resolve_expr(&arm.value);

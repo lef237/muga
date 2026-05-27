@@ -1,0 +1,6 @@
+[package]
+name = "report_app"
+source = "src"
+
+[dependencies]
+report_shared = { path = "../report_shared" }
