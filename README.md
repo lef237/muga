@@ -1,12 +1,10 @@
 # Muga
 
-Muga is an experimental programming language for small, readable application
-programs. This repository contains the Rust compiler/runtime implementation,
-language notes, examples, and conformance tests.
+"Muga（無我）" is a Japanese term meaning "selflessness" or "transcendence of self," referring to a state of being beyond personal limitations or free from self-centered thinking.
 
-The project is currently moving toward v1. The intended v1 shape is narrow:
-source-compatible `check` and `run`, local type inference, immutable-by-default
-bindings, explicit package artifacts, and clear diagnostics.
+This programming language incorporates the concept of muga, featuring a simple and intuitive syntax designed to immerse developers in coding while letting go of self-consciousness. 
+
+Muga emphasizes both code aesthetics and efficiency, providing an environment where developers can freely express their creative ideas.
 
 ## Install
 
