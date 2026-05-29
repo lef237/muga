@@ -371,7 +371,7 @@ understand when a historical log can be removed safely.
 
 Runnable sample entrypoints and support files live under `samples/`.
 Future-looking snippets that are not valid v1 source live under
-`docs/design-snippets/`.
+`spec/snippets/`.
 
 Important sample paths:
 
