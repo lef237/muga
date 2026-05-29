@@ -1,5 +1,5 @@
 // conformance: valid
-// spec: mini-language-spec-v1.md#Core Rules
+// spec: spec-v1.md#core-rules
 // spec: spec/001-core-language.md#3-core-binding-forms
 // spec: spec/005-records.md
 // expect-main: 2

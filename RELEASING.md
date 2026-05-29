@@ -23,10 +23,8 @@ The current version is in the `version` field of `Cargo.toml`.
 ### 1. Run pre-release checks
 
 When preparing a release, run the offline release gate. For v1 release
-candidates and later, also confirm the scope in
-[docs/v1-release-checklist.md](./docs/v1-release-checklist.md) and the
-GitHub Actions alignment in
-[docs/release-gate-alignment.md](./docs/release-gate-alignment.md).
+candidates and later, also confirm the scope against [spec-v1.md](./spec-v1.md)
+and [ROADMAP.md](./ROADMAP.md).
 
 ```bash
 scripts/v1-release-gate.sh

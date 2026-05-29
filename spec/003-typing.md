@@ -1,6 +1,6 @@
 # Typing Specification v1
 
-Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document defines the v1 typing policy, with emphasis on inference-first ergonomics and the limited cases where annotations are mandatory.
+This document defines the v1 typing policy, with emphasis on inference-first ergonomics and the limited cases where annotations are mandatory.
 
 ## 1. Typing Policy
 

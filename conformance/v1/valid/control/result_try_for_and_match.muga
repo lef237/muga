@@ -1,5 +1,5 @@
 // conformance: valid
-// spec: mini-language-spec-v1.md#Syntax
+// spec: spec-v1.md#syntax
 // spec: spec/001-core-language.md#5-statements-and-expressions
 // spec: spec/013-enums-results.md
 // expect-main: 5

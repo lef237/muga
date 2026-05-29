@@ -7,7 +7,7 @@ alternate implementations should preserve.
 
 The initial skeleton is tied to:
 
-- `mini-language-spec-v1.md`
+- `spec-v1.md`
 - `spec/001-core-language.md`
 - `spec/002-name-resolution.md`
 - `spec/003-typing.md`

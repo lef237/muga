@@ -1,6 +1,6 @@
 # Function Specification v1
 
-Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document defines function declarations, anonymous functions, higher-order use, parameter semantics, return semantics, and recursion-related requirements.
+This document defines function declarations, anonymous functions, higher-order use, parameter semantics, return semantics, and recursion-related requirements.
 
 ## 1. Function Declarations
 

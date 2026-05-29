@@ -1,6 +1,6 @@
 # Records and Dot Expressions Specification v1
 
-Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document defines nominal records, record literals, field access, record update, chained dot calls, and their interaction with receiver-style functions.
+This document defines nominal records, record literals, field access, record update, chained dot calls, and their interaction with receiver-style functions.
 
 ## 1. Core Direction
 

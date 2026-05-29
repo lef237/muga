@@ -1,6 +1,6 @@
 # Name Resolution Specification v1
 
-Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document is normative for scope construction, binding introduction, update resolution, shadowing, non-local update rejection, and the name-oriented part of dot-expression resolution.
+This document is normative for scope construction, binding introduction, update resolution, shadowing, non-local update rejection, and the name-oriented part of dot-expression resolution.
 
 ## 1. Scope Model
 

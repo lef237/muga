@@ -1,6 +1,6 @@
 # Core Language Specification v1
 
-Derived from [mini-language-spec-v1.md](../mini-language-spec-v1.md). This document defines the surface language and the core execution-facing rules. Name resolution, typing, and function-specific rules are split into companion documents:
+This document defines the surface language and the core execution-facing rules. Name resolution, typing, and function-specific rules are split into companion documents:
 
 - [002-name-resolution.md](./002-name-resolution.md)
 - [003-typing.md](./003-typing.md)

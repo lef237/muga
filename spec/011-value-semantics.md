@@ -160,7 +160,7 @@ Here `writer` represents an external resource. The side effect is part of the re
 
 This keeps write effects readable without exposing arbitrary writable aliases.
 
-Future resource handles should be opaque public types when their representation is runtime-owned or OS-backed. The design boundary is recorded in [opaque-resource-handles.md](../docs/opaque-resource-handles.md). Their APIs should define:
+Future resource handles should be opaque public types when their representation is runtime-owned or OS-backed. Their APIs should define:
 
 - ownership and whether a handle can be copied, moved, closed, or dropped
 - whether operations may block an OS thread or cooperate with the Muga scheduler

@@ -1,4 +1,4 @@
-# Mini Language Spec v1
+# Muga Spec v1
 
 This is the compact v1 overview. The split specifications in [spec/](./spec) are the detailed references; this file exists to show the whole language shape without duplicating every rule.
 
@@ -16,7 +16,7 @@ The language is compiler-first. The current VM is a reference execution backend,
 
 ## V1 Completion Boundary
 
-The v1 surface syntax is considered closed around the grammar defined in this overview and the detailed specs. Finishing v1 means implementing and documenting that closed surface, keeping runnable samples and rejection tests aligned with it, preserving the explicit package artifact workflow, and passing the release gate in [docs/v1-release-checklist.md](./docs/v1-release-checklist.md).
+The v1 surface syntax is considered closed around the grammar defined in this overview and the detailed specs. Finishing v1 means implementing and documenting that closed surface, keeping runnable samples and rejection tests aligned with it, preserving the explicit package artifact workflow, and passing `scripts/v1-release-gate.sh`.
 
 The v1 grammar includes:
 
