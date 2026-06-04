@@ -7,12 +7,14 @@ Muga samples.
 
 ## Resume Cursor
 
-- [ ] **NOW P0:** freeze new v1 features and complete v1 release hardening.
-- [ ] **NEXT P0:** run the final unfinished-work, docs, sample/template,
-  artifact, bundle, and diagnostic audit.
+- [ ] **NOW P0:** prepare a v1 release candidate when the version and release
+  timing are decided.
+- [ ] **NEXT P0:** follow [RELEASING.md](./RELEASING.md), including the
+  publish dry run, version bump, tag, and release workflow.
 - [ ] **POST-v1:** revisit structured task groups only after v1 ships.
 
-Last verified locally on 2026-06-04 after `std::process` landed:
+Last verified locally on 2026-06-04 after `std::process` and v1 release
+hardening:
 
 - [x] `cargo test --locked`
 - [x] `scripts/v1-release-gate.sh`
@@ -71,10 +73,10 @@ stabilize for release.
 - [x] Treat `std::process` as the last planned user-visible feature before v1.
 - [x] Do not start structured concurrency, service IO, remote registries,
   native backend work, broad collections, or new source syntax before v1.
-- [ ] Spend the remaining v1 work on release hardening:
+- [x] Spend the remaining v1 work on release hardening:
   documentation alignment, sample/template coverage, diagnostics, and release
   gate reliability.
-- [ ] Only promote another task to pre-v1 P0 if it is a correctness bug,
+- [x] Only promote another task to pre-v1 P0 if it is a correctness bug,
   release-gate failure, source-free/artifact fallback violation, broken sample
   or template, broken public diagnostic contract, or direct contradiction in
   the v1 specs.
@@ -153,25 +155,25 @@ assumptions, or concurrency syntax.
 
 ## P0: V1 Release Hardening
 
-Start this immediately after `std::process` is complete and release-gated.
+Completed after `std::process` landed and was release-gated.
 
-- [ ] Freeze new v1 language and standard-library features.
-- [ ] Update `spec-v1.md` so implemented and not-implemented boundaries match
+- [x] Freeze new v1 language and standard-library features.
+- [x] Update `spec-v1.md` so implemented and not-implemented boundaries match
   the Rust implementation after `std::process`.
-- [ ] Confirm every item in `spec-v1.md` "Not implemented" is either
+- [x] Confirm every item in `spec-v1.md` "Not implemented" is either
   explicitly post-v1 or not planned.
-- [ ] Re-run a focused unfinished-work audit with `rg` over `src/`, `tests/`,
+- [x] Re-run a focused unfinished-work audit with `rg` over `src/`, `tests/`,
   `samples/`, and `spec/` for `TODO`, `FIXME`, `todo!`, `unimplemented!`,
   stale "future" examples, and deleted-doc links.
-- [ ] Keep any remaining `unreachable!` or `panic!` sites limited to internal
+- [x] Keep any remaining `unreachable!` or `panic!` sites limited to internal
   invariant checks and tests, not user-facing incomplete features.
-- [ ] Verify all `muga new` templates, runnable samples, package samples, and
+- [x] Verify all `muga new` templates, runnable samples, package samples, and
   source-free app bundle workflows are covered by Rust tests or the release
   gate.
-- [ ] Make the release gate the authoritative v1 readiness command.
-- [ ] Update `README.md`, `RELEASING.md`, `errors.md`, and this roadmap only
+- [x] Make the release gate the authoritative v1 readiness command.
+- [x] Update `README.md`, `RELEASING.md`, `errors.md`, and this roadmap only
   where they affect a v1 user or releaser.
-- [ ] Run `cargo fmt --check`, `scripts/clippy-check.sh`, `cargo test --locked`,
+- [x] Run `cargo fmt --check`, `scripts/clippy-check.sh`, `cargo test --locked`,
   and `scripts/v1-release-gate.sh` from the final tree.
 
 ## Post-v1 P1: Structured Task Groups
@@ -318,8 +320,9 @@ future backlog items.
 
 ## Short Version
 
-Muga's next concrete step is v1 release hardening. `std::process` has landed as
-the final planned user-visible standard-library slice before v1, so freeze new
-v1 features, finish the docs/sample/template/artifact audit, and make the
-release gate authoritative. Structured task groups, service IO, remote
-registries, broad collections, and native backend work are post-v1.
+Muga's next concrete step is release-candidate preparation once the version and
+timing are decided. `std::process` has landed as the final planned
+user-visible standard-library slice before v1, v1 release hardening is complete,
+and `scripts/v1-release-gate.sh` is the authoritative readiness command.
+Structured task groups, service IO, remote registries, broad collections, and
+native backend work are post-v1.

@@ -6412,6 +6412,15 @@ fn package_std_hash_sample_runs_against_emitted_artifacts() {
 }
 
 #[test]
+fn package_std_process_sample_runs() {
+    assert_package_runs(
+        "samples/packages/app/std_process/main.muga",
+        "Result::Ok(hello-process)",
+        "",
+    );
+}
+
+#[test]
 fn package_artifact_facade_sample_runs() {
     assert_package_runs("samples/packages/app/artifact_facade/main.muga", "26", "");
 }
@@ -6464,6 +6473,15 @@ fn manifest_project_infers_package_paths_from_directories() {
         "samples/projects/my_service/src/main/main.muga",
         "21",
         "Ada\n",
+    );
+}
+
+#[test]
+fn manifest_process_project_sample_runs() {
+    assert_package_runs(
+        "samples/projects/process_app/src/main/main.muga",
+        "Result::Ok(process-app)",
+        "",
     );
 }
 
@@ -20112,7 +20130,7 @@ fn main(): Int {
 }
 
 #[test]
-fn unsupported_generic_type_expression_is_reserved() {
+fn unknown_generic_type_expression_is_rejected() {
     let source = r#"
 fn main(): Int {
   items: Set[Int] = 1
@@ -20123,7 +20141,8 @@ fn main(): Int {
     assert!(
         diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.code == "T013"),
+            .any(|diagnostic| diagnostic.code == "T013"
+                && diagnostic.message.contains("unknown generic type `Set`")),
         "{diagnostics:#?}"
     );
 }

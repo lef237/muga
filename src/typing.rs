@@ -7724,11 +7724,11 @@ impl TypeChecker {
                 self.diagnostics.push(
                     Diagnostic::new(
                         "T013",
-                        format!("generic type `{}` is not implemented yet", generic.name),
+                        format!("unknown generic type `{}`", generic.name),
                         span,
                     )
                     .with_suggestion(
-                        "generic type syntax is reserved for upcoming collection types",
+                        "define the generic type or import the package that exposes it",
                     ),
                 );
                 Type::Error
