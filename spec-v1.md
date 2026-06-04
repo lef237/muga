@@ -392,6 +392,11 @@ decoder surface.
 
 Not implemented:
 
+The roadmap treats `std::process` as the final planned pre-v1 feature. The
+other items in this list are post-v1 parked work unless the roadmap promotes a
+specific correctness or release-readiness issue to P0.
+
+- `std::process` process execution API
 - public-signature inference for `pub fn`
 - URL/Git/registry dependency forms, remote package fetching, publishing/install workflows, and full published-package lockfile enforcement
 - project-mode artifact-root configuration and full incremental package artifact reuse

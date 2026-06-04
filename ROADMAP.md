@@ -10,8 +10,8 @@ Muga samples.
 - [ ] **NOW P0:** implement the first `std::process` vertical slice.
 - [ ] **NEXT P0:** prove `std::process` through source runs, built-artifact
   runs, at least one runnable sample, and release-gate coverage.
-- [ ] **THEN P1:** revisit structured task groups only after `std::process`
-  establishes the next external-effect boundary.
+- [ ] **THEN P0:** freeze new v1 features and complete v1 release hardening.
+- [ ] **POST-v1:** revisit structured task groups only after v1 ships.
 
 Last verified locally:
 
@@ -64,10 +64,27 @@ These are direction-setting commitments, not just missing implementation work.
   source bodies.
 - [x] Muga prefers explicit recoverable error values over implicit exceptions.
 
+## V1 Release Strategy
+
+The recommended path is to finish one more user-visible standard-library slice,
+then stop adding v1 features and stabilize for release.
+
+- [ ] Treat `std::process` as the last planned user-visible feature before v1.
+- [ ] Do not start structured concurrency, service IO, remote registries,
+  native backend work, broad collections, or new source syntax before v1.
+- [ ] After `std::process`, spend the remaining v1 work on release hardening:
+  documentation alignment, sample/template coverage, diagnostics, and release
+  gate reliability.
+- [ ] Only promote another task to pre-v1 P0 if it is a correctness bug,
+  release-gate failure, source-free/artifact fallback violation, broken sample
+  or template, broken public diagnostic contract, or direct contradiction in
+  the v1 specs.
+
 ## P0: `std::process`
 
-Goal: add a narrow, recoverable process execution API without adding shell
-syntax, async runtime assumptions, or concurrency syntax.
+Goal: add the final planned v1 standard-library capability: a narrow,
+recoverable process execution API without adding shell syntax, async runtime
+assumptions, or concurrency syntax.
 
 ### API Shape
 
@@ -132,9 +149,32 @@ syntax, async runtime assumptions, or concurrency syntax.
 - [ ] `std::process` works through `muga run --built` and source-free bundle
   execution without reading dependency source bodies.
 
-## P1: Structured Task Groups
+## P0: V1 Release Hardening
 
-Do not start this until `std::process` is complete and release-gated.
+Start this immediately after `std::process` is complete and release-gated.
+
+- [ ] Freeze new v1 language and standard-library features.
+- [ ] Update `spec-v1.md` so implemented and not-implemented boundaries match
+  the Rust implementation after `std::process`.
+- [ ] Confirm every item in `spec-v1.md` "Not implemented" is either
+  explicitly post-v1 or not planned.
+- [ ] Re-run a focused unfinished-work audit with `rg` over `src/`, `tests/`,
+  `samples/`, and `spec/` for `TODO`, `FIXME`, `todo!`, `unimplemented!`,
+  stale "future" examples, and deleted-doc links.
+- [ ] Keep any remaining `unreachable!` or `panic!` sites limited to internal
+  invariant checks and tests, not user-facing incomplete features.
+- [ ] Verify all `muga new` templates, runnable samples, package samples, and
+  source-free app bundle workflows are covered by Rust tests or the release
+  gate.
+- [ ] Make the release gate the authoritative v1 readiness command.
+- [ ] Update `README.md`, `RELEASING.md`, `errors.md`, and this roadmap only
+  where they affect a v1 user or releaser.
+- [ ] Run `cargo fmt --check`, `scripts/clippy-check.sh`, `cargo test --locked`,
+  and `scripts/v1-release-gate.sh` from the final tree.
+
+## Post-v1 P1: Structured Task Groups
+
+Do not start this before v1 release unless the release definition changes.
 
 - [ ] Reconcile `spec/007-concurrency-draft.md` with the implemented value,
   package, handle, and artifact model.
@@ -152,7 +192,7 @@ Do not start this until `std::process` is complete and release-gated.
 - [ ] Add benchmark-health checks only as local health measurements, not public
   performance claims.
 
-## P2: Service IO
+## Post-v1 P2: Service IO
 
 Do not start this before task lifetime, shutdown, and backpressure semantics
 are explicit.
@@ -165,7 +205,7 @@ are explicit.
 - [ ] Keep JSON integration explicit through `std::json` schemas.
 - [ ] Prove source, built-artifact, and source-free bundle execution.
 
-## P2: Performance Path
+## Post-v1 P2: Performance Path
 
 Performance work needs evidence before native backend claims.
 
@@ -179,7 +219,7 @@ Performance work needs evidence before native backend claims.
 - [ ] Keep native backend work deferred until MIR, package artifacts, and
   runtime representation have measurable pressure.
 
-## P2: Distribution Path
+## Post-v1 P2: Distribution Path
 
 Distribution should build on the existing `.mgp` / `.mga` work.
 
@@ -191,6 +231,43 @@ Distribution should build on the existing `.mgp` / `.mga` work.
 - [ ] Keep package identity tied to `.mgp` content hashes.
 - [ ] Defer URL/Git/registry fetching until local archive identity, lockfile
   behavior, and install inventory remain stable across releases.
+
+## Parked Non-Blockers
+
+These are known implementation gaps or design extensions. They should not block
+v1 unless a concrete release-gate failure or user-facing correctness issue moves
+one into P0.
+
+- [ ] public-signature inference for `pub fn`; keep explicit public signatures
+  for v1 because they stabilize package interfaces.
+- [ ] project-mode artifact-root configuration and full incremental package
+  artifact reuse; revisit after real projects show repeated build pain.
+- [ ] structural equality, `List.contains`, structural `assert_eq`,
+  `Map.entries`, `Set[T]`, arbitrary `Map` key types, map literals, and broad
+  collection APIs; revisit only with an explicit equality/hash design that does
+  not introduce behavior-conformance systems.
+- [ ] broader JSON/config schema targets such as generic records, generic
+  enums, nested `Option[Option[T]]`, non-string map keys, and validation
+  attributes; revisit after the current concrete schema slice is exercised.
+- [ ] future `expr.try`, `T?`, and `Option`-only optional chaining; revisit
+  only if explicit `try`, `Option`, and helper packages become too noisy in
+  real code.
+- [ ] broad wildcard matching, nested patterns, guards, multi-payload variants,
+  and named-field enum variants; revisit only with concrete examples that make
+  the current exhaustive `match` form too verbose.
+- [ ] source-level consuming parameter declarations, broader runtime-backed
+  handle families, `using` expressions, multiple `using` bindings, and
+  aggregate cleanup errors; revisit after `std::process` and more handle APIs
+  prove the need.
+- [ ] binary streams, codecs, broad cryptography, service runtime APIs, and
+  async IO; revisit after resource handles, `std::process`, and post-v1 task
+  lifetime rules are stable.
+- [ ] URL/Git/registry dependencies, remote fetching, publishing workflows,
+  package signing, SBOMs, and full published-package lockfile enforcement;
+  revisit after local `.mgp` / `.mga` workflows are stable in real use.
+- [ ] control-flow-oriented MIR, native backend, and representation performance
+  work; revisit after benchmark data shows the reference VM or current bytecode
+  is the limiting factor.
 
 ## Documentation Hygiene
 
@@ -237,23 +314,9 @@ future backlog items.
   typeclass solving, default implementations, blanket implementations,
   protocol objects, or conformance-based dot lookup
 
-## Deferred
-
-These are not active implementation work. They may be reconsidered only when a
-concrete, tested slice proves the need and the design still fits the
-commitments above.
-
-- [ ] future `expr.try`, `T?`, and `Option`-only optional chaining
-- [ ] broad wildcard matching, nested patterns, guards, multi-payload variants
-- [ ] map literals, `Set[T]`, arbitrary `Map` keys, broad collection APIs,
-  iterator abstractions
-- [ ] URL/Git/registry dependencies, remote fetching, publishing workflows,
-  package signing, SBOMs, full published-package lockfile enforcement
-- [ ] binary streams, codecs, broad cryptography, service runtime APIs, async IO,
-  native backend work
-
 ## Short Version
 
 Muga's next concrete step is `std::process`. Implement it as a small standard
-package slice, prove it through source and artifact-backed execution, then only
-move to structured task groups once the external-effect boundary is stable.
+package slice, prove it through source and artifact-backed execution, then
+freeze new v1 features and harden for release. Structured task groups, service
+IO, remote registries, broad collections, and native backend work are post-v1.
