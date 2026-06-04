@@ -31,11 +31,24 @@ The v1 grammar includes:
 - explicit declaration type parameters on records, enums, and functions
 - generic type expressions in annotations and signatures
 
-The following are explicitly not v1 completion blockers:
+The following are not planned for ordinary Muga code:
 
-- `class`, inheritance, traits, protocols, typeclasses, overloaded dispatch, or operator overloading
-- source-level references such as `ref T`, `mut ref T`, `&value`, `*value`, or pointer syntax
-- postfix Result propagation `expr?`, future Result chain propagation `expr.try`, optional shorthand `T?`, optional chaining `?.`, implicit exceptions, or `throws`
+- `class`, inheritance, member-owned methods, member ownership semantics, or class-style encapsulation
+- method dispatch as a separate semantic category from ordinary function calls
+- overloaded function dispatch, overloaded operator dispatch, or user-defined overload sets
+- source-level references such as `ref T`, `mut ref T`, `&value`, `*value`, pointer syntax, ownership syntax, borrowing syntax, raw pointer arithmetic, or general writable aliases
+- implicit exceptions or `throws`
+- postfix Result propagation `expr?`
+- `trait`, `interface`, or `typeclass` as the first spelling for shared behavior abstractions
+
+The following are explicitly not v1 completion blockers, but may be
+reconsidered after the implemented v1 surface and artifact model are stable:
+
+- a small `protocol` feature, only if ordinary functions, higher-order
+  functions, generics, enums, package qualification, and explicit wrappers prove
+  insufficient
+- future Result chain propagation `expr.try`, optional shorthand `T?`, and
+  Option-only optional chaining `?.`
 - explicit call-site type arguments such as `id[Int](1)`
 - wildcard imports, selective imports, re-export syntax, or package top-level execution
 - broad catch-all wildcard match arms, nested patterns, match guards, multi-payload enum variants, or named-field enum variants

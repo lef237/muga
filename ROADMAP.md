@@ -45,6 +45,22 @@ Muga currently has:
 - [x] diagnostic JSON context for source, package, artifact-root, concrete
   artifacts, hashes, and regeneration commands where available
 
+## Design Commitments
+
+These are direction-setting commitments, not just missing implementation work.
+
+- [x] Muga is function-centered: records define data, ordinary functions define
+  behavior, and dot calls remain surface syntax over functions.
+- [x] Muga keeps one ordinary function namespace and avoids overloaded dispatch.
+- [x] Muga uses value semantics in ordinary source. The implementation may use
+  sharing, handles, copy elision, or native representations internally, but
+  ordinary code should not expose pointer, reference, ownership, or borrowing
+  syntax.
+- [x] Muga keeps package boundaries explicit and artifact-backed execution
+  honest; source-free execution must not silently fall back to dependency
+  source bodies.
+- [x] Muga prefers explicit recoverable error values over implicit exceptions.
+
 ## P0: `std::process`
 
 Goal: add a narrow, recoverable process execution API without adding shell
@@ -196,14 +212,35 @@ Distribution should build on the existing `.mgp` / `.mga` work.
   is deliberately implemented.
 - [ ] Keep diagnostics stable, actionable, and source/artifact-aware.
 
-## Explicitly Deferred
+## Not Planned
 
-These are not active implementation work unless a concrete, tested slice above
-forces the decision:
+These features conflict with Muga's current direction. Do not treat them as
+future backlog items.
 
-- [ ] classes, inheritance, traits, protocols, typeclasses, overloaded dispatch
-- [ ] source-level references, mutable references, pointer syntax, borrowing
-- [ ] postfix `expr?`, future `expr.try`, `T?`, optional chaining
+- [x] do not add classes, inheritance, member-owned methods, member ownership
+  semantics, or class-style encapsulation
+- [x] do not add method dispatch as a separate semantic category from ordinary
+  function calls
+- [x] do not add overloaded function dispatch, overloaded operator dispatch, and
+  user-defined overload sets
+- [x] do not add source-level references, mutable references, pointer syntax,
+  ownership syntax, borrowing syntax, raw pointer arithmetic, or general
+  writable aliases in ordinary Muga code
+- [x] do not add implicit exceptions or `throws`
+- [x] do not add postfix `expr?` for `Result` propagation
+- [x] do not use `trait`, `interface`, or `typeclass` as the first spelling for
+  shared behavior abstractions
+
+## Deferred
+
+These are not active implementation work. They may be reconsidered only when a
+concrete, tested slice proves the need and the design still fits the
+commitments above.
+
+- [ ] a small `protocol` feature, only if functions, higher-order functions,
+  generics, enums, package qualification, and explicit wrappers become
+  demonstrably insufficient
+- [ ] future `expr.try`, `T?`, and `Option`-only optional chaining
 - [ ] broad wildcard matching, nested patterns, guards, multi-payload variants
 - [ ] map literals, `Set[T]`, arbitrary `Map` keys, broad collection APIs,
   iterator protocols

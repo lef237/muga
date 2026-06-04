@@ -15,7 +15,7 @@ The v1 direction is:
 - keep generic functions small and explicit
 - keep package interfaces simple and cache-friendly
 - use higher-order functions when behavior should be passed as a value
-- use enum or sum-type design for closed sets of variants
+- use `enum` design for closed sets of variants
 - revisit protocol-like abstractions only after enum, match, collections, and package interfaces are stable
 
 If Muga later adds this family of features, the preferred name is `protocol`.
@@ -35,8 +35,8 @@ The immediate Muga v1 needs are better served by:
 - generic functions for reusable type-preserving code
 - higher-order functions for passing behavior explicitly
 - package-qualified functions for avoiding name collisions
-- future enum or sum types for closed variant sets
-- future `match` for readable case analysis
+- enums for closed variant sets
+- `match` for readable case analysis
 
 This is enough for many common APIs without introducing a separate behavior-conformance system.
 
@@ -53,18 +53,26 @@ render_each(posts, post_title)
 
 The behavior is explicit: the caller passes the rendering function.
 
-Example using a future closed sum type:
+Example using a closed enum:
 
 ```muga
-type Animal {
+record Dog {
+  name: String
+}
+
+record Cat {
+  name: String
+}
+
+enum Animal {
   Dog(Dog)
   Cat(Cat)
 }
 
 fn name(animal: Animal): String {
   match animal {
-    Dog(dog) => dog.name
-    Cat(cat) => cat.name
+    Animal::Dog(dog) => dog.name
+    Animal::Cat(cat) => cat.name
   }
 }
 ```
@@ -205,12 +213,20 @@ fn apply[T, U](value: T, f: T -> U): U {
 }
 ```
 
-### 4.3 Enum Or Sum Types
+### 4.3 Enums
 
-Use a future enum or sum type when different concrete values should be treated as one closed family:
+Use an enum when different concrete values should be treated as one closed family:
 
 ```muga
-type Document {
+record TextDocument {
+  title: String
+}
+
+record ImageDocument {
+  title: String
+}
+
+enum Document {
   Text(TextDocument)
   Image(ImageDocument)
 }
@@ -237,7 +253,7 @@ Muga should reconsider protocol-like abstractions when at least one of these bec
 - generic collections need user-defined equality or hashing
 - package-qualified functions become too verbose for common cross-type capabilities
 - higher-order function parameters become repetitive boilerplate
-- enum or sum types do not fit because the set of implementors must remain open
+- enums do not fit because the set of implementors must remain open
 
 Even then, the first design should remain small.
 
@@ -291,7 +307,7 @@ Muga v1 should stay with data and functions:
 - functions define behavior
 - higher-order functions pass behavior explicitly
 - generic functions reuse logic across types
-- future enum and match handle closed variant families
+- enum and match handle closed variant families
 - package qualification handles naming boundaries
 
 Protocol-like abstractions should remain deferred until real examples prove that these tools are not enough.
