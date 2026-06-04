@@ -356,6 +356,12 @@ Implemented:
 - `std::fmt` helper package with `fmt::repeat`, `fmt::pad_left`, `fmt::pad_right`, `fmt::truncate_chars`, and `fmt::format_values` for pure formatting over explicit `String` values while language interpolation, localization, and builders remain deferred
 - `std::list` and `std::map` helper packages for narrow collection transformations and key/value extraction
 - `std::cli` helper package for pure positional, long-flag, single/repeated long-option lookup, typed `Int` / `Bool` parsing, compiler-owned `cli::parse_or[T](args, defaults)`, strict `cli::parse[T](args)`, and `cli::usage_for[T](program, defaults)` over explicit `List[String]` argument values, returning recoverable `cli::Error` values including `MissingArgument`
+- `std::process` helper package for direct child process execution through
+  `process::run(command, args)` and `process::run_with(command, args,
+  options)`, with `Options { cwd: Option[path::Path], env: List[EnvVar] }`,
+  `Output { status, success, stdout, stderr }`, nonzero exits captured as
+  `Result::Ok(Output)`, and spawn/wait/capture/UTF-8 failures returned as
+  recoverable `process::Error` values
 - `std::json` helper package for explicit `json::Value` parse/encode, integer-number conversion, value/object-field scalar/composite accessor/default/required helpers, scalar array projection helpers, direct scalar-array object-field helpers, typed-segment JSON path helpers, typed JSON path scalar projection helpers, typed JSON path collection projection helpers, and compiler-owned `json::decode_or[T](value, fallback)` / strict `json::decode[T](value)` schema decoding for `String`, `Int`, `Bool`, `Option[T]`, recursive `List[T]`, typed `Map[String, T]`, `Map[String, json::Value]`, concrete non-generic records over supported fields, and concrete non-generic enums over supported payloads, all returning `json::Error`
 - compiler-provided `std::test` scalar assertion helpers for `muga test`
 - `muga --help`, `muga -h`, `muga help`, and `muga help <command>` for command usage
@@ -392,11 +398,10 @@ decoder surface.
 
 Not implemented:
 
-The roadmap treats `std::process` as the final planned pre-v1 feature. The
-other items in this list are post-v1 parked work unless the roadmap promotes a
-specific correctness or release-readiness issue to P0.
+`std::process` is implemented. The remaining items in this list are post-v1
+parked work unless the roadmap promotes a specific correctness or
+release-readiness issue to P0.
 
-- `std::process` process execution API
 - public-signature inference for `pub fn`
 - URL/Git/registry dependency forms, remote package fetching, publishing/install workflows, and full published-package lockfile enforcement
 - project-mode artifact-root configuration and full incremental package artifact reuse

@@ -75,6 +75,7 @@ pub enum BuiltinId {
     StdEnvArgs,
     StdEnvCurrentDir,
     StdEnvTempDir,
+    StdProcessRun,
     StdTimeNowUnixMillis,
     StdHashSha256Hex,
     StdTestAssertTrue,
@@ -495,6 +496,11 @@ const INTERNAL_BUILTINS: &[Builtin] = &[
         kind: BuiltinKind::Function,
     },
     Builtin {
+        id: BuiltinId::StdProcessRun,
+        name: crate::std_package::PROCESS_RUN_BUILTIN,
+        kind: BuiltinKind::Function,
+    },
+    Builtin {
         id: BuiltinId::StdTimeNowUnixMillis,
         name: crate::std_package::TIME_NOW_UNIX_MILLIS_BUILTIN,
         kind: BuiltinKind::Function,
@@ -638,6 +644,7 @@ pub fn builtin_debug_label(id: BuiltinId) -> &'static str {
         BuiltinId::StdEnvArgs => "Builtin(__muga_std_env_args)",
         BuiltinId::StdEnvCurrentDir => "Builtin(__muga_std_env_current_dir)",
         BuiltinId::StdEnvTempDir => "Builtin(__muga_std_env_temp_dir)",
+        BuiltinId::StdProcessRun => "Builtin(__muga_std_process_run)",
         BuiltinId::StdTimeNowUnixMillis => "Builtin(__muga_std_time_now_unix_millis)",
         BuiltinId::StdHashSha256Hex => "Builtin(__muga_std_hash_sha256_hex)",
         BuiltinId::StdTestAssertTrue => "Builtin(__muga_std_test_assert_true)",

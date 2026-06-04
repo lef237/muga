@@ -1893,6 +1893,9 @@ impl TypeChecker {
                     Type::Builtin(BuiltinId::StdEnvTempDir) => {
                         self.check_std_env_temp_dir_builtin(expr, expected)
                     }
+                    Type::Builtin(BuiltinId::StdProcessRun) => {
+                        self.check_std_process_run_builtin(expr, expected)
+                    }
                     Type::Builtin(BuiltinId::StdTimeNowUnixMillis) => {
                         self.check_std_time_now_unix_millis_builtin(expr, expected)
                     }
@@ -4357,6 +4360,30 @@ impl TypeChecker {
         )
     }
 
+    fn check_std_process_run_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 3 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 3 arguments but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        self.check_expr_with_expected(&expr.args[0], Some(Type::String));
+        self.check_expr_with_expected(&expr.args[1], Some(Type::List(Box::new(Type::String))));
+        let options_ty = self.std_process_options_type();
+        self.check_expr_with_expected(&expr.args[2], Some(options_ty));
+
+        let output_ty = self.std_process_output_type();
+        let error_ty = self.std_process_error_type();
+        self.apply_expected(
+            Type::Result(Box::new(output_ty), Box::new(error_ty)),
+            expected,
+            expr.span,
+        )
+    }
+
     fn check_std_time_now_unix_millis_builtin(
         &mut self,
         expr: &CallExpr,
@@ -4447,6 +4474,27 @@ impl TypeChecker {
 
     fn std_bytes_type_in_fs(&mut self) -> Type {
         Type::Opaque(self.symbol(crate::std_package::BYTES_VISIBLE_NAME_IN_FS))
+    }
+
+    fn std_process_options_type(&mut self) -> Type {
+        Type::Record(
+            self.symbol(crate::std_package::PROCESS_OPTIONS_VISIBLE_NAME),
+            Vec::new(),
+        )
+    }
+
+    fn std_process_output_type(&mut self) -> Type {
+        Type::Record(
+            self.symbol(crate::std_package::PROCESS_OUTPUT_VISIBLE_NAME),
+            Vec::new(),
+        )
+    }
+
+    fn std_process_error_type(&mut self) -> Type {
+        Type::Record(
+            self.symbol(crate::std_package::PROCESS_ERROR_VISIBLE_NAME),
+            Vec::new(),
+        )
     }
 
     fn is_std_bytes_type(&self, ty: &Type) -> bool {

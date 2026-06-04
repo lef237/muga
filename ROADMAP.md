@@ -7,13 +7,12 @@ Muga samples.
 
 ## Resume Cursor
 
-- [ ] **NOW P0:** implement the first `std::process` vertical slice.
-- [ ] **NEXT P0:** prove `std::process` through source runs, built-artifact
-  runs, at least one runnable sample, and release-gate coverage.
-- [ ] **THEN P0:** freeze new v1 features and complete v1 release hardening.
+- [ ] **NOW P0:** freeze new v1 features and complete v1 release hardening.
+- [ ] **NEXT P0:** run the final unfinished-work, docs, sample/template,
+  artifact, bundle, and diagnostic audit.
 - [ ] **POST-v1:** revisit structured task groups only after v1 ships.
 
-Last verified locally:
+Last verified locally on 2026-06-04 after `std::process` landed:
 
 - [x] `cargo test --locked`
 - [x] `scripts/v1-release-gate.sh`
@@ -39,7 +38,7 @@ Muga currently has:
   `for`, `break`, `continue`, `return`, `Unit`, package imports, `pub opaque
   type`, runtime-backed `std::fs::File`, and statement-form `using`
 - [x] standard package slices for `std::io`, `std::fs`, `std::path`,
-  `std::env`, `std::cli`, `std::time`, `std::bytes`, `std::hash`,
+  `std::env`, `std::process`, `std::cli`, `std::time`, `std::bytes`, `std::hash`,
   `std::string`, `std::fmt`, `std::list`, `std::map`, `std::option`,
   `std::result`, `std::json`, `std::config`, and `std::test`
 - [x] diagnostic JSON context for source, package, artifact-root, concrete
@@ -66,13 +65,13 @@ These are direction-setting commitments, not just missing implementation work.
 
 ## V1 Release Strategy
 
-The recommended path is to finish one more user-visible standard-library slice,
-then stop adding v1 features and stabilize for release.
+The recommended path is now to stop adding v1 user-visible features and
+stabilize for release.
 
-- [ ] Treat `std::process` as the last planned user-visible feature before v1.
-- [ ] Do not start structured concurrency, service IO, remote registries,
+- [x] Treat `std::process` as the last planned user-visible feature before v1.
+- [x] Do not start structured concurrency, service IO, remote registries,
   native backend work, broad collections, or new source syntax before v1.
-- [ ] After `std::process`, spend the remaining v1 work on release hardening:
+- [ ] Spend the remaining v1 work on release hardening:
   documentation alignment, sample/template coverage, diagnostics, and release
   gate reliability.
 - [ ] Only promote another task to pre-v1 P0 if it is a correctness bug,
@@ -80,7 +79,7 @@ then stop adding v1 features and stabilize for release.
   or template, broken public diagnostic contract, or direct contradiction in
   the v1 specs.
 
-## P0: `std::process`
+## Completed P0: `std::process`
 
 Goal: add the final planned v1 standard-library capability: a narrow,
 recoverable process execution API without adding shell syntax, async runtime
@@ -88,65 +87,68 @@ assumptions, or concurrency syntax.
 
 ### API Shape
 
-- [ ] Decide the public package surface in `src/std_package.rs`.
-- [ ] Add `std::process` as a virtual package.
-- [ ] Use explicit records and enums rather than ad hoc strings:
-  - [ ] `ErrorKind`
-  - [ ] `Error`
-  - [ ] `EnvVar` or equivalent explicit env override shape
-  - [ ] `Options` with optional cwd and explicit env overrides
-  - [ ] `Output` with status, success, stdout, and stderr
-- [ ] Treat nonzero child exit as captured `Output`, not as `Result::Err`.
-- [ ] Reserve `Result::Err` for spawn, wait, cwd/env setup, and capture/UTF-8
+- [x] Decide the public package surface in `src/std_package.rs`.
+- [x] Add `std::process` as a virtual package.
+- [x] Use explicit records and enums rather than ad hoc strings:
+  - [x] `ErrorKind`
+  - [x] `Error`
+  - [x] `EnvVar` as the explicit env override shape
+  - [x] `Options` with optional cwd and explicit env overrides
+  - [x] `Output` with status, success, stdout, and stderr
+- [x] Treat nonzero child exit as captured `Output`, not as `Result::Err`.
+- [x] Reserve `Result::Err` for spawn, wait, cwd/env setup, and capture/UTF-8
   failures.
-- [ ] Keep command execution direct. Do not add shell interpolation or
+- [x] Keep command execution direct. Do not add shell interpolation or
   `sh -c` helpers in the first slice.
-- [ ] Use `path::Path` for cwd rather than raw host path strings in public APIs.
-- [ ] Keep environment inheritance rules explicit in docs and tests.
+- [x] Use `path::Path` for cwd rather than raw host path strings in public APIs.
+- [x] Keep environment inheritance rules explicit in docs and tests.
 
 ### Compiler And Runtime
 
-- [ ] Add `PROCESS_PACKAGE` and process builtin constants in `src/std_package.rs`.
-- [ ] Add process builtin ids and debug labels in `src/prelude.rs`.
-- [ ] Permit the new internal builtins only for `std::process`.
-- [ ] Add typechecker rules in `src/typing.rs` for process builtins and public
+- [x] Add `PROCESS_PACKAGE` and process builtin constants in `src/std_package.rs`.
+- [x] Add process builtin ids and debug labels in `src/prelude.rs`.
+- [x] Permit the new internal builtins only for `std::process`.
+- [x] Add typechecker rules in `src/typing.rs` for process builtins and public
   result/error shapes.
-- [ ] Add runtime execution in `src/runtime.rs` using `std::process::Command`.
-- [ ] Capture stdout and stderr deterministically as `String` values.
-- [ ] Convert recoverable host errors into public `process::Error` records.
-- [ ] Reject malformed internal runtime values with hard runtime diagnostics,
+- [x] Add runtime execution in `src/runtime.rs` using `std::process::Command`.
+- [x] Capture stdout and stderr deterministically as `String` values.
+- [x] Convert recoverable host errors into public `process::Error` records.
+- [x] Reject malformed internal runtime values with hard runtime diagnostics,
   following the existing `std::fs` handle pattern.
-- [ ] Ensure built-artifact execution works without dependency source fallback.
+- [x] Ensure built-artifact execution works without dependency source fallback.
 
 ### Samples And Tests
 
-- [ ] Add one runnable sample under `samples/packages/app/std_process/`.
-- [ ] Add focused source-run tests in `tests/examples.rs`.
-- [ ] Add artifact-backed `std::process` tests that hide dependency sources.
-- [ ] Test successful exit with captured stdout and stderr.
-- [ ] Test nonzero exit as successful capture with `success == false`.
-- [ ] Test cwd handling with `path::Path`.
-- [ ] Test env override handling.
-- [ ] Test spawn failure as `Result::Err(process::Error)`.
-- [ ] Test type mismatch diagnostics for command, args, cwd, and env records.
-- [ ] Add release-gate smoke coverage for the sample.
+- [x] Add one runnable sample under `samples/packages/app/std_process/`.
+- [x] Add a manifest project sample under `samples/projects/process_app/` for
+  source-free bundle coverage.
+- [x] Add focused source-run tests in `tests/examples.rs`.
+- [x] Add artifact-backed `std::process` tests that hide dependency sources.
+- [x] Test successful exit with captured stdout and stderr.
+- [x] Test nonzero exit as successful capture with `success == false`.
+- [x] Test cwd handling with `path::Path`.
+- [x] Test env override handling.
+- [x] Test spawn failure as `Result::Err(process::Error)`.
+- [x] Test type mismatch diagnostics for command, args, cwd, and env records.
+- [x] Add release-gate smoke coverage for the package sample and source-free
+  bundle coverage for the project sample.
 
 ### Documentation
 
-- [ ] Update `spec-v1.md` current implementation boundary after the slice lands.
-- [ ] Update `spec/003-typing.md` standard package surface after the slice lands.
-- [ ] Add process-specific diagnostic guidance in `errors.md` only if a new
+- [x] Update `spec-v1.md` current implementation boundary after the slice lands.
+- [x] Update `spec/003-typing.md` standard package surface after the slice lands.
+- [x] Add process-specific diagnostic guidance in `errors.md` only if a new
   public diagnostic family is introduced.
-- [ ] Keep `README.md` quickstart unchanged unless a process example becomes
+- [x] Keep `README.md` quickstart unchanged unless a process example becomes
   the best first standard-library example.
 
 ### Done When
 
-- [ ] `cargo fmt --check` passes.
-- [ ] `scripts/clippy-check.sh` passes.
-- [ ] `cargo test --locked` passes.
-- [ ] `scripts/v1-release-gate.sh` passes.
-- [ ] `std::process` works through `muga run --built` and source-free bundle
+- [x] `cargo fmt --check` passes.
+- [x] `scripts/clippy-check.sh` passes.
+- [x] `cargo test --locked` passes.
+- [x] `scripts/v1-release-gate.sh` passes.
+- [x] `std::process` works through `muga run --built` and source-free bundle
   execution without reading dependency source bodies.
 
 ## P0: V1 Release Hardening
@@ -316,7 +318,8 @@ future backlog items.
 
 ## Short Version
 
-Muga's next concrete step is `std::process`. Implement it as a small standard
-package slice, prove it through source and artifact-backed execution, then
-freeze new v1 features and harden for release. Structured task groups, service
-IO, remote registries, broad collections, and native backend work are post-v1.
+Muga's next concrete step is v1 release hardening. `std::process` has landed as
+the final planned user-visible standard-library slice before v1, so freeze new
+v1 features, finish the docs/sample/template/artifact audit, and make the
+release gate authoritative. Structured task groups, service IO, remote
+registries, broad collections, and native backend work are post-v1.

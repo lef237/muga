@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     env as process_env, fmt, fs, io,
     path::{Component, Path, PathBuf},
+    process::{Command, Stdio},
     rc::Rc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -86,6 +87,12 @@ impl StdFsFileMode {
     fn can_write(self) -> bool {
         matches!(self, Self::Write | Self::Append)
     }
+}
+
+#[derive(Debug, Default)]
+struct ProcessRunOptions {
+    cwd: Option<String>,
+    env: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug)]
@@ -220,6 +227,112 @@ fn io_error_value(operation: &str, path: &str, error: &io::Error) -> Value {
             },
         ],
     })
+}
+
+fn process_error_kind_value(variant_name: &str) -> Value {
+    Value::Enum(EnumValue {
+        type_name: crate::std_package::PROCESS_ERROR_KIND_MANGLED_NAME.to_string(),
+        variant_name: variant_name.to_string(),
+        payload: None,
+    })
+}
+
+fn process_error_value(kind: &str, command: &str, message: String) -> Value {
+    Value::Record(RecordValue {
+        type_name: crate::std_package::PROCESS_ERROR_MANGLED_NAME.to_string(),
+        fields: vec![
+            RecordFieldValue {
+                name: "kind".to_string(),
+                value: process_error_kind_value(kind),
+            },
+            RecordFieldValue {
+                name: "command".to_string(),
+                value: Value::String(command.to_string()),
+            },
+            RecordFieldValue {
+                name: "message".to_string(),
+                value: Value::String(message),
+            },
+        ],
+    })
+}
+
+fn process_output_value(status: i64, success: bool, stdout: String, stderr: String) -> Value {
+    Value::Record(RecordValue {
+        type_name: crate::std_package::PROCESS_OUTPUT_MANGLED_NAME.to_string(),
+        fields: vec![
+            RecordFieldValue {
+                name: "status".to_string(),
+                value: Value::Int(status),
+            },
+            RecordFieldValue {
+                name: "success".to_string(),
+                value: Value::Bool(success),
+            },
+            RecordFieldValue {
+                name: "stdout".to_string(),
+                value: Value::String(stdout),
+            },
+            RecordFieldValue {
+                name: "stderr".to_string(),
+                value: Value::String(stderr),
+            },
+        ],
+    })
+}
+
+fn run_process_command(command: String, args: Vec<String>, options: ProcessRunOptions) -> Value {
+    let mut child_command = Command::new(&command);
+    child_command
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(cwd) = options.cwd {
+        child_command.current_dir(cwd);
+    }
+    for (name, value) in options.env {
+        child_command.env(name, value);
+    }
+
+    let child = match child_command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            return result_err(process_error_value("Spawn", &command, error.to_string()));
+        }
+    };
+    let output = match child.wait_with_output() {
+        Ok(output) => output,
+        Err(error) => {
+            return result_err(process_error_value("Wait", &command, error.to_string()));
+        }
+    };
+    let stdout = match String::from_utf8(output.stdout) {
+        Ok(stdout) => stdout,
+        Err(error) => {
+            return result_err(process_error_value(
+                "StdoutUtf8",
+                &command,
+                error.to_string(),
+            ));
+        }
+    };
+    let stderr = match String::from_utf8(output.stderr) {
+        Ok(stderr) => stderr,
+        Err(error) => {
+            return result_err(process_error_value(
+                "StderrUtf8",
+                &command,
+                error.to_string(),
+            ));
+        }
+    };
+    let status = output.status.code().map(i64::from).unwrap_or(-1);
+    result_ok(process_output_value(
+        status,
+        output.status.success(),
+        stdout,
+        stderr,
+    ))
 }
 
 fn path_buf_into_string(path: PathBuf, error_message: &'static str) -> io::Result<String> {
@@ -5801,6 +5914,153 @@ fn expect_string_list_value(
     Ok(strings)
 }
 
+fn expect_process_options_value(
+    value: &Value,
+    span: Span,
+) -> Result<ProcessRunOptions, Vec<Diagnostic>> {
+    let Value::Record(record) = value else {
+        return Err(vec![Diagnostic::new(
+            "R014",
+            "`__muga_std_process_run` expects process::Options as its third argument",
+            span,
+        )]);
+    };
+    if record.type_name != crate::std_package::PROCESS_OPTIONS_MANGLED_NAME {
+        return Err(vec![Diagnostic::new(
+            "R014",
+            "`__muga_std_process_run` expects process::Options as its third argument",
+            span,
+        )]);
+    }
+
+    let cwd = match record_field_value(record, "cwd") {
+        Some(value) => expect_process_cwd_option(value, span)?,
+        None => {
+            return Err(vec![Diagnostic::new(
+                "R014",
+                "`__muga_std_process_run` received an invalid process::Options value",
+                span,
+            )]);
+        }
+    };
+    let env = match record_field_value(record, "env") {
+        Some(value) => expect_process_env_list(value, span)?,
+        None => {
+            return Err(vec![Diagnostic::new(
+                "R014",
+                "`__muga_std_process_run` received an invalid process::Options value",
+                span,
+            )]);
+        }
+    };
+
+    Ok(ProcessRunOptions { cwd, env })
+}
+
+fn expect_process_cwd_option(value: &Value, span: Span) -> Result<Option<String>, Vec<Diagnostic>> {
+    if is_option_none(value) {
+        return Ok(None);
+    }
+    let Value::Enum(option) = value else {
+        return Err(vec![Diagnostic::new(
+            "R014",
+            "`__muga_std_process_run` expects options.cwd to be Option[path::Path]",
+            span,
+        )]);
+    };
+    if option.type_name != known_enum::OPTION_NAME
+        || option.variant_name != known_enum::OPTION_SOME_NAME
+    {
+        return Err(vec![Diagnostic::new(
+            "R014",
+            "`__muga_std_process_run` expects options.cwd to be Option[path::Path]",
+            span,
+        )]);
+    }
+    let Some(path) = option.payload.as_deref() else {
+        return Err(vec![Diagnostic::new(
+            "R014",
+            "`__muga_std_process_run` received an invalid process::Options value",
+            span,
+        )]);
+    };
+    Ok(Some(expect_path_text_value(
+        path,
+        span,
+        "`__muga_std_process_run` expects options.cwd to contain path::Path",
+    )?))
+}
+
+fn expect_process_env_list(
+    value: &Value,
+    span: Span,
+) -> Result<Vec<(String, String)>, Vec<Diagnostic>> {
+    let Value::List(items) = value else {
+        return Err(vec![Diagnostic::new(
+            "R014",
+            "`__muga_std_process_run` expects options.env to be List[process::EnvVar]",
+            span,
+        )]);
+    };
+    let mut env = Vec::with_capacity(items.len());
+    for item in items {
+        let Value::Record(record) = item else {
+            return Err(vec![Diagnostic::new(
+                "R014",
+                "`__muga_std_process_run` expects options.env to contain process::EnvVar",
+                span,
+            )]);
+        };
+        if record.type_name != crate::std_package::PROCESS_ENV_VAR_MANGLED_NAME {
+            return Err(vec![Diagnostic::new(
+                "R014",
+                "`__muga_std_process_run` expects options.env to contain process::EnvVar",
+                span,
+            )]);
+        }
+        let name = expect_process_env_string_field(record, "name", span)?;
+        let value = expect_process_env_string_field(record, "value", span)?;
+        env.push((name, value));
+    }
+    Ok(env)
+}
+
+fn expect_process_env_string_field(
+    record: &RecordValue,
+    field_name: &str,
+    span: Span,
+) -> Result<String, Vec<Diagnostic>> {
+    match record_field_value(record, field_name) {
+        Some(Value::String(value)) => Ok(value.clone()),
+        _ => Err(vec![Diagnostic::new(
+            "R014",
+            format!("`__muga_std_process_run` expects process::EnvVar.{field_name} to be String"),
+            span,
+        )]),
+    }
+}
+
+fn expect_path_text_value(
+    value: &Value,
+    span: Span,
+    message: &str,
+) -> Result<String, Vec<Diagnostic>> {
+    let Value::Record(record) = value else {
+        return Err(vec![Diagnostic::new("R014", message.to_string(), span)]);
+    };
+    if record.type_name != crate::std_package::PATH_MANGLED_NAME {
+        return Err(vec![Diagnostic::new("R014", message.to_string(), span)]);
+    }
+    match record_field_value(record, "text") {
+        Some(Value::String(path)) => Ok(path.clone()),
+        _ => Err(vec![Diagnostic::new(
+            "R014",
+            "`__muga_std_process_run` received an invalid path::Path value",
+            span,
+        )]),
+    }
+}
+
 fn json_decode_shape_error(path: &str, expected: &str) -> JsonDataError {
     json_value_error(
         JsonErrorKind::UnexpectedToken,
@@ -7093,6 +7353,36 @@ fn call_builtin(
                 Ok(path) => Ok(result_ok(Value::String(path))),
                 Err(error) => Ok(result_err(io_error_value("temp_dir", ".", &error))),
             }
+        }
+        BuiltinId::StdProcessRun => {
+            let (command, command_args, options) = expect_three_args(args, span)?;
+            let Value::String(command) = command else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`__muga_std_process_run` expects String as its first argument",
+                    span,
+                )]);
+            };
+            let Value::List(command_args) = command_args else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`__muga_std_process_run` expects List[String] as its second argument",
+                    span,
+                )]);
+            };
+            let mut parsed_args = Vec::with_capacity(command_args.len());
+            for arg in command_args {
+                let Value::String(arg) = arg else {
+                    return Err(vec![Diagnostic::new(
+                        "R014",
+                        "`__muga_std_process_run` expects List[String] as its second argument",
+                        span,
+                    )]);
+                };
+                parsed_args.push(arg);
+            }
+            let options = expect_process_options_value(&options, span)?;
+            Ok(run_process_command(command, parsed_args, options))
         }
         BuiltinId::StdTimeNowUnixMillis => {
             expect_no_args(args, span)?;

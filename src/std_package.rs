@@ -2,6 +2,7 @@ pub const IO_PACKAGE: &str = "std::io";
 pub const FS_PACKAGE: &str = "std::fs";
 pub const PATH_PACKAGE: &str = "std::path";
 pub const ENV_PACKAGE: &str = "std::env";
+pub const PROCESS_PACKAGE: &str = "std::process";
 pub const CLI_PACKAGE: &str = "std::cli";
 pub const TIME_PACKAGE: &str = "std::time";
 pub const BYTES_PACKAGE: &str = "std::bytes";
@@ -34,6 +35,14 @@ pub const CONFIG_ERROR_MANGLED_NAME: &str = "__muga_pkg__std__config__Error";
 pub const CLI_ERROR_KIND_MANGLED_NAME: &str = "__muga_pkg__std__cli__ErrorKind";
 pub const CLI_ERROR_MANGLED_NAME: &str = "__muga_pkg__std__cli__Error";
 pub const CLI_REQUEST_MANGLED_NAME: &str = "__muga_pkg__std__cli__Request";
+pub const PROCESS_ERROR_KIND_MANGLED_NAME: &str = "__muga_pkg__std__process__ErrorKind";
+pub const PROCESS_ERROR_MANGLED_NAME: &str = "__muga_pkg__std__process__Error";
+pub const PROCESS_ENV_VAR_MANGLED_NAME: &str = "__muga_pkg__std__process__EnvVar";
+pub const PROCESS_OPTIONS_MANGLED_NAME: &str = "__muga_pkg__std__process__Options";
+pub const PROCESS_OUTPUT_MANGLED_NAME: &str = "__muga_pkg__std__process__Output";
+pub const PROCESS_ERROR_VISIBLE_NAME: &str = "Error";
+pub const PROCESS_OPTIONS_VISIBLE_NAME: &str = "Options";
+pub const PROCESS_OUTPUT_VISIBLE_NAME: &str = "Output";
 pub const PATH_JOIN_BUILTIN: &str = "__muga_std_path_join";
 pub const PATH_NORMALIZE_BUILTIN: &str = "__muga_std_path_normalize";
 pub const PATH_FILE_NAME_BUILTIN: &str = "__muga_std_path_file_name";
@@ -82,6 +91,7 @@ pub const ENV_GET_VAR_BUILTIN: &str = "__muga_std_env_get_var";
 pub const ENV_ARGS_BUILTIN: &str = "__muga_std_env_args";
 pub const ENV_CURRENT_DIR_BUILTIN: &str = "__muga_std_env_current_dir";
 pub const ENV_TEMP_DIR_BUILTIN: &str = "__muga_std_env_temp_dir";
+pub const PROCESS_RUN_BUILTIN: &str = "__muga_std_process_run";
 pub const TIME_NOW_UNIX_MILLIS_BUILTIN: &str = "__muga_std_time_now_unix_millis";
 pub const HASH_SHA256_HEX_BUILTIN: &str = "__muga_std_hash_sha256_hex";
 pub const TEST_ASSERT_TRUE_BUILTIN: &str = "__muga_std_test_assert_true";
@@ -106,6 +116,7 @@ pub fn virtual_package_files(package_path: &str) -> Option<&'static [VirtualPack
         FS_PACKAGE => Some(FS_FILES),
         PATH_PACKAGE => Some(PATH_FILES),
         ENV_PACKAGE => Some(ENV_FILES),
+        PROCESS_PACKAGE => Some(PROCESS_FILES),
         CLI_PACKAGE => Some(CLI_FILES),
         TIME_PACKAGE => Some(TIME_FILES),
         BYTES_PACKAGE => Some(BYTES_FILES),
@@ -129,6 +140,7 @@ pub fn allows_internal_builtins(package_path: &str) -> bool {
         FS_PACKAGE
             | PATH_PACKAGE
             | ENV_PACKAGE
+            | PROCESS_PACKAGE
             | TIME_PACKAGE
             | BYTES_PACKAGE
             | HASH_PACKAGE
@@ -1984,6 +1996,60 @@ pub fn temp_dir(): Result[path::Path, io::IOError] {
     Result::Ok(text) => Result::Ok(path::from_string(text))
     Result::Err(error) => Result::Err(error)
   }
+}
+"#,
+}];
+
+const PROCESS_FILES: &[VirtualPackageFile] = &[VirtualPackageFile {
+    module_path: "process.muga",
+    source: r#"
+package std::process
+
+import std::path
+
+pub enum ErrorKind {
+  Spawn
+  Wait
+  StdoutUtf8
+  StderrUtf8
+}
+
+pub record Error {
+  kind: ErrorKind
+  command: String
+  message: String
+}
+
+pub record EnvVar {
+  name: String
+  value: String
+}
+
+pub record Options {
+  cwd: Option[path::Path]
+  env: List[EnvVar]
+}
+
+pub record Output {
+  status: Int
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+pub fn default_options(): Options {
+  Options {
+    cwd: Option::None
+    env: []
+  }
+}
+
+pub fn run(command: String, args: List[String]): Result[Output, Error] {
+  run_with(command, args, default_options())
+}
+
+pub fn run_with(command: String, args: List[String], options: Options): Result[Output, Error] {
+  __muga_std_process_run(command, args, options)
 }
 "#,
 }];

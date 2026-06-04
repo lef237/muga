@@ -26851,6 +26851,268 @@ fn main(): String {
 }
 
 #[test]
+fn standard_process_run_captures_stdout_and_stderr() {
+    let root = temp_package_root("std-process-run");
+    let entry = write_package_file(
+        &root,
+        "app/std_process_run/main.muga",
+        r#"
+package app::std_process_run
+
+import std::process
+
+fn main(): Result[String, process::Error] {
+  output = try process::run("sh", ["-c", "printf out; printf err 1>&2"])
+  Result::Ok(output.stdout.concat("|").concat(output.stderr))
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).expect("std::process run program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(out|err)");
+}
+
+#[test]
+fn standard_process_run_with_applies_environment() {
+    let root = temp_package_root("std-process-run-with-env");
+    let entry = write_package_file(
+        &root,
+        "app/std_process_run_with_env/main.muga",
+        r#"
+package app::std_process_run_with_env
+
+import std::process
+
+fn main(): Result[String, process::Error] {
+  options = process::Options {
+    cwd: Option::None
+    env: [
+      process::EnvVar {
+        name: "MUGA_PROCESS_TEST_VALUE"
+        value: "from-env"
+      }
+    ]
+  }
+  output = try process::run_with("sh", ["-c", "printf $MUGA_PROCESS_TEST_VALUE"], options)
+  Result::Ok(output.stdout)
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).expect("std::process run_with program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(from-env)");
+}
+
+#[test]
+fn standard_process_run_with_applies_cwd() {
+    let root = temp_package_root("std-process-run-with-cwd");
+    let cwd = root.join("work");
+    fs::create_dir_all(&cwd).expect("cwd should be created");
+    let cwd_text = display_path(&cwd);
+    let cwd_literal = muga_string_literal(&cwd_text);
+    let source = format!(
+        r#"
+package app::std_process_run_with_cwd
+
+import std::path
+import std::process
+
+fn main(): Result[String, process::Error] {{
+  options = process::Options {{
+    cwd: Option::Some(path::from_string({cwd_literal}))
+    env: []
+  }}
+  output = try process::run_with("sh", ["-c", "printf \"$(pwd)\""], options)
+  Result::Ok(output.stdout)
+}}
+"#
+    );
+    let entry = write_package_file(&root, "app/std_process_run_with_cwd/main.muga", &source);
+    let expected = display_path(&fs::canonicalize(&cwd).expect("cwd should canonicalize"));
+
+    let result = muga::run_path(&entry).expect("std::process cwd program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), format!("Result::Ok({expected})"));
+}
+
+#[test]
+fn standard_process_nonzero_exit_returns_output() {
+    let root = temp_package_root("std-process-nonzero");
+    let entry = write_package_file(
+        &root,
+        "app/std_process_nonzero/main.muga",
+        r#"
+package app::std_process_nonzero
+
+import std::process
+
+fn main(): Result[Int, process::Error] {
+  output = try process::run("sh", ["-c", "exit 7"])
+  if output.success {
+    Result::Ok(0)
+  } else {
+    Result::Ok(output.status)
+  }
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).expect("std::process nonzero program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(7)");
+}
+
+#[test]
+fn standard_process_spawn_failure_returns_error() {
+    let root = temp_package_root("std-process-spawn-failure");
+    let entry = write_package_file(
+        &root,
+        "app/std_process_spawn_failure/main.muga",
+        r#"
+package app::std_process_spawn_failure
+
+import std::process
+
+fn main(): String {
+  match process::run("__muga_missing_process_574c4b54__", []) {
+    Result::Ok(_) => "unexpected-ok"
+    Result::Err(error) => match error.kind {
+      process::ErrorKind::Spawn => error.command
+      process::ErrorKind::Wait => "wait"
+      process::ErrorKind::StdoutUtf8 => "stdout"
+      process::ErrorKind::StderrUtf8 => "stderr"
+    }
+  }
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).expect("std::process spawn failure program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "__muga_missing_process_574c4b54__");
+}
+
+#[test]
+fn standard_process_rejects_type_mismatches() {
+    let root = temp_package_root("std-process-type-mismatches");
+    let cases = [
+        (
+            "command",
+            r#"
+package app::std_process_type_mismatch_command
+
+import std::process
+
+fn main(): Int {
+  _ = process::run(1, [])
+  1
+}
+"#,
+        ),
+        (
+            "args",
+            r#"
+package app::std_process_type_mismatch_args
+
+import std::process
+
+fn main(): Int {
+  _ = process::run("sh", [1])
+  1
+}
+"#,
+        ),
+        (
+            "cwd",
+            r#"
+package app::std_process_type_mismatch_cwd
+
+import std::process
+
+fn main(): Int {
+  options = process::Options {
+    cwd: Option::Some("not-a-path")
+    env: []
+  }
+  _ = process::run_with("sh", [], options)
+  1
+}
+"#,
+        ),
+        (
+            "env",
+            r#"
+package app::std_process_type_mismatch_env
+
+import std::process
+
+fn main(): Int {
+  options = process::Options {
+    cwd: Option::None
+    env: ["bad"]
+  }
+  _ = process::run_with("sh", [], options)
+  1
+}
+"#,
+        ),
+    ];
+
+    for (name, source) in cases {
+        let entry = write_package_file(
+            &root,
+            &format!("app/std_process_type_mismatch_{name}/main.muga"),
+            source,
+        );
+        let diagnostics = muga::check_path(&entry).unwrap_err();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "T002" || diagnostic.code == "E009"),
+            "{name}: {diagnostics:#?}"
+        );
+    }
+}
+
+#[test]
+fn standard_process_artifact_run_uses_emitted_std_implementations() {
+    let root = temp_package_root("std-process-artifacts");
+    let entry = write_package_file(
+        &root,
+        "app/std_process_artifacts/main.muga",
+        r#"
+package app::std_process_artifacts
+
+import std::process
+
+fn main(): Result[String, process::Error] {
+  output = try process::run("sh", ["-c", "printf artifact-process"])
+  Result::Ok(output.stdout)
+}
+"#,
+    );
+    let artifact_root = root.join("artifacts");
+    let written =
+        muga::write_package_artifacts(&entry, &artifact_root).expect("artifacts should emit");
+
+    for required in ["std__process.mgi", "std__process.mgb"] {
+        assert!(
+            written
+                .iter()
+                .any(|path| path.file_name().is_some_and(|name| name == required)),
+            "{written:#?}"
+        );
+    }
+
+    let result = muga::run_path_against_artifact_root(&entry, &artifact_root)
+        .expect("artifact-backed std::process package program should run");
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(artifact-process)");
+}
+
+#[test]
 fn standard_cli_positionals_flags_and_equal_options_run_as_virtual_package() {
     let root = temp_package_root("std-cli-core");
     let entry = write_package_file(
