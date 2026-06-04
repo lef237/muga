@@ -2,9 +2,7 @@
 
 Status: v1 design draft with an implemented MVP. The current Rust compiler implements generic type expressions for builtin collection-like types `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`, plus explicit user-defined generic records/functions and generic package interface persistence.
 
-Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing a trait, interface, protocol, typeclass, or overloaded dispatch system in the first version.
-
-The protocol-like abstractions decision note is [012-protocols-deferred.md](./012-protocols-deferred.md).
+Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing shared-behavior declarations such as protocols, traits, interfaces, typeclasses, or overloaded dispatch.
 
 ## 1. Design Goals
 
@@ -34,9 +32,8 @@ Muga v1 includes:
 Muga v1 does not include:
 
 - explicit call-site type arguments
-- trait bounds or protocol bounds
-- trait, interface, or protocol declarations
-- typeclasses
+- protocol bounds, trait bounds, typeclass constraints, or other shared-behavior bounds
+- protocol, trait, interface, or typeclass declarations
 - higher-kinded types
 - const generics
 - variance annotations

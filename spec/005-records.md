@@ -346,11 +346,15 @@ The full generics policy is defined in [009-generics.md](./009-generics.md).
 
 The current design leaves room for future work on:
 
-- protocol-like dispatch, if later justified by concrete examples
-- limited overloading keyed by receiver type
 - mutable or persistent-update record operations
 - opaque records or opaque types for public type names with hidden representations
 - per-field visibility only if concrete code shows that opaque representations and transparent records are not enough
+
+It deliberately does not leave room for class-style method ownership,
+behavior-conformance dispatch, or limited overloading keyed by receiver type in
+ordinary Muga code. Keep behavior in ordinary functions and use package
+qualification, explicit wrapper functions, higher-order functions, or enums
+with `match` when different types need related operations.
 
 ### 14.1 Opaque Representation Candidate
 
@@ -433,4 +437,5 @@ If per-field visibility is ever added, the recommended constraints are:
 - a public record with non-public fields could not be constructed, read, or updated through those fields outside their visibility boundary
 - constructor-style functions should be used when non-public fields are present
 
-The policy for protocol-like abstractions is defined in [012-protocols-deferred.md](./012-protocols-deferred.md).
+Records remain data declarations. They do not participate in behavior
+conformance, conformance-based dispatch, or overloaded method lookup.

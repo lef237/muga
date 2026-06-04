@@ -39,20 +39,18 @@ The following are not planned for ordinary Muga code:
 - source-level references such as `ref T`, `mut ref T`, `&value`, `*value`, pointer syntax, ownership syntax, borrowing syntax, raw pointer arithmetic, or general writable aliases
 - implicit exceptions or `throws`
 - postfix Result propagation `expr?`
-- `trait`, `interface`, or `typeclass` as the first spelling for shared behavior abstractions
+- `protocol`, `trait`, `interface`, or `typeclass` declarations for shared behavior
+- behavior-conformance systems, protocol bounds, trait bounds, typeclass solving, default implementations, blanket implementations, protocol objects, or conformance-based dot lookup
 
 The following are explicitly not v1 completion blockers, but may be
 reconsidered after the implemented v1 surface and artifact model are stable:
 
-- a small `protocol` feature, only if ordinary functions, higher-order
-  functions, generics, enums, package qualification, and explicit wrappers prove
-  insufficient
 - future Result chain propagation `expr.try`, optional shorthand `T?`, and
   Option-only optional chaining `?.`
 - explicit call-site type arguments such as `id[Int](1)`
 - wildcard imports, selective imports, re-export syntax, or package top-level execution
 - broad catch-all wildcard match arms, nested patterns, match guards, multi-payload enum variants, or named-field enum variants
-- map literals, `Set[T]`, arbitrary `Map` key types, broad collection APIs, or iterator protocols
+- map literals, `Set[T]`, arbitrary `Map` key types, broad collection APIs, or iterator abstractions
 - concurrency syntax such as `group`, `spawn`, `join`, channels, `async`, or `await`
 - `String.len()`, substring/slice indexing, and richer parse error types until their semantics are explicitly chosen
 
@@ -423,5 +421,4 @@ Not implemented:
 - [spec/009-generics.md](./spec/009-generics.md)
 - [spec/010-references-draft.md](./spec/010-references-draft.md)
 - [spec/011-value-semantics.md](./spec/011-value-semantics.md)
-- [spec/012-protocols-deferred.md](./spec/012-protocols-deferred.md)
 - [spec/013-enums-results.md](./spec/013-enums-results.md)

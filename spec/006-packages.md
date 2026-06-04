@@ -526,7 +526,7 @@ For compiler purposes, `.mgi` is the public package interface. For application t
 - public `Result[T, E]` shapes where `E` is part of the failure contract
 - stable package/item identities and interface hashes
 
-Future generators may consume `.mgi` to produce API documentation, schema files, TypeScript clients, or service stubs. Those generators should not inspect private package bodies, depend on source file order, or infer protocol semantics from naming conventions.
+Future generators may consume `.mgi` to produce API documentation, schema files, TypeScript clients, or service stubs. Those generators should not inspect private package bodies, depend on source file order, or infer behavior-conformance semantics from naming conventions.
 
 This is not a v1 requirement. Before implementing generators, the design must define:
 
@@ -536,7 +536,7 @@ This is not a v1 requirement. Before implementing generators, the design must de
 - how opaque future runtime handles are excluded or represented
 - how generated artifacts are invalidated from `.mgi` interface hashes
 
-Packages should opt into HTTP, RPC, or other external protocols through explicit adapter APIs. A plain `pub fn` should remain a package-level function contract, not automatically a network endpoint.
+Packages should opt into HTTP, RPC, or other external transports through explicit adapter APIs. A plain `pub fn` should remain a package-level function contract, not automatically a network endpoint.
 
 ### 11.5 Public signatures may not leak non-public names
 
@@ -664,7 +664,7 @@ It avoids, for now:
 - implicit re-exports
 - top-level import side effects
 - nested module trees inside a file
-- protocol-like solving at package boundaries
+- behavior-conformance solving at package boundaries
 - package-scoped execution order rules
 
 ## 16. Large Project Layout
@@ -1142,7 +1142,6 @@ This draft intentionally leaves the following topics for later:
 - re-exports
 - package-scoped constants or immutable top-level values
 - generic packages
-- protocol/trait-like abstractions
 - testing and benchmark file conventions
 
 ## 20. Recommendation

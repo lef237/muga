@@ -24,7 +24,7 @@ The first slice should not include:
 - implicit conversions between enum variants and payload types
 - exception-style control flow
 - broad stdlib effect APIs
-- overloading or protocol-based variant dispatch
+- overloaded or behavior-conformance-based variant dispatch
 
 ## 3. MVP Source Syntax
 

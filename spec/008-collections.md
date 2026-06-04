@@ -29,7 +29,7 @@ The recommended order is:
 6. direct list indexing and value-returning `set` (implemented)
 7. `for item in list` iteration for `List[T]` only (implemented)
 8. `Map[K, V]` with scalar keys and value-returning operations (implemented)
-9. narrow helper packages that do not require iterator protocols or structural equality (implemented for `std::list` and `std::map`)
+9. narrow helper packages that do not require iterator abstractions or structural equality (implemented for `std::list` and `std::map`)
 10. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
 
 This order keeps the first implementation small.
@@ -163,7 +163,7 @@ kept = mapped.list::filter(predicate)
 total = kept.list::fold(0, add)
 ```
 
-`list::map` and `list::filter` return new lists and preserve item order. `list::fold` processes items left-to-right. `list::any` and `list::all` return `Bool` and may stop once the result is known. These helpers are ordinary package functions; they do not introduce iterator protocols or lazy views.
+`list::map` and `list::filter` return new lists and preserve item order. `list::fold` processes items left-to-right. `list::any` and `list::all` return `Bool` and may stop once the result is known. These helpers are ordinary package functions; they do not introduce iterator abstractions or lazy views.
 
 `List.contains` remains deferred because the v1 equality policy is scalar-only and does not define generic structural equality for list elements.
 
@@ -455,7 +455,7 @@ The following should not block the first collection implementation:
 - arbitrary record keys for `Map`
 - collection comprehensions
 - builder or mutable collection APIs
-- equality and hashing protocol-like abstractions
-- advanced generic features such as bounds, typeclasses, higher-kinded types, and specialization
+- equality and hashing constraint systems
+- advanced generic features such as higher-kinded types and specialization
 
 The immediate goal is a small, typed, useful collection core.

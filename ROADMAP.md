@@ -52,6 +52,9 @@ These are direction-setting commitments, not just missing implementation work.
 - [x] Muga is function-centered: records define data, ordinary functions define
   behavior, and dot calls remain surface syntax over functions.
 - [x] Muga keeps one ordinary function namespace and avoids overloaded dispatch.
+- [x] Muga does not add protocol/trait/interface/typeclass-style behavior
+  conformance; use ordinary functions, higher-order functions, explicit
+  wrappers, package qualification, and enums with `match`.
 - [x] Muga uses value semantics in ordinary source. The implementation may use
   sharing, handles, copy elision, or native representations internally, but
   ordinary code should not expose pointer, reference, ownership, or borrowing
@@ -228,8 +231,11 @@ future backlog items.
   writable aliases in ordinary Muga code
 - [x] do not add implicit exceptions or `throws`
 - [x] do not add postfix `expr?` for `Result` propagation
-- [x] do not use `trait`, `interface`, or `typeclass` as the first spelling for
-  shared behavior abstractions
+- [x] do not add `protocol`, `trait`, `interface`, or `typeclass` declarations
+  for shared behavior
+- [x] do not add behavior-conformance systems, protocol bounds, trait bounds,
+  typeclass solving, default implementations, blanket implementations,
+  protocol objects, or conformance-based dot lookup
 
 ## Deferred
 
@@ -237,13 +243,10 @@ These are not active implementation work. They may be reconsidered only when a
 concrete, tested slice proves the need and the design still fits the
 commitments above.
 
-- [ ] a small `protocol` feature, only if functions, higher-order functions,
-  generics, enums, package qualification, and explicit wrappers become
-  demonstrably insufficient
 - [ ] future `expr.try`, `T?`, and `Option`-only optional chaining
 - [ ] broad wildcard matching, nested patterns, guards, multi-payload variants
 - [ ] map literals, `Set[T]`, arbitrary `Map` keys, broad collection APIs,
-  iterator protocols
+  iterator abstractions
 - [ ] URL/Git/registry dependencies, remote fetching, publishing workflows,
   package signing, SBOMs, full published-package lockfile enforcement
 - [ ] binary streams, codecs, broad cryptography, service runtime APIs, async IO,
