@@ -26,8 +26,8 @@ Current code families:
 
 When adding a new public diagnostic code or changing the trigger for an existing code, update this catalog and add or adjust a focused test.
 
-The machine-readable diagnostic schema and CLI output envelope are defined in
-[docs/diagnostics-and-output.md](./docs/diagnostics-and-output.md). Tools should
+The machine-readable diagnostic schema and CLI output envelope are defined by
+the CLI `--format json` implementations and pinned by Rust tests. Tools should
 use that JSON contract where available instead of scraping display text.
 The CLI command `muga explain <diagnostic-code>` prints the matching catalog
 entry below when one exists, or the documented diagnostic family for newer

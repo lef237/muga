@@ -147,27 +147,68 @@ pub record Path {
 pub fn from_string(text: String): Path
 pub fn as_string(path: Path): String
 pub fn join(base: Path, child: String): Path
+pub fn normalize(path: Path): Path
 pub fn file_name(path: Path): Option[String]
+pub fn with_file_name(path: Path, new_file_name: String): Path
 pub fn parent(path: Path): Option[Path]
+pub fn strip_prefix(path: Path, base: Path): Option[Path]
 pub fn extension(path: Path): Option[String]
 pub fn file_stem(path: Path): Option[String]
+pub fn with_extension(path: Path, new_extension: String): Path
 pub fn is_absolute(path: Path): Bool
 ```
 
 `std::fs` exports:
 
 ```muga
+pub opaque type File
+
+pub record FileMetadata { ... }
+pub record PathStatus { ... }
+pub enum PathKind { Missing, File, Directory, Other }
+pub record PathInfo { ... }
+pub record PathMetadata { ... }
+pub record PathSizeMetadata { ... }
+pub record DirectorySizeMetadata { ... }
+
 pub fn read_text(path: String): Result[String, io::IOError]
+pub fn read_bytes(path: String): Result[bytes::Bytes, io::IOError]
 pub fn read_resource_text(package_path: String, resource_path: String): Result[String, io::IOError]
+pub fn read_resource_bytes(package_path: String, resource_path: String): Result[bytes::Bytes, io::IOError]
 pub fn write_text(path: String, text: String): Result[Unit, io::IOError]
+pub fn write_bytes(path: String, data: bytes::Bytes): Result[Unit, io::IOError]
 pub fn read_text_path(path: path::Path): Result[String, io::IOError]
+pub fn read_bytes_path(path: path::Path): Result[bytes::Bytes, io::IOError]
 pub fn write_text_path(path: path::Path, text: String): Result[Unit, io::IOError]
+pub fn write_bytes_path(path: path::Path, data: bytes::Bytes): Result[Unit, io::IOError]
+pub fn open_text(path: path::Path): Result[File, io::IOError]
+pub fn create_text(path: path::Path): Result[File, io::IOError]
+pub fn append_text(path: path::Path): Result[File, io::IOError]
+pub fn read_text_from(file: File): Result[String, io::IOError]
+pub fn write_text_to(file: File, text: String): Result[Unit, io::IOError]
+pub fn flush(file: File): Result[Unit, io::IOError]
+pub fn close(file: File): Result[Unit, io::IOError]
 pub fn read_dir_path(path: path::Path): Result[List[path::Path], io::IOError]
+pub fn read_dir_recursive_path(path: path::Path): Result[List[path::Path], io::IOError]
+pub fn directory_size_metadata_path(path: path::Path): Result[DirectorySizeMetadata, io::IOError]
+pub fn canonicalize_path(path: path::Path): Result[path::Path, io::IOError]
 pub fn create_dir_path(path: path::Path): Result[Unit, io::IOError]
 pub fn create_dir_all_path(path: path::Path): Result[Unit, io::IOError]
 pub fn remove_file_path(path: path::Path): Result[Unit, io::IOError]
 pub fn remove_dir_path(path: path::Path): Result[Unit, io::IOError]
+pub fn remove_dir_all_path(path: path::Path): Result[Unit, io::IOError]
 pub fn copy_file_path(from_path: path::Path, to_path: path::Path): Result[Unit, io::PathPairError]
+pub fn copy_dir_all_path(from_path: path::Path, to_path: path::Path): Result[Unit, io::PathPairError]
+pub fn move_dir_all_path(from_path: path::Path, to_path: path::Path): Result[Unit, io::PathPairError]
+pub fn rename_path(from_path: path::Path, to_path: path::Path): Result[Unit, io::PathPairError]
+pub fn file_size_path(path: path::Path): Result[Int, io::IOError]
+pub fn modified_unix_millis_path(path: path::Path): Result[time::UnixMillis, io::IOError]
+pub fn file_metadata_path(path: path::Path): Result[FileMetadata, io::IOError]
+pub fn path_status(path: path::Path): PathStatus
+pub fn path_kind(path: path::Path): PathKind
+pub fn path_info(path: path::Path): PathInfo
+pub fn path_metadata_path(path: path::Path): Result[PathMetadata, io::IOError]
+pub fn path_size_metadata_path(path: path::Path): Result[PathSizeMetadata, io::IOError]
 pub fn exists_path(path: path::Path): Bool
 pub fn is_file_path(path: path::Path): Bool
 pub fn is_dir_path(path: path::Path): Bool
@@ -397,13 +438,43 @@ pub fn load_json_or[T](file_path: path::Path, fallback: T): Result[T, Error]
 and decodes it with the same default-overlay semantics and structural target
 set as `json::decode_or[T]`. Decode failures map to `config::ErrorKind::Decode`.
 
-`std::cli` exports pure lookup and typed parsing helpers over explicit argument
-lists:
+`std::cli` exports pure lookup helpers plus compiler-owned typed parser,
+request, usage, and help helpers over explicit argument lists:
 
 ```muga
+pub enum ErrorKind {
+  UnknownArgument
+  MissingArgument
+  MissingValue
+  InvalidValue
+  Validation
+  UnsupportedTarget
+}
+
+pub record Error {
+  kind: ErrorKind
+  argument: String
+  message: String
+}
+
+pub enum Request[T] {
+  Help(String)
+  Parsed(T)
+}
+
+pub fn parse_or[T](args: List[String], defaults: T): Result[T, Error]
+pub fn parse[T](args: List[String]): Result[T, Error]
+pub fn parse_request[T](args: List[String], program: String): Result[Request[T], Error]
+pub fn parse_request_or[T](args: List[String], program: String, defaults: T): Result[Request[T], Error]
+pub fn usage_for[T](program: String, defaults: T): String
+pub fn usage_for_required[T](program: String): String
+pub fn help_for[T](program: String, defaults: T): String
+pub fn help_for_required[T](program: String): String
 pub fn positional(args: List[String], index: Int): Option[String]
 pub fn positional_or(args: List[String], index: Int, default_value: String): String
 pub fn has_flag(args: List[String], name: String): Bool
+pub fn has_short_flag(args: List[String], name: String): Bool
+pub fn help_requested(args: List[String]): Bool
 pub fn option(args: List[String], name: String): Option[String]
 pub fn option_or(args: List[String], name: String, default_value: String): String
 pub fn option_values(args: List[String], name: String): List[String]
@@ -420,9 +491,9 @@ pub fn option_bool_or(args: List[String], name: String, default_value: Bool): Re
 
 `list::map`, `list::filter`, and `map::keys` / `map::values` allocate new lists at the source level. `list::map`, `list::filter`, and `list::fold` process items in list order. `list::any` and `list::all` return `Bool` and may stop once the result is known. `map::keys` and `map::values` return lists in the map's deterministic entry order; replacing an existing key does not move that key. `List.contains` and `map::entries` remain deferred because v1 equality is scalar-only and map entries need a deliberate public record shape.
 
-`cli::has_flag(args, "verbose")` matches `--verbose`; `cli::option(args, "output")` matches `--output value` and `--output=value`; `cli::option_values(args, "tag")` collects repeated `--tag value` and `--tag=value` occurrences in encounter order. `--` stops flag and option parsing and makes later values positional. Before `--`, `cli::positional` counts values that do not start with `--`. A separate `--name` option with no non-option following value is skipped by the lookup helpers. The current slice intentionally has no global parser state, short flag parsing, generated help, typed repeated parsing, public CLI error type, or usage diagnostics.
+`cli::has_flag(args, "verbose")` matches `--verbose`; `cli::has_short_flag(args, "v")` matches `-v`; `cli::help_requested(args)` matches `--help` and `-h`; `cli::option(args, "output")` matches `--output value` and `--output=value`; `cli::option_values(args, "tag")` collects repeated `--tag value` and `--tag=value` occurrences in encounter order. `--` stops flag and option parsing and makes later values positional. Before `--`, `cli::positional` counts values that do not start with `--`. A separate `--name` option with no non-option following value is skipped by the lookup helpers. The schema helpers are lowered by the compiler for supported concrete record and enum targets, including command enums, wrapper records, value sources, validation metadata, generated usage/help text, and recoverable `cli::Error` values. Global parser state and shell integration remain outside the source language.
 
-`path::join(base, child)` combines a `Path` with a child path string using host path semantics and returns a new `Path`. `path::parent(path)` returns the parent path as `Option[Path]`; paths without a meaningful parent return `Option::None`. `path::file_name(path)` returns the final path component as `Option[String]`; paths without a file name or with a non-Unicode file name return `Option::None`. `path::extension(path)` returns the final extension as `Option[String]`; paths without an extension or with a non-Unicode extension return `Option::None`. `path::file_stem(path)` returns the final file stem as `Option[String]`; paths without a file stem or with a non-Unicode file stem return `Option::None`. `path::is_absolute(path)` classifies the path using host path semantics. `read_text` and `read_text_path` read a UTF-8 text file into a `String`. `read_bytes` and `read_bytes_path` read a binary file into opaque `std::bytes::Bytes`. `write_bytes` and `write_bytes_path` write opaque `Bytes` as full-file binary output. `read_resource_text(package_path, resource_path)` reads a UTF-8 text resource from a manifest-declared package resource root without returning a host path. `read_resource_bytes(package_path, resource_path)` reads bytes from that same resource-root map and returns opaque `std::bytes::Bytes`; the first `std::bytes` helpers are `bytes::size`, `bytes::empty`, and zero-based `bytes::at(bytes, index): Option[Int]`. `hash::sha256_hex(bytes)` returns a 64-character lowercase SHA-256 hex digest for `Bytes`. `read_dir_path` lists direct directory entries as `path::Path` values in deterministic sorted order. `write_text`, `write_text_path`, `write_bytes`, `write_bytes_path`, `create_dir_path`, `create_dir_all_path`, `remove_file_path`, `remove_dir_path`, and `copy_file_path` use `Unit` as the success payload. Single-path recoverable filesystem failures return `Result::Err(io::IOError)`. Two-path recoverable filesystem failures return `Result::Err(io::PathPairError)` with `from_path` and `to_path` populated. `create_dir_path` creates exactly one directory and does not create missing parent directories. `create_dir_all_path` creates the full directory tree and succeeds when the target directory already exists. `remove_file_path` removes one filesystem file and reports missing paths, directories, permission failures, and other recoverable filesystem failures as `Result::Err(io::IOError)`. `remove_dir_path` removes one empty filesystem directory and reports missing paths, non-empty directories, file paths, permission failures, and other recoverable filesystem failures as `Result::Err(io::IOError)`. `copy_file_path` copies one filesystem file from `from_path` to `to_path`, overwrites an existing target file when the host filesystem permits it, and reports missing source paths, directory paths, permission failures, and other recoverable filesystem failures as `Result::Err(io::PathPairError)`. `exists_path`, `is_file_path`, and `is_dir_path` are non-throwing metadata predicates and return `false` for missing or inaccessible paths. `std::fs::File` is the current runtime-backed opaque handle. `open_text`, `create_text`, and `append_text` acquire read, write, and append handles; `read_text_from`, `write_text_to`, and `flush` borrow a handle and return recoverable `io::IOError` values for host IO or wrong-mode failures; `close` consumes the handle and returns `Result[Unit, io::IOError]`. Statement-form `using` may manage such handles when the enclosing function returns a compatible `Result[T, io::IOError]`. The current slice intentionally does not add binary file handles, byte mutation, codecs, streaming hash handles, broader cryptographic APIs, recursive removal APIs, rename APIs, directory copy APIs, stdout/stderr handles, permissions APIs, process/network APIs, streaming APIs, or asynchronous IO.
+`path::join(base, child)` combines a `Path` with a child path string using host path semantics and returns a new `Path`. `path::parent(path)` returns the parent path as `Option[Path]`; paths without a meaningful parent return `Option::None`. `path::file_name(path)` returns the final path component as `Option[String]`; paths without a file name or with a non-Unicode file name return `Option::None`. `path::extension(path)` returns the final extension as `Option[String]`; paths without an extension or with a non-Unicode extension return `Option::None`. `path::file_stem(path)` returns the final file stem as `Option[String]`; paths without a file stem or with a non-Unicode file stem return `Option::None`. `path::is_absolute(path)` classifies the path using host path semantics. `read_text` and `read_text_path` read a UTF-8 text file into a `String`. `read_bytes` and `read_bytes_path` read a binary file into opaque `std::bytes::Bytes`. `write_bytes` and `write_bytes_path` write opaque `Bytes` as full-file binary output. `read_resource_text(package_path, resource_path)` reads a UTF-8 text resource from a manifest-declared package resource root without returning a host path. `read_resource_bytes(package_path, resource_path)` reads bytes from that same resource-root map and returns opaque `std::bytes::Bytes`; the first `std::bytes` helpers are `bytes::size`, `bytes::empty`, and zero-based `bytes::at(bytes, index): Option[Int]`. `hash::sha256_hex(bytes)` returns a 64-character lowercase SHA-256 hex digest for `Bytes`. `read_dir_path` lists direct directory entries as `path::Path` values in deterministic sorted order, and `read_dir_recursive_path` returns deterministic read-only descendants without recursing into symlink directories. `directory_size_metadata_path`, `file_metadata_path`, `path_metadata_path`, and `path_size_metadata_path` expose the current metadata slice. `write_text`, `write_text_path`, `write_bytes`, `write_bytes_path`, `create_dir_path`, `create_dir_all_path`, `remove_file_path`, `remove_dir_path`, `remove_dir_all_path`, `copy_file_path`, `copy_dir_all_path`, `move_dir_all_path`, and `rename_path` use `Unit` as the success payload. Single-path recoverable filesystem failures return `Result::Err(io::IOError)`. Two-path recoverable filesystem failures return `Result::Err(io::PathPairError)` with `from_path` and `to_path` populated. Recursive directory copy and move are no-overwrite operations in the current slice. `exists_path`, `is_file_path`, and `is_dir_path` are non-throwing metadata predicates and return `false` for missing or inaccessible paths. `std::fs::File` is the current runtime-backed opaque handle. `open_text`, `create_text`, and `append_text` acquire read, write, and append handles; `read_text_from`, `write_text_to`, and `flush` borrow a handle and return recoverable `io::IOError` values for host IO or wrong-mode failures; `close` consumes the handle and returns `Result[Unit, io::IOError]`. Statement-form `using` may manage such handles when the enclosing function returns a compatible `Result[T, io::IOError]`. The current slice intentionally does not add binary file handles, byte mutation, codecs, streaming hash handles, broader cryptographic APIs, stdout/stderr handles, permissions APIs, process/network APIs, streaming APIs, or asynchronous IO.
 
 Because `print`, `println`, `len`, and `is_empty` accept several concrete types, none of them by itself makes an unconstrained parameter uniquely inferable.
 
