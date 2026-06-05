@@ -7,15 +7,15 @@ Muga samples.
 
 ## Resume Cursor
 
-- [ ] **NOW P0:** prepare a v1 release candidate when the version and release
-  timing are decided.
-- [ ] **NEXT P0:** follow [RELEASING.md](./RELEASING.md), including the
-  publish dry run, version bump, tag, and release workflow.
+- [ ] **NOW P0:** complete the pre-v1 implementation audit before choosing a
+  release target.
+- [ ] **NEXT P0:** choose the next release target, then follow
+  [RELEASING.md](./RELEASING.md) for the chosen version.
 - [ ] **POST-v1:** revisit structured task groups only after v1 ships.
 
-Last verified locally on 2026-06-04 after `std::process` and v1 release
-hardening:
+Last verified locally on 2026-06-05 during the pre-v1 implementation audit:
 
+- [x] `cargo fmt --check`
 - [x] `cargo test --locked`
 - [x] `scripts/v1-release-gate.sh`
 
@@ -175,6 +175,66 @@ Completed after `std::process` landed and was release-gated.
   where they affect a v1 user or releaser.
 - [x] Run `cargo fmt --check`, `scripts/clippy-check.sh`, `cargo test --locked`,
   and `scripts/v1-release-gate.sh` from the final tree.
+
+## P0: Pre-v1 Implementation Audit
+
+This is the current task. Do not choose a release target or bump versions until
+this audit is complete.
+
+- [ ] Audit Rust implementation hotspots:
+  - [x] parser and formatter round-trip behavior
+  - [ ] resolver and package visibility rules
+  - [ ] typechecker rules for records, enums, generics, control flow, and
+    standard packages
+  - [ ] MIR, bytecode, and VM behavior for user-reachable runtime paths
+  - [ ] artifact loading, package archives, app bundles, and source-free
+    execution
+  - [ ] CLI JSON/text diagnostic contracts
+- [ ] Classify every production `panic!`, `unreachable!`, `unwrap`, and
+  `expect` as either an internal invariant or a user-reachable bug.
+- [ ] Add focused Rust tests for any discovered behavior gap, even if the code
+  already appears correct.
+- [ ] Add or update runnable Muga samples only where a public v1 workflow lacks
+  sample coverage.
+- [ ] Re-run `cargo test --locked` and `scripts/v1-release-gate.sh`.
+- [ ] Record the audit result here before returning to release-candidate
+  preparation.
+
+Audit notes:
+
+- [x] 2026-06-05: searched `src/`, `tests/`, `samples/`, `spec/`, and top-level
+  docs for `TODO`, `FIXME`, `todo!`, `unimplemented!`, and debug output
+  leftovers. No production incomplete implementation marker was found.
+- [x] 2026-06-05: added a formatter regression test that copies repository
+  `samples/` and `conformance/v1`, runs manifest-aware `format_path` over every
+  `.muga` file, and verifies the result is idempotent.
+- [x] 2026-06-05: added a bytecode regression test proving statement-form
+  `using` emits cleanup call sites for `try`, explicit `return`, `break`,
+  `continue`, and normal fallthrough paths.
+- [x] 2026-06-05: ran `cargo fmt --check`, `git diff --check`,
+  `cargo test --locked`, and `scripts/v1-release-gate.sh` after the first audit
+  slice.
+
+## P0: Release Candidate Preparation
+
+Do not bump versions, create tags, push, or publish without an explicit release
+target decision. This starts only after the pre-v1 implementation audit is
+complete.
+
+- [ ] Decide the next release target:
+  - [ ] `1.0.0-rc.1` if this is the first v1 release candidate.
+  - [ ] `1.0.0` only if the v1 compatibility promise should begin now.
+  - [ ] another `0.x` only if this should remain a pre-v1 release.
+- [ ] Confirm the working tree contains only intended release changes.
+- [ ] Run `scripts/v1-release-gate.sh` from the chosen-version
+  release-candidate tree.
+- [ ] Bump `Cargo.toml` and `Cargo.lock` to the chosen version.
+- [ ] Commit the version bump.
+- [ ] Run `scripts/v1-release-gate.sh --with-publish-dry-run`.
+- [ ] Create and verify the annotated tag for the chosen version.
+- [ ] Push `main` and the tag.
+- [ ] Verify the GitHub Actions release workflow, crates.io version, and GitHub
+  Release.
 
 ## Post-v1 P1: Structured Task Groups
 

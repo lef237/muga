@@ -19,6 +19,69 @@ fn fixture_paths(dir: &str) -> Vec<std::path::PathBuf> {
     paths
 }
 
+fn recursive_muga_paths(root: &Path) -> Vec<std::path::PathBuf> {
+    fn collect(dir: &Path, paths: &mut Vec<std::path::PathBuf>) {
+        let mut entries = fs::read_dir(dir)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", dir.display()))
+            .map(|entry| {
+                entry.unwrap_or_else(|error| {
+                    panic!("failed to read entry under {}: {error}", dir.display())
+                })
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|entry| entry.path());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_dir() {
+                collect(&path, paths);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "muga")
+            {
+                paths.push(path);
+            }
+        }
+    }
+
+    let mut paths = Vec::new();
+    collect(root, &mut paths);
+    paths
+}
+
+fn copy_repository_fixture_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to)
+        .unwrap_or_else(|error| panic!("failed to create {}: {error}", to.display()));
+    let mut entries = fs::read_dir(from)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", from.display()))
+        .map(|entry| {
+            entry.unwrap_or_else(|error| {
+                panic!("failed to read entry under {}: {error}", from.display())
+            })
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.path());
+
+    for entry in entries {
+        let source = entry.path();
+        let name = entry.file_name();
+        if name == std::ffi::OsStr::new(".muga") || name == std::ffi::OsStr::new("muga.lock") {
+            continue;
+        }
+        let target = to.join(name);
+        if source.is_dir() {
+            copy_repository_fixture_tree(&source, &target);
+        } else if source.is_file() {
+            fs::copy(&source, &target).unwrap_or_else(|error| {
+                panic!(
+                    "failed to copy {} to {}: {error}",
+                    source.display(),
+                    target.display()
+                )
+            });
+        }
+    }
+}
+
 #[test]
 fn valid_examples_pass_frontend() {
     for path in fixture_paths("examples/valid") {
@@ -5217,6 +5280,35 @@ if total==3{total}else{0}
         formatted
     );
     muga::check_source(&formatted).expect("formatted source should check");
+}
+
+#[test]
+fn muga_fmt_outputs_parseable_idempotent_source_for_repository_samples() {
+    let root = temp_package_root("fmt-repository-samples");
+    let samples_root = root.join("samples");
+    let conformance_root = root.join("conformance/v1");
+    copy_repository_fixture_tree(Path::new("samples"), &samples_root);
+    copy_repository_fixture_tree(Path::new("conformance/v1"), &conformance_root);
+
+    let paths = recursive_muga_paths(&samples_root)
+        .into_iter()
+        .chain(recursive_muga_paths(&conformance_root))
+        .collect::<Vec<_>>();
+    assert!(!paths.is_empty(), "repository should contain Muga samples");
+
+    for path in paths {
+        muga::format_path(&path).unwrap_or_else(|diagnostics| {
+            panic!("format failed for {}: {diagnostics:#?}", path.display())
+        });
+        let second = muga::format_path(&path).unwrap_or_else(|diagnostics| {
+            panic!("reformat failed for {}: {diagnostics:#?}", path.display())
+        });
+        assert!(
+            !second.changed,
+            "formatted output should be idempotent for {}",
+            path.display()
+        );
+    }
 }
 
 #[test]
@@ -38452,6 +38544,77 @@ fn main(): Result[Unit, io::IOError] {{
 }
 
 #[test]
+fn compile_bytecode_using_cleanup_unwinds_return_break_and_continue_paths() {
+    let root = temp_package_root("std-fs-using-cleanup-control-flow-bytecode");
+    let target = root.join("control-flow.txt");
+    let target_literal = muga_string_literal(&display_path(&target));
+    let entry = write_package_file(
+        &root,
+        "app/std_fs_using_cleanup_control_flow/main.muga",
+        &format!(
+            r#"
+package app::std_fs_using_cleanup_control_flow
+
+import std::fs
+import std::io
+import std::path
+
+fn return_path(): Result[String, io::IOError] {{
+  file_path = path::from_string({target_literal})
+  using file = try fs::create_text(file_path) {{
+    wrote = try fs::write_text_to(file, "return")
+    return Result::Ok("returned")
+  }}
+  Result::Ok("fallthrough")
+}}
+
+fn loop_path(): Result[Unit, io::IOError] {{
+  file_path = path::from_string({target_literal})
+  mut index = 0
+  while index < 3 {{
+    index = index + 1
+    using file = try fs::create_text(file_path) {{
+      wrote = try fs::write_text_to(file, "loop")
+      if index == 1 {{
+        continue
+      }}
+      if index == 2 {{
+        break
+      }}
+    }}
+  }}
+  Result::Ok(())
+}}
+
+fn main(): Result[String, io::IOError] {{
+  first = try return_path()
+  second = try loop_path()
+  Result::Ok(first)
+}}
+"#
+        ),
+    );
+
+    let program =
+        muga::compile_bytecode_path(&entry).expect("using cleanup control-flow should compile");
+    let return_function = bytecode_function_named(&program, "return_path");
+    let loop_function = bytecode_function_named(&program, "loop_path");
+    let return_close_calls = bytecode_close_call_site_count(&program, return_function);
+    let loop_close_calls = bytecode_close_call_site_count(&program, loop_function);
+
+    assert!(
+        return_close_calls >= 3,
+        "return_path should close on try error, explicit return, and normal fallthrough; saw {return_close_calls} close call sites in {:#?}",
+        return_function.chunk.instructions
+    );
+    assert!(
+        loop_close_calls >= 4,
+        "loop_path should close on try error, continue, break, and normal fallthrough; saw {loop_close_calls} close call sites in {:#?}",
+        loop_function.chunk.instructions
+    );
+}
+
+#[test]
 fn using_rejects_non_handle_binding() {
     let source = r#"
 fn main(): Result[Unit, String] {
@@ -43531,6 +43694,48 @@ fn bytecode_program_has_control_flow(program: &bytecode::Program) -> bool {
             .functions
             .iter()
             .any(|function| chunk_has_control_flow(&function.chunk))
+}
+
+fn bytecode_function_named<'a>(
+    program: &'a bytecode::Program,
+    name: &str,
+) -> &'a bytecode::Function {
+    program
+        .functions
+        .iter()
+        .find(|function| {
+            function
+                .name
+                .is_some_and(|symbol| program.symbols.resolve(symbol).ends_with(name))
+        })
+        .unwrap_or_else(|| {
+            let names = program
+                .functions
+                .iter()
+                .filter_map(|function| function.name.map(|symbol| program.symbols.resolve(symbol)))
+                .collect::<Vec<_>>();
+            panic!("bytecode function `{name}` should exist; found {names:?}")
+        })
+}
+
+fn bytecode_close_call_site_count(
+    program: &bytecode::Program,
+    function: &bytecode::Function,
+) -> usize {
+    function
+        .chunk
+        .instructions
+        .windows(3)
+        .filter(|window| {
+            matches!(
+                (&window[0], &window[2]),
+                (
+                    Instruction::LoadName { target, .. },
+                    Instruction::Call { argc: 1, .. }
+                ) if program.symbols.resolve(target.name).contains("close")
+            )
+        })
+        .count()
 }
 
 fn write_tampered_states_implementation_artifact(
