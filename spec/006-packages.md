@@ -475,7 +475,9 @@ In the committed v1 model, a `pub record` is transparent: its field names and fi
 
 If a representation should be hidden inside a module or package, keep the record itself non-public and expose functions that do not leak that non-public type across a wider visibility boundary.
 
-If a package needs to expose a public type name while hiding its representation, the current interface-only form is:
+If a package needs to expose a public type name while hiding its representation
+and that representation is not committed to ordinary Muga record fields, the
+current interface-only form is:
 
 ```muga
 pub opaque type File
@@ -489,6 +491,18 @@ runtime-backed values. Source-defined opaque types currently receive
 conservative `handleFacts` defaults: not runtime-backed, not copyable, not
 cloneable, not sendable, not shareable, not structurally comparable, not
 serializable, not closeable, and no named close function.
+
+`pub opaque type` is not a general `type` declaration and is not a type alias.
+It should not be used merely to shorten signatures. In v1 it is mainly for
+compiler-provided, runtime-backed, native-backed, or external-backed values such
+as `std::fs::File` and `std::bytes::Bytes`, where no source-level record layout
+is available or promised. A user package may write the declaration, but without
+a runtime or external producer function the package cannot construct values of
+that type in ordinary Muga source.
+
+For ordinary user-defined Muga data whose fields exist but should be hidden from
+importing packages, the more coherent future feature is `pub opaque record`.
+That feature is not implemented in v1.
 
 The remaining opaque representation directions are:
 

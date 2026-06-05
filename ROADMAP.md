@@ -318,27 +318,41 @@ Distribution should build on the existing `.mgp` / `.mga` work.
 
 ## Parked Non-Blockers
 
-These are known implementation gaps or design extensions. They should not block
-v1 unless a concrete release-gate failure or user-facing correctness issue moves
-one into P0.
+These are known implementation gaps or design extensions. Parking an item here
+does not mean it is planned. It means the current implementation is allowed to
+ship without it, and the feature should not be promoted only because it would
+make a few examples shorter.
 
-- [ ] public-signature inference for `pub fn`; keep explicit public signatures
-  for v1 because they stabilize package interfaces.
+Move a parked item into active work only when all of these are true:
+
+- real Muga programs show repeated readability, correctness, or workflow pain
+  that the current explicit form does not handle well
+- the proposed solution preserves Muga's function-centered, value-oriented,
+  non-overloaded source model
+- the feature has a small grammar, clear diagnostics, package-interface rules,
+  and focused Rust tests before implementation begins
+- the feature does not introduce protocol/trait/typeclass-style behavior,
+  class-style dispatch, implicit effects, or multiple competing spellings for
+  the same operation
+
+- [ ] public-signature inference for `pub fn`; there is no active plan to add
+  this. Keep explicit public signatures as the default because they stabilize
+  package interfaces, docs, API diffs, and artifact-backed checking.
 - [ ] project-mode artifact-root configuration and full incremental package
   artifact reuse; revisit after real projects show repeated build pain.
 - [ ] structural equality, `List.contains`, structural `assert_eq`,
   `Map.entries`, `Set[T]`, arbitrary `Map` key types, map literals, and broad
-  collection APIs; revisit only with an explicit equality/hash design that does
-  not introduce behavior-conformance systems.
+  collection APIs; not queued. Revisit only with an explicit equality/hash
+  design that does not introduce behavior-conformance systems.
 - [ ] broader JSON/config schema targets such as generic records, generic
   enums, nested `Option[Option[T]]`, non-string map keys, and validation
   attributes; revisit after the current concrete schema slice is exercised.
 - [ ] future `expr.try`, `T?`, and `Option`-only optional chaining; revisit
   only if explicit `try`, `Option`, and helper packages become too noisy in
-  real code.
+  real code. Do not add them merely as shorter spellings.
 - [ ] broad wildcard matching, nested patterns, guards, multi-payload variants,
   and named-field enum variants; revisit only with concrete examples that make
-  the current exhaustive `match` form too verbose.
+  the current exhaustive `match` form hard to read or easy to get wrong.
 - [ ] source-level consuming parameter declarations, broader runtime-backed
   handle families, `using` expressions, multiple `using` bindings, and
   aggregate cleanup errors; revisit after `std::process` and more handle APIs
@@ -352,6 +366,13 @@ one into P0.
 - [ ] control-flow-oriented MIR, native backend, and representation performance
   work; revisit after benchmark data shows the reference VM or current bytecode
   is the limiting factor.
+- [ ] concurrency syntax from `spec/007-concurrency-draft.md`; the draft is not
+  an implementation queue. Before any task syntax is added, re-confirm whether
+  Muga needs syntax at all or whether a standard package abstraction is simpler.
+- [ ] `pub opaque record` for user-defined hidden record representations; this
+  is not a v1 feature. Revisit only after real package APIs need smart
+  constructors while hiding ordinary Muga record fields. Keep this separate from
+  runtime/compiler-backed `pub opaque type`.
 
 ## Documentation Hygiene
 
@@ -369,11 +390,25 @@ one into P0.
 - [ ] Keep the v1 source model small.
 - [ ] Prefer code, samples, conformance fixtures, and Rust tests over long
   design prose.
+- [ ] Do not add syntax only to reduce character count. Prefer explicit spelling
+  when it improves local readability and keeps the grammar smaller.
+- [ ] Keep one canonical spelling for each semantic operation unless real code
+  proves that a second spelling makes programs easier to read, not merely
+  shorter.
+- [ ] Treat draft-only documents as design notes, not implementation queues.
+  A draft feature still needs a fresh roadmap promotion decision before work
+  starts.
+- [ ] Keep `pub opaque type` narrow. It is for public opaque names whose
+  representation is compiler/runtime/native/external-backed or intentionally not
+  committed to a source-level field layout; ordinary user data should use
+  `record` or `enum`, and hidden ordinary records should wait for a deliberate
+  `pub opaque record` design.
 - [ ] Do not make normal `check` or `run` silently depend on built artifacts.
 - [ ] Keep artifact-backed package execution hard-failing without dependency
   source fallback.
-- [ ] Keep public `pub fn` signatures explicit until public-signature inference
-  is deliberately implemented.
+- [ ] Keep public `pub fn` signatures explicit by default; do not add inference
+  for public package APIs unless the roadmap records stronger evidence than
+  annotation convenience.
 - [ ] Keep diagnostics stable, actionable, and source/artifact-aware.
 
 ## Not Planned
@@ -387,6 +422,12 @@ future backlog items.
   function calls
 - [x] do not add overloaded function dispatch, overloaded operator dispatch, and
   user-defined overload sets
+- [x] do not add general `type` declarations or type aliases as alternate
+  spellings for `record`, `enum`, or enum-plus-record combinations; keep data
+  declarations explicit
+- [x] do not add type aliases merely to shorten public API shapes or avoid
+  writing explicit `record` / `enum` declarations. This does not remove the
+  narrow package-mode `pub opaque type` form, which is not a type alias.
 - [x] do not add source-level references, mutable references, pointer syntax,
   ownership syntax, borrowing syntax, raw pointer arithmetic, or general
   writable aliases in ordinary Muga code

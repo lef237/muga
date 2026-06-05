@@ -36,14 +36,18 @@ The following are not planned for ordinary Muga code:
 - `class`, inheritance, member-owned methods, member ownership semantics, or class-style encapsulation
 - method dispatch as a separate semantic category from ordinary function calls
 - overloaded function dispatch, overloaded operator dispatch, or user-defined overload sets
+- general `type` declarations or type aliases as alternate spellings for `record`, `enum`, or enum-plus-record combinations
+- type aliases added only to shorten public API shapes or avoid explicit `record` / `enum` declarations; package-mode `pub opaque type` is a separate narrow form, not a type alias
 - source-level references such as `ref T`, `mut ref T`, `&value`, `*value`, pointer syntax, ownership syntax, borrowing syntax, raw pointer arithmetic, or general writable aliases
 - implicit exceptions or `throws`
 - postfix Result propagation `expr?`
 - `protocol`, `trait`, `interface`, or `typeclass` declarations for shared behavior
 - behavior-conformance systems, protocol bounds, trait bounds, typeclass solving, default implementations, blanket implementations, protocol objects, or conformance-based dot lookup
 
-The following are explicitly not v1 completion blockers, but may be
-reconsidered after the implemented v1 surface and artifact model are stable:
+The following are explicitly not v1 completion blockers and are not active
+implementation work. Reconsider them only after real Muga programs show that
+the current explicit forms are hard to read, easy to misuse, or blocking an
+important workflow:
 
 - future Result chain propagation `expr.try`, optional shorthand `T?`, and
   Option-only optional chaining `?.`
@@ -51,6 +55,7 @@ reconsidered after the implemented v1 surface and artifact model are stable:
 - wildcard imports, selective imports, re-export syntax, or package top-level execution
 - broad catch-all wildcard match arms, nested patterns, match guards, multi-payload enum variants, or named-field enum variants
 - map literals, `Set[T]`, arbitrary `Map` key types, broad collection APIs, or iterator abstractions
+- `pub opaque record` for user-defined hidden record representations
 - concurrency syntax such as `group`, `spawn`, `join`, channels, `async`, or `await`
 - `String.len()`, substring/slice indexing, and richer parse error types until their semantics are explicitly chosen
 
@@ -137,6 +142,14 @@ is persisted in `.mgi` interfaces, but ordinary source code cannot construct it,
 access fields, match on it, compare it structurally, or format it through
 `to_string`. Opaque type declarations are public-only and non-generic in the
 current slice.
+
+`pub opaque type` is not Muga's general `type` declaration and is not a type
+alias. In v1 it is a narrow interface form for compiler/runtime/native/external
+values such as `std::fs::File` and `std::bytes::Bytes`, or for package
+interfaces that deliberately do not commit to a source-level field layout.
+Ordinary user-defined data should use `record` or `enum`. If real packages need
+ordinary Muga records whose fields are hidden outside the defining package, the
+separate future candidate is `pub opaque record`, not a general type alias.
 
 The compiler-provided `std::fs::File` is a runtime-backed opaque handle.
 `using` introduces one immutable handle binding scoped to its block and runs
