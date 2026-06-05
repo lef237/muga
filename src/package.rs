@@ -620,6 +620,15 @@ fn parse_entry_program(path: &Path) -> Result<(Program, Option<ProjectManifest>)
     } else {
         crate::parser::parse(entry_tokens)?
     };
+    if manifest.is_none()
+        && let Some(package) = &entry_program.package
+        && is_reserved_standard_package_path(&package.path)
+    {
+        return Err(vec![reserved_standard_package_diagnostic(
+            &package.path,
+            package.span,
+        )]);
+    }
     attach_doc_comments_from_source(&mut entry_program, &entry_source);
     Ok((entry_program, manifest))
 }
@@ -1982,6 +1991,13 @@ impl PackageLoader {
     fn load_package_files(&mut self, package_path: &str) -> Vec<ParsedFile> {
         if let Some(files) = crate::std_package::virtual_package_files(package_path) {
             return self.load_virtual_package_files(package_path, files);
+        }
+        if is_reserved_standard_package_path(package_path) {
+            self.diagnostics.push(reserved_standard_package_diagnostic(
+                package_path,
+                Span::default(),
+            ));
+            return Vec::new();
         }
 
         let package_dir = self.package_dir(package_path);
@@ -4174,6 +4190,12 @@ fn parse_manifest_inner_impl(
                     Span::default(),
                 )]);
             }
+            if is_reserved_standard_package_path(&package_name) {
+                return Err(vec![reserved_standard_package_diagnostic(
+                    &package_name,
+                    Span::default(),
+                )]);
+            }
             let dependency_source =
                 parse_manifest_dependency_source(value.trim(), path, &package_name)?;
             dependency_sources.push((package_name, dependency_source));
@@ -4211,6 +4233,12 @@ fn parse_manifest_inner_impl(
         return Err(vec![Diagnostic::new(
             "PK014",
             format!("manifest package name `{name}` is not a valid package path"),
+            Span::default(),
+        )]);
+    }
+    if is_reserved_standard_package_path(&name) {
+        return Err(vec![reserved_standard_package_diagnostic(
+            &name,
             Span::default(),
         )]);
     }
@@ -6478,6 +6506,19 @@ fn infer_manifest_package_path(
 
 fn is_valid_package_path(path: &str) -> bool {
     !path.is_empty() && path.split("::").all(is_valid_package_segment)
+}
+
+fn is_reserved_standard_package_path(path: &str) -> bool {
+    path == "std" || path.starts_with("std::")
+}
+
+fn reserved_standard_package_diagnostic(path: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        "PK014",
+        format!("package path `{path}` is reserved for the standard library"),
+        span,
+    )
+    .with_suggestion("choose a non-`std` package path for user code")
 }
 
 fn is_valid_package_segment(segment: &str) -> bool {

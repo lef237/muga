@@ -1113,7 +1113,9 @@ impl TypeChecker {
     }
 
     fn check_using_stmt(&mut self, stmt: &UsingStmt) {
-        let return_err = self.current_result_return(stmt.span).map(|(_, err)| err);
+        let return_err = self
+            .current_using_result_return(stmt.span)
+            .map(|(_, err)| err);
         let value_ty = self.check_expr(&stmt.value);
         let cleanup = return_err
             .as_ref()
@@ -6747,6 +6749,45 @@ impl TypeChecker {
                     "T023",
                     format!(
                         "`try` requires the enclosing function to return Result[T, E], found {}",
+                        self.type_label(&other)
+                    ),
+                    span,
+                ));
+                None
+            }
+        }
+    }
+
+    fn current_using_result_return(&mut self, span: Span) -> Option<(Type, Type)> {
+        let Some(return_ty) = self.current_function_returns.last().cloned() else {
+            self.diagnostics.push(Diagnostic::new(
+                "T027",
+                "`using` is allowed only inside a function returning Result[T, E]",
+                span,
+            ));
+            return None;
+        };
+
+        match self.resolve_type(&return_ty) {
+            Type::Result(ok_ty, err_ty) => Some((*ok_ty, *err_ty)),
+            Type::Unknown(_) => {
+                let ok_ty = Type::Unknown(self.fresh_unknown());
+                let err_ty = Type::Unknown(self.fresh_unknown());
+                let result_ty = Type::Result(Box::new(ok_ty.clone()), Box::new(err_ty.clone()));
+                if let Err(message) = self.unify(return_ty, result_ty) {
+                    self.diagnostics
+                        .push(Diagnostic::new("T027", message, span));
+                    None
+                } else {
+                    Some((ok_ty, err_ty))
+                }
+            }
+            Type::Error => None,
+            other => {
+                self.diagnostics.push(Diagnostic::new(
+                    "T027",
+                    format!(
+                        "`using` requires the enclosing function to return Result[T, E], found {}",
                         self.type_label(&other)
                     ),
                     span,

@@ -7,15 +7,16 @@ Muga samples.
 
 ## Resume Cursor
 
-- [ ] **NOW P0:** complete the pre-v1 implementation audit before choosing a
-  release target.
-- [ ] **NEXT P0:** choose the next release target, then follow
+- [ ] **NOW P0:** choose the next release target.
+- [ ] **NEXT P0:** follow
   [RELEASING.md](./RELEASING.md) for the chosen version.
 - [ ] **POST-v1:** revisit structured task groups only after v1 ships.
 
 Last verified locally on 2026-06-05 during the pre-v1 implementation audit:
 
 - [x] `cargo fmt --check`
+- [x] `git diff --check`
+- [x] `scripts/clippy-check.sh`
 - [x] `cargo test --locked`
 - [x] `scripts/v1-release-gate.sh`
 
@@ -178,26 +179,26 @@ Completed after `std::process` landed and was release-gated.
 
 ## P0: Pre-v1 Implementation Audit
 
-This is the current task. Do not choose a release target or bump versions until
-this audit is complete.
+Completed on 2026-06-05. Do not bump versions, create tags, push, or publish
+until an explicit release target is chosen.
 
-- [ ] Audit Rust implementation hotspots:
+- [x] Audit Rust implementation hotspots:
   - [x] parser and formatter round-trip behavior
-  - [ ] resolver and package visibility rules
-  - [ ] typechecker rules for records, enums, generics, control flow, and
+  - [x] resolver and package visibility rules
+  - [x] typechecker rules for records, enums, generics, control flow, and
     standard packages
-  - [ ] MIR, bytecode, and VM behavior for user-reachable runtime paths
-  - [ ] artifact loading, package archives, app bundles, and source-free
+  - [x] MIR, bytecode, and VM behavior for user-reachable runtime paths
+  - [x] artifact loading, package archives, app bundles, and source-free
     execution
-  - [ ] CLI JSON/text diagnostic contracts
-- [ ] Classify every production `panic!`, `unreachable!`, `unwrap`, and
+  - [x] CLI JSON/text diagnostic contracts
+- [x] Classify every production `panic!`, `unreachable!`, `unwrap`, and
   `expect` as either an internal invariant or a user-reachable bug.
-- [ ] Add focused Rust tests for any discovered behavior gap, even if the code
+- [x] Add focused Rust tests for any discovered behavior gap, even if the code
   already appears correct.
-- [ ] Add or update runnable Muga samples only where a public v1 workflow lacks
+- [x] Add or update runnable Muga samples only where a public v1 workflow lacks
   sample coverage.
-- [ ] Re-run `cargo test --locked` and `scripts/v1-release-gate.sh`.
-- [ ] Record the audit result here before returning to release-candidate
+- [x] Re-run `cargo test --locked` and `scripts/v1-release-gate.sh`.
+- [x] Record the audit result here before returning to release-candidate
   preparation.
 
 Audit notes:
@@ -211,9 +212,28 @@ Audit notes:
 - [x] 2026-06-05: added a bytecode regression test proving statement-form
   `using` emits cleanup call sites for `try`, explicit `return`, `break`,
   `continue`, and normal fallthrough paths.
+- [x] 2026-06-05: audited package visibility and interface signature
+  construction against `src/package.rs`, `src/package_signature.rs`, and
+  `src/interface.rs`; added regression coverage proving public APIs cannot
+  expose `pkg` types and `pkg` APIs cannot expose module-private types, including
+  nested function/generic signature shapes.
+- [x] 2026-06-05: audited production `unwrap`/`expect`/`panic`-style sites and
+  fixed a user-reachable standard namespace edge by reserving `std` package
+  paths for compiler-provided standard packages. Added explicit source,
+  manifest, and import tests.
+- [x] 2026-06-05: separated `using`'s non-`Result` enclosing-function diagnostic
+  from the `try` diagnostic so the user-facing message reports `T027` and names
+  `using`.
+- [x] 2026-06-05: audited existing artifact/source-free tests for missing,
+  stale, wrong-package, dependency-interface-mismatched, and source-free bundle
+  execution paths. Existing coverage already proves artifact-backed workflows do
+  not silently fall back to dependency source bodies.
 - [x] 2026-06-05: ran `cargo fmt --check`, `git diff --check`,
   `cargo test --locked`, and `scripts/v1-release-gate.sh` after the first audit
   slice.
+- [x] 2026-06-05: final audit verification passed with `cargo fmt --check`,
+  `git diff --check`, `scripts/clippy-check.sh`, `cargo test --locked`, and
+  `scripts/v1-release-gate.sh`.
 
 ## P0: Release Candidate Preparation
 

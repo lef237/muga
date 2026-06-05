@@ -5749,6 +5749,87 @@ fn prelude_catalog_names_are_unique_and_classified() {
 }
 
 #[test]
+fn package_std_namespace_is_reserved_for_standard_library_sources() {
+    let explicit_root = temp_package_root("reserved-std-explicit");
+    let explicit_entry = write_package_file(
+        &explicit_root,
+        "std/fs/main.muga",
+        r#"
+package std::fs
+
+fn main(): Int {
+  1
+}
+"#,
+    );
+    let diagnostics = muga::check_package_aware_path(&explicit_entry).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK014"
+                && diagnostic
+                    .message
+                    .contains("package path `std::fs` is reserved")
+        }),
+        "{diagnostics:#?}"
+    );
+
+    let manifest_root = temp_package_root("reserved-std-manifest");
+    write_package_file(
+        &manifest_root,
+        "muga.toml",
+        r#"
+[package]
+name = "std::custom"
+source = "src"
+"#,
+    );
+    let manifest_entry = write_package_file(
+        &manifest_root,
+        "src/main.muga",
+        r#"
+fn main(): Int {
+  1
+}
+"#,
+    );
+    let diagnostics = muga::check_package_aware_path(&manifest_entry).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK014"
+                && diagnostic
+                    .message
+                    .contains("package path `std::custom` is reserved")
+        }),
+        "{diagnostics:#?}"
+    );
+
+    let import_root = temp_package_root("reserved-std-import");
+    let import_entry = write_package_file(
+        &import_root,
+        "app/main/main.muga",
+        r#"
+package app::main
+
+import std::future
+
+fn main(): Int {
+  1
+}
+"#,
+    );
+    let diagnostics = muga::check_package_aware_path(&import_entry).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK014"
+                && diagnostic
+                    .message
+                    .contains("package path `std::future` is reserved")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn package_mode_syntax_suggests_package_entry() {
     let source = r#"
 pub fn helper(): Int {
@@ -10368,6 +10449,99 @@ fn package_aware_checking_rejects_private_cross_package_references() {
                 && diagnostic
                     .message
                     .contains("does not export record `PackageValue`")
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn package_aware_checking_rejects_non_public_types_in_visible_api_shapes() {
+    let public_root = temp_package_root("package-public-api-private-shape");
+    let public_entry = write_package_file(
+        &public_root,
+        "app/private_api_shape/main.muga",
+        r#"
+package app::private_api_shape
+
+pkg record Token {
+  value: Int
+}
+
+pub record Envelope {
+  tokens: List[Token]
+}
+
+pub enum Event {
+  Seen(Option[Token])
+}
+
+pub fn expose(handler: Token -> Int): Result[Token, String] {
+  Result::Ok(Token {
+    value: handler(Token {
+      value: 1
+    })
+  })
+}
+
+fn main(): Int {
+  0
+}
+"#,
+    );
+
+    let diagnostics = muga::check_package_aware_path(&public_entry).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK012"
+                && diagnostic
+                    .message
+                    .contains("public API may not expose package-visible record `Token`")
+        }),
+        "{diagnostics:#?}"
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == "PK012")
+            .count()
+            >= 3,
+        "{diagnostics:#?}"
+    );
+
+    let package_root = temp_package_root("package-pkg-api-private-shape");
+    let package_entry = write_package_file(
+        &package_root,
+        "app/package_api_shape/main.muga",
+        r#"
+package app::package_api_shape
+
+record Hidden {
+  value: Int
+}
+
+pkg record Shared {
+  hidden: Hidden
+}
+
+pkg fn share(hidden: Hidden): Shared {
+  Shared {
+    hidden: hidden
+  }
+}
+
+fn main(): Int {
+  0
+}
+"#,
+    );
+
+    let diagnostics = muga::check_package_aware_path(&package_entry).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK012"
+                && diagnostic
+                    .message
+                    .contains("package-visible API may not expose module-private record `Hidden`")
         }),
         "{diagnostics:#?}"
     );
@@ -38632,6 +38806,34 @@ fn main(): Result[Unit, String] {
                 && diagnostic
                     .message
                     .contains("runtime-backed closeable opaque handle")),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn using_rejects_non_result_function_with_using_diagnostic() {
+    let source = r#"
+fn main(): Unit {
+  using value = "not a handle" {
+  }
+  ()
+}
+"#;
+
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T027"
+                && diagnostic
+                    .message
+                    .contains("`using` requires the enclosing function to return Result[T, E]")),
+        "{diagnostics:#?}"
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("`try`")),
         "{diagnostics:#?}"
     );
 }

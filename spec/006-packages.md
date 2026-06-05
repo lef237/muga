@@ -86,6 +86,7 @@ The draft adopts the following model:
 - file order is not semantically meaningful
 - the compilation unit for caching is the package, not the file
 - the smallest default encapsulation unit is the module/file, not the package
+- package paths beginning with `std` are reserved for compiler-provided standard packages
 
 Example:
 
@@ -643,7 +644,7 @@ Current implementation note:
 - `cargo run -- check path/to/entry.muga` already supports package files
 - `cargo run -- path/to/entry.muga` already runs a package graph through the package-aware typed HIR and MIR/bytecode VM path
 - the entry file identifies the entry package, and the compiler reads all `.muga` files in that package directory
-- the current file-based CLI accepts any package path, as long as the chosen entry package contains `fn main()`
+- the current file-based CLI accepts any non-`std` package path, as long as the chosen entry package contains `fn main()`
 - the source root is currently inferred from the entry file path and the declared package path
 
 ## 15. Why This Is Meant To Feel Modern
