@@ -405,9 +405,14 @@ use `@json(deny_unknown_fields)` to reject unexpected JSON/config object keys.
 Record fields and enum variants can also use input-only
 `@json(alias: "...")` metadata to accept legacy JSON/config names; aliases share
 the strict accepted-key set and primary/alias conflicts are rejected or reported
-as decode ambiguity. Generic enum decoding remains future schema work, validation
-attributes are not part of v1, and TOML remains outside the v1 JSON/config
-decoder surface.
+as decode ambiguity. Record fields can use narrow `@validate(...)` metadata:
+`non_empty`, `min_len`, and `max_len` for `String` / `Option[String]`, plus
+`min` and `max` for `Int` / `Option[Int]`. Validation failures return
+path-aware `json::ErrorKind::Validation` values through `std::json`; through
+`std::config`, the same decode failure is reported as `config::ErrorKind::Decode`
+with the validation message and offset.
+Generic enum decoding, record-level or cross-field validation, user-defined
+validator functions, and TOML remain outside the v1 JSON/config decoder surface.
 
 Not implemented:
 
@@ -420,12 +425,12 @@ release-readiness issue to P0.
 - project-mode artifact-root configuration and full incremental package artifact reuse
 - structural equality, map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
 - broader JSON schema decoding targets such as generic records, generic enums,
-  nested `Option[Option[T]]`, non-string map keys, validation attributes, or
-  stricter schema policies beyond the implemented
+  nested `Option[Option[T]]`, non-string map keys, record-level or cross-field
+  validation, user-defined validators, or stricter schema policies beyond the implemented
   `json::decode_or[T]`, `json::decode[T]`, `config::load_json_or[T]`, and
   `config::load_json[T]`
   target set plus opt-in `@json(deny_unknown_fields)` and input-only
-  `@json(alias: "...")`
+  `@json(alias: "...")` / field-level `@validate(...)`
 - source-level consuming parameter declarations, broader runtime-backed
   resource-handle families, `using` expressions/multiple bindings, and
   aggregate cleanup errors

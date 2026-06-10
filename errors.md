@@ -262,7 +262,7 @@ io::IOError
 io::PathPairError
 ```
 
-### Consuming Parameters
+## T026: Use After Consume
 
 `T026` reports use-after-consume for a binding that has been passed directly to
 a loaded-interface parameter marked `consume`.
@@ -273,6 +273,8 @@ Required guidance:
 - attach a related note to the consuming call
 - suggest avoiding any use of the binding after passing it to a consuming
   parameter
+
+## T027: Invalid Using Cleanup
 
 `T027` reports invalid `using` lexical cleanup. It covers non-handle
 initializers, non-closeable opaque handles, invisible or malformed close
@@ -288,6 +290,8 @@ Required guidance:
   consume inside the block
 - suggest letting `using` close the handle automatically
 
+## T028: Invalid JSON/Config Validation Metadata
+
 `T028` reports invalid JSON/config validation metadata on record fields. It
 covers validators used with unsupported field types, negative string length
 bounds, impossible minimum/maximum ranges, and conflicting duplicate validators.
@@ -300,6 +304,8 @@ Required guidance:
   helpful
 - suggest using string validators on `String` / `Option[String]` and numeric
   bounds on `Int` / `Option[Int]`
+
+## T029: Unsupported JSON/Config Schema Export Target
 
 `T029` reports unsupported JSON/config schema export targets or field types. It
 covers attempts to export generic user records/enums, private or missing
@@ -314,7 +320,7 @@ Required guidance:
   `Int`, `Bool`, `Option`, `List`, `Map[String, T]`, `std::json::Value`, and
   supported concrete public records/enums
 
-### Runtime Resource Handles
+## R022: Invalid Runtime Resource Handle
 
 `R022` reports invalid runtime-backed opaque handle use that source checking did
 not prove impossible, such as a stale, already-closed, or wrong-family
@@ -326,7 +332,7 @@ Required guidance:
 - use a hard runtime diagnostic for stale or already-closed handle aliases
 - mention the invalid handle state in the primary message
 
-### Package And Artifact Workflows
+## Package And Artifact Workflows
 
 Artifact-backed commands are deliberately explicit. Diagnostics for package artifacts must:
 
@@ -337,10 +343,10 @@ Artifact-backed commands are deliberately explicit. Diagnostics for package arti
 - suggest `muga build <entry>` for default `.muga/build` failures reached through `--built`
 - suggest the focused explicit command where useful, such as `muga emit-interface`, `muga emit-check-cache`, or `muga emit-artifacts`
 
-### Package Lockfiles And Archives
+## Package Lockfiles And Archives
 
 Manifest, lockfile, and `.mgp` archive diagnostics must fail loudly rather than silently rewriting unsafe state. This includes malformed lockfiles, unsupported dependency forms, missing archive hashes, path/archive form mistakes, stale archive caches, cache path collisions, package-name mismatches, archive hash mismatches, non-canonical archive layout, source-root escapes, non-UTF-8 paths, duplicate entries, and non-source archive entries.
 
-### Future Feature Syntax
+## Future Feature Syntax
 
 Syntax reserved for post-v1 features should fail as unsupported or invalid v1 syntax. It should not be documented or tested as runnable sample source until the feature is implemented. Examples include `group`, `spawn`, channels, optional chaining, postfix Result propagation, broad catch-all matching, references, and call-site type arguments.

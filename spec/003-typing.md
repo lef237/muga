@@ -444,10 +444,18 @@ explicit JSON `null` decodes optional fields to `Option::None`.
 `json::decode[T]` requires an expected `Result[T, json::Error]` target and
 reports missing non-optional record fields as path-aware `json::Error` values.
 Concrete enum decoding uses zero-payload string tags and one-payload single-key
-objects. Nested `Option[Option[T]]`, generic
-record schemas, generic enum schemas, non-string map keys, field/variant
-renames, validation attributes, TOML, and config-file discovery remain
-deferred. The `std::json`
+objects. Record fields and enum variants can use `@json(rename: "...")` and
+input-only `@json(alias: "...")` metadata for external wire names, and records
+can use `@json(deny_unknown_fields)` for strict object decoding. Record fields
+can use narrow `@validate(...)` metadata: `non_empty`, `min_len`, and `max_len`
+for `String` / `Option[String]`, plus `min` and `max` for `Int` /
+`Option[Int]`. Validation failures are reported as path-aware
+`json::ErrorKind::Validation` values through `std::json`; through
+`std::config`, the same decode failure is wrapped as `config::ErrorKind::Decode`
+with the validation message and offset. Nested `Option[Option[T]]`, generic
+record schemas, generic enum schemas, non-string map keys, record-level or
+cross-field validation, user-defined validators, TOML, and config-file
+discovery remain deferred. The `std::json`
 helpers for typed JSON path scalar projection (`at_string*`, `at_int*`, and
 `at_bool*`) preserve the same
 optional/default/required missing-path behavior and report terminal scalar

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
@@ -265,6 +266,8 @@ pub fn write_package_archive_from_entry(
             .with_suggestion("run `emit-package-archive` from a manifest project entrypoint"),
         ]);
     };
+    validate_package_archive_emission_manifest_roots(&manifest)?;
+    validate_package_archive_output_location(archive_root, &manifest)?;
     let archive_bytes = package_source_content_input(
         &manifest.root,
         &manifest.source_root,
@@ -463,16 +466,18 @@ pub fn validate_package_archive_bytes(
             "package archive is missing manifest entry `muga.toml`",
         )]);
     };
-    if !resources.is_empty() {
-        let Some(_) = package_archive_manifest_resource_dir_with_diagnostic(
-            &manifest.contents,
-            package_archive_validation_diagnostic,
-        )?
-        else {
-            return Err(vec![package_archive_validation_diagnostic(
-                "package archive resource entries require [package] resources",
-            )]);
-        };
+    package_archive_manifest_source_dir_with_diagnostic(
+        &manifest.contents,
+        package_archive_validation_diagnostic,
+    )?;
+    let declared_resource_dir = package_archive_manifest_resource_dir_with_diagnostic(
+        &manifest.contents,
+        package_archive_validation_diagnostic,
+    )?;
+    if !resources.is_empty() && declared_resource_dir.is_none() {
+        return Err(vec![package_archive_validation_diagnostic(
+            "package archive resource entries require [package] resources",
+        )]);
     }
 
     Ok(PackageArchive {
@@ -4213,7 +4218,10 @@ fn parse_manifest_inner_impl(
         };
         match key {
             "name" => name = Some(value),
-            "source" => source_dir = value,
+            "source" => {
+                validate_manifest_source_dir(&value, path)?;
+                source_dir = value;
+            }
             "resources" => {
                 validate_manifest_resource_dir(&value, path)?;
                 resource_dir = Some(value);
@@ -4244,11 +4252,7 @@ fn parse_manifest_inner_impl(
     }
 
     let root = path.parent().map(Path::to_path_buf).unwrap_or_default();
-    let source_root = if Path::new(&source_dir).is_absolute() {
-        PathBuf::from(source_dir)
-    } else {
-        root.join(source_dir)
-    };
+    let source_root = root.join(source_dir);
     let resource_root = resource_dir.map(|resource_dir| root.join(resource_dir));
     let mut direct_dependencies = dependency_sources
         .iter()
@@ -4265,6 +4269,55 @@ fn parse_manifest_inner_impl(
         direct_dependencies,
         dependencies,
     })
+}
+
+fn validate_manifest_source_dir(value: &str, manifest_path: &Path) -> Result<(), Vec<Diagnostic>> {
+    if value.is_empty() {
+        return Err(vec![
+            Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest field `source` in {} must name a source directory",
+                    manifest_path.display()
+                ),
+                Span::default(),
+            )
+            .with_suggestion("use `source = \"src\"` for package source files"),
+        ]);
+    }
+    if Path::new(value).is_absolute() || value.contains('\\') || value.contains(':') {
+        return Err(vec![Diagnostic::new(
+            "PK014",
+            format!(
+                "manifest field `source` in {} must be a relative slash-separated path",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]);
+    }
+    for segment in value.split('/') {
+        if segment.is_empty() || segment == ".." {
+            return Err(vec![Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest field `source` in {} must stay inside the package root",
+                    manifest_path.display()
+                ),
+                Span::default(),
+            )]);
+        }
+        if matches!(segment, ".git" | ".muga") {
+            return Err(vec![Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest field `source` in {} must not use tool metadata directories",
+                    manifest_path.display()
+                ),
+                Span::default(),
+            )]);
+        }
+    }
+    Ok(())
 }
 
 fn validate_manifest_resource_dir(
@@ -5260,6 +5313,88 @@ fn local_dependency_source_input(
     )
 }
 
+fn validate_package_archive_emission_manifest_roots(
+    manifest: &ProjectManifest,
+) -> Result<(), Vec<Diagnostic>> {
+    let manifest_path = manifest.root.join("muga.toml");
+    let manifest_source = fs::read_to_string(&manifest_path).map_err(|error| {
+        vec![Diagnostic::new(
+            "PK027",
+            format!(
+                "failed to read package manifest `{}` for package archive: {error}",
+                manifest_path.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+    package_archive_manifest_source_dir_with_diagnostic(
+        &manifest_source,
+        package_archive_emission_diagnostic,
+    )?;
+    package_archive_manifest_resource_dir_with_diagnostic(
+        &manifest_source,
+        package_archive_emission_diagnostic,
+    )?;
+    Ok(())
+}
+
+fn validate_package_archive_output_location(
+    archive_root: &Path,
+    manifest: &ProjectManifest,
+) -> Result<(), Vec<Diagnostic>> {
+    let archive_root = package_absolute_normalized_path(archive_root)?;
+    let source_root = package_absolute_normalized_path(&manifest.source_root)?;
+    if archive_root.starts_with(&source_root) {
+        return Err(vec![package_archive_emission_diagnostic(format!(
+            "package archive output `{}` must not be inside package source root `{}`",
+            archive_root.display(),
+            source_root.display()
+        ))]);
+    }
+    if let Some(resource_root) = &manifest.resource_root {
+        let resource_root = package_absolute_normalized_path(resource_root)?;
+        if archive_root.starts_with(&resource_root) {
+            return Err(vec![package_archive_emission_diagnostic(format!(
+                "package archive output `{}` must not be inside package resource root `{}`",
+                archive_root.display(),
+                resource_root.display()
+            ))]);
+        }
+    }
+    Ok(())
+}
+
+fn package_absolute_normalized_path(path: &Path) -> Result<PathBuf, Vec<Diagnostic>> {
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()
+            .map_err(|error| {
+                vec![package_archive_emission_diagnostic(format!(
+                    "failed to resolve current directory for package archive paths: {error}"
+                ))]
+            })?
+            .join(path)
+    };
+    Ok(normalize_package_path_lexically(&path))
+}
+
+fn normalize_package_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+    normalized
+}
+
 fn package_source_content_input(
     root: &Path,
     source_root: &Path,
@@ -5285,6 +5420,7 @@ fn package_source_content_input(
     )
     .into_bytes();
     let mut files = Vec::new();
+    validate_package_content_root(source_root, "source", context)?;
     collect_package_source_files(source_root, source_root, &mut files, context)?;
     files.sort_by(|left, right| left.0.cmp(&right.0));
     for (relative_path, source) in files {
@@ -5294,6 +5430,7 @@ fn package_source_content_input(
     }
     if let Some(resource_root) = resource_root {
         let mut resources = Vec::new();
+        validate_package_content_root(resource_root, "resource", context)?;
         collect_package_resource_files(resource_root, resource_root, &mut resources, context)?;
         resources.sort_by(|left, right| left.0.cmp(&right.0));
         for (relative_path, contents) in resources {
@@ -5305,6 +5442,34 @@ fn package_source_content_input(
         }
     }
     Ok(out)
+}
+
+fn validate_package_content_root(
+    root: &Path,
+    kind: &str,
+    context: &str,
+) -> Result<(), Vec<Diagnostic>> {
+    let metadata = fs::symlink_metadata(root).map_err(|error| {
+        vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "failed to read package {kind} root metadata `{}` for {context}: {error}",
+                root.display()
+            ),
+            Span::default(),
+        )]
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(vec![Diagnostic::new(
+            "PK025",
+            format!(
+                "package {kind} root `{}` for {context} must not be a symlink",
+                root.display()
+            ),
+            Span::default(),
+        )]);
+    }
+    Ok(())
 }
 
 fn materialize_validated_package_archive(
@@ -5418,17 +5583,23 @@ fn preflight_package_archive_materialization(
 }
 
 fn package_archive_manifest_source_dir(manifest: &str) -> Result<PathBuf, Vec<Diagnostic>> {
-    let source_dir = package_archive_manifest_string_field_with_diagnostic(
+    package_archive_manifest_source_dir_with_diagnostic(
         manifest,
-        "source",
-        package_archive_materialization_diagnostic,
-    )?
-    .unwrap_or_else(|| "src".to_string());
-    package_archive_manifest_relative_dir_with_diagnostic(
-        "source",
-        &source_dir,
         package_archive_materialization_diagnostic,
     )
+}
+
+fn package_archive_manifest_source_dir_with_diagnostic<F>(
+    manifest: &str,
+    diagnostic: F,
+) -> Result<PathBuf, Vec<Diagnostic>>
+where
+    F: Fn(String) -> Diagnostic,
+{
+    let source_dir =
+        package_archive_manifest_string_field_with_diagnostic(manifest, "source", &diagnostic)?
+            .unwrap_or_else(|| "src".to_string());
+    package_archive_manifest_relative_dir_with_diagnostic("source", &source_dir, diagnostic)
 }
 
 fn package_archive_manifest_resource_dir(
@@ -5788,6 +5959,11 @@ fn package_archive_validation_diagnostic(message: impl Into<String>) -> Diagnost
         .with_suggestion("recreate the archive with `emit-package-archive`")
 }
 
+fn package_archive_emission_diagnostic(message: impl Into<String>) -> Diagnostic {
+    Diagnostic::new("PK027", message, Span::default())
+        .with_suggestion("choose archive inputs and outputs that stay inside the package boundary")
+}
+
 fn package_archive_materialization_diagnostic(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("PK029", message, Span::default())
         .with_suggestion("materialize into an empty destination or recreate the archive")
@@ -5831,14 +6007,35 @@ fn collect_package_source_files(
     paths.sort();
 
     for path in paths {
-        if path.is_dir() {
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            vec![Diagnostic::new(
+                "PK025",
+                format!(
+                    "failed to read package source metadata `{}` for {context}: {error}",
+                    path.display()
+                ),
+                Span::default(),
+            )]
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(vec![Diagnostic::new(
+                "PK025",
+                format!(
+                    "package source entry `{}` for {context} must not be a symlink",
+                    path.display()
+                ),
+                Span::default(),
+            )]);
+        }
+        if metadata.is_dir() {
             if should_skip_package_source_directory(&path) {
                 continue;
             }
             collect_package_source_files(root, &path, files, context)?;
-        } else if path
-            .extension()
-            .is_some_and(|extension| extension == "muga")
+        } else if metadata.is_file()
+            && path
+                .extension()
+                .is_some_and(|extension| extension == "muga")
         {
             let relative_path = package_relative_source_path(root, &path)?;
             let source = fs::read_to_string(&path).map_err(|error| {
@@ -5891,12 +6088,32 @@ fn collect_package_resource_files(
     paths.sort();
 
     for path in paths {
-        if path.is_dir() {
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            vec![Diagnostic::new(
+                "PK025",
+                format!(
+                    "failed to read package resource metadata `{}` for {context}: {error}",
+                    path.display()
+                ),
+                Span::default(),
+            )]
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(vec![Diagnostic::new(
+                "PK025",
+                format!(
+                    "package resource entry `{}` for {context} must not be a symlink",
+                    path.display()
+                ),
+                Span::default(),
+            )]);
+        }
+        if metadata.is_dir() {
             if should_skip_package_source_directory(&path) {
                 continue;
             }
             collect_package_resource_files(root, &path, files, context)?;
-        } else if path.is_file() {
+        } else if metadata.is_file() {
             let relative_path = package_relative_resource_path(root, &path)?;
             let contents = fs::read(&path).map_err(|error| {
                 vec![Diagnostic::new(

@@ -1361,6 +1361,53 @@ fn cli_explain_reports_known_family_for_uncataloged_code() {
 }
 
 #[test]
+fn cli_explain_reports_json_validation_and_schema_entries() {
+    let validation = muga_command()
+        .arg("explain")
+        .arg("T028")
+        .output()
+        .expect("muga command should run");
+    let validation_stdout = String::from_utf8_lossy(&validation.stdout);
+
+    assert!(validation.status.success(), "{validation:#?}");
+    assert_eq!(String::from_utf8_lossy(&validation.stderr), "");
+    assert!(
+        validation_stdout.starts_with("T028: Invalid JSON/Config Validation Metadata\n"),
+        "{validation_stdout}"
+    );
+    assert!(
+        validation_stdout.contains("unsupported field types"),
+        "{validation_stdout}"
+    );
+    assert!(
+        validation_stdout.contains("String` / `Option[String]"),
+        "{validation_stdout}"
+    );
+
+    let schema = muga_command()
+        .arg("explain")
+        .arg("T029")
+        .output()
+        .expect("muga command should run");
+    let schema_stdout = String::from_utf8_lossy(&schema.stdout);
+
+    assert!(schema.status.success(), "{schema:#?}");
+    assert_eq!(String::from_utf8_lossy(&schema.stderr), "");
+    assert!(
+        schema_stdout.starts_with("T029: Unsupported JSON/Config Schema Export Target\n"),
+        "{schema_stdout}"
+    );
+    assert!(
+        schema_stdout.contains("unsupported JSON/config schema export targets"),
+        "{schema_stdout}"
+    );
+    assert!(
+        schema_stdout.contains("concrete public record or enum"),
+        "{schema_stdout}"
+    );
+}
+
+#[test]
 fn cli_explain_rejects_unknown_diagnostic_code_on_stderr() {
     let output = muga_command()
         .arg("explain")
@@ -1921,6 +1968,126 @@ fn main(): Int {
     );
     assert_eq!(dependency.source, "../shared");
     assert_eq!(dependency.hash, None);
+}
+
+#[test]
+fn project_manifest_rejects_source_roots_outside_package_root() {
+    let cases = vec![
+        ("empty", "", "must name a source directory"),
+        (
+            "absolute",
+            "/tmp/muga-external-src",
+            "relative slash-separated path",
+        ),
+        (
+            "drive",
+            "C:/tmp/muga-external-src",
+            "relative slash-separated path",
+        ),
+        ("parent", "../src", "must stay inside the package root"),
+        (
+            "empty segment",
+            "src//main",
+            "must stay inside the package root",
+        ),
+        ("metadata", ".muga/src", "tool metadata"),
+    ];
+
+    for (name, source, expected_message) in cases {
+        let root = temp_package_root(&format!("project-manifest-unsafe-source-{name}"));
+        write_package_file(
+            &root,
+            "muga.toml",
+            &format!(
+                r#"
+[package]
+name = "unsafe_source"
+source = "{source}"
+"#
+            ),
+        );
+        let entry = write_package_file(
+            &root,
+            "src/main/main.muga",
+            r#"
+fn main(): String {
+  "ok"
+}
+"#,
+        );
+
+        let diagnostics = muga::package::project_manifest_metadata_from_entry(&entry)
+            .expect_err("unsafe manifest source should be rejected");
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "PK014"
+                    && diagnostic.message.contains("manifest field `source`")
+                    && diagnostic.message.contains(expected_message)
+            }),
+            "{name}: {diagnostics:#?}"
+        );
+    }
+}
+
+#[test]
+fn project_manifest_rejects_dependency_source_roots_outside_package_root() {
+    let workspace = temp_package_root("project-manifest-dependency-unsafe-source");
+    let app_root = workspace.join("app");
+    let shared_root = workspace.join("shared");
+    write_package_file(
+        &shared_root,
+        "muga.toml",
+        r#"
+[package]
+name = "shared"
+source = "../external-src"
+"#,
+    );
+    write_package_file(
+        &shared_root,
+        "../external-src/api/main.muga",
+        r#"
+pub fn value(): Int {
+  1
+}
+"#,
+    );
+    write_package_file(
+        &app_root,
+        "muga.toml",
+        r#"
+[package]
+name = "app"
+source = "src"
+
+[dependencies]
+shared = { path = "../shared" }
+"#,
+    );
+    let entry = write_package_file(
+        &app_root,
+        "src/main/main.muga",
+        r#"
+import shared::api as api
+
+fn main(): Int {
+  api::value()
+}
+"#,
+    );
+
+    let diagnostics = muga::package::project_manifest_metadata_from_entry(&entry)
+        .expect_err("unsafe dependency source should be rejected");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK014"
+                && diagnostic.message.contains("manifest field `source`")
+                && diagnostic
+                    .message
+                    .contains("must stay inside the package root")
+        }),
+        "{diagnostics:#?}"
+    );
 }
 
 #[test]
@@ -9089,6 +9256,267 @@ fn main(): Int {
 }
 
 #[test]
+fn package_archive_emission_rejects_archive_root_inside_package_roots() {
+    let workspace = temp_package_root("package-archive-output-inside-roots");
+    let root = workspace.join("project");
+    write_package_file(
+        &root,
+        "muga.toml",
+        r#"
+[package]
+name = "demo"
+source = "src"
+resources = "resources"
+"#,
+    );
+    let entry = write_package_file(
+        &root,
+        "src/main/main.muga",
+        r#"
+fn main(): Int {
+  41
+}
+"#,
+    );
+    write_package_file(&root, "resources/config/settings.txt", "mode = archive\n");
+
+    let source_archive_root = root.join("src/archives");
+    let source_diagnostics = muga::write_package_archive(&entry, &source_archive_root)
+        .expect_err("archive output inside source root should be rejected");
+    assert!(
+        source_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK027" && diagnostic.message.contains("package source root")
+        }),
+        "{source_diagnostics:#?}"
+    );
+    assert!(!source_archive_root.exists());
+
+    let resource_archive_root = root.join("resources/archives");
+    let resource_diagnostics = muga::write_package_archive(&entry, &resource_archive_root)
+        .expect_err("archive output inside resource root should be rejected");
+    assert!(
+        resource_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK027" && diagnostic.message.contains("package resource root")
+        }),
+        "{resource_diagnostics:#?}"
+    );
+    assert!(!resource_archive_root.exists());
+}
+
+#[test]
+fn package_archive_emission_rejects_unsafe_manifest_source_root() {
+    let workspace = temp_package_root("package-archive-unsafe-source-root");
+    let external_source_root = workspace.join("external-src");
+    write_package_file(
+        &workspace,
+        "muga.toml",
+        &format!(
+            r#"
+[package]
+name = "demo"
+source = "{}"
+"#,
+            external_source_root.display()
+        ),
+    );
+    let entry = write_package_file(
+        &external_source_root,
+        "main/main.muga",
+        r#"
+fn main(): Int {
+  41
+}
+"#,
+    );
+    let archive_root = workspace.join("archives");
+
+    let diagnostics = muga::write_package_archive(&entry, &archive_root)
+        .expect_err("archive emission should reject non-materializable manifest source roots");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK014"
+                && diagnostic.message.contains("source")
+                && diagnostic.message.contains("relative slash-separated path")
+        }),
+        "{diagnostics:#?}"
+    );
+    assert!(!archive_root.exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn package_archive_emission_rejects_symlinked_sources_and_resources() {
+    use std::os::unix::fs::symlink;
+
+    let source_workspace = temp_package_root("package-archive-source-symlink");
+    let source_root = source_workspace.join("project");
+    let external_source = source_workspace.join("external-src");
+    write_package_file(
+        &source_root,
+        "muga.toml",
+        r#"
+[package]
+name = "source_link_probe"
+source = "src"
+"#,
+    );
+    let source_entry = write_package_file(
+        &source_root,
+        "src/main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+    write_package_file(
+        &external_source,
+        "extra.muga",
+        r#"
+package source_link_probe::extra
+
+pub fn value(): String {
+  "outside"
+}
+"#,
+    );
+    symlink(
+        external_source.join("extra.muga"),
+        source_root.join("src/extra.muga"),
+    )
+    .expect("source symlink should be created");
+    let source_diagnostics =
+        muga::write_package_archive(&source_entry, &source_workspace.join("archives"))
+            .expect_err("source symlink should be rejected");
+    assert!(
+        source_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK025"
+                && diagnostic.message.contains("package source entry")
+                && diagnostic.message.contains("must not be a symlink")
+        }),
+        "{source_diagnostics:#?}"
+    );
+
+    let resource_workspace = temp_package_root("package-archive-resource-symlink");
+    let resource_root = resource_workspace.join("project");
+    let external_resources = resource_workspace.join("external-resources");
+    write_package_file(
+        &resource_root,
+        "muga.toml",
+        r#"
+[package]
+name = "resource_link_probe"
+source = "src"
+resources = "resources"
+"#,
+    );
+    let resource_entry = write_package_file(
+        &resource_root,
+        "src/main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+    write_package_file(&external_resources, "outside.txt", "outside\n");
+    fs::create_dir_all(resource_root.join("resources"))
+        .expect("resource directory should be created before symlink");
+    symlink(&external_resources, resource_root.join("resources/link"))
+        .expect("resource symlink should be created");
+    let resource_diagnostics =
+        muga::write_package_archive(&resource_entry, &resource_workspace.join("archives"))
+            .expect_err("resource symlink should be rejected");
+    assert!(
+        resource_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK025"
+                && diagnostic.message.contains("package resource entry")
+                && diagnostic.message.contains("must not be a symlink")
+        }),
+        "{resource_diagnostics:#?}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn package_archive_emission_rejects_symlinked_source_and_resource_roots() {
+    use std::os::unix::fs::symlink;
+
+    let source_workspace = temp_package_root("package-archive-source-root-symlink");
+    let source_project = source_workspace.join("project");
+    let external_source = source_workspace.join("external-src");
+    write_package_file(
+        &source_project,
+        "muga.toml",
+        r#"
+[package]
+name = "source_root_link_probe"
+source = "src"
+"#,
+    );
+    write_package_file(
+        &external_source,
+        "main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+    symlink(&external_source, source_project.join("src"))
+        .expect("source root symlink should be created");
+    let source_entry = source_project.join("src/main/main.muga");
+    let source_diagnostics =
+        muga::write_package_archive(&source_entry, &source_workspace.join("archives"))
+            .expect_err("source root symlink should be rejected");
+    assert!(
+        source_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK025"
+                && diagnostic.message.contains("package source root")
+                && diagnostic.message.contains("must not be a symlink")
+        }),
+        "{source_diagnostics:#?}"
+    );
+
+    let resource_workspace = temp_package_root("package-archive-resource-root-symlink");
+    let resource_project = resource_workspace.join("project");
+    let external_resources = resource_workspace.join("external-resources");
+    write_package_file(
+        &resource_project,
+        "muga.toml",
+        r#"
+[package]
+name = "resource_root_link_probe"
+source = "src"
+resources = "resources"
+"#,
+    );
+    let resource_entry = write_package_file(
+        &resource_project,
+        "src/main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+    write_package_file(&external_resources, "outside.txt", "outside\n");
+    symlink(&external_resources, resource_project.join("resources"))
+        .expect("resource root symlink should be created");
+    let resource_diagnostics =
+        muga::write_package_archive(&resource_entry, &resource_workspace.join("archives"))
+            .expect_err("resource root symlink should be rejected");
+    assert!(
+        resource_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK025"
+                && diagnostic.message.contains("package resource root")
+                && diagnostic.message.contains("must not be a symlink")
+        }),
+        "{resource_diagnostics:#?}"
+    );
+}
+
+#[test]
 fn package_archive_readback_validates_hash_and_entries() {
     let workspace = temp_package_root("package-archive-readback");
     write_package_file(
@@ -9181,6 +9609,71 @@ fn package_archive_readback_rejects_hash_mismatch() {
                 && diagnostic.message.contains("hash mismatch")),
         "{diagnostics:#?}"
     );
+}
+
+#[test]
+fn package_archive_readback_rejects_unsafe_manifest_roots() {
+    let cases = vec![
+        (
+            "source parent",
+            "[package]\nname = \"demo\"\nsource = \"../src\"\n",
+            "source",
+            "must stay inside the materialization root",
+        ),
+        (
+            "source absolute",
+            "[package]\nname = \"demo\"\nsource = \"/tmp/muga-src\"\n",
+            "source",
+            "relative slash-separated path",
+        ),
+        (
+            "source metadata",
+            "[package]\nname = \"demo\"\nsource = \".muga/build\"\n",
+            "source",
+            "tool metadata",
+        ),
+        (
+            "source non-string",
+            "[package]\nname = \"demo\"\nsource = 1\n",
+            "source",
+            "field `source` must be a string",
+        ),
+        (
+            "resource parent without resource entries",
+            "[package]\nname = \"demo\"\nresources = \"../resources\"\n",
+            "resources",
+            "must stay inside the materialization root",
+        ),
+        (
+            "resource dot without resource entries",
+            "[package]\nname = \"demo\"\nresources = \".\"\n",
+            "resources",
+            "must stay inside the materialization root",
+        ),
+        (
+            "resource non-string without resource entries",
+            "[package]\nname = \"demo\"\nresources = 1\n",
+            "resources",
+            "field `resources` must be a string",
+        ),
+    ];
+
+    for (name, manifest, field, expected_message) in cases {
+        let bytes = package_archive_fixture(&[
+            ("manifest", "muga.toml", manifest),
+            ("file", "main.muga", "fn main(): Int {\n  1\n}\n"),
+        ]);
+        let diagnostics = muga::validate_package_archive_bytes(&bytes, None)
+            .expect_err("unsafe manifest root should be rejected during readback");
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "PK028"
+                    && diagnostic.message.contains(field)
+                    && diagnostic.message.contains(expected_message)
+            }),
+            "{name}: {diagnostics:#?}"
+        );
+    }
 }
 
 #[test]
@@ -9501,7 +9994,7 @@ fn package_archive_materialization_rejects_unsafe_manifest_source_roots() {
         assert!(
             diagnostics
                 .iter()
-                .any(|diagnostic| diagnostic.code == "PK029"
+                .any(|diagnostic| diagnostic.code == "PK028"
                     && diagnostic.message.contains(expected_message)),
             "{name}: {diagnostics:#?}"
         );
@@ -9566,7 +10059,7 @@ fn package_archive_materialization_rejects_unsafe_manifest_resource_roots() {
         assert!(
             diagnostics
                 .iter()
-                .any(|diagnostic| diagnostic.code == "PK029"
+                .any(|diagnostic| diagnostic.code == "PK028"
                     && diagnostic.message.contains(expected_message)),
             "{name}: {diagnostics:#?}"
         );
