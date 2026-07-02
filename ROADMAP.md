@@ -7,10 +7,12 @@ Muga samples.
 
 ## Resume Cursor
 
-- [ ] **NOW P0:** choose the next release target.
-- [ ] **NEXT P0:** follow
-  [RELEASING.md](./RELEASING.md) for the chosen version.
-- [ ] **POST-v1:** revisit structured task groups only after v1 ships.
+- [x] **DONE:** release target chosen on 2026-07-02: ship the completed
+  v1-scope implementation as `0.5.0`. Muga stays in the `0.x` series for now;
+  the `1.0.0` compatibility promise does not start yet.
+- [ ] **NOW P0:** follow
+  [RELEASING.md](./RELEASING.md) for `0.5.0`.
+- [ ] **NEXT P1:** start structured task groups after `0.5.0` ships.
 
 Last verified locally on 2026-06-05 during the pre-v1 implementation audit:
 
@@ -241,10 +243,13 @@ Do not bump versions, create tags, push, or publish without an explicit release
 target decision. This starts only after the pre-v1 implementation audit is
 complete.
 
-- [ ] Decide the next release target:
+- [x] Decide the next release target:
   - [ ] `1.0.0-rc.1` if this is the first v1 release candidate.
   - [ ] `1.0.0` only if the v1 compatibility promise should begin now.
-  - [ ] another `0.x` only if this should remain a pre-v1 release.
+  - [x] another `0.x` only if this should remain a pre-v1 release: `0.5.0`,
+    chosen on 2026-07-02. The v1-scope implementation is complete, but the
+    project intentionally stays in `0.x` instead of binding itself to the v1
+    milestone now.
 - [ ] Confirm the working tree contains only intended release changes.
 - [ ] Run `scripts/v1-release-gate.sh` from the chosen-version
   release-candidate tree.
@@ -256,9 +261,11 @@ complete.
 - [ ] Verify the GitHub Actions release workflow, crates.io version, and GitHub
   Release.
 
-## Post-v1 P1: Structured Task Groups
+## P1: Structured Task Groups
 
-Do not start this before v1 release unless the release definition changes.
+Promoted on 2026-07-02: the release definition changed. The completed v1-scope
+implementation ships as `0.5.0` instead of a `1.0.0` release candidate, and
+structured task groups are the next implementation work after `0.5.0` ships.
 
 - [ ] Reconcile `spec/007-concurrency-draft.md` with the implemented value,
   package, handle, and artifact model.
@@ -441,9 +448,9 @@ future backlog items.
 
 ## Short Version
 
-Muga's next concrete step is release-candidate preparation once the version and
-timing are decided. `std::process` has landed as the final planned
-user-visible standard-library slice before v1, v1 release hardening is complete,
-and `scripts/v1-release-gate.sh` is the authoritative readiness command.
-Structured task groups, service IO, remote registries, broad collections, and
-native backend work are post-v1.
+Muga ships the completed v1-scope implementation as `0.5.0`, staying in the
+`0.x` series without starting the `1.0.0` compatibility promise.
+`scripts/v1-release-gate.sh` remains the authoritative readiness command.
+After `0.5.0` ships, the next implementation work is structured task groups
+(`group` / `spawn` / `join`). Service IO, remote registries, broad
+collections, and native backend work stay deferred behind task groups.
