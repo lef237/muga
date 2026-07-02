@@ -267,15 +267,28 @@ Promoted on 2026-07-02: the release definition changed. The completed v1-scope
 implementation ships as `0.5.0` instead of a `1.0.0` release candidate, and
 structured task groups are the next implementation work after `0.5.0` ships.
 
-- [ ] Reconcile `spec/007-concurrency-draft.md` with the implemented value,
-  package, handle, and artifact model.
-- [ ] Decide whether the first task API is syntax (`group` / `spawn` / `join`)
-  or a standard package abstraction.
-- [ ] Define task lifetime rules: child tasks may not outlive their group.
-- [ ] Define failure propagation and cancellation behavior.
-- [ ] Define capture rules for immutable values, mutable bindings, and
-  runtime-backed handles.
-- [ ] Define timeout boundaries without promising async socket IO.
+- [x] Reconcile `spec/007-concurrency-draft.md` with the implemented value,
+  package, handle, and artifact model. Section 5 is now the implemented
+  Phase 1 specification; channels and later phases stay drafts.
+- [x] Decide whether the first task API is syntax (`group` / `spawn` / `join`)
+  or a standard package abstraction. Decision: syntax. The lifetime rule
+  "child tasks may not outlive their group" is enforced by lexical structure;
+  a package-level scope value could escape and would need escape analysis.
+- [x] Define task lifetime rules: child tasks may not outlive their group.
+  `group { ... }` is an expression scope; leaving it means all children
+  completed.
+- [x] Define failure propagation and cancellation behavior. A child runtime
+  failure propagates out of the enclosing `group`; siblings not yet spawned
+  never start. Execution order is implementation-defined; the reference VM
+  is deterministic and runs each child to completion at its spawn site.
+- [x] Define capture rules for immutable values, mutable bindings, and
+  runtime-backed handles. Immutable reads are allowed; `mut` references
+  across the `spawn` boundary are rejected (`E013`), including reads;
+  runtime-backed handles are allowed under deterministic execution and must
+  be revisited before parallel execution.
+- [x] Define timeout boundaries without promising async socket IO. Phase 1
+  ships no timeout API; time-based cancellation waits for the IO/runtime
+  integration path.
 - [ ] Add AST/parser support only after the type and runtime behavior are
   settled.
 - [ ] Add typed HIR, MIR/bytecode, and VM support.

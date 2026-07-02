@@ -1,8 +1,12 @@
-# Concurrency Draft
+# Concurrency
 
-Status: design draft only. This document is not implemented in the Rust compiler yet.
+Status: Phase 1 (structured task groups: `group`, `spawn`, `join`) is
+implemented in the Rust compiler and reference VM. Section 5 is the
+specification for the implemented behavior. Sections describing channels,
+selection, time, and service IO remain design drafts and are not
+implementation queues.
 
-This draft narrows the recommended direction for Muga concurrency into phases, so the first implemented core stays small, readable, and compiler-friendly.
+This document narrows the recommended direction for Muga concurrency into phases, so the first implemented core stays small, readable, and compiler-friendly.
 
 ## 1. Design Goals
 
@@ -43,7 +47,7 @@ This draft still recommends typed channels, but **not as part of the smallest fi
 
 ### 3.1 Phase 1: Structured task core
 
-Phase 1 should define and implement:
+Phase 1 defines and implements:
 
 - `group`
 - `spawn`
@@ -52,7 +56,7 @@ Phase 1 should define and implement:
 - structured cancellation
 - task-boundary capture rules
 
-Phase 1 is the recommended first stable concurrency surface for Muga.
+Phase 1 is implemented; section 5 specifies the implemented behavior.
 
 ### 3.2 Phase 2: Typed channels
 
@@ -104,65 +108,20 @@ Structured task scopes also fit the package and compiler roadmap well:
 - they are easier to lower into typed HIR and MIR
 - they make runtime leaks and forgotten tasks easier to prevent
 
-## 5. Phase 1: Structured Task Core
+## 5. Phase 1: Structured Task Core (Implemented)
+
+Phase 1 is implemented. This section is the specification for the implemented
+behavior. It chose syntax over a standard-package abstraction because the core
+lifetime rule — child tasks may not outlive their `group` — is enforced by
+lexical structure; a package-level scope value could escape its scope and
+would need escape analysis to stay honest.
 
 ### 5.1 Task scopes
 
-The recommended primary concurrency construct is a lexical task scope:
+The primary concurrency construct is a lexical task scope expression:
 
 ```muga
-group {
-  ...
-}
-```
-
-This scope defines the lifetime boundary for child tasks created inside it.
-
-Recommended Phase 1 rules:
-
-- child tasks may not outlive their enclosing `group`
-- leaving the group waits for child task completion
-- if one child task fails, remaining child tasks are cancelled and the failure propagates out of the group
-- cancellation propagates through nested task scopes
-
-This gives Muga structured concurrency by default.
-
-### 5.2 Spawning tasks
-
-The recommended spawn form is:
-
-```muga
-task = spawn expr
-```
-
-Examples:
-
-```muga
-user_task = spawn fetch_user(id)
-orders_task = spawn fetch_orders(id)
-```
-
-Recommended properties:
-
-- `spawn` is lightweight
-- the spawned expression runs concurrently
-- the result is a task handle
-- the handle may be joined later
-
-This keeps task creation close to an ordinary expression-based style.
-
-### 5.3 Joining tasks
-
-The recommended result-collection form is:
-
-```muga
-value = task.join()
-```
-
-Example:
-
-```muga
-group {
+result = group {
   user_task = spawn fetch_user(id)
   orders_task = spawn fetch_orders(id)
 
@@ -173,53 +132,108 @@ group {
 }
 ```
 
-Recommended Phase 1 behavior:
+- `group { ... }` is an expression. Its body is a value block: statements
+  followed by a final expression, and the `group` evaluates to that final
+  expression.
+- The scope defines the lifetime boundary for child tasks created inside it:
+  leaving the `group` means every child task spawned in it has completed.
+- `group` expressions nest; each `group` is its own task scope.
+- If one child task fails, remaining child tasks are cancelled and the
+  failure propagates out of the group (see 5.5 for the exact Phase 1 form).
 
-- wait until the task finishes
-- if it succeeds, return its value
-- if it fails, propagate failure through the enclosing group
+### 5.2 Spawning tasks
 
-This style keeps result flow explicit without forcing a separate async-only function hierarchy.
+```muga
+task = spawn expr
+```
 
-### 5.4 Sharing and safety
+- `group` and `spawn` are keywords and cannot be used as binding names.
+- `spawn expr` is a prefix expression form parsed at the same level as prefix
+  `try`. `spawn f(x)` and `spawn user.users::birthday().age` work directly;
+  wrap other expression forms in parentheses, as in
+  `spawn (if flag { a() } else { b() })`.
+- `spawn` is allowed only inside the body of an enclosing `group` expression
+  in the same function. `spawn` outside a `group` is rejected with `T030`.
+- Function boundaries reset the group context: a helper function or `fn`
+  expression body cannot use `spawn` unless it opens its own `group`, even
+  when it is called from inside one.
+- `spawn` does not reset the group context for its own operand: a nested
+  `spawn` inside another `spawn` operand belongs to the same enclosing
+  `group`.
+- The result of `spawn` is a task handle carrying the operand's type.
 
-The recommended safety direction is:
+### 5.3 Joining tasks and task handle typing
 
-- immutable values are easy to share across tasks
-- mutable capture across task boundaries is restricted or made explicit
-- channels and ownership transfer are the preferred coordination style once they exist
-- locks and shared mutable synchronization may exist later, but they should not define the primary style
+```muga
+value = task.join()
+```
 
-Initial Phase 1 recommendation:
+- `join` is an ordinary prelude function over task handles; `task.join()` is
+  the usual chained-call surface for `join(task)`. There is no separate
+  method semantics.
+- `spawn expr` has type `Task[T]` when `expr` has type `T`, and
+  `join(Task[T])` returns `T`.
+- `Task[T]` is an internal compiler type. It cannot be written in source type
+  annotations, record fields, or function signatures. Because public package
+  functions require explicit signatures, task handles cannot cross package
+  boundaries.
+- Task handles are ordinary immutable values otherwise: they can be bound,
+  joined more than once (each `join` returns the completed value), or left
+  unjoined — the `group` still waits for the task.
 
-- reading outer immutable bindings from a spawned task is allowed
-- capturing or mutating outer mutable bindings across a task boundary is rejected in the default model
+### 5.4 Sharing and capture rules
 
-That keeps task interactions easier to reason about and avoids many accidental races in the common case.
+The task boundary is the `spawn` operand.
 
-### 5.5 Failure and cancellation
+- Reading enclosing immutable bindings (parameters, `for` items, `using`
+  bindings, `match` payload bindings, and ordinary immutable bindings) inside
+  a `spawn` operand is allowed.
+- Referencing an enclosing `mut` binding inside a `spawn` operand is rejected
+  with `E013`, for reads as well as writes. Bind an immutable copy first or
+  pass the value in through a function argument. (Assignment from nested
+  functions is already `E004`; `E013` additionally closes plain reads across
+  the task boundary so a future parallel runtime cannot observe intermediate
+  states.)
+- Function values may be captured and called. A closure created outside the
+  `spawn` operand may internally read outer `mut` bindings; this indirect
+  read is allowed in Phase 1 because the reference execution is
+  deterministic. Closure capture must be revisited before any parallel
+  runtime lands.
+- Runtime-backed handles such as `fs::File` may be captured and used inside
+  `spawn` operands in Phase 1; deterministic reference execution makes this
+  safe. Handle send/share rules must be revisited before parallel execution,
+  as section 11 already requires.
+- Channels and ownership transfer remain the preferred coordination style
+  once they exist (Phase 2).
 
-Cancellation should be part of the model from the start.
+### 5.5 Execution model, failure, and cancellation
 
-Recommended Phase 1 direction:
+Phase 1 fixes the observable structure, not a scheduler:
 
-- group failure cancels sibling tasks
-- cancellation is structured and propagates downward
-- `join()` observes normal completion or propagated failure
+- Task execution order is implementation-defined within the structure that
+  `group`, `spawn`, and `join` allow. Programs must not rely on sibling
+  tasks interleaving.
+- The reference VM executes deterministically: `spawn` runs the child task to
+  completion at the spawn site, and `join` returns the completed value.
+  Leaving a `group` therefore trivially satisfies "wait for all children".
+- If a child task fails with a runtime error, the failure propagates out of
+  the enclosing `group` as a runtime failure at the spawn site. Sibling
+  tasks that were not spawned yet never start. This is the Phase 1 form of
+  "one failure cancels the remaining siblings"; a parallel runtime must
+  preserve the same observable guarantee with real cancellation.
+- Recoverable errors stay explicit values: a task whose operand evaluates to
+  `Result[T, E]` produces a `Task[Result[T, E]]`, and the caller handles the
+  `Result` after `join` as usual; `try task.join()` composes normally inside
+  `Result`-returning functions.
 
-This is preferable to a model where cancellation is bolted on later.
+### 5.6 What Phase 1 does not include
 
-### 5.6 Task handle typing
-
-Muga will eventually need an internal notion equivalent to `Task[T]`.
-
-However, this draft does **not** yet fix:
-
-- how task-handle types are written in source
-- whether task handles are user-nameable types in v1
-- whether task handles are modeled as nominal or builtin runtime types
-
-Phase 1 only requires that the compiler and runtime carry task-result typing internally.
+- no channels, `select`, timeouts, deadlines, or detached tasks; those stay
+  in later phases and remain drafts
+- no source-level `Task[T]` type syntax and no user-nameable task type
+- no timeout API: Phase 1 does not promise async IO behavior, so time-based
+  cancellation waits for the IO/runtime integration path in section 11
+- no async function coloring, in line with section 7
 
 ## 6. Phase 2: Typed Channels
 
