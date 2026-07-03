@@ -1,0 +1,11 @@
+// conformance: reject
+// spec: spec/002-name-resolution.md
+// expect-error: E003
+
+fn main(): Int {
+  value = 1
+  if true {
+    mut value = 2
+  }
+  value
+}

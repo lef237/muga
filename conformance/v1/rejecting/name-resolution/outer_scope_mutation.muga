@@ -1,0 +1,12 @@
+// conformance: reject
+// spec: spec/002-name-resolution.md
+// expect-error: E004
+
+fn main(): Int {
+  mut total = 0
+  bump = fn(x: Int): Int {
+    total = total + x
+    total
+  }
+  bump(1)
+}

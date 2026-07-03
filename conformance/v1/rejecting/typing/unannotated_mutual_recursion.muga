@@ -1,0 +1,20 @@
+// conformance: reject
+// spec: spec/003-typing.md
+// spec: spec/004-functions.md
+// expect-error: E007
+
+fn is_even(n) {
+  if n == 0 {
+    true
+  } else {
+    is_odd(n - 1)
+  }
+}
+
+fn is_odd(n) {
+  if n == 0 {
+    false
+  } else {
+    is_even(n - 1)
+  }
+}

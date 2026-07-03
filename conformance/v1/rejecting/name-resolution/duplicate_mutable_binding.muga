@@ -1,0 +1,9 @@
+// conformance: reject
+// spec: spec/002-name-resolution.md
+// expect-error: E002
+
+fn main(): Int {
+  mut count = 1
+  mut count = 2
+  count
+}

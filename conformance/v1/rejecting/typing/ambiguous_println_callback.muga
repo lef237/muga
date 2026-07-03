@@ -1,0 +1,8 @@
+// conformance: reject
+// spec: spec/003-typing.md
+// spec: spec/004-functions.md
+// expect-error: E005
+
+fn show(x: Int, f) {
+  println(f(x))
+}

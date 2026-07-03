@@ -1,0 +1,17 @@
+// conformance: reject
+// spec: spec/005-records.md
+// expect-error: E012
+
+record User {
+  name: String
+  age: Int
+}
+
+fn main(): Int {
+  user = User {
+    name: "Ada"
+    age: 20
+  }
+  taller = user.with(height: 170)
+  taller.age
+}

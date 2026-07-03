@@ -1,0 +1,12 @@
+// conformance: reject
+// spec: spec/003-typing.md
+// spec: spec/004-functions.md
+// expect-error: E006
+
+fn fact(n) {
+  if n == 0 {
+    1
+  } else {
+    n * fact(n - 1)
+  }
+}
