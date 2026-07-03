@@ -15,10 +15,11 @@ Muga samples.
   `group` / `spawn` syntax, the `std::task` package with `join`, capture and
   scope diagnostics (`T030`, `E013`), artifact support, conformance
   fixtures, and samples.
-- [x] **DONE:** release target chosen on 2026-07-03: ship the structured
-  task groups slice as `0.6.0`.
-- [ ] **NOW P0:** follow [RELEASING.md](./RELEASING.md) for `0.6.0`.
-- [ ] **NEXT:** gather real task-group usage before promoting Phase 2
+- [x] **DONE:** `0.6.0` shipped on 2026-07-03 with the structured task
+  groups slice: version bump, release gate with publish dry run, `v0.6.0`
+  tag, crates.io publish through the release workflow, and GitHub Release
+  all verified.
+- [ ] **NOW:** gather real task-group usage before promoting Phase 2
   (channels) or service IO work.
 
 Last verified locally on 2026-06-05 during the pre-v1 implementation audit:
