@@ -1,0 +1,11 @@
+// conformance: reject
+// spec: spec/007-concurrency-draft.md#54-sharing-and-capture-rules
+// expect-error: E013
+
+fn main(): Int {
+  mut counter = 1
+  group {
+    t = spawn (counter + 1)
+    0
+  }
+}

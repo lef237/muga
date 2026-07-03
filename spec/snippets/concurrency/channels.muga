@@ -1,5 +1,5 @@
-// Post-v1 design snippet: typed channels after the task core is stable.
-// This is not valid v1 source.
+// Design snippet: typed channels after the task core is stable.
+// Channels are not implemented; this is not valid source.
 
 group {
   jobs = channel(Int, capacity: 64)

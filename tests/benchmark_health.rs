@@ -88,6 +88,11 @@ fn representative_runtime_health_check_reports_elapsed_times() {
             "samples/packages/app/std_map/main.muga",
             "a:2",
         ),
+        (
+            "runtime.std-task",
+            "samples/packages/app/std_task/main.muga",
+            "item-7/70",
+        ),
     ] {
         let entry = Path::new(path);
         let outcome = measure_result(label, || muga::run_path(entry));

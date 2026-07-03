@@ -1,0 +1,10 @@
+// conformance: reject
+// spec: spec/007-concurrency-draft.md#53-joining-tasks-and-task-handle-typing
+// expect-error: T013
+
+fn main(): Int {
+  group {
+    t: Task[Int] = spawn 1
+    0
+  }
+}

@@ -1,0 +1,21 @@
+package app::std_task
+
+import std::task
+
+fn fetch_label(id: Int): String {
+  concat("item-", to_string(id))
+}
+
+fn fetch_score(id: Int): Int {
+  id * 10
+}
+
+fn main(): String {
+  group {
+    label_task = spawn fetch_label(7)
+    score_task = spawn fetch_score(7)
+    label = task::join(label_task)
+    score = score_task.task::join()
+    concat(label, concat("/", to_string(score)))
+  }
+}

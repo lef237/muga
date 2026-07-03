@@ -1,0 +1,8 @@
+// conformance: reject
+// spec: spec/007-concurrency-draft.md#52-spawning-tasks
+// expect-error: T030
+
+fn main(): Int {
+  t = spawn 41
+  1
+}

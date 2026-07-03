@@ -113,6 +113,7 @@ import std::path
 import std::process
 import std::result
 import std::string
+import std::task
 ```
 
 `std::io` exports:
@@ -205,6 +206,21 @@ working directory as `path::Path` and explicit environment overrides through
 exit is captured as `Result::Ok(Output { success: false, ... })`, not as an
 error. `Result::Err(process::Error)` is reserved for spawn, wait, stdout/stderr
 UTF-8 conversion, and related recoverable host failures.
+
+`std::task` exports:
+
+```muga
+pub fn join[T](task: Task[T]): T
+```
+
+`Task[T]` is the internal task-handle type produced by `spawn` inside a
+`group` expression. Only the compiler-provided `std::task` package spells
+`Task[T]` in a signature; user source cannot write it in annotations, record
+fields, or function signatures (`T013` unknown generic type). `task::join`
+returns the completed child value, and the qualified chained form
+`handle.task::join()` is the same call. See
+[spec/007-concurrency-draft.md](./007-concurrency-draft.md) section 5 for the
+full structured task group rules.
 
 `std::fs` exports:
 

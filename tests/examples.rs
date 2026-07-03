@@ -6761,6 +6761,11 @@ fn package_std_process_sample_runs() {
 }
 
 #[test]
+fn package_std_task_sample_runs() {
+    assert_package_runs("samples/packages/app/std_task/main.muga", "item-7/70", "");
+}
+
+#[test]
 fn package_artifact_facade_sample_runs() {
     assert_package_runs("samples/packages/app/artifact_facade/main.muga", "26", "");
 }

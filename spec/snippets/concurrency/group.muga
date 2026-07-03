@@ -1,5 +1,5 @@
-// Post-v1 design snippet: structured task scope with explicit spawn and join.
-// This is not valid v1 source.
+// Implemented structured task scope: group, spawn, and std::task join.
+// The join calls need package mode with `import std::task`.
 
 group {
   user_task = spawn fetch_user(id)
@@ -7,8 +7,8 @@ group {
   profile_task = spawn fetch_profile(id)
 
   Page {
-    user: user_task.join()
-    orders: orders_task.join()
-    profile: profile_task.join()
+    user: user_task.task::join()
+    orders: orders_task.task::join()
+    profile: profile_task.task::join()
   }
 }

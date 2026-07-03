@@ -7,12 +7,19 @@ Muga samples.
 
 ## Resume Cursor
 
-- [x] **DONE:** release target chosen on 2026-07-02: ship the completed
-  v1-scope implementation as `0.5.0`. Muga stays in the `0.x` series for now;
-  the `1.0.0` compatibility promise does not start yet.
-- [ ] **NOW P0:** follow
-  [RELEASING.md](./RELEASING.md) for `0.5.0`.
-- [ ] **NEXT P1:** start structured task groups after `0.5.0` ships.
+- [x] **DONE:** `0.5.0` shipped on 2026-07-02: version bump, release gate
+  with publish dry run, `v0.5.0` tag, crates.io publish through the release
+  workflow, and GitHub Release all verified. Muga stays in the `0.x` series;
+  the `1.0.0` compatibility promise has not started.
+- [x] **DONE:** structured task groups Phase 1 implemented on 2026-07-03:
+  `group` / `spawn` syntax, the `std::task` package with `join`, capture and
+  scope diagnostics (`T030`, `E013`), artifact support, conformance
+  fixtures, and samples.
+- [ ] **NOW P0:** decide the next release target for the task-groups slice
+  (`0.6.0` unless the release definition changes) and follow
+  [RELEASING.md](./RELEASING.md).
+- [ ] **NEXT:** gather real task-group usage before promoting Phase 2
+  (channels) or service IO work.
 
 Last verified locally on 2026-06-05 during the pre-v1 implementation audit:
 
@@ -42,10 +49,13 @@ Muga currently has:
   records/functions, `Option`, `Result`, prefix `try`, exhaustive `match`,
   `for`, `break`, `continue`, `return`, `Unit`, package imports, `pub opaque
   type`, runtime-backed `std::fs::File`, and statement-form `using`
+- [x] structured task groups Phase 1: `group` expression scopes, prefix
+  `spawn` with `T030` / `E013` diagnostics, the internal `Task[T]` handle
+  type, and deterministic reference execution per spec/007 section 5
 - [x] standard package slices for `std::io`, `std::fs`, `std::path`,
   `std::env`, `std::process`, `std::cli`, `std::time`, `std::bytes`, `std::hash`,
   `std::string`, `std::fmt`, `std::list`, `std::map`, `std::option`,
-  `std::result`, `std::json`, `std::config`, and `std::test`
+  `std::result`, `std::json`, `std::config`, `std::task`, and `std::test`
 - [x] diagnostic JSON context for source, package, artifact-root, concrete
   artifacts, hashes, and regeneration commands where available
 
@@ -293,12 +303,18 @@ structured task groups are the next implementation work after `0.5.0` ships.
 - [x] Define timeout boundaries without promising async socket IO. Phase 1
   ships no timeout API; time-based cancellation waits for the IO/runtime
   integration path.
-- [ ] Add AST/parser support only after the type and runtime behavior are
-  settled.
-- [ ] Add typed HIR, MIR/bytecode, and VM support.
-- [ ] Add conformance fixtures for accepted and rejected task usage.
-- [ ] Add benchmark-health checks only as local health measurements, not public
-  performance claims.
+- [x] Add AST/parser support only after the type and runtime behavior are
+  settled. `group` is an expression with a value-block body; `spawn` parses
+  at the prefix `try` level and accepts `spawn group { ... }` directly.
+- [x] Add typed HIR, MIR/bytecode, and VM support. Bytecode gains a
+  `WrapTask` instruction with `.mgb` encode/decode/validation support, and
+  `.mgi` signatures serialize `Task[T]` for `std::task::join`.
+- [x] Add conformance fixtures for accepted and rejected task usage:
+  `conformance/v1/valid/control/task_group_spawn.muga` plus rejecting
+  fixtures for `T030`, `T013`, and `E013`.
+- [x] Add benchmark-health checks only as local health measurements, not
+  public performance claims: `runtime.std-task` in the representative
+  runtime health check.
 
 ## Post-v1 P2: Service IO
 
@@ -465,9 +481,10 @@ future backlog items.
 
 ## Short Version
 
-Muga ships the completed v1-scope implementation as `0.5.0`, staying in the
-`0.x` series without starting the `1.0.0` compatibility promise.
+Muga shipped `0.5.0` and then implemented structured task groups
+(`group` / `spawn` / `std::task::join`) as the first post-`0.5.0` slice.
 `scripts/v1-release-gate.sh` remains the authoritative readiness command.
-After `0.5.0` ships, the next implementation work is structured task groups
-(`group` / `spawn` / `join`). Service IO, remote registries, broad
-collections, and native backend work stay deferred behind task groups.
+The next concrete step is choosing the release target for the task-groups
+slice. Channels, `select`, service IO, remote registries, broad collections,
+and native backend work stay deferred until real task-group usage justifies
+them.

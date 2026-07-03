@@ -96,6 +96,8 @@ Many commands also support `--format json` for editor and tooling workflows.
 - Data is modeled with nominal `record` and `enum` declarations.
 - `Option[T]` and `Result[T, E]` are explicit, with `match` and prefix
   `try expr`.
+- Structured task groups use `group { ... }` scopes, `spawn expr`, and
+  `std::task` joins; child tasks never outlive their group.
 - Packages use `package`, `import`, `pub`, and manifest files.
 - Package artifact files use `.mgi`, `.mgc`, and `.mgb`.
 

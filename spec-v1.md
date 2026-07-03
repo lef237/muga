@@ -375,6 +375,16 @@ Implemented:
   `Output { status, success, stdout, stderr }`, nonzero exits captured as
   `Result::Ok(Output)`, and spawn/wait/capture/UTF-8 failures returned as
   recoverable `process::Error` values
+- structured task groups per
+  [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) section 5:
+  `group { ... }` expression scopes, prefix `spawn` allowed only inside an
+  enclosing `group` body (`T030`) with `spawn group { ... }` for nested
+  scopes, immutable-only capture across the `spawn` boundary (`E013`), an
+  internal `Task[T]` handle type that user source cannot spell (`T013`), and
+  the `std::task` helper package whose `task::join(handle)` /
+  `handle.task::join()` returns the completed child value; the reference VM
+  executes deterministically, running each child task to completion at its
+  spawn site within implementation-defined ordering
 - `std::json` helper package for explicit `json::Value` parse/encode, integer-number conversion, value/object-field scalar/composite accessor/default/required helpers, scalar array projection helpers, direct scalar-array object-field helpers, typed-segment JSON path helpers, typed JSON path scalar projection helpers, typed JSON path collection projection helpers, and compiler-owned `json::decode_or[T](value, fallback)` / strict `json::decode[T](value)` schema decoding for `String`, `Int`, `Bool`, `Option[T]`, recursive `List[T]`, typed `Map[String, T]`, `Map[String, json::Value]`, concrete non-generic records over supported fields, and concrete non-generic enums over supported payloads, all returning `json::Error`
 - compiler-provided `std::test` scalar assertion helpers for `muga test`
 - `muga --help`, `muga -h`, `muga help`, and `muga help <command>` for command usage
@@ -416,9 +426,9 @@ validator functions, and TOML remain outside the v1 JSON/config decoder surface.
 
 Not implemented:
 
-`std::process` is implemented. The remaining items in this list are post-v1
-parked work unless the roadmap promotes a specific correctness or
-release-readiness issue to P0.
+`std::process` and structured task groups (`group` / `spawn` / `std::task`)
+are implemented. The remaining items in this list are parked work unless the
+roadmap promotes a specific correctness or release-readiness issue to P0.
 
 - public-signature inference for `pub fn`
 - URL/Git/registry dependency forms, remote package fetching, publishing/install workflows, and full published-package lockfile enforcement
@@ -435,7 +445,9 @@ release-readiness issue to P0.
   resource-handle families, `using` expressions/multiple bindings, and
   aggregate cleanup errors
 - control-flow-oriented MIR and native backend
-- structured concurrency
+- concurrency beyond structured task groups: channels, `select`, timeouts,
+  deadlines, detached tasks, and any parallel scheduler behind the
+  deterministic reference execution
 
 ## Detailed References
 
