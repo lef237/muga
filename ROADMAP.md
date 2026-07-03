@@ -15,9 +15,9 @@ Muga samples.
   `group` / `spawn` syntax, the `std::task` package with `join`, capture and
   scope diagnostics (`T030`, `E013`), artifact support, conformance
   fixtures, and samples.
-- [ ] **NOW P0:** decide the next release target for the task-groups slice
-  (`0.6.0` unless the release definition changes) and follow
-  [RELEASING.md](./RELEASING.md).
+- [x] **DONE:** release target chosen on 2026-07-03: ship the structured
+  task groups slice as `0.6.0`.
+- [ ] **NOW P0:** follow [RELEASING.md](./RELEASING.md) for `0.6.0`.
 - [ ] **NEXT:** gather real task-group usage before promoting Phase 2
   (channels) or service IO work.
 
