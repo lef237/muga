@@ -33,8 +33,9 @@ Create and run a small app:
 
 ```bash
 muga new --template app hello-muga
-muga run hello-muga/src/main/main.muga
-muga check hello-muga/src/main/main.muga
+cd hello-muga
+muga run src/main/main.muga
+muga check src/main/main.muga
 ```
 
 The generated project contains a `muga.toml` manifest and source files under
