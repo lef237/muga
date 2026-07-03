@@ -1398,7 +1398,7 @@ impl PersistedArtifactIdRemapper<'_> {
                     self.type_info(arg, current_package, dependencies, span);
                 }
             }
-            TypeInfo::List(item) | TypeInfo::Option(item) => {
+            TypeInfo::List(item) | TypeInfo::Option(item) | TypeInfo::Task(item) => {
                 self.type_info(item, current_package, dependencies, span);
             }
             TypeInfo::Map(key, value) | TypeInfo::Result(key, value) => {
@@ -1630,7 +1630,9 @@ impl PersistedInterfaceConsistencyValidator<'_> {
                     self.validate_type(arg, span);
                 }
             }
-            TypeInfo::List(item) | TypeInfo::Option(item) => self.validate_type(item, span),
+            TypeInfo::List(item) | TypeInfo::Option(item) | TypeInfo::Task(item) => {
+                self.validate_type(item, span)
+            }
             TypeInfo::Map(key, value) | TypeInfo::Result(key, value) => {
                 self.validate_type(key, span);
                 self.validate_type(value, span);
@@ -2898,6 +2900,7 @@ impl<'a, 's> TypeInfoParser<'a, 's> {
                 Box::new(self.parse()?),
                 Box::new(self.parse()?),
             )),
+            "Task" => Ok(TypeInfo::Task(Box::new(self.parse()?))),
             "Function" => {
                 let param_count = self.usize("function type parameter count")?;
                 let mut params = Vec::with_capacity(param_count);
@@ -3220,6 +3223,10 @@ fn push_type_info_tokens(
             push_type_info_tokens(ok, symbols, context, tokens);
             push_type_info_tokens(err, symbols, context, tokens);
         }
+        TypeInfo::Task(item) => {
+            tokens.push("Task".to_string());
+            push_type_info_tokens(item, symbols, context, tokens);
+        }
         TypeInfo::EnumConstructor {
             enum_symbol,
             enum_item,
@@ -3317,6 +3324,7 @@ fn reintern_type_info(ty: &TypeInfo, from: &SymbolTable, to: &mut SymbolTable) -
             Box::new(reintern_type_info(ok, from, to)),
             Box::new(reintern_type_info(err, from, to)),
         ),
+        TypeInfo::Task(item) => TypeInfo::Task(Box::new(reintern_type_info(item, from, to))),
         TypeInfo::EnumConstructor {
             enum_symbol,
             enum_item,
@@ -3787,6 +3795,12 @@ fn canonical_public_signature_type(
             symbols,
             public_type_items,
         ))),
+        TypeInfo::Task(item) => TypeInfo::Task(Box::new(canonical_public_signature_type(
+            item,
+            package,
+            symbols,
+            public_type_items,
+        ))),
         TypeInfo::Result(ok, err) => TypeInfo::Result(
             Box::new(canonical_public_signature_type(
                 ok,
@@ -3966,6 +3980,8 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
                 self.validate_type(&fn_expr.return_ty, expr.span);
                 self.validate_value_block(&fn_expr.body);
             }
+            ExprKind::Group(group_expr) => self.validate_value_block(&group_expr.body),
+            ExprKind::Spawn(spawn_expr) => self.validate_expr(&spawn_expr.expr),
         }
     }
 
@@ -3994,6 +4010,7 @@ impl<'a> PackageInterfaceReferenceValidator<'a> {
                 self.validate_type(ok, span);
                 self.validate_type(err, span);
             }
+            TypeInfo::Task(item) => self.validate_type(item, span),
             TypeInfo::Function(function) => {
                 for param in &function.params {
                     self.validate_type(param, span);

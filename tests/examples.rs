@@ -44933,6 +44933,10 @@ fn collect_typed_calls_in_expr<'a>(
         muga::typed_hir::ExprKind::Fn(expr) => {
             collect_typed_calls_in_value_block(&expr.body, calls);
         }
+        muga::typed_hir::ExprKind::Group(expr) => {
+            collect_typed_calls_in_value_block(&expr.body, calls);
+        }
+        muga::typed_hir::ExprKind::Spawn(expr) => collect_typed_calls_in_expr(&expr.expr, calls),
     }
 }
 
@@ -45083,6 +45087,12 @@ fn collect_typed_ids_in_expr(
         muga::typed_hir::ExprKind::Fn(expr) => {
             collect_typed_ids_in_value_block(&expr.body, statement_ids, expr_ids);
         }
+        muga::typed_hir::ExprKind::Group(expr) => {
+            collect_typed_ids_in_value_block(&expr.body, statement_ids, expr_ids);
+        }
+        muga::typed_hir::ExprKind::Spawn(expr) => {
+            collect_typed_ids_in_expr(&expr.expr, statement_ids, expr_ids);
+        }
     }
 }
 
@@ -45115,4 +45125,410 @@ fn collect_stmt_ids(statements: &[muga::ast::Stmt], ids: &mut HashSet<u32>) {
             _ => {}
         }
     }
+}
+
+#[test]
+fn task_group_spawn_join_runs_in_package_mode() {
+    let root = temp_package_root("task-group-join");
+    let entry = write_package_file(
+        &root,
+        "app/task_group_join/main.muga",
+        r#"
+package app::task_group_join
+
+import std::task
+
+fn work(n: Int): Int {
+  n * 2
+}
+
+fn main(): Int {
+  group {
+    a = spawn work(10)
+    b = spawn work(11)
+    task::join(a) + b.task::join()
+  }
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).unwrap();
+    let value = result.main_result.expect("main should return a value");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn task_group_spawn_runs_children_eagerly_in_spawn_order() {
+    let root = temp_package_root("task-spawn-order");
+    let entry = write_package_file(
+        &root,
+        "app/task_spawn_order/main.muga",
+        r#"
+package app::task_spawn_order
+
+import std::task
+
+fn shout(label: String): String {
+  line = println(label)
+  label
+}
+
+fn main(): Int {
+  group {
+    first = spawn shout("first")
+    second = spawn shout("second")
+    left = println(task::join(first))
+    right = println(task::join(second))
+    0
+  }
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).unwrap();
+    assert_eq!(result.output_text, "first\nsecond\nfirst\nsecond\n");
+}
+
+#[test]
+fn task_group_nested_group_and_repeated_join() {
+    let root = temp_package_root("task-nested-group");
+    let entry = write_package_file(
+        &root,
+        "app/task_nested_group/main.muga",
+        r#"
+package app::task_nested_group
+
+import std::task
+
+fn main(): Int {
+  group {
+    inner = spawn group {
+      t = spawn 20
+      task::join(t) + task::join(t)
+    }
+    task::join(inner) + 2
+  }
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).unwrap();
+    let value = result.main_result.expect("main should return a value");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn task_spawn_failure_propagates_and_skips_remaining_siblings() {
+    let root = temp_package_root("task-spawn-failure");
+    let entry = write_package_file(
+        &root,
+        "app/task_spawn_failure/main.muga",
+        r#"
+package app::task_spawn_failure
+
+import std::task
+
+fn crash(): Int {
+  1 / 0
+}
+
+fn shout(label: String): Int {
+  line = println(label)
+  0
+}
+
+fn main(): Int {
+  group {
+    before = spawn shout("before")
+    boom = spawn crash()
+    after = spawn shout("after")
+    task::join(after)
+  }
+}
+"#,
+    );
+
+    let diagnostics = muga::run_path(&entry).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R013"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn task_spawn_outside_group_is_rejected() {
+    let source = r#"
+fn main(): Int {
+  t = spawn 41
+  1
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T030"
+                && diagnostic.message.contains("inside a `group` block")),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn task_spawn_inside_helper_fn_requires_its_own_group() {
+    let source = r#"
+fn main(): Int {
+  helper = fn(): Int {
+    t = spawn 1
+    2
+  }
+  group {
+    helper()
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T030"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn task_spawn_operand_keeps_group_context_for_nested_spawn() {
+    let source = r#"
+fn main(): Int {
+  group {
+    outer = spawn (spawn 1)
+    0
+  }
+}
+"#;
+    let result = muga::check_source(source);
+    assert!(result.is_ok(), "{result:#?}");
+}
+
+#[test]
+fn task_spawn_rejects_reading_outer_mut_binding() {
+    let source = r#"
+fn main(): Int {
+  mut counter = 1
+  group {
+    t = spawn (counter + 1)
+    0
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "E013"
+                && diagnostic.message.contains("mutable binding `counter`")),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn task_spawn_rejects_mut_read_from_fn_expr_inside_spawn_operand() {
+    let source = r#"
+fn main(): Int {
+  mut counter = 1
+  group {
+    t = spawn (fn(): Int {
+      counter
+    })()
+    0
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "E013"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn task_spawn_allows_immutable_and_parameter_capture() {
+    let source = r#"
+fn offset_all(base: Int): Int {
+  extra = 2
+  group {
+    t = spawn (base + extra)
+    0
+  }
+}
+
+fn main(): Int {
+  offset_all(40)
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main should return a value");
+    assert_eq!(value.to_string(), "0");
+}
+
+#[test]
+fn task_spawn_allows_calling_closure_created_outside_operand() {
+    let source = r#"
+fn main(): Int {
+  mut counter = 41
+  read = fn(): Int {
+    counter
+  }
+  group {
+    t = spawn read()
+    0
+  }
+}
+"#;
+    let result = muga::check_source(source);
+    assert!(result.is_ok(), "{result:#?}");
+}
+
+#[test]
+fn task_join_rejects_non_task_argument() {
+    let root = temp_package_root("task-join-non-task");
+    let entry = write_package_file(
+        &root,
+        "app/task_join_non_task/main.muga",
+        r#"
+package app::task_join_non_task
+
+import std::task
+
+fn main(): Int {
+  task::join(42)
+}
+"#,
+    );
+
+    let diagnostics = muga::check_path(&entry).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("Task")),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn task_type_annotation_is_rejected_in_user_source() {
+    let source = r#"
+fn main(): Int {
+  group {
+    t: Task[Int] = spawn 1
+    0
+  }
+}
+"#;
+    let diagnostics = muga::check_source(source).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "T013"
+                && diagnostic.message.contains("unknown generic type `Task`")),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn task_group_and_spawn_are_reserved_keywords() {
+    for source in [
+        "fn main(): Int {\n  group = 1\n  group\n}\n",
+        "fn main(): Int {\n  spawn = 1\n  spawn\n}\n",
+    ] {
+        let result = muga::check_source(source);
+        assert!(result.is_err(), "keyword binding should be rejected");
+    }
+}
+
+#[test]
+fn task_group_evaluates_to_value_block_result_type() {
+    let source = r#"
+fn main(): Int {
+  answer = group {
+    41 + 1
+  }
+  answer
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main should return a value");
+    assert_eq!(value.to_string(), "42");
+}
+
+#[test]
+fn task_group_source_formats_and_stays_idempotent() {
+    let source = r#"
+fn work(n: Int): Int {
+  n
+}
+
+fn main(): Int {
+  group {
+    t = spawn work(1)
+    u = spawn (1 + 2)
+    v = spawn group {
+      w = spawn work(2)
+      3
+    }
+    0
+  }
+}
+"#;
+    let formatted = muga::format_source(source).expect("task source should format");
+    assert!(formatted.contains("t = spawn work(1)"), "{formatted}");
+    assert!(formatted.contains("u = spawn (1 + 2)"), "{formatted}");
+    assert!(formatted.contains("v = spawn group {"), "{formatted}");
+    let reformatted = muga::format_source(&formatted).expect("formatted source should reformat");
+    assert_eq!(formatted, reformatted);
+}
+
+#[test]
+fn task_group_runs_through_built_artifacts_without_source_fallback() {
+    let root = temp_package_root("task-built-artifacts");
+    let entry = write_package_file(
+        &root,
+        "app/task_built/main.muga",
+        r#"
+package app::task_built
+
+import std::task
+
+fn work(n: Int): Int {
+  n + 1
+}
+
+fn main(): Int {
+  group {
+    a = spawn work(21)
+    b = spawn work(19)
+    task::join(a) + task::join(b)
+  }
+}
+"#,
+    );
+
+    let build = muga_command()
+        .arg("build")
+        .arg(&entry)
+        .output()
+        .expect("muga build should run");
+    assert!(build.status.success(), "{build:#?}");
+
+    let run = muga_command()
+        .arg("run")
+        .arg("--built")
+        .arg(&entry)
+        .output()
+        .expect("muga run --built should run");
+    assert!(run.status.success(), "{run:#?}");
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "42\n");
 }

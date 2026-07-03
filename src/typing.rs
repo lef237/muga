@@ -143,6 +143,7 @@ enum Type {
     Map(Box<Type>, Box<Type>),
     Option(Box<Type>),
     Result(Box<Type>, Box<Type>),
+    Task(Box<Type>),
     OptionNone,
     EnumConstructor {
         enum_name: Symbol,
@@ -290,6 +291,13 @@ pub fn typecheck_package_module(
     {
         checker.install_internal_builtins();
     }
+    if program
+        .package
+        .as_ref()
+        .is_some_and(|package| package.path == crate::std_package::TASK_PACKAGE)
+    {
+        checker.allow_task_type_syntax = true;
+    }
     if let Some(environment) = signatures.module(module) {
         checker.install_package_module_signatures(signatures, environment);
     }
@@ -358,6 +366,8 @@ struct TypeChecker {
     current_function_returns: Vec<Type>,
     current_type_params: Vec<Vec<Symbol>>,
     loop_depth: usize,
+    group_depth: usize,
+    allow_task_type_syntax: bool,
 }
 
 impl TypeChecker {
@@ -420,6 +430,8 @@ impl TypeChecker {
             current_function_returns: Vec::new(),
             current_type_params: Vec::new(),
             loop_depth: 0,
+            group_depth: 0,
+            allow_task_type_syntax: false,
         };
         checker.install_prelude();
         checker
@@ -894,6 +906,9 @@ impl TypeChecker {
                 Box::new(self.type_from_signature_info(ok, signatures)),
                 Box::new(self.type_from_signature_info(err, signatures)),
             ),
+            TypeInfo::Task(item) => {
+                Type::Task(Box::new(self.type_from_signature_info(item, signatures)))
+            }
             TypeInfo::EnumConstructor {
                 enum_symbol,
                 enum_item,
@@ -1354,12 +1369,14 @@ impl TypeChecker {
         self.current_function_returns.push((*sig.ret).clone());
         self.current_type_params.push(sig.type_params.clone());
         let outer_loop_depth = std::mem::replace(&mut self.loop_depth, 0);
+        let outer_group_depth = std::mem::replace(&mut self.group_depth, 0);
         for (param, param_ty) in func.params.iter().zip(sig.params.iter().cloned()) {
             let name = self.symbol(&param.name);
             self.insert_current(name, BindingKind::Parameter, param_ty, param.span);
         }
         self.check_value_block_contents(&func.body, Some((*sig.ret).clone()));
         self.loop_depth = outer_loop_depth;
+        self.group_depth = outer_group_depth;
         self.current_type_params.pop();
         self.current_function_returns.pop();
         self.pop_scope();
@@ -1727,6 +1744,7 @@ impl TypeChecker {
                     Type::Builtin(BuiltinId::MapEmpty) => {
                         self.check_map_empty_builtin(expr, expected)
                     }
+                    Type::Builtin(BuiltinId::Join) => self.check_join_builtin(expr, expected),
                     Type::Builtin(BuiltinId::Contains) => {
                         self.check_contains_builtin(expr, expected)
                     }
@@ -2138,15 +2156,47 @@ impl TypeChecker {
                 self.push_scope(true);
                 self.current_function_returns.push((*sig.ret).clone());
                 let outer_loop_depth = std::mem::replace(&mut self.loop_depth, 0);
+                let outer_group_depth = std::mem::replace(&mut self.group_depth, 0);
                 for (param, param_ty) in expr.params.iter().zip(sig.params.iter().cloned()) {
                     let name = self.symbol(&param.name);
                     self.insert_current(name, BindingKind::Parameter, param_ty, param.span);
                 }
                 self.check_value_block_contents(&expr.body, Some((*sig.ret).clone()));
                 self.loop_depth = outer_loop_depth;
+                self.group_depth = outer_group_depth;
                 self.current_function_returns.pop();
                 self.pop_scope();
                 self.apply_expected(Type::Function(sig), expected, expr.span)
+            }
+            Expr::Group(expr) => {
+                self.group_depth += 1;
+                let ty = match expected {
+                    Some(expected_ty) => {
+                        self.check_value_block_with_expected(&expr.body, Some(expected_ty.clone()));
+                        self.resolve_type(&expected_ty)
+                    }
+                    None => {
+                        let body_ty = self.check_value_block(&expr.body);
+                        self.resolve_type(&body_ty)
+                    }
+                };
+                self.group_depth -= 1;
+                ty
+            }
+            Expr::Spawn(expr) => {
+                if self.group_depth == 0 {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T030",
+                        "`spawn` is allowed only inside a `group` block",
+                        expr.span,
+                    ));
+                }
+                let inner_expected = match &expected {
+                    Some(Type::Task(inner)) => Some((**inner).clone()),
+                    _ => None,
+                };
+                let inner_ty = self.check_expr_with_expected(&expr.expr, inner_expected);
+                self.apply_expected(Type::Task(Box::new(inner_ty)), expected, expr.span)
             }
         };
         self.record_expr_type(expr.id(), span, ty)
@@ -3169,6 +3219,37 @@ impl TypeChecker {
                     .with_suggestion(
                         "add a local binding annotation such as `items: Map[String, Int] = Map.empty()`",
                     ),
+                );
+                Type::Error
+            }
+        }
+    }
+
+    fn check_join_builtin(&mut self, expr: &CallExpr, expected: Option<Type>) -> Type {
+        if expr.args.len() != 1 {
+            self.diagnostics.push(Diagnostic::new(
+                "T004",
+                format!("expected 1 argument but found {}", expr.args.len()),
+                expr.span,
+            ));
+            return Type::Error;
+        }
+
+        let task_ty = self.check_expr(&expr.args[0]);
+        match self.resolve_type(&task_ty) {
+            Type::Task(item) => self.apply_expected(*item, expected, expr.span),
+            Type::Error => Type::Error,
+            other => {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        "T006",
+                        format!(
+                            "`join` expects a task handle created by `spawn` but found {}",
+                            self.type_label(&other)
+                        ),
+                        expr.span,
+                    )
+                    .with_suggestion("call `join` on the result of a `spawn` expression"),
                 );
                 Type::Error
             }
@@ -7679,6 +7760,24 @@ impl TypeChecker {
                     Box::new(self.type_from_expr_with_params(&generic.args[1], span, type_params)),
                 )
             }
+            TypeExpr::Generic(generic) if generic.name == "Task" && self.allow_task_type_syntax => {
+                if generic.args.len() != 1 {
+                    self.diagnostics.push(Diagnostic::new(
+                        "T021",
+                        format!(
+                            "Task expects exactly 1 type argument but found {}",
+                            generic.args.len()
+                        ),
+                        span,
+                    ));
+                    return Type::Error;
+                }
+                Type::Task(Box::new(self.type_from_expr_with_params(
+                    &generic.args[0],
+                    span,
+                    type_params,
+                )))
+            }
             TypeExpr::Generic(generic) if generic.name == "Map" => {
                 if generic.args.len() != 2 {
                     self.diagnostics.push(Diagnostic::new(
@@ -7860,6 +7959,10 @@ impl TypeChecker {
                 let err = self.unify(*left_err, *right_err)?;
                 Ok(Type::Result(Box::new(ok), Box::new(err)))
             }
+            (Type::Task(left), Type::Task(right)) => {
+                let item = self.unify(*left, *right)?;
+                Ok(Type::Task(Box::new(item)))
+            }
             (Type::Function(left), Type::Function(right)) => {
                 if left.params.len() != right.params.len() {
                     return Err("function arity mismatch".to_string());
@@ -7916,6 +8019,7 @@ impl TypeChecker {
                 Box::new(self.resolve_type(ok)),
                 Box::new(self.resolve_type(err)),
             ),
+            Type::Task(item) => Type::Task(Box::new(self.resolve_type(item))),
             Type::Builtin(builtin) => Type::Builtin(*builtin),
             Type::EnumConstructor {
                 enum_name,
@@ -7956,6 +8060,7 @@ impl TypeChecker {
                     self.type_label(&err)
                 )
             }
+            Type::Task(item) => format!("Task[{}]", self.type_label(&item)),
             Type::OptionNone => "Option::None".to_string(),
             Type::EnumConstructor {
                 enum_name,
@@ -8036,6 +8141,7 @@ impl TypeChecker {
                 Box::new(self.type_info_for(&ok)),
                 Box::new(self.type_info_for(&err)),
             ),
+            Type::Task(item) => TypeInfo::Task(Box::new(self.type_info_for(&item))),
             Type::Function(sig) => TypeInfo::Function(FunctionTypeInfo {
                 params: sig.params.iter().map(|ty| self.type_info_for(ty)).collect(),
                 ret: Box::new(self.type_info_for(&sig.ret)),
@@ -8082,6 +8188,7 @@ impl TypeChecker {
             Type::Result(ok, err) => {
                 self.type_contains_unknown(&ok, needle) || self.type_contains_unknown(&err, needle)
             }
+            Type::Task(item) => self.type_contains_unknown(&item, needle),
             _ => false,
         }
     }
@@ -8130,6 +8237,9 @@ impl TypeChecker {
                 Box::new(self.substitute_type_params(*ok, params, args)),
                 Box::new(self.substitute_type_params(*err, params, args)),
             ),
+            Type::Task(item) => {
+                Type::Task(Box::new(self.substitute_type_params(*item, params, args)))
+            }
             other => other,
         }
     }
@@ -8890,5 +9000,10 @@ fn collect_calls_in_expr(
             }
         }
         Expr::Fn(_) => {}
+        Expr::Group(expr) => {
+            collect_calls_in_statements(&expr.body.statements, local_names, calls, symbols);
+            collect_calls_in_expr(&expr.body.expr, local_names, calls, symbols);
+        }
+        Expr::Spawn(expr) => collect_calls_in_expr(&expr.expr, local_names, calls, symbols),
     }
 }

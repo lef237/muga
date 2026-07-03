@@ -209,6 +209,9 @@ pub enum Instruction {
     Jump {
         target: usize,
     },
+    WrapTask {
+        span: Span,
+    },
     PushScope,
     PopScope,
     Pop,
@@ -439,6 +442,7 @@ impl ProgramMerger {
             },
             Instruction::LoadIndex { span } => Instruction::LoadIndex { span: *span },
             Instruction::ListLen { span } => Instruction::ListLen { span: *span },
+            Instruction::WrapTask { span } => Instruction::WrapTask { span: *span },
             Instruction::UpdateRecord { fields, span } => Instruction::UpdateRecord {
                 fields: fields
                     .iter()
@@ -1352,6 +1356,13 @@ impl Compiler {
             mir::Expr::Closure(expr) => chunk.instructions.push(Instruction::MakeClosure {
                 function: expr.function,
             }),
+            mir::Expr::Group(expr) => self.compile_value_block(&expr.body, chunk),
+            mir::Expr::Spawn(expr) => {
+                self.compile_expr(&expr.expr, chunk);
+                chunk
+                    .instructions
+                    .push(Instruction::WrapTask { span: expr.span });
+            }
         }
     }
 

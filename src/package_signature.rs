@@ -942,6 +942,17 @@ impl<'a> SignatureCollector<'a> {
                     Box::new(self.type_info_from_type_expr(&generic.args[1], span, type_params)),
                 )
             }
+            TypeExpr::Generic(generic)
+                if generic.name == "Task"
+                    && generic.args.len() == 1
+                    && self.current_package_path() == Some(crate::std_package::TASK_PACKAGE) =>
+            {
+                TypeInfo::Task(Box::new(self.type_info_from_type_expr(
+                    &generic.args[0],
+                    span,
+                    type_params,
+                )))
+            }
             TypeExpr::Generic(generic) => {
                 let args = generic
                     .args
@@ -1206,6 +1217,9 @@ impl<'a> SignatureCollector<'a> {
                 Box::new(self.interface_type_info(ok, symbols)),
                 Box::new(self.interface_type_info(err, symbols)),
             ),
+            TypeInfo::Task(item) => {
+                TypeInfo::Task(Box::new(self.interface_type_info(item, symbols)))
+            }
             TypeInfo::EnumConstructor {
                 enum_symbol,
                 enum_item,

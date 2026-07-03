@@ -321,6 +321,8 @@ pub enum Expr {
     If(IfExpr),
     Match(MatchExpr),
     Fn(FnExpr),
+    Group(GroupExpr),
+    Spawn(SpawnExpr),
 }
 
 impl Expr {
@@ -343,6 +345,8 @@ impl Expr {
             Self::If(expr) => expr.id,
             Self::Match(expr) => expr.id,
             Self::Fn(expr) => expr.id,
+            Self::Group(expr) => expr.id,
+            Self::Spawn(expr) => expr.id,
         }
     }
 
@@ -365,6 +369,8 @@ impl Expr {
             Self::If(expr) => expr.span,
             Self::Match(expr) => expr.span,
             Self::Fn(expr) => expr.span,
+            Self::Group(expr) => expr.span,
+            Self::Spawn(expr) => expr.span,
         }
     }
 }
@@ -573,6 +579,20 @@ pub struct FnExpr {
     pub span: Span,
 }
 
+#[derive(Clone, Debug)]
+pub struct GroupExpr {
+    pub id: ExprId,
+    pub body: ValueBlock,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct SpawnExpr {
+    pub id: ExprId,
+    pub expr: Box<Expr>,
+    pub span: Span,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeExpr {
     Int,
@@ -745,6 +765,14 @@ impl NodeIdAssigner {
             Expr::Fn(expr) => {
                 expr.id = self.expr_id();
                 self.assign_value_block(&mut expr.body);
+            }
+            Expr::Group(expr) => {
+                expr.id = self.expr_id();
+                self.assign_value_block(&mut expr.body);
+            }
+            Expr::Spawn(expr) => {
+                expr.id = self.expr_id();
+                self.assign_expr(&mut expr.expr);
             }
         }
     }

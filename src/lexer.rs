@@ -214,6 +214,8 @@ impl Lexer {
             "return" => TokenKind::Return,
             "try" => TokenKind::Try,
             "using" => TokenKind::Using,
+            "group" => TokenKind::Group,
+            "spawn" => TokenKind::Spawn,
             "and" => TokenKind::And,
             "or" => TokenKind::Or,
             "true" => TokenKind::True,

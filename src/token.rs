@@ -29,6 +29,8 @@ pub enum TokenKind {
     Return,
     Try,
     Using,
+    Group,
+    Spawn,
     And,
     Or,
     True,
@@ -81,6 +83,7 @@ impl TokenKind {
                 | TokenKind::Arrow
                 | TokenKind::FatArrow
                 | TokenKind::Try
+                | TokenKind::Spawn
                 | TokenKind::LBracket
                 | TokenKind::Plus
                 | TokenKind::Minus

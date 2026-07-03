@@ -747,6 +747,9 @@ fn push_instruction(out: &mut String, instruction: &Instruction) {
         Instruction::ListLen { span } => {
             out.push_str(&format!("ins\tListLen\t{}\n", span_text(*span)));
         }
+        Instruction::WrapTask { span } => {
+            out.push_str(&format!("ins\tWrapTask\t{}\n", span_text(*span)));
+        }
         Instruction::UpdateRecord { fields, span } => out.push_str(&format!(
             "ins\tUpdateRecord\t{}\t{}\t{}\n",
             symbol_list_text(fields),
@@ -1121,6 +1124,9 @@ impl<'a> ArtifactParser<'a> {
                 span: parse_span(parts[2])?,
             },
             "ListLen" if parts.len() == 3 => Instruction::ListLen {
+                span: parse_span(parts[2])?,
+            },
+            "WrapTask" if parts.len() == 3 => Instruction::WrapTask {
                 span: parse_span(parts[2])?,
             },
             "UpdateRecord" if parts.len() == 5 => Instruction::UpdateRecord {
@@ -1572,6 +1578,7 @@ fn validate_chunk_structure(
             | Instruction::UnaryNot { .. }
             | Instruction::Binary { .. }
             | Instruction::Call { .. }
+            | Instruction::WrapTask { .. }
             | Instruction::PushScope
             | Instruction::PopScope
             | Instruction::Pop

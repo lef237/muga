@@ -404,6 +404,19 @@ impl Formatter {
             Expr::If(expr) => self.format_if_expr(expr, indent),
             Expr::Match(expr) => self.format_match_expr(expr, indent),
             Expr::Fn(expr) => self.format_fn_expr(expr, indent),
+            Expr::Group(expr) => {
+                format!("group {}", self.format_value_block(&expr.body, indent))
+            }
+            Expr::Spawn(expr) => match expr.expr.as_ref() {
+                Expr::Group(group_expr) => format!(
+                    "spawn group {}",
+                    self.format_value_block(&group_expr.body, indent)
+                ),
+                _ => format!(
+                    "spawn {}",
+                    self.format_expr(&expr.expr, PREC_UNARY + 1, indent)
+                ),
+            },
         };
 
         if prec < parent_prec {
@@ -416,9 +429,9 @@ impl Formatter {
     fn expr_prec(&self, expr: &Expr) -> u8 {
         match expr {
             Expr::Binary(expr) => self.binary_prec(expr.op),
-            Expr::Unary(_) | Expr::Try(_) => PREC_UNARY,
+            Expr::Unary(_) | Expr::Try(_) | Expr::Spawn(_) => PREC_UNARY,
             Expr::Call(_) | Expr::Field(_) | Expr::RecordUpdate(_) | Expr::Index(_) => PREC_POSTFIX,
-            Expr::If(_) | Expr::Match(_) => PREC_LOWEST,
+            Expr::If(_) | Expr::Match(_) | Expr::Group(_) => PREC_LOWEST,
             Expr::Int(_)
             | Expr::Bool(_)
             | Expr::String(_)

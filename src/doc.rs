@@ -249,6 +249,7 @@ pub fn render_type_info(ty: &TypeInfo, symbols: &SymbolTable) -> String {
             render_type_info(ok, symbols),
             render_type_info(err, symbols)
         ),
+        TypeInfo::Task(item) => format!("Task[{}]", render_type_info(item, symbols)),
         TypeInfo::EnumConstructor {
             enum_symbol,
             variant,

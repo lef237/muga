@@ -268,6 +268,8 @@ pub enum ExprKind {
     If(IfExpr),
     Match(MatchExpr),
     Fn(FnExpr),
+    Group(GroupExpr),
+    Spawn(SpawnExpr),
 }
 
 #[derive(Clone, Debug)]
@@ -387,6 +389,16 @@ pub struct CallExpr {
 
 #[derive(Clone, Debug)]
 pub struct TryExpr {
+    pub expr: Box<Expr>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GroupExpr {
+    pub body: ValueBlock,
+}
+
+#[derive(Clone, Debug)]
+pub struct SpawnExpr {
     pub expr: Box<Expr>,
 }
 
@@ -836,6 +848,12 @@ impl ModuleRemapper<'_, '_> {
                     return_ty: self.type_info(&expr.return_ty),
                     body: self.value_block(&expr.body),
                 }),
+                ExprKind::Group(expr) => ExprKind::Group(GroupExpr {
+                    body: self.value_block(&expr.body),
+                }),
+                ExprKind::Spawn(expr) => ExprKind::Spawn(SpawnExpr {
+                    expr: Box::new(self.expr(&expr.expr)),
+                }),
             },
             span: expr.span,
         }
@@ -967,6 +985,7 @@ impl ModuleRemapper<'_, '_> {
             TypeInfo::Result(ok, err) => {
                 TypeInfo::Result(Box::new(self.type_info(ok)), Box::new(self.type_info(err)))
             }
+            TypeInfo::Task(item) => TypeInfo::Task(Box::new(self.type_info(item))),
             TypeInfo::EnumConstructor {
                 enum_symbol,
                 enum_item,
@@ -1148,6 +1167,10 @@ fn max_binding_id_in_expr(expr: &Expr) -> Option<u32> {
             }
             max = max_opt(max, max_binding_id_in_value_block(&expr.body));
         }
+        ExprKind::Group(expr) => {
+            max = max_opt(max, max_binding_id_in_value_block(&expr.body));
+        }
+        ExprKind::Spawn(expr) => max = max_opt(max, max_binding_id_in_expr(&expr.expr)),
     }
     max
 }
@@ -1322,6 +1345,8 @@ fn max_expr_id_in_expr(expr: &Expr) -> Option<u32> {
             }
         }
         ExprKind::Fn(expr) => max = max_opt(max, max_expr_id_in_value_block(&expr.body)),
+        ExprKind::Group(expr) => max = max_opt(max, max_expr_id_in_value_block(&expr.body)),
+        ExprKind::Spawn(expr) => max = max_opt(max, max_expr_id_in_expr(&expr.expr)),
     }
     max
 }
@@ -1891,6 +1916,12 @@ impl<'a> Lowerer<'a> {
                     body: self.lower_value_block(&expr.body),
                 })
             }
+            ast::Expr::Group(expr) => ExprKind::Group(GroupExpr {
+                body: self.lower_value_block(&expr.body),
+            }),
+            ast::Expr::Spawn(expr) => ExprKind::Spawn(SpawnExpr {
+                expr: Box::new(self.lower_expr(&expr.expr)),
+            }),
         };
         Expr {
             id,

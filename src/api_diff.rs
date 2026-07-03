@@ -1122,6 +1122,9 @@ fn render_type_info(ty: &TypeInfo, context: &ApiDiffContext<'_>, type_params: &[
             render_type_info(value, context, type_params),
             render_type_info(error, context, type_params)
         ),
+        TypeInfo::Task(item) => {
+            format!("Task[{}]", render_type_info(item, context, type_params))
+        }
         TypeInfo::EnumConstructor {
             enum_symbol,
             variant,

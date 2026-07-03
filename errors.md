@@ -226,6 +226,25 @@ Recommended message:
 invalid record update
 ```
 
+## E013: Mutable Capture Across `spawn`
+
+Trigger:
+
+- an identifier inside a `spawn` operand resolves to a `mut` binding declared
+  outside that `spawn` operand, for reads as well as writes
+
+Recommended message:
+
+```txt
+cannot capture mutable binding `name` across `spawn`
+```
+
+Required guidance:
+
+- attach a related note pointing at the mutable binding declaration
+- suggest binding an immutable copy before `spawn` or passing the value in
+  through a function argument
+
 ## Required V1 Guidance
 
 These diagnostic behaviors are part of the v1 release gate even when the exact code is not one of the original `E001`-`E012` examples.
@@ -320,6 +339,18 @@ Required guidance:
   `Int`, `Bool`, `Option`, `List`, `Map[String, T]`, `std::json::Value`, and
   supported concrete public records/enums
 
+## T030: `spawn` Outside `group`
+
+`T030` reports a `spawn` expression that is not inside the body of an
+enclosing `group` expression in the same function. Function boundaries reset
+the group context, including `fn` expression bodies; a `spawn` operand does
+not.
+
+Required guidance:
+
+- point at the `spawn` expression
+- say that `spawn` is allowed only inside a `group` block
+
 ## R022: Invalid Runtime Resource Handle
 
 `R022` reports invalid runtime-backed opaque handle use that source checking did
@@ -349,4 +380,4 @@ Manifest, lockfile, and `.mgp` archive diagnostics must fail loudly rather than 
 
 ## Future Feature Syntax
 
-Syntax reserved for post-v1 features should fail as unsupported or invalid v1 syntax. It should not be documented or tested as runnable sample source until the feature is implemented. Examples include `group`, `spawn`, channels, optional chaining, postfix Result propagation, broad catch-all matching, references, and call-site type arguments.
+Syntax reserved for future features should fail as unsupported or invalid syntax. It should not be documented or tested as runnable sample source until the feature is implemented. Examples include channels, `select`, optional chaining, postfix Result propagation, broad catch-all matching, references, and call-site type arguments. `group`, `spawn`, and `std::task::join` are implemented structured task group syntax, not future syntax; their diagnostics are `T030` and `E013` above.

@@ -30,6 +30,7 @@ pub enum TypeInfo {
     Map(Box<TypeInfo>, Box<TypeInfo>),
     Option(Box<TypeInfo>),
     Result(Box<TypeInfo>, Box<TypeInfo>),
+    Task(Box<TypeInfo>),
     EnumConstructor {
         enum_symbol: Symbol,
         enum_item: Option<PackageItemId>,

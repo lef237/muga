@@ -121,13 +121,15 @@ would need escape analysis to stay honest.
 The primary concurrency construct is a lexical task scope expression:
 
 ```muga
+import std::task
+
 result = group {
   user_task = spawn fetch_user(id)
   orders_task = spawn fetch_orders(id)
 
   Page {
-    user: user_task.join()
-    orders: orders_task.join()
+    user: user_task.task::join()
+    orders: orders_task.task::join()
   }
 }
 ```
@@ -149,8 +151,9 @@ task = spawn expr
 
 - `group` and `spawn` are keywords and cannot be used as binding names.
 - `spawn expr` is a prefix expression form parsed at the same level as prefix
-  `try`. `spawn f(x)` and `spawn user.users::birthday().age` work directly;
-  wrap other expression forms in parentheses, as in
+  `try`. `spawn f(x)` and `spawn user.users::birthday().age` work directly,
+  and `spawn group { ... }` spawns a nested task scope directly; wrap other
+  single-expression forms in parentheses, as in
   `spawn (if flag { a() } else { b() })`.
 - `spawn` is allowed only inside the body of an enclosing `group` expression
   in the same function. `spawn` outside a `group` is rejected with `T030`.
@@ -165,18 +168,26 @@ task = spawn expr
 ### 5.3 Joining tasks and task handle typing
 
 ```muga
-value = task.join()
+import std::task
+
+value = task::join(handle)
+value = handle.task::join()
 ```
 
-- `join` is an ordinary prelude function over task handles; `task.join()` is
-  the usual chained-call surface for `join(task)`. There is no separate
-  method semantics.
+- `join` is an ordinary public generic function in the `std::task` standard
+  package, `pub fn join[T](task: Task[T]): T`. The qualified chained form
+  `handle.task::join()` is the usual dot-call surface for
+  `task::join(handle)`; there is no separate method semantics and no prelude
+  name. Keeping `join` in a package preserves the flat prelude: Muga rejects
+  shadowing, so a new prelude name would break every program that already
+  uses that name, including `path::join`.
 - `spawn expr` has type `Task[T]` when `expr` has type `T`, and
-  `join(Task[T])` returns `T`.
-- `Task[T]` is an internal compiler type. It cannot be written in source type
-  annotations, record fields, or function signatures. Because public package
-  functions require explicit signatures, task handles cannot cross package
-  boundaries.
+  `task::join` returns `T`.
+- `Task[T]` is an internal compiler type. User source cannot write it in
+  type annotations, record fields, or function signatures (`T013` unknown
+  generic type); only the compiler-provided `std::task` package spells it,
+  in the signature of `join`. Because public package functions require
+  explicit signatures, task handles cannot cross user package boundaries.
 - Task handles are ordinary immutable values otherwise: they can be bound,
   joined more than once (each `join` returns the completed value), or left
   unjoined — the `group` still waits for the task.
@@ -223,8 +234,8 @@ Phase 1 fixes the observable structure, not a scheduler:
   preserve the same observable guarantee with real cancellation.
 - Recoverable errors stay explicit values: a task whose operand evaluates to
   `Result[T, E]` produces a `Task[Result[T, E]]`, and the caller handles the
-  `Result` after `join` as usual; `try task.join()` composes normally inside
-  `Result`-returning functions.
+  `Result` after `join` as usual; `try handle.task::join()` composes normally
+  inside `Result`-returning functions.
 
 ### 5.6 What Phase 1 does not include
 
@@ -307,9 +318,9 @@ fn handle(req: http::Request): http::Response {
     profile_task = spawn profiles::load(req.user_id)
 
     http::json(Page {
-      user: user_task.join()
-      orders: orders_task.join()
-      profile: profile_task.join()
+      user: user_task.task::join()
+      orders: orders_task.task::join()
+      profile: profile_task.task::join()
     })
   }
 }
@@ -326,7 +337,7 @@ This is the clearest first target for Muga concurrency:
 ```muga
 group {
   next_age = spawn user.users::birthday().age
-  next_age.join()
+  next_age.task::join()
 }
 ```
 

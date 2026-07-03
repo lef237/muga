@@ -1612,6 +1612,9 @@ impl Parser {
         if matches!(self.peek_kind(), TokenKind::Match) {
             return self.parse_match_expr();
         }
+        if matches!(self.peek_kind(), TokenKind::Group) {
+            return self.parse_group_expr();
+        }
         self.parse_or()
     }
 
@@ -1645,6 +1648,17 @@ impl Parser {
             });
         }
         Ok(expr)
+    }
+
+    fn parse_group_expr(&mut self) -> Result<Expr, Diagnostic> {
+        let start = self.current_span();
+        self.expect_simple(TokenKind::Group, "expected `group`")?;
+        let body = self.parse_value_block()?;
+        Ok(Expr::Group(GroupExpr {
+            id: self.expr_id(),
+            span: start.merge(body.span),
+            body,
+        }))
     }
 
     fn parse_if_expr(&mut self) -> Result<Expr, Diagnostic> {
@@ -1962,6 +1976,20 @@ impl Parser {
                 self.advance();
                 let expr = self.parse_unary()?;
                 Ok(Expr::Try(TryExpr {
+                    id: self.expr_id(),
+                    span: start.merge(expr.span()),
+                    expr: Box::new(expr),
+                }))
+            }
+            TokenKind::Spawn => {
+                let start = self.current_span();
+                self.advance();
+                let expr = if matches!(self.peek_kind(), TokenKind::Group) {
+                    self.parse_group_expr()?
+                } else {
+                    self.parse_unary()?
+                };
+                Ok(Expr::Spawn(SpawnExpr {
                     id: self.expr_id(),
                     span: start.merge(expr.span()),
                     expr: Box::new(expr),

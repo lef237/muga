@@ -271,9 +271,13 @@ structured task groups are the next implementation work after `0.5.0` ships.
   package, handle, and artifact model. Section 5 is now the implemented
   Phase 1 specification; channels and later phases stay drafts.
 - [x] Decide whether the first task API is syntax (`group` / `spawn` / `join`)
-  or a standard package abstraction. Decision: syntax. The lifetime rule
-  "child tasks may not outlive their group" is enforced by lexical structure;
-  a package-level scope value could escape and would need escape analysis.
+  or a standard package abstraction. Decision: `group` and `spawn` are
+  syntax because the lifetime rule "child tasks may not outlive their group"
+  is enforced by lexical structure; a package-level scope value could escape
+  and would need escape analysis. `join` is an ordinary `std::task` package
+  function (`task::join(handle)` / `handle.task::join()`), not a prelude
+  name, because Muga rejects shadowing and a new prelude name would collide
+  with existing user functions and `path::join`.
 - [x] Define task lifetime rules: child tasks may not outlive their group.
   `group { ... }` is an expression scope; leaving it means all children
   completed.

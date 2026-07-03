@@ -45,6 +45,7 @@ pub enum Value {
     RuntimeHandle(RuntimeHandleValue),
     Function(Rc<ClosureValue>),
     Builtin(BuiltinId),
+    Task(Rc<Value>),
 }
 
 #[derive(Clone, Debug)]
@@ -1157,6 +1158,7 @@ impl fmt::Display for Value {
             Self::RuntimeHandle(handle) => write!(f, "<opaque:{}>", handle.family),
             Self::Function(_) => write!(f, "<function>"),
             Self::Builtin(builtin) => write!(f, "<builtin:{}>", prelude::builtin_name(*builtin)),
+            Self::Task(_) => write!(f, "<task>"),
         }
     }
 }
@@ -1585,6 +1587,10 @@ fn execute_chunk(
                     )]);
                 };
                 stack.push(Value::Int(items.len() as i64));
+            }
+            Instruction::WrapTask { span } => {
+                let value = pop_value(&mut stack, *span, "R015", "missing task value")?;
+                stack.push(Value::Task(Rc::new(value)));
             }
             Instruction::UpdateRecord { fields, span } => {
                 let values = pop_args(&mut stack, fields.len(), *span)?;
@@ -6305,6 +6311,17 @@ fn call_builtin(
     span: Span,
 ) -> Result<Value, Vec<Diagnostic>> {
     match builtin {
+        BuiltinId::Join => {
+            let value = expect_one_arg(args, span)?;
+            let Value::Task(task) = value else {
+                return Err(vec![Diagnostic::new(
+                    "R014",
+                    "`join` accepts only a task handle created by `spawn`",
+                    span,
+                )]);
+            };
+            Ok((*task).clone())
+        }
         BuiltinId::Print => {
             let value = expect_one_arg(args, span)?;
             match &value {
@@ -6323,7 +6340,8 @@ fn call_builtin(
                 | Value::Record(_)
                 | Value::RuntimeHandle(_)
                 | Value::Function(_)
-                | Value::Builtin(_) => Err(vec![Diagnostic::new(
+                | Value::Builtin(_)
+                | Value::Task(_) => Err(vec![Diagnostic::new(
                     "R014",
                     "`print` accepts only Int, Bool, or String",
                     span,
@@ -6348,7 +6366,8 @@ fn call_builtin(
                 | Value::Record(_)
                 | Value::RuntimeHandle(_)
                 | Value::Function(_)
-                | Value::Builtin(_) => Err(vec![Diagnostic::new(
+                | Value::Builtin(_)
+                | Value::Task(_) => Err(vec![Diagnostic::new(
                     "R014",
                     "`println` accepts only Int, Bool, or String",
                     span,
@@ -6373,7 +6392,8 @@ fn call_builtin(
                 | Value::Record(_)
                 | Value::RuntimeHandle(_)
                 | Value::Function(_)
-                | Value::Builtin(_) => Err(vec![Diagnostic::new(
+                | Value::Builtin(_)
+                | Value::Task(_) => Err(vec![Diagnostic::new(
                     "R014",
                     "`eprint` accepts only Int, Bool, or String",
                     span,
@@ -6398,7 +6418,8 @@ fn call_builtin(
                 | Value::Record(_)
                 | Value::RuntimeHandle(_)
                 | Value::Function(_)
-                | Value::Builtin(_) => Err(vec![Diagnostic::new(
+                | Value::Builtin(_)
+                | Value::Task(_) => Err(vec![Diagnostic::new(
                     "R014",
                     "`eprintln` accepts only Int, Bool, or String",
                     span,

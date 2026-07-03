@@ -27,6 +27,7 @@ pub enum BuiltinId {
     ToString,
     ParseInt,
     ParseBool,
+    Join,
     StdPathJoin,
     StdPathNormalize,
     StdPathFileName,
@@ -501,6 +502,11 @@ const INTERNAL_BUILTINS: &[Builtin] = &[
         kind: BuiltinKind::Function,
     },
     Builtin {
+        id: BuiltinId::Join,
+        name: crate::std_package::TASK_JOIN_BUILTIN,
+        kind: BuiltinKind::Function,
+    },
+    Builtin {
         id: BuiltinId::StdTimeNowUnixMillis,
         name: crate::std_package::TIME_NOW_UNIX_MILLIS_BUILTIN,
         kind: BuiltinKind::Function,
@@ -596,6 +602,7 @@ pub fn builtin_debug_label(id: BuiltinId) -> &'static str {
         BuiltinId::ToString => "Builtin(to_string)",
         BuiltinId::ParseInt => "Builtin(parse_int)",
         BuiltinId::ParseBool => "Builtin(parse_bool)",
+        BuiltinId::Join => "Builtin(__muga_std_task_join)",
         BuiltinId::StdPathJoin => "Builtin(__muga_std_path_join)",
         BuiltinId::StdPathNormalize => "Builtin(__muga_std_path_normalize)",
         BuiltinId::StdPathFileName => "Builtin(__muga_std_path_file_name)",

@@ -1161,6 +1161,8 @@ impl<'a> PackageAwareChecker<'a> {
                 self.scan_value_block(&expr.body);
                 self.pop_scope();
             }
+            Expr::Group(expr) => self.scan_value_block(&expr.body),
+            Expr::Spawn(expr) => self.scan_expr(&expr.expr),
         }
     }
 
@@ -3210,6 +3212,16 @@ impl<'a> PackageRewriter<'a> {
             }),
             Expr::Match(expr) => Expr::Match(self.rewrite_match_expr(expr)),
             Expr::Fn(expr) => Expr::Fn(self.rewrite_fn_expr(expr)),
+            Expr::Group(expr) => Expr::Group(GroupExpr {
+                id: expr.id,
+                body: self.rewrite_value_block(&expr.body),
+                span: expr.span,
+            }),
+            Expr::Spawn(expr) => Expr::Spawn(SpawnExpr {
+                id: expr.id,
+                expr: Box::new(self.rewrite_expr(&expr.expr)),
+                span: expr.span,
+            }),
         }
     }
 

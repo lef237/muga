@@ -87,6 +87,7 @@ struct EnumResolveInfo {
 struct ScopeFrame {
     bindings: HashMap<Symbol, BindingId>,
     function_boundary: bool,
+    task_boundary: bool,
 }
 
 impl ScopeFrame {
@@ -94,6 +95,15 @@ impl ScopeFrame {
         Self {
             bindings: HashMap::new(),
             function_boundary,
+            task_boundary: false,
+        }
+    }
+
+    fn task_boundary() -> Self {
+        Self {
+            bindings: HashMap::new(),
+            function_boundary: false,
+            task_boundary: true,
         }
     }
 }
@@ -452,7 +462,27 @@ impl Resolver {
             }
             Expr::Ident(expr) => {
                 let name = self.symbol(&expr.name);
-                if let Some(binding) = self.any_scope_lookup(name).copied() {
+                if let Some((binding, crossed_task_boundary)) =
+                    self.any_scope_lookup_crossing_task_boundary(name)
+                {
+                    let binding = *binding;
+                    if crossed_task_boundary && binding.kind == BindingKind::Mutable {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                "E013",
+                                format!(
+                                    "cannot capture mutable binding `{}` across `spawn`",
+                                    expr.name
+                                ),
+                                expr.span,
+                            )
+                            .with_related("mutable binding is declared here", binding.span)
+                            .with_suggestion(
+                                "bind an immutable copy before `spawn` or pass the value in \
+                                 through a function argument",
+                            ),
+                        );
+                    }
                     self.identifier_refs.push(ResolvedIdentifier {
                         expr_id: expr.id,
                         name,
@@ -540,6 +570,12 @@ impl Resolver {
                 }
                 self.resolve_scope_statements(&expr.body.statements);
                 self.resolve_expr(&expr.body.expr);
+                self.pop_scope();
+            }
+            Expr::Group(expr) => self.resolve_value_block(&expr.body),
+            Expr::Spawn(expr) => {
+                self.scopes.push(ScopeFrame::task_boundary());
+                self.resolve_expr(&expr.expr);
                 self.pop_scope();
             }
         }
@@ -750,11 +786,17 @@ impl Resolver {
             .find_map(|scope| scope.bindings.get(&name).map(|id| self.binding(*id)))
     }
 
-    fn any_scope_lookup(&self, name: Symbol) -> Option<&Binding> {
-        self.scopes
-            .iter()
-            .rev()
-            .find_map(|scope| scope.bindings.get(&name).map(|id| self.binding(*id)))
+    fn any_scope_lookup_crossing_task_boundary(&self, name: Symbol) -> Option<(&Binding, bool)> {
+        let mut crossed_task_boundary = false;
+        for scope in self.scopes.iter().rev() {
+            if let Some(id) = scope.bindings.get(&name) {
+                return Some((self.binding(*id), crossed_task_boundary));
+            }
+            if scope.task_boundary {
+                crossed_task_boundary = true;
+            }
+        }
+        None
     }
 
     fn insert_current(&mut self, name: Symbol, kind: BindingKind, span: Span) -> BindingId {

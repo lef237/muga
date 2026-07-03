@@ -16,6 +16,7 @@ pub const LIST_PACKAGE: &str = "std::list";
 pub const MAP_PACKAGE: &str = "std::map";
 pub const JSON_PACKAGE: &str = "std::json";
 pub const CONFIG_PACKAGE: &str = "std::config";
+pub const TASK_PACKAGE: &str = "std::task";
 pub const IO_ERROR_MANGLED_NAME: &str = "__muga_pkg__std__io__IOError";
 pub const IO_ERROR_VISIBLE_NAME_IN_FS: &str = "io::IOError";
 pub const PATH_PAIR_ERROR_MANGLED_NAME: &str = "__muga_pkg__std__io__PathPairError";
@@ -43,6 +44,7 @@ pub const PROCESS_OUTPUT_MANGLED_NAME: &str = "__muga_pkg__std__process__Output"
 pub const PROCESS_ERROR_VISIBLE_NAME: &str = "Error";
 pub const PROCESS_OPTIONS_VISIBLE_NAME: &str = "Options";
 pub const PROCESS_OUTPUT_VISIBLE_NAME: &str = "Output";
+pub const TASK_JOIN_BUILTIN: &str = "__muga_std_task_join";
 pub const PATH_JOIN_BUILTIN: &str = "__muga_std_path_join";
 pub const PATH_NORMALIZE_BUILTIN: &str = "__muga_std_path_normalize";
 pub const PATH_FILE_NAME_BUILTIN: &str = "__muga_std_path_file_name";
@@ -130,6 +132,7 @@ pub fn virtual_package_files(package_path: &str) -> Option<&'static [VirtualPack
         MAP_PACKAGE => Some(MAP_FILES),
         JSON_PACKAGE => Some(JSON_FILES),
         CONFIG_PACKAGE => Some(CONFIG_FILES),
+        TASK_PACKAGE => Some(TASK_FILES),
         _ => None,
     }
 }
@@ -147,6 +150,7 @@ pub fn allows_internal_builtins(package_path: &str) -> bool {
             | TEST_PACKAGE
             | MAP_PACKAGE
             | JSON_PACKAGE
+            | TASK_PACKAGE
     )
 }
 
@@ -1317,6 +1321,17 @@ pub fn keys[K, V](items: Map[K, V]): List[K] {
 
 pub fn values[K, V](items: Map[K, V]): List[V] {
   __muga_std_map_values(items)
+}
+"#,
+}];
+
+const TASK_FILES: &[VirtualPackageFile] = &[VirtualPackageFile {
+    module_path: "task.muga",
+    source: r#"
+package std::task
+
+pub fn join[T](task: Task[T]): T {
+  __muga_std_task_join(task)
 }
 "#,
 }];

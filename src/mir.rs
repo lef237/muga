@@ -233,6 +233,8 @@ pub enum Expr {
     If(IfExpr),
     Match(MatchExpr),
     Closure(ClosureExpr),
+    Group(GroupExpr),
+    Spawn(SpawnExpr),
 }
 
 impl Expr {
@@ -270,6 +272,8 @@ impl Expr {
             Self::If(expr) => expr.span,
             Self::Match(expr) => expr.span,
             Self::Closure(expr) => expr.span,
+            Self::Group(expr) => expr.span,
+            Self::Spawn(expr) => expr.span,
         }
     }
 }
@@ -583,6 +587,18 @@ pub struct ClosureExpr {
     pub span: Span,
 }
 
+#[derive(Clone, Debug)]
+pub struct GroupExpr {
+    pub body: ValueBlock,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct SpawnExpr {
+    pub expr: Box<Expr>,
+    pub span: Span,
+}
+
 pub fn lower_typed(program: &typed_hir::Program) -> Program {
     let mut lowerer = TypedLowerer {
         functions: Vec::new(),
@@ -850,6 +866,14 @@ impl TypedLowerer<'_> {
             typed_hir::ExprKind::Match(match_expr) => self.lower_match_expr(match_expr, expr.span),
             typed_hir::ExprKind::Fn(function) => Expr::Closure(ClosureExpr {
                 function: self.lower_fn_expr(function, expr.span),
+                span: expr.span,
+            }),
+            typed_hir::ExprKind::Group(group_expr) => Expr::Group(GroupExpr {
+                body: self.lower_value_block(&group_expr.body),
+                span: expr.span,
+            }),
+            typed_hir::ExprKind::Spawn(spawn_expr) => Expr::Spawn(SpawnExpr {
+                expr: Box::new(self.lower_expr(&spawn_expr.expr)),
                 span: expr.span,
             }),
         }
