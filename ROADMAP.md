@@ -419,8 +419,9 @@ Move a parked item into active work only when all of these are true:
 
 - [ ] Keep this file as the roadmap and avoid adding another planning document.
 - [ ] Keep detailed language prose in `spec-v1.md` or split `spec/` files.
-- [ ] Keep examples runnable; invalid examples belong under `examples/invalid/`,
-  `conformance/v1/rejecting/`, or `spec/snippets/`.
+- [ ] Keep example programs runnable under `samples/`; invalid or
+  not-yet-implemented source belongs under `conformance/v1/rejecting/` or
+  `spec/snippets/`.
 - [ ] When implementation changes a public rule, update the closest spec and
   add a focused Rust test in the same change.
 - [ ] When adding a public diagnostic code or changing its trigger, update

@@ -51,9 +51,9 @@ Recommended message:
 cannot update immutable binding `x`
 ```
 
-Referenced examples:
+Referenced fixtures:
 
-- [examples/invalid/001-immutable-update.md](./examples/invalid/001-immutable-update.md)
+- [conformance/v1/rejecting/name-resolution/immutable_update.muga](./conformance/v1/rejecting/name-resolution/immutable_update.muga)
 
 ## E002: Duplicate Binding In Current Scope
 
@@ -69,9 +69,9 @@ Recommended message:
 duplicate binding `x` in the current scope
 ```
 
-Referenced examples:
+Referenced fixtures:
 
-- [examples/invalid/002-duplicate-mutable-binding.md](./examples/invalid/002-duplicate-mutable-binding.md)
+- [conformance/v1/rejecting/name-resolution/duplicate_mutable_binding.muga](./conformance/v1/rejecting/name-resolution/duplicate_mutable_binding.muga)
 
 ## E003: Shadowing Prohibited
 
@@ -91,9 +91,9 @@ Recommended message:
 shadowing is prohibited for `x`
 ```
 
-Referenced examples:
+Referenced fixtures:
 
-- [examples/invalid/003-shadowing-in-block.md](./examples/invalid/003-shadowing-in-block.md)
+- [conformance/v1/rejecting/name-resolution/shadowing_in_block.muga](./conformance/v1/rejecting/name-resolution/shadowing_in_block.muga)
 
 ## E004: Outer-Scope Mutation Prohibited
 
@@ -107,9 +107,9 @@ Recommended message:
 cannot update outer-scope mutable binding `x` in v1
 ```
 
-Referenced examples:
+Referenced fixtures:
 
-- [examples/invalid/004-outer-scope-mutation.md](./examples/invalid/004-outer-scope-mutation.md)
+- [conformance/v1/rejecting/name-resolution/outer_scope_mutation.muga](./conformance/v1/rejecting/name-resolution/outer_scope_mutation.muga)
 
 ## E005: Annotation Required
 
@@ -124,9 +124,11 @@ Recommended message:
 type annotation required because inference is not unique
 ```
 
-Referenced examples:
+Referenced fixtures:
 
-- [examples/invalid/005-ambiguous-identity.md](./examples/invalid/005-ambiguous-identity.md)
+- [conformance/v1/rejecting/typing/ambiguous_identity.muga](./conformance/v1/rejecting/typing/ambiguous_identity.muga)
+- [conformance/v1/rejecting/typing/ambiguous_higher_order_parameter.muga](./conformance/v1/rejecting/typing/ambiguous_higher_order_parameter.muga)
+- [conformance/v1/rejecting/typing/ambiguous_println_callback.muga](./conformance/v1/rejecting/typing/ambiguous_println_callback.muga)
 
 ## E006: Recursive Function Requires Annotation
 
@@ -140,9 +142,9 @@ Recommended message:
 recursive function requires at least one parameter or return type annotation
 ```
 
-Referenced examples:
+Referenced fixtures:
 
-- [examples/invalid/006-unannotated-recursion.md](./examples/invalid/006-unannotated-recursion.md)
+- [conformance/v1/rejecting/typing/unannotated_recursion.muga](./conformance/v1/rejecting/typing/unannotated_recursion.muga)
 
 ## E007: Mutual Recursion Requires Explicit Signatures
 
@@ -156,9 +158,9 @@ Recommended message:
 mutually recursive functions require explicit signatures in v1
 ```
 
-Referenced examples:
+Referenced fixtures:
 
-- [examples/invalid/007-unannotated-mutual-recursion.md](./examples/invalid/007-unannotated-mutual-recursion.md)
+- [conformance/v1/rejecting/typing/unannotated_mutual_recursion.muga](./conformance/v1/rejecting/typing/unannotated_mutual_recursion.muga)
 
 ## E008: Unknown Field
 
@@ -226,6 +228,10 @@ Recommended message:
 invalid record update
 ```
 
+Referenced fixtures:
+
+- [conformance/v1/rejecting/typing/invalid_record_update.muga](./conformance/v1/rejecting/typing/invalid_record_update.muga)
+
 ## E013: Mutable Capture Across `spawn`
 
 Trigger:
@@ -244,6 +250,10 @@ Required guidance:
 - attach a related note pointing at the mutable binding declaration
 - suggest binding an immutable copy before `spawn` or passing the value in
   through a function argument
+
+Referenced fixtures:
+
+- [conformance/v1/rejecting/name-resolution/spawn_mut_capture.muga](./conformance/v1/rejecting/name-resolution/spawn_mut_capture.muga)
 
 ## Required V1 Guidance
 
@@ -350,6 +360,10 @@ Required guidance:
 
 - point at the `spawn` expression
 - say that `spawn` is allowed only inside a `group` block
+
+Referenced fixtures:
+
+- [conformance/v1/rejecting/typing/spawn_outside_group.muga](./conformance/v1/rejecting/typing/spawn_outside_group.muga)
 
 ## R022: Invalid Runtime Resource Handle
 

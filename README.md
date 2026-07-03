@@ -106,10 +106,10 @@ Detailed topic specs live in [spec/](./spec/).
 
 ## Repository Map
 
-- [samples/](./samples/): runnable Muga programs and package examples.
-- [examples/valid/](./examples/valid/): small accepted examples.
-- [examples/invalid/](./examples/invalid/): examples that should be rejected.
-- [conformance/](./conformance/): conformance fixtures and release checks.
+- [samples/](./samples/): runnable Muga programs and package examples that
+  teach the language.
+- [conformance/](./conformance/): fixtures that pin accepted programs,
+  rejected diagnostics, and artifact-backed execution.
 - [errors.md](./errors.md): diagnostic catalog.
 - [ROADMAP.md](./ROADMAP.md): current implementation direction.
 - [RELEASING.md](./RELEASING.md): release process notes.

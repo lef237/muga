@@ -2,23 +2,6 @@ use std::{collections::HashSet, env as process_env, fs, path::Path, process::Com
 
 use muga::bytecode::{self, Chunk, Instruction};
 
-fn extract_code(markdown: &str) -> String {
-    let start = markdown.find("```txt").expect("missing opening code fence");
-    let after = &markdown[start + "```txt".len()..];
-    let after = after.strip_prefix('\n').unwrap_or(after);
-    let end = after.find("```").expect("missing closing code fence");
-    after[..end].trim_end().to_string()
-}
-
-fn fixture_paths(dir: &str) -> Vec<std::path::PathBuf> {
-    let mut paths: Vec<_> = fs::read_dir(dir)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .collect();
-    paths.sort();
-    paths
-}
-
 fn recursive_muga_paths(root: &Path) -> Vec<std::path::PathBuf> {
     fn collect(dir: &Path, paths: &mut Vec<std::path::PathBuf>) {
         let mut entries = fs::read_dir(dir)
@@ -79,35 +62,6 @@ fn copy_repository_fixture_tree(from: &Path, to: &Path) {
                 )
             });
         }
-    }
-}
-
-#[test]
-fn valid_examples_pass_frontend() {
-    for path in fixture_paths("examples/valid") {
-        let markdown = fs::read_to_string(&path).unwrap();
-        let source = extract_code(&markdown);
-        let result = muga::check_source(&source);
-        assert!(
-            result.is_ok(),
-            "expected valid example to pass: {}\n{:#?}",
-            display_path(&path),
-            result.err()
-        );
-    }
-}
-
-#[test]
-fn invalid_examples_fail_frontend() {
-    for path in fixture_paths("examples/invalid") {
-        let markdown = fs::read_to_string(&path).unwrap();
-        let source = extract_code(&markdown);
-        let result = muga::check_source(&source);
-        assert!(
-            result.is_err(),
-            "expected invalid example to fail: {}",
-            display_path(&path)
-        );
     }
 }
 
@@ -1328,7 +1282,7 @@ fn cli_explain_reports_catalog_entry_on_stdout() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("examples/invalid/001-immutable-update.md"),
+        stdout.contains("conformance/v1/rejecting/name-resolution/immutable_update.muga"),
         "{stdout}"
     );
 }
@@ -6097,6 +6051,16 @@ fn main(): User {
 #[test]
 fn runnable_main_returns_value() {
     assert_sample_runs("samples/sum_to.muga", "10", "");
+}
+
+#[test]
+fn recursive_factorial_sample_runs() {
+    assert_sample_runs("samples/recursive_factorial.muga", "120", "");
+}
+
+#[test]
+fn mutual_recursion_sample_runs() {
+    assert_sample_runs("samples/mutual_recursion.muga", "true", "");
 }
 
 #[test]

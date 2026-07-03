@@ -1,0 +1,11 @@
+fn fact(n: Int) {
+  if n == 0 {
+    1
+  } else {
+    n * fact(n - 1)
+  }
+}
+
+fn main(): Int {
+  fact(5)
+}
