@@ -6730,6 +6730,29 @@ fn package_std_task_sample_runs() {
 }
 
 #[test]
+fn package_std_task_result_sample_runs() {
+    assert_package_runs(
+        "samples/packages/app/std_task_result/main.muga",
+        "Result::Ok(5)",
+        "",
+    );
+}
+
+#[test]
+fn package_std_task_list_sample_runs() {
+    assert_package_runs("samples/packages/app/std_task_list/main.muga", "12", "");
+}
+
+#[test]
+fn package_std_task_for_sample_runs() {
+    assert_package_runs(
+        "samples/packages/app/std_task_for/main.muga",
+        "3",
+        "done:a\ndone:b\ndone:c\n",
+    );
+}
+
+#[test]
 fn package_artifact_facade_sample_runs() {
     assert_package_runs("samples/packages/app/artifact_facade/main.muga", "26", "");
 }
@@ -6790,6 +6813,15 @@ fn manifest_process_project_sample_runs() {
     assert_package_runs(
         "samples/projects/process_app/src/main/main.muga",
         "Result::Ok(process-app)",
+        "",
+    );
+}
+
+#[test]
+fn manifest_task_project_sample_runs() {
+    assert_package_runs(
+        "samples/projects/task_app/src/main/main.muga",
+        "user-3/21",
         "",
     );
 }

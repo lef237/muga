@@ -246,6 +246,60 @@ Phase 1 fixes the observable structure, not a scheduler:
   cancellation waits for the IO/runtime integration path in section 11
 - no async function coloring, in line with section 7
 
+### 5.7 Phase 1 usage notes
+
+These notes come from writing realistic `group` / `spawn` / `join` programs
+against the implemented Phase 1 core, gathered to judge whether Phase 2
+(channels) is the right next step. See
+`samples/packages/app/std_task_result/main.muga`,
+`samples/packages/app/std_task_list/main.muga`,
+`samples/packages/app/std_task_for/main.muga`, and
+`samples/projects/task_app/src/main/main.muga`.
+
+What works well for fixed-shape fan-out, the case section 8.1 targets:
+
+- A literal list of spawned tasks joined through `list::map` and `list::fold`
+  reads naturally: `tasks = [spawn work(1), spawn work(2), spawn work(3)]`
+  then `list::map(tasks, fn(t) { t.task::join() })`. The closure passed to
+  `list::map` only calls `join`, never `spawn`, so it never crosses a task
+  boundary.
+- `try handle.task::join()` and `try task::join(handle)` both compose inside
+  `Result`-returning functions, so recoverable-error fan-out (spawn several
+  fallible calls, `try`-join each, combine) reads like ordinary sequential
+  `Result` code.
+- Fire-and-forget `spawn` inside a `for` loop over a runtime-sized collection
+  works: the loop is not a function boundary, so each iteration can `spawn`
+  directly, and the enclosing `group` still waits for every iteration's task
+  before it returns. This covers batch side-effecting work where no result
+  needs to flow back.
+
+What does not work, and is a real gap rather than a style question:
+
+- Dynamic, result-collecting fan-out over a runtime-sized collection has no
+  expressible form. `list::map`'s callback is an ordinary `fn` value, and
+  function boundaries reset the group context (5.2), so `spawn` inside a
+  mapped closure is rejected with `T030` even though the mapped closure runs
+  inside the same `group`. There is also no user-facing list mutation to
+  build a `List[Task[T]]` by hand, and a recursive helper that returns
+  `List[Task[T]]` cannot be written because it would need an explicit return
+  type annotation naming `Task[T]`, which `T013` forbids outside `std::task`
+  (5.3).
+- In practice this means Phase 1 only covers fan-out whose arity is known at
+  the call site (a fixed literal list, or a fixed number of named `spawn`
+  bindings). "Spawn one task per row of this query result" or "one task per
+  file in this directory listing" cannot be written without restructuring
+  around `for` and giving up on collecting per-task results.
+
+This gap is narrower than what channels solve. Channels (section 6) target
+streaming and worker-pool coordination between independently-scheduled
+tasks; the missing piece here is simpler: a way to spawn and join over an
+existing collection without naming `Task[T]`. A small `std::task` combinator
+(for example, a builtin equivalent to spawning `f` over each item of a list
+and joining all of them before returning) would close this gap without
+adding channels, `select`, or new syntax. Whether to add that combinator now
+or move directly to Phase 2 is the open decision; this section only records
+the evidence.
+
 ## 6. Phase 2: Typed Channels
 
 After the task core is stable, the recommended first coordination primitive is a typed channel.

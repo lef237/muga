@@ -1,0 +1,16 @@
+package app::std_task_list
+
+import std::task
+import std::list
+
+fn work(n: Int): Int {
+  n * 2
+}
+
+fn main(): Int {
+  group {
+    tasks = [spawn work(1), spawn work(2), spawn work(3)]
+    results = list::map(tasks, fn(item) { item.task::join() })
+    list::fold(results, 0, fn(total, item) { total + item })
+  }
+}

@@ -1,0 +1,18 @@
+package app::std_task_for
+
+import std::task
+import std::list
+
+fn announce(label: String): String {
+  println(concat("done:", label))
+}
+
+fn main(): Int {
+  labels = ["a", "b", "c"]
+  group {
+    for label in labels {
+      spawn announce(label)
+    }
+    list::fold(labels, 0, fn(total, label) { total + 1 })
+  }
+}

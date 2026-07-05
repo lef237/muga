@@ -48,6 +48,13 @@ target/debug/muga check --built samples/packages/app/std_process/main.muga
 target/debug/muga run --built samples/packages/app/std_process/main.muga
 target/debug/muga emit-app-bundle --source-free --output-dir "$gate_tmp/std-process-bundle" --program std-process samples/projects/process_app/src/main/main.muga
 target/debug/muga run-app-bundle "$gate_tmp/std-process-bundle"
+target/debug/muga check samples/packages/app/std_task/main.muga
+target/debug/muga samples/packages/app/std_task/main.muga
+target/debug/muga build samples/packages/app/std_task/main.muga
+target/debug/muga check --built samples/packages/app/std_task/main.muga
+target/debug/muga run --built samples/packages/app/std_task/main.muga
+target/debug/muga emit-app-bundle --source-free --output-dir "$gate_tmp/task-app-bundle" --program task-app samples/projects/task_app/src/main/main.muga
+target/debug/muga run-app-bundle "$gate_tmp/task-app-bundle"
 target/debug/muga build samples/packages/app/artifact_facade/main.muga
 target/debug/muga check --built samples/packages/app/artifact_facade/main.muga
 target/debug/muga run --built samples/packages/app/artifact_facade/main.muga

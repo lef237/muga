@@ -19,8 +19,22 @@ Muga samples.
   groups slice: version bump, release gate with publish dry run, `v0.6.0`
   tag, crates.io publish through the release workflow, and GitHub Release
   all verified.
-- [ ] **NOW:** gather real task-group usage before promoting Phase 2
-  (channels) or service IO work.
+- [x] **DONE:** gathered real task-group usage on 2026-07-05: added
+  `std_task_result`, `std_task_list`, and `std_task_for` package samples plus
+  a `task_app` project sample with bundle coverage, fixed a `try`/generic
+  return-type typing bug (`try` rejected any call whose *unspecialized*
+  generic signature had a bare type-parameter return, including
+  `task::join`), and recorded findings in
+  spec/007-concurrency-draft.md#57-phase-1-usage-notes. Conclusion: fixed-
+  arity fan-out (literal task lists, or fire-and-forget `spawn` inside a
+  `for` loop) works well; dynamic, result-collecting fan-out over a
+  runtime-sized collection has no expressible form (`T030` inside mapped
+  closures, `T013` blocks a hand-written `List[Task[T]]`). This gap is
+  narrower than channels; a small `std::task` fan-out combinator could close
+  it without Phase 2.
+- [ ] **NOW:** decide between adding a small `std::task` combinator to close
+  the dynamic-fan-out gap above, or promoting Phase 2 (channels), or leaving
+  Phase 1 as-is; this is a direction call, not an implementation task.
 
 Last verified locally on 2026-06-05 during the pre-v1 implementation audit:
 

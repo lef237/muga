@@ -1,0 +1,26 @@
+import std::task
+
+record Profile {
+  label: String
+  score: Int
+}
+
+fn fetch_label(id: Int): String {
+  concat("user-", to_string(id))
+}
+
+fn fetch_score(id: Int): Int {
+  id * 7
+}
+
+fn main(): String {
+  group {
+    label_task = spawn fetch_label(3)
+    score_task = spawn fetch_score(3)
+    profile = Profile {
+      label: label_task.task::join()
+      score: score_task.task::join()
+    }
+    concat(profile.label, concat("/", to_string(profile.score)))
+  }
+}
