@@ -21898,6 +21898,35 @@ fn main(): Result[Int, String] {
 }
 
 #[test]
+fn result_try_accepts_generic_function_returning_result() {
+    let source = r#"
+fn identity[T](value: T): T {
+  value
+}
+
+fn parse_positive(n: Int): Result[Int, String] {
+  if n > 0 {
+    Result::Ok(n)
+  } else {
+    Result::Err("must be positive")
+  }
+}
+
+fn combine(): Result[Int, String] {
+  value = try identity(parse_positive(2))
+  Result::Ok(value)
+}
+
+fn main(): Result[Int, String] {
+  combine()
+}
+"#;
+    let result = muga::run_source(source).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(2)");
+}
+
+#[test]
 fn result_try_requires_matching_error_type() {
     let source = r#"
 fn read(): Result[Int, Int] {
@@ -45405,6 +45434,46 @@ fn main(): Int {
                 && diagnostic.message.contains("unknown generic type `Task`")),
         "{diagnostics:#?}"
     );
+}
+
+#[test]
+fn task_join_composes_with_try_inside_result_functions() {
+    let root = temp_package_root("task-join-try");
+    let entry = write_package_file(
+        &root,
+        "app/task_join_try/main.muga",
+        r#"
+package app::task_join_try
+
+import std::task
+
+fn parse_positive(n: Int): Result[Int, String] {
+  if n > 0 {
+    Result::Ok(n)
+  } else {
+    Result::Err("must be positive")
+  }
+}
+
+fn combine(): Result[Int, String] {
+  group {
+    a_task = spawn parse_positive(2)
+    b_task = spawn parse_positive(3)
+    a = try a_task.task::join()
+    b = try task::join(b_task)
+    Result::Ok(a + b)
+  }
+}
+
+fn main(): Result[Int, String] {
+  combine()
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(value.to_string(), "Result::Ok(5)");
 }
 
 #[test]

@@ -6795,7 +6795,7 @@ impl TypeChecker {
 
     fn non_result_try_type(&self, ty: &Type) -> Option<Type> {
         match self.resolve_type(ty) {
-            Type::Result(_, _) | Type::Unknown(_) | Type::Error => None,
+            Type::Result(_, _) | Type::Unknown(_) | Type::Error | Type::GenericParam(_) => None,
             other => Some(other),
         }
     }
