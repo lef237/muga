@@ -6,6 +6,30 @@ This programming language incorporates the concept of muga, featuring a simple a
 
 Muga emphasizes both code aesthetics and efficiency, providing an environment where developers can freely express their creative ideas.
 
+## Why Muga
+
+- **Small surface, one spelling per operation.** No classes, inheritance,
+  traits, or overloading. Records hold data, ordinary functions define
+  behavior, and dot calls are just function calls — so any line of code can
+  be read locally, without hunting for hidden dispatch.
+- **Safe defaults with little ceremony.** Bindings are immutable unless
+  marked `mut`, shadowing is rejected, and local type inference keeps
+  annotations to where they actually help.
+- **Errors are values, not surprises.** `Option[T]` and `Result[T, E]` with
+  exhaustive `match` and prefix `try` — no implicit exceptions, no invisible
+  control flow.
+- **Value semantics everywhere.** Ordinary code never sees pointers,
+  references, or ownership syntax; updates return new values.
+- **Structured concurrency by construction.** `group { ... }` and `spawn`
+  make task lifetimes lexical: child tasks can never outlive their group.
+- **Tooling is part of the language.** `check`, `run`, `test`, `fmt`, `doc`,
+  `build`, `explain`, and editor queries (`hover`, `definition`,
+  `completions`, …) ship in one binary, and most commands speak
+  `--format json` for editors, CI, and coding agents.
+- **Honest package boundaries.** Public interfaces are explicit, and
+  artifact-backed execution (`.mgi` / `.mgc` / `.mgb`) never silently falls
+  back to reading dependency source bodies.
+
 ## Install
 
 Install the published command:
