@@ -56,7 +56,8 @@ important workflow:
 - broad catch-all wildcard match arms, nested patterns, match guards, multi-payload enum variants, or named-field enum variants
 - map literals, `Set[T]`, arbitrary `Map` key types, broad collection APIs, or iterator abstractions
 - `pub opaque record` for user-defined hidden record representations
-- concurrency syntax such as `group`, `spawn`, `join`, channels, `async`, or `await`
+- concurrency features beyond the implemented structured task groups
+  (`group` / `spawn` / `std::task`): channels, `select`, `async`, or `await`
 - `String.len()`, substring/slice indexing, and richer parse error types until their semantics are explicitly chosen
 
 ## Core Rules
@@ -457,8 +458,11 @@ roadmap promotes a specific correctness or release-readiness issue to P0.
 - [spec/004-functions.md](./spec/004-functions.md)
 - [spec/005-records.md](./spec/005-records.md)
 - [spec/006-packages.md](./spec/006-packages.md)
+- [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) (section 5
+  is the implemented structured task groups specification; other sections are
+  design drafts)
 - [spec/008-collections.md](./spec/008-collections.md)
 - [spec/009-generics.md](./spec/009-generics.md)
-- [spec/010-references-draft.md](./spec/010-references-draft.md)
+- [spec/010-references-decision.md](./spec/010-references-decision.md)
 - [spec/011-value-semantics.md](./spec/011-value-semantics.md)
 - [spec/013-enums-results.md](./spec/013-enums-results.md)

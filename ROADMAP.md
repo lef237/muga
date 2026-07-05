@@ -115,227 +115,34 @@ stabilize for release.
   or template, broken public diagnostic contract, or direct contradiction in
   the v1 specs.
 
-## Completed P0: `std::process`
+## Completed Milestones
 
-Goal: add the final planned v1 standard-library capability: a narrow,
-recoverable process execution API without adding shell syntax, async runtime
-assumptions, or concurrency syntax.
+Finished work is summarized here. Full checklists, audit notes, and decision
+logs live in git history; the resulting rules live in the specs, `errors.md`,
+and `RELEASING.md`.
 
-### API Shape
-
-- [x] Decide the public package surface in `src/std_package.rs`.
-- [x] Add `std::process` as a virtual package.
-- [x] Use explicit records and enums rather than ad hoc strings:
-  - [x] `ErrorKind`
-  - [x] `Error`
-  - [x] `EnvVar` as the explicit env override shape
-  - [x] `Options` with optional cwd and explicit env overrides
-  - [x] `Output` with status, success, stdout, and stderr
-- [x] Treat nonzero child exit as captured `Output`, not as `Result::Err`.
-- [x] Reserve `Result::Err` for spawn, wait, cwd/env setup, and capture/UTF-8
-  failures.
-- [x] Keep command execution direct. Do not add shell interpolation or
-  `sh -c` helpers in the first slice.
-- [x] Use `path::Path` for cwd rather than raw host path strings in public APIs.
-- [x] Keep environment inheritance rules explicit in docs and tests.
-
-### Compiler And Runtime
-
-- [x] Add `PROCESS_PACKAGE` and process builtin constants in `src/std_package.rs`.
-- [x] Add process builtin ids and debug labels in `src/prelude.rs`.
-- [x] Permit the new internal builtins only for `std::process`.
-- [x] Add typechecker rules in `src/typing.rs` for process builtins and public
-  result/error shapes.
-- [x] Add runtime execution in `src/runtime.rs` using `std::process::Command`.
-- [x] Capture stdout and stderr deterministically as `String` values.
-- [x] Convert recoverable host errors into public `process::Error` records.
-- [x] Reject malformed internal runtime values with hard runtime diagnostics,
-  following the existing `std::fs` handle pattern.
-- [x] Ensure built-artifact execution works without dependency source fallback.
-
-### Samples And Tests
-
-- [x] Add one runnable sample under `samples/packages/app/std_process/`.
-- [x] Add a manifest project sample under `samples/projects/process_app/` for
-  source-free bundle coverage.
-- [x] Add focused source-run tests in `tests/examples.rs`.
-- [x] Add artifact-backed `std::process` tests that hide dependency sources.
-- [x] Test successful exit with captured stdout and stderr.
-- [x] Test nonzero exit as successful capture with `success == false`.
-- [x] Test cwd handling with `path::Path`.
-- [x] Test env override handling.
-- [x] Test spawn failure as `Result::Err(process::Error)`.
-- [x] Test type mismatch diagnostics for command, args, cwd, and env records.
-- [x] Add release-gate smoke coverage for the package sample and source-free
-  bundle coverage for the project sample.
-
-### Documentation
-
-- [x] Update `spec-v1.md` current implementation boundary after the slice lands.
-- [x] Update `spec/003-typing.md` standard package surface after the slice lands.
-- [x] Add process-specific diagnostic guidance in `errors.md` only if a new
-  public diagnostic family is introduced.
-- [x] Keep `README.md` quickstart unchanged unless a process example becomes
-  the best first standard-library example.
-
-### Done When
-
-- [x] `cargo fmt --check` passes.
-- [x] `scripts/clippy-check.sh` passes.
-- [x] `cargo test --locked` passes.
-- [x] `scripts/v1-release-gate.sh` passes.
-- [x] `std::process` works through `muga run --built` and source-free bundle
-  execution without reading dependency source bodies.
-
-## P0: V1 Release Hardening
-
-Completed after `std::process` landed and was release-gated.
-
-- [x] Freeze new v1 language and standard-library features.
-- [x] Update `spec-v1.md` so implemented and not-implemented boundaries match
-  the Rust implementation after `std::process`.
-- [x] Confirm every item in `spec-v1.md` "Not implemented" is either
-  explicitly post-v1 or not planned.
-- [x] Re-run a focused unfinished-work audit with `rg` over `src/`, `tests/`,
-  `samples/`, and `spec/` for `TODO`, `FIXME`, `todo!`, `unimplemented!`,
-  stale "future" examples, and deleted-doc links.
-- [x] Keep any remaining `unreachable!` or `panic!` sites limited to internal
-  invariant checks and tests, not user-facing incomplete features.
-- [x] Verify all `muga new` templates, runnable samples, package samples, and
-  source-free app bundle workflows are covered by Rust tests or the release
-  gate.
-- [x] Make the release gate the authoritative v1 readiness command.
-- [x] Update `README.md`, `RELEASING.md`, `errors.md`, and this roadmap only
-  where they affect a v1 user or releaser.
-- [x] Run `cargo fmt --check`, `scripts/clippy-check.sh`, `cargo test --locked`,
-  and `scripts/v1-release-gate.sh` from the final tree.
-
-## P0: Pre-v1 Implementation Audit
-
-Completed on 2026-06-05. Do not bump versions, create tags, push, or publish
-until an explicit release target is chosen.
-
-- [x] Audit Rust implementation hotspots:
-  - [x] parser and formatter round-trip behavior
-  - [x] resolver and package visibility rules
-  - [x] typechecker rules for records, enums, generics, control flow, and
-    standard packages
-  - [x] MIR, bytecode, and VM behavior for user-reachable runtime paths
-  - [x] artifact loading, package archives, app bundles, and source-free
-    execution
-  - [x] CLI JSON/text diagnostic contracts
-- [x] Classify every production `panic!`, `unreachable!`, `unwrap`, and
-  `expect` as either an internal invariant or a user-reachable bug.
-- [x] Add focused Rust tests for any discovered behavior gap, even if the code
-  already appears correct.
-- [x] Add or update runnable Muga samples only where a public v1 workflow lacks
-  sample coverage.
-- [x] Re-run `cargo test --locked` and `scripts/v1-release-gate.sh`.
-- [x] Record the audit result here before returning to release-candidate
-  preparation.
-
-Audit notes:
-
-- [x] 2026-06-05: searched `src/`, `tests/`, `samples/`, `spec/`, and top-level
-  docs for `TODO`, `FIXME`, `todo!`, `unimplemented!`, and debug output
-  leftovers. No production incomplete implementation marker was found.
-- [x] 2026-06-05: added a formatter regression test that copies repository
-  `samples/` and `conformance/v1`, runs manifest-aware `format_path` over every
-  `.muga` file, and verifies the result is idempotent.
-- [x] 2026-06-05: added a bytecode regression test proving statement-form
-  `using` emits cleanup call sites for `try`, explicit `return`, `break`,
-  `continue`, and normal fallthrough paths.
-- [x] 2026-06-05: audited package visibility and interface signature
-  construction against `src/package.rs`, `src/package_signature.rs`, and
-  `src/interface.rs`; added regression coverage proving public APIs cannot
-  expose `pkg` types and `pkg` APIs cannot expose module-private types, including
-  nested function/generic signature shapes.
-- [x] 2026-06-05: audited production `unwrap`/`expect`/`panic`-style sites and
-  fixed a user-reachable standard namespace edge by reserving `std` package
-  paths for compiler-provided standard packages. Added explicit source,
-  manifest, and import tests.
-- [x] 2026-06-05: separated `using`'s non-`Result` enclosing-function diagnostic
-  from the `try` diagnostic so the user-facing message reports `T027` and names
-  `using`.
-- [x] 2026-06-05: audited existing artifact/source-free tests for missing,
-  stale, wrong-package, dependency-interface-mismatched, and source-free bundle
-  execution paths. Existing coverage already proves artifact-backed workflows do
-  not silently fall back to dependency source bodies.
-- [x] 2026-06-05: ran `cargo fmt --check`, `git diff --check`,
-  `cargo test --locked`, and `scripts/v1-release-gate.sh` after the first audit
-  slice.
-- [x] 2026-06-05: final audit verification passed with `cargo fmt --check`,
-  `git diff --check`, `scripts/clippy-check.sh`, `cargo test --locked`, and
-  `scripts/v1-release-gate.sh`.
-
-## P0: Release Candidate Preparation
-
-Do not bump versions, create tags, push, or publish without an explicit release
-target decision. This starts only after the pre-v1 implementation audit is
-complete.
-
-- [x] Decide the next release target:
-  - [ ] `1.0.0-rc.1` if this is the first v1 release candidate.
-  - [ ] `1.0.0` only if the v1 compatibility promise should begin now.
-  - [x] another `0.x` only if this should remain a pre-v1 release: `0.5.0`,
-    chosen on 2026-07-02. The v1-scope implementation is complete, but the
-    project intentionally stays in `0.x` instead of binding itself to the v1
-    milestone now.
-- [ ] Confirm the working tree contains only intended release changes.
-- [ ] Run `scripts/v1-release-gate.sh` from the chosen-version
-  release-candidate tree.
-- [ ] Bump `Cargo.toml` and `Cargo.lock` to the chosen version.
-- [ ] Commit the version bump.
-- [ ] Run `scripts/v1-release-gate.sh --with-publish-dry-run`.
-- [ ] Create and verify the annotated tag for the chosen version.
-- [ ] Push `main` and the tag.
-- [ ] Verify the GitHub Actions release workflow, crates.io version, and GitHub
-  Release.
-
-## P1: Structured Task Groups
-
-Promoted on 2026-07-02: the release definition changed. The completed v1-scope
-implementation ships as `0.5.0` instead of a `1.0.0` release candidate, and
-structured task groups are the next implementation work after `0.5.0` ships.
-
-- [x] Reconcile `spec/007-concurrency-draft.md` with the implemented value,
-  package, handle, and artifact model. Section 5 is now the implemented
-  Phase 1 specification; channels and later phases stay drafts.
-- [x] Decide whether the first task API is syntax (`group` / `spawn` / `join`)
-  or a standard package abstraction. Decision: `group` and `spawn` are
-  syntax because the lifetime rule "child tasks may not outlive their group"
-  is enforced by lexical structure; a package-level scope value could escape
-  and would need escape analysis. `join` is an ordinary `std::task` package
-  function (`task::join(handle)` / `handle.task::join()`), not a prelude
-  name, because Muga rejects shadowing and a new prelude name would collide
-  with existing user functions and `path::join`.
-- [x] Define task lifetime rules: child tasks may not outlive their group.
-  `group { ... }` is an expression scope; leaving it means all children
-  completed.
-- [x] Define failure propagation and cancellation behavior. A child runtime
-  failure propagates out of the enclosing `group`; siblings not yet spawned
-  never start. Execution order is implementation-defined; the reference VM
-  is deterministic and runs each child to completion at its spawn site.
-- [x] Define capture rules for immutable values, mutable bindings, and
-  runtime-backed handles. Immutable reads are allowed; `mut` references
-  across the `spawn` boundary are rejected (`E013`), including reads;
-  runtime-backed handles are allowed under deterministic execution and must
-  be revisited before parallel execution.
-- [x] Define timeout boundaries without promising async socket IO. Phase 1
-  ships no timeout API; time-based cancellation waits for the IO/runtime
-  integration path.
-- [x] Add AST/parser support only after the type and runtime behavior are
-  settled. `group` is an expression with a value-block body; `spawn` parses
-  at the prefix `try` level and accepts `spawn group { ... }` directly.
-- [x] Add typed HIR, MIR/bytecode, and VM support. Bytecode gains a
-  `WrapTask` instruction with `.mgb` encode/decode/validation support, and
-  `.mgi` signatures serialize `Task[T]` for `std::task::join`.
-- [x] Add conformance fixtures for accepted and rejected task usage:
-  `conformance/v1/valid/control/task_group_spawn.muga` plus rejecting
-  fixtures for `T030`, `T013`, and `E013`.
-- [x] Add benchmark-health checks only as local health measurements, not
-  public performance claims: `runtime.std-task` in the representative
-  runtime health check.
+- [x] `std::process` (the last planned v1 standard-library capability): narrow
+  recoverable process execution through explicit `Options` / `Output` records,
+  nonzero child exits captured as `Result::Ok(Output)`, no shell
+  interpolation, `path::Path` cwd, explicit env overrides, and source-free
+  bundle coverage.
+- [x] V1 release hardening: v1 feature freeze, `spec-v1.md` boundary aligned
+  with the implementation, unfinished-work audit, template/sample/bundle test
+  coverage, and the release gate as the authoritative readiness command.
+- [x] Pre-v1 implementation audit (2026-06-05): hotspot review across parser,
+  resolver, typing, MIR/VM, artifacts, and CLI contracts; production
+  panic-site classification; regression tests for formatter idempotence,
+  `using` cleanup paths, package visibility, reserved `std` package paths,
+  and the `T027` `using` diagnostic split.
+- [x] Release candidate preparation: chose to stay in the `0.x` series rather
+  than start the `1.0.0` compatibility promise; `0.5.0` shipped 2026-07-02 and
+  `0.6.0` shipped 2026-07-03 through the release workflow (see `RELEASING.md`
+  for the process).
+- [x] Structured task groups Phase 1: `group` / `spawn` syntax with `T030` /
+  `E013` diagnostics, the internal `Task[T]` handle, `std::task` with `join`
+  and `spawn_map`, artifact and conformance coverage, and benchmark-health
+  checks. Design decisions and semantics are recorded in
+  [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) section 5.
 
 ## Post-v1 P2: Service IO
 
@@ -406,8 +213,10 @@ Move a parked item into active work only when all of these are true:
   collection APIs; not queued. Revisit only with an explicit equality/hash
   design that does not introduce behavior-conformance systems.
 - [ ] broader JSON/config schema targets such as generic records, generic
-  enums, nested `Option[Option[T]]`, non-string map keys, and validation
-  attributes; revisit after the current concrete schema slice is exercised.
+  enums, nested `Option[Option[T]]`, non-string map keys, and record-level,
+  cross-field, or user-defined validation beyond the implemented narrow
+  field-level `@validate(...)` slice; revisit after the current concrete
+  schema slice is exercised.
 - [ ] future `expr.try`, `T?`, and `Option`-only optional chaining; revisit
   only if explicit `try`, `Option`, and helper packages become too noisy in
   real code. Do not add them merely as shorter spellings.
@@ -427,9 +236,12 @@ Move a parked item into active work only when all of these are true:
 - [ ] control-flow-oriented MIR, native backend, and representation performance
   work; revisit after benchmark data shows the reference VM or current bytecode
   is the limiting factor.
-- [ ] concurrency syntax from `spec/007-concurrency-draft.md`; the draft is not
-  an implementation queue. Before any task syntax is added, re-confirm whether
-  Muga needs syntax at all or whether a standard package abstraction is simpler.
+- [ ] concurrency features beyond implemented Phase 1 structured task groups:
+  channels, `select`, timeouts, and the later phases in
+  `spec/007-concurrency-draft.md`; the draft is not an implementation queue.
+  Before any further concurrency syntax is added, re-confirm whether Muga
+  needs syntax at all or whether a standard package abstraction (like
+  `task::spawn_map`) is simpler.
 - [ ] `pub opaque record` for user-defined hidden record representations; this
   is not a v1 feature. Revisit only after real package APIs need smart
   constructors while hiding ordinary Muga record fields. Keep this separate from
@@ -503,10 +315,12 @@ future backlog items.
 
 ## Short Version
 
-Muga shipped `0.5.0` and then implemented structured task groups
-(`group` / `spawn` / `std::task::join`) as the first post-`0.5.0` slice.
+Muga shipped `0.5.0`, shipped structured task groups
+(`group` / `spawn` / `std::task::join`) as `0.6.0`, and then added
+`task::spawn_map` to close the dynamic fan-out gap.
 `scripts/v1-release-gate.sh` remains the authoritative readiness command.
-The next concrete step is choosing the release target for the task-groups
-slice. Channels, `select`, service IO, remote registries, broad collections,
+The next concrete step is gathering real usage of `task::spawn_map` and the
+Phase 1 core before deciding whether to promote Phase 2 (channels) or service
+IO work. Channels, `select`, service IO, remote registries, broad collections,
 and native backend work stay deferred until real task-group usage justifies
 them.
