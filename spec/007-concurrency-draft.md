@@ -273,32 +273,61 @@ What works well for fixed-shape fan-out, the case section 8.1 targets:
   before it returns. This covers batch side-effecting work where no result
   needs to flow back.
 
-What does not work, and is a real gap rather than a style question:
+What did not work before `task::spawn_map` (5.8) closed the gap:
 
-- Dynamic, result-collecting fan-out over a runtime-sized collection has no
-  expressible form. `list::map`'s callback is an ordinary `fn` value, and
-  function boundaries reset the group context (5.2), so `spawn` inside a
-  mapped closure is rejected with `T030` even though the mapped closure runs
-  inside the same `group`. There is also no user-facing list mutation to
-  build a `List[Task[T]]` by hand, and a recursive helper that returns
-  `List[Task[T]]` cannot be written because it would need an explicit return
-  type annotation naming `Task[T]`, which `T013` forbids outside `std::task`
-  (5.3).
-- In practice this means Phase 1 only covers fan-out whose arity is known at
-  the call site (a fixed literal list, or a fixed number of named `spawn`
-  bindings). "Spawn one task per row of this query result" or "one task per
-  file in this directory listing" cannot be written without restructuring
-  around `for` and giving up on collecting per-task results.
+- Dynamic, result-collecting fan-out over a runtime-sized collection had no
+  expressible form using `spawn` directly. `list::map`'s callback is an
+  ordinary `fn` value, and function boundaries reset the group context
+  (5.2), so `spawn` inside a mapped closure is rejected with `T030` even
+  though the mapped closure runs inside the same `group`. `List` does have
+  user-facing mutation (`push`, used by `list::map` itself), so building a
+  list by hand is not the blocker; the blocker is that a user-written `mut`
+  binding or return type cannot name `List[Task[T]]`, because `T013` forbids
+  `Task[T]` syntax outside `std::task` (5.3).
+- In practice this meant fan-out whose arity is known at the call site
+  (a fixed literal list, or a fixed number of named `spawn` bindings) worked,
+  but "spawn one task per row of this query result" or "one task per file in
+  this directory listing" could not be written without giving up on
+  collecting per-task results.
 
-This gap is narrower than what channels solve. Channels (section 6) target
+This gap was narrower than what channels solve. Channels (section 6) target
 streaming and worker-pool coordination between independently-scheduled
-tasks; the missing piece here is simpler: a way to spawn and join over an
-existing collection without naming `Task[T]`. A small `std::task` combinator
-(for example, a builtin equivalent to spawning `f` over each item of a list
-and joining all of them before returning) would close this gap without
-adding channels, `select`, or new syntax. Whether to add that combinator now
-or move directly to Phase 2 is the open decision; this section only records
-the evidence.
+tasks; the missing piece here was simpler: a way to spawn and join over an
+existing collection without a user ever naming `Task[T]`. `task::spawn_map`
+(5.8) closes it as a `std::task` library function, not new syntax.
+
+### 5.8 `spawn_map`: fan-out over a runtime-sized collection
+
+```muga
+import std::task
+
+pub fn spawn_map[T, U](items: List[T], f: T -> U): List[U]
+```
+
+`task::spawn_map(items, f)` spawns `f` on every item of `items` and returns
+their results as a `List[U]`, in input order. See
+`samples/packages/app/std_task_spawn_map/main.muga`.
+
+- `spawn_map` is an ordinary `std::task` package function, defined in terms
+  of `group`, `spawn`, `join`, and `push` (5.1-5.3); it does not add new
+  syntax or a new diagnostic.
+- Its public signature never names `Task[T]`: callers pass and receive plain
+  `List` values, so the `T013` restriction on writing `Task[T]` (5.3) never
+  applies to a caller of `spawn_map`.
+- `spawn_map` opens its own `group` internally and joins every spawned task
+  before returning, so it may be called from any function, not only from
+  inside an enclosing `group`. It behaves like a self-contained task scope
+  whose result is the collected list.
+- If `f` returns `Result[T, E]`, `spawn_map` returns `List[Result[T, E]]`;
+  callers reduce it with ordinary `list` functions (`list::all`, `list::map`,
+  a `for` loop with `try`, and so on). If an item's call fails with a runtime
+  error, the failure propagates out of `spawn_map` the same way it propagates
+  out of a `group` (5.5): items after the failing one never run.
+- `spawn_map` runs eagerly and sequentially under the Phase 1 reference VM,
+  the same as `list::map`; the difference is contract, not observable
+  behavior yet. `spawn_map` documents fan-out work whose children are joined
+  before it returns, which is the hook a future parallel runtime needs; a
+  plain `list::map` makes no such promise and must stay sequential.
 
 ## 6. Phase 2: Typed Channels
 

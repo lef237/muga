@@ -1333,6 +1333,20 @@ package std::task
 pub fn join[T](task: Task[T]): T {
   __muga_std_task_join(task)
 }
+
+pub fn spawn_map[T, U](items: List[T], f: T -> U): List[U] {
+  group {
+    mut tasks: List[Task[U]] = []
+    for item in items {
+      tasks = tasks.push(spawn f(item))
+    }
+    mut out: List[U] = []
+    for item_task in tasks {
+      out = out.push(item_task.join())
+    }
+    out
+  }
+}
 "#,
 }];
 

@@ -6753,6 +6753,80 @@ fn package_std_task_for_sample_runs() {
 }
 
 #[test]
+fn package_std_task_spawn_map_sample_runs() {
+    assert_package_runs(
+        "samples/packages/app/std_task_spawn_map/main.muga",
+        "30",
+        "",
+    );
+}
+
+#[test]
+fn task_spawn_map_collects_results_for_a_runtime_sized_list() {
+    let root = temp_package_root("task-spawn-map-results");
+    let entry = write_package_file(
+        &root,
+        "app/task_spawn_map_results/main.muga",
+        r#"
+package app::task_spawn_map_results
+
+import std::task
+
+fn parse_positive(n: Int): Result[Int, String] {
+  if n > 0 {
+    Result::Ok(n)
+  } else {
+    Result::Err("must be positive")
+  }
+}
+
+fn main(): List[Result[Int, String]] {
+  items = [1, 2, -3]
+  task::spawn_map(items, parse_positive)
+}
+"#,
+    );
+
+    let result = muga::run_path(&entry).unwrap();
+    let value = result.main_result.expect("main result should exist");
+    assert_eq!(
+        value.to_string(),
+        "[Result::Ok(1), Result::Ok(2), Result::Err(must be positive)]"
+    );
+}
+
+#[test]
+fn task_spawn_map_propagates_runtime_failure_from_an_item() {
+    let root = temp_package_root("task-spawn-map-failure");
+    let entry = write_package_file(
+        &root,
+        "app/task_spawn_map_failure/main.muga",
+        r#"
+package app::task_spawn_map_failure
+
+import std::task
+
+fn risky(n: Int): Int {
+  10 / n
+}
+
+fn main(): List[Int] {
+  items = [2, 0, 5]
+  task::spawn_map(items, risky)
+}
+"#,
+    );
+
+    let diagnostics = muga::run_path(&entry).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "R013"),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
 fn package_artifact_facade_sample_runs() {
     assert_package_runs("samples/packages/app/artifact_facade/main.muga", "26", "");
 }

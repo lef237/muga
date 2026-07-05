@@ -32,9 +32,15 @@ Muga samples.
   closures, `T013` blocks a hand-written `List[Task[T]]`). This gap is
   narrower than channels; a small `std::task` fan-out combinator could close
   it without Phase 2.
-- [ ] **NOW:** decide between adding a small `std::task` combinator to close
-  the dynamic-fan-out gap above, or promoting Phase 2 (channels), or leaving
-  Phase 1 as-is; this is a direction call, not an implementation task.
+- [x] **DONE:** closed the dynamic-fan-out gap on 2026-07-05 with
+  `task::spawn_map[T, U](items: List[T], f: T -> U): List[U]`, a `std::task`
+  package function (no new syntax or diagnostics) that spawns `f` over every
+  item and joins all results before returning; see
+  spec/007-concurrency-draft.md#58-spawn_map-fan-out-over-a-runtime-sized-collection
+  and `samples/packages/app/std_task_spawn_map/main.muga`.
+- [ ] **NOW:** gather real usage of `task::spawn_map` and the rest of the
+  Phase 1 core before deciding whether to promote Phase 2 (channels) or
+  service IO work.
 
 Last verified locally on 2026-06-05 during the pre-v1 implementation audit:
 
