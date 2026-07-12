@@ -95,11 +95,11 @@ Deferred:
 - nested patterns
 - pattern guards
 - recursive enum layout optimization
-- derived equality/hash behavior beyond the scalar-only v1 equality policy
+- derived equality/hash behavior beyond the current scalar-only equality policy
 
 This MVP is enough to model `Option[T]` and `Result[T, E]`.
 
-`Option[T]`, `Result[T, E]`, and user-defined enums do not support `==` or `!=` in v1. Use exhaustive `match` and compare scalar payload fields explicitly. Derived enum equality/hash behavior is a future feature and must define package-interface persistence, diagnostics, and behavior for unsupported payload types before it is added.
+`Option[T]`, `Result[T, E]`, and user-defined enums do not support `==` or `!=`. Use exhaustive `match` and compare scalar payload fields explicitly. Derived enum equality/hash behavior is a future feature and must define package-interface persistence, diagnostics, and behavior for unsupported payload types before it is added.
 
 ## 5. Typing Rules
 
@@ -129,7 +129,7 @@ Match typing:
 - missing variant arms are errors
 - payload bindings are immutable local bindings inside the arm expression
 - `_` may appear only inside a one-payload variant pattern, such as `Result::Ok(_)`, and discards that payload without introducing a binding
-- `_ =>` broad catch-all arms are not part of v1
+- `_ =>` broad catch-all arms are not currently supported
 - all arm result expressions must have the same type, or must match the surrounding expected type
 
 Identity rules for the MVP:
@@ -241,7 +241,7 @@ fn load_or_guest(path: String): User {
 Implemented `try` decisions:
 
 - `try expr` is allowed only inside functions whose return type is, or can be inferred as, `Result[_, E]`
-- propagated error types must match exactly; no conversion hook exists in v1
+- propagated error types must match exactly; no conversion hook exists
 - `try` works only with `Result[T, E]`, not `Option[T]`
 - `try` is a prefix expression and can appear wherever its unwrapped `T` type is valid
 - invalid `try Result::Ok(...)` / `try Result::Err(...)` placements should report the `try` placement error without a secondary missing-expected-Result diagnostic for the constructor
@@ -357,7 +357,7 @@ Public function signatures may then mention enum types such as:
 pub fn read_file(path: String): Result[String, IOError]
 ```
 
-In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. The v1 persisted interface text format round-trips the same resolved enum identity, type parameters, variants, payload types, public signatures, and source spans. Persisted interfaces also carry deterministic content hashes. Downstream typed checking can use loaded interface summaries or discovered `.mgi` artifacts without reading dependency implementation bodies. Package check cache keys now combine entry package source hashes and dependency interface hashes, with missing or stale `.mgc` artifacts rejected before artifact-backed checking proceeds. The CLI can emit artifacts with `muga emit-interface` and `muga emit-check-cache`, then consume them with `muga check --artifact-root`.
+In-memory summaries now represent public user-defined enum declarations and public signatures that mention user enum types. The current persisted interface text format round-trips the same resolved enum identity, type parameters, variants, payload types, public signatures, and source spans. Persisted interfaces also carry deterministic content hashes. Downstream typed checking can use loaded interface summaries or discovered `.mgi` artifacts without reading dependency implementation bodies. Package check cache keys now combine entry package source hashes and dependency interface hashes, with missing or stale `.mgc` artifacts rejected before artifact-backed checking proceeds. The CLI can emit artifacts with `muga emit-interface` and `muga emit-check-cache`, then consume them with `muga check --artifact-root`.
 
 ## 9. Runtime Representation
 

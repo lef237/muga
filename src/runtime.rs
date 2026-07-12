@@ -2161,7 +2161,7 @@ fn execute_update(
         let code = if binding.mutable { "R007" } else { "R005" };
         let message = if binding.mutable {
             format!(
-                "cannot update outer-scope mutable binding `{}` in v1",
+                "cannot update outer-scope mutable binding `{}`",
                 symbol_name(program, target.name)
             )
         } else {

@@ -74,7 +74,8 @@ The preferred split is:
 
 Muga should not plan `ref T` as a normal language feature.
 
-This is a stronger position than "not required for v1".
+This is a stronger position than merely deferring references until a later
+release.
 
 The current direction is:
 
@@ -201,7 +202,7 @@ The performance goal should be:
 
 The main risk is a naive implementation that copies large aggregates repeatedly. That is an IR and backend problem, not a reason to expose pointer syntax in ordinary Muga code.
 
-### 6.1 Pre-v1 Representation Priorities
+### 6.1 Current Representation Priorities
 
 Before control-flow MIR or a native backend, measure and address the costs that
 already exist in the reference VM:
@@ -270,11 +271,11 @@ This keeps Muga open to high-performance implementation without making every pro
 
 ## 9. Design Consequences
 
-For v1 and near-term implementation:
+For the current and near-term implementation:
 
 - ordinary function parameters should continue to be immutable bindings
 - `record.with(...)` should remain non-destructive
-- record field assignment such as `user.name = "Ada"` should remain out of v1
+- record field assignment such as `user.name = "Ada"` should remain unsupported
 - explicit reference syntax should remain out of ordinary source code
 - `ref T`, `mut ref T`, and `&value` should not be planned features
 - VM behavior may stay simple while MIR/native backend work improves performance
@@ -287,7 +288,7 @@ For collections:
 
 For equality:
 
-- v1 equality is value equality only for `Int`, `Bool`, and `String`
+- equality is value equality only for `Int`, `Bool`, and `String`
 - records, enums, `Option[T]`, `Result[T, E]`, lists, maps, `Unit`, functions, and builtins do not have implicit equality
 - unsupported values must be rejected statically rather than compared by identity or runtime representation
 - future aggregate equality should be explicit in the spec and package interfaces before any `List.contains`, structural assertion, `Set[T]`, or arbitrary `Map` key support relies on it
@@ -316,4 +317,4 @@ Before this design is fully normative, decide:
 - how future collection storage handles sharing, copying, and mutation
 - how builder and buffer types express efficient repeated writes
 - how resource handles express side effects, ownership, and task-safety
-- whether and when aggregate equality expands beyond the v1 scalar-only policy
+- whether and when aggregate equality expands beyond the current scalar-only policy

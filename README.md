@@ -8,17 +8,19 @@ Muga emphasizes both code aesthetics and efficiency, providing an environment wh
 
 ## Project Status
 
-Muga is under active development in the `0.x` series. The documents named
-`v1` describe the evolving contract that Muga intends to stabilize, not a
-claim that the language is already ready for `1.0.0`.
+Muga is under active development in the `0.x` series. The language is improved
+continuously through small releases; features, corrections, redesigns, and
+removals are chosen because they improve the current language, not because they
+must fit a predetermined `1.0.0` feature list.
 
-Muga will adopt the v1 name only after the language, standard packages,
-tooling, diagnostics, package and artifact formats, documentation, and
-real-world usage have matured enough for a long-lived compatibility promise.
-Until then, releases advance the patch component in small steps (for example,
-`0.6.0` to `0.6.1`), including releases that add features or revise the
-pre-v1 contract. See [RELEASING.md](./RELEASING.md) for the versioning policy
-and [ROADMAP.md](./ROADMAP.md) for the current maturity work.
+Releases normally advance the patch component (`Z`) one step at a time, for
+example `0.6.0` to `0.6.1`. Whether to advance the minor component (`Y`) is a
+separate maintainer decision. Version `1.0.0` will name the point at which
+continued experience shows that Muga no longer needs foundational redesign and
+is ready for a long-lived compatibility promise. See
+[RELEASING.md](./RELEASING.md) for the versioning policy and
+[ROADMAP.md](./ROADMAP.md) for current work and the independent 1.0 readiness
+criteria.
 
 ## Why Muga
 
@@ -140,7 +142,7 @@ Many commands also support `--format json` for editor and tooling workflows.
 - Packages use `package`, `import`, `pub`, and manifest files.
 - Package artifact files use `.mgi`, `.mgc`, and `.mgb`.
 
-For the compact language overview, start with [spec-v1.md](./spec-v1.md).
+For the compact language overview, start with [LANGUAGE.md](./LANGUAGE.md).
 Detailed topic specs live in [spec/](./spec/).
 
 ## Repository Map
@@ -164,7 +166,7 @@ cargo test --locked
 Run the local release-quality gate:
 
 ```bash
-scripts/v1-release-gate.sh
+scripts/release-gate.sh
 ```
 
 Run benchmark health checks:

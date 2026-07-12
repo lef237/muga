@@ -1,7 +1,7 @@
-# Core Language Specification v1
+# Core Language Specification
 
-Status: evolving v1 candidate while Muga is in the `0.x` series; see
-[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+Status: current language specification; see
+[LANGUAGE.md](../LANGUAGE.md#specification-status).
 
 This document defines the surface language and the core execution-facing rules. Name resolution, typing, and function-specific rules are split into companion documents:
 
@@ -12,7 +12,7 @@ This document defines the surface language and the core execution-facing rules. 
 
 ## 1. Design Constraints
 
-The v1 language is intentionally small and follows these constraints:
+The language is intentionally small and follows these constraints:
 
 - no `let`
 - immutable bindings by default
@@ -90,7 +90,7 @@ small, but a misspelled update can introduce a new immutable binding. Ordinary
 unused-binding warnings are the first mitigation and should be tested in
 representative programs before a specialized lint or syntax change is designed.
 
-A similar-name warning is optional, not a baseline v1 requirement. Consider it
+A similar-name warning is optional, not a baseline requirement. Consider it
 only if real mistakes routinely escape unused warnings, and then limit it to a
 plain binding introduction that closely resembles an earlier mutable binding
 in the same function. Broad comparisons across every visible identifier would
@@ -115,7 +115,7 @@ The language uses lexical scoping.
 
 Within a single function body, an inner block may update a mutable binding introduced by an enclosing block in the same function.
 
-Across a function boundary, outer bindings may be read from inner scopes, but v1 does not allow updating outer-scope bindings.
+Across a function boundary, outer bindings may be read from inner scopes, but Muga does not allow updating outer-scope bindings.
 
 ## 5. Statements and Expressions
 
@@ -134,7 +134,7 @@ The language has the following core constructs:
 - field access, chained dot calls, and record updates
 - package/module visibility modifiers in package mode
 
-To keep the grammar unambiguous, v1 distinguishes:
+To keep the grammar unambiguous, Muga distinguishes:
 
 - statement blocks, which contain ordinary statements
 - value blocks, which end in a required final expression or terminal `return expr`
@@ -159,7 +159,7 @@ abs = fn(n: Int) {
 
 ### 6.1 Whitespace and comments
 
-v1 uses line comments only:
+Muga uses line comments only:
 
 ```txt
 // comment until end of line
@@ -172,7 +172,7 @@ Newlines are statement separators, with the following exceptions:
 - inside `(` ... `)`, newlines are non-significant
 - a newline immediately following `=`, `,`, or a binary operator does not terminate the statement
 
-Within a block, statements are separated by newlines. Multiple statements on one line are not allowed in v1.
+Within a block, statements are separated by newlines. Multiple statements on one line are not allowed.
 
 ### 6.2 Identifiers and keywords
 
@@ -210,20 +210,20 @@ Reserved keywords are:
 
 ### 6.3 Literals
 
-The minimal v1 literal set is:
+The minimal literal set is:
 
 - decimal integer literals
 - boolean literals `true` and `false`
 - string literals `"..."` with escapes `\\`, `\"`, `\n`, and `\t`
 - the unit literal `()`
 
-Raw strings and multiline strings are not part of v1.
+Raw strings and multiline strings are not currently supported.
 
 Integer literals are 64-bit signed. The accepted value range is `-2^63 ..= 2^63 - 1`. To accommodate `-2^63`, an integer literal that immediately follows a unary `-` and is not followed by `.` or `(` is parsed as a single signed literal. In every other position a positive integer literal must fit in `i64`.
 
 ### 6.4 Numeric Maturity Target
 
-The current candidate is integer-only. Before v1, Muga must either document a
+The current language is integer-only. Muga must either document a
 deliberately integer-only application scope or specify an explicit `Float64`
 type for general-purpose numeric and JSON work. A `Float64` design must cover
 literals, arithmetic, explicit `Int` conversion, formatting, JSON
@@ -234,7 +234,7 @@ package rather than an implicit mode of binary floating point.
 
 ## 7. Operators and Precedence
 
-The v1 operator set is:
+The current operator set is:
 
 - unary: `-`, `!`, `try`
 - multiplicative: `*`, `/`
@@ -267,13 +267,13 @@ The dot operator has three surface forms:
 - `expr.name(args...)` or `expr.alias::name(args...)` for method-style or UFCS-style chained call
 - `expr.with(field: value, ...)` for non-destructive record update
 
-Because record fields cannot have function type in v1, the dot operator keeps those three stable meanings without field-function-call ambiguity.
+Because record fields cannot have function type, the dot operator keeps those three stable meanings without field-function-call ambiguity.
 
 `try expr` unwraps `Result::Ok(value)` or returns `Result::Err(error)` early from the nearest function. Its precise type rules are specified in [013-enums-results.md](./013-enums-results.md).
 
 ## 8. Grammar Sketch
 
-This is a v1-oriented EBNF sketch. `type_expr` is defined abstractly here and constrained further by [003-typing.md](./003-typing.md). Package-specific file grammar is defined in [006-packages.md](./006-packages.md). Records, enums, collections, and dot expressions are introduced here, with detailed semantics in companion specs.
+This is an EBNF sketch of the current grammar. `type_expr` is defined abstractly here and constrained further by [003-typing.md](./003-typing.md). Package-specific file grammar is defined in [006-packages.md](./006-packages.md). Records, enums, collections, and dot expressions are introduced here, with detailed semantics in companion specs.
 
 ```ebnf
 program           := top_item*
@@ -383,7 +383,7 @@ In a value block, only non-expression statements may appear before the final exp
 
 ### 8.1 Record literal disambiguation in conditions
 
-The grammar above lists `record_lit` as one form of `primary_expr`, but the surface forms `if expr stmt_block`, `while expr stmt_block`, and `for item in expr stmt_block` are syntactically ambiguous when `expr` ends with an identifier and `stmt_block` begins with `{`. v1 resolves this ambiguity by disallowing a top-level record literal in the condition position of `if` / `while` and the iterable position of `for`. To use a record literal there, wrap it in parentheses:
+The grammar above lists `record_lit` as one form of `primary_expr`, but the surface forms `if expr stmt_block`, `while expr stmt_block`, and `for item in expr stmt_block` are syntactically ambiguous when `expr` ends with an identifier and `stmt_block` begins with `{`. Muga resolves this ambiguity by disallowing a top-level record literal in the condition position of `if` / `while` and the iterable position of `for`. To use a record literal there, wrap it in parentheses:
 
 ```txt
 if (P { x: 1 }) { ... }
@@ -409,8 +409,8 @@ The core language model is:
 - `expr.name(...)` and `expr.alias::name(...)` are chained call syntax
 - `expr.with(field: value, ...)` is a record-only non-destructive update expression
 - `expr[index]` indexes a list value
-- `match` is exhaustive over enum variants in the v1 MVP
-- `Variant(_)` discards a one-payload enum variant payload without introducing a binding; broad catch-all `_ =>` arms are not part of v1
+- `match` is exhaustive over enum variants in the current MVP
+- `Variant(_)` discards a one-payload enum variant payload without introducing a binding; broad catch-all `_ =>` arms are not currently supported
 - `try expr` propagates `Result[T, E]` errors from the nearest function
 - the value of a function body is the final expression in that body
 - `if` without `else` is statement-only

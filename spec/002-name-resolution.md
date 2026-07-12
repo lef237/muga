@@ -1,7 +1,7 @@
-# Name Resolution Specification v1
+# Name Resolution Specification
 
-Status: evolving v1 candidate while Muga is in the `0.x` series; see
-[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+Status: current language specification; see
+[LANGUAGE.md](../LANGUAGE.md#specification-status).
 
 This document is normative for scope construction, binding introduction, update resolution, shadowing, non-local update rejection, and the name-oriented part of dot-expression resolution.
 
@@ -36,11 +36,11 @@ Package mode adds a visibility check after candidate lookup:
 - `pub` names are visible from importing packages
 - importing packages see only `pub` names through `alias::Name`
 
-The current compiler implementation enforces this model for top-level package records and functions before package flattening. Per-field record visibility is not part of the committed v1 model; visible records are transparent at the field level. If public hidden representations become necessary, opaque records or opaque types should be evaluated before field-level visibility.
+The current compiler implementation enforces this model for top-level package records and functions before package flattening. Per-field record visibility is not part of the current model; visible records are transparent at the field level. If public hidden representations become necessary, opaque records or opaque types should be evaluated before field-level visibility.
 
 ## 1.1 Type Namespace
 
-v1 distinguishes:
+Muga distinguishes:
 
 - the value namespace, which contains locals, functions, and parameters
 - the type namespace, which contains nominal record names
@@ -64,7 +64,7 @@ Record names are not value bindings.
 
 ## 3. Shadowing Policy
 
-Shadowing is prohibited in v1.
+Shadowing is prohibited.
 
 A new binding is rejected if the same name already exists in any enclosing scope.
 
@@ -107,7 +107,7 @@ the resolver applies the following rules in order:
 6. If `x` is not found in the current function and an outer function scope contains an immutable binding, function binding, or parameter binding named `x`, reject the program as prohibited shadowing.
 7. Otherwise, introduce a new immutable binding `x` in the current scope.
 
-Rule 5 is the v1 interpretation of non-local stateful assignment across function boundaries. Reads may cross a function boundary, but writes may not.
+Rule 5 is the current interpretation of non-local stateful assignment across function boundaries. Reads may cross a function boundary, but writes may not.
 
 In other words, `x = e` may update a mutable binding in the current scope or in an enclosing block of the same function. Every immutable name in that same function region rejects `x = e`, and writes across a function boundary are disallowed.
 
@@ -188,11 +188,11 @@ For `expr.alias::name(args...)`:
 - if `alias::name(expr, args...)` is a valid ordinary call, the chained call resolves by UFCS-style desugaring
 - otherwise, the expression is rejected
 
-Because v1 has no overloading, there is at most one visible ordinary function binding named `name`.
+Because Muga has no overloading, there is at most one visible ordinary function binding named `name`.
 
 Anonymous functions do not participate in `expr.name(args...)` or `expr.alias::name(args...)`.
 
-Record fields are never considered callable by chained call syntax in v1.
+Record fields are never considered callable by chained call syntax.
 
 For `expr.with(field: value, ...)`:
 

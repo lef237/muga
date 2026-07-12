@@ -1,13 +1,12 @@
-# Error Catalog v1
+# Error Catalog
 
-Status: evolving v1 candidate while Muga is in the `0.x` series; see
-[spec-v1.md](./spec-v1.md#v1-completion-boundary).
-
-This document defines the expected diagnostic categories for the v1 split specification. The wording may vary by implementation, but the category and trigger condition should remain stable within each pre-v1 release.
+This document defines the expected diagnostic categories for the current split
+specification. The wording may vary by implementation, but the category and
+trigger condition should remain stable within each release.
 
 ## Diagnostic Stability Policy
 
-Muga v1 treats diagnostics as part of the user-facing contract. Exact prose may improve, but v1 diagnostics should keep:
+Muga treats diagnostics as part of the user-facing contract. Exact prose may improve, but diagnostics should keep:
 
 - stable code families
 - a primary source span when source is available
@@ -21,7 +20,7 @@ Current code families:
 | `L` | lexing |
 | `P` | parsing |
 | `N` | unresolved names |
-| `E` | core resolver/typechecker errors that correspond to the original v1 examples |
+| `E` | core resolver/typechecker errors from the original catalog |
 | `T` | detailed typing, enum, generic, collection, and control-flow checks |
 | `R` | runtime/VM errors |
 | `PK` | package, manifest, interface, cache, archive, and artifact workflow errors |
@@ -32,7 +31,7 @@ When adding a new public diagnostic code or changing the trigger for an existing
 ### Planned Warning And Lint Contract
 
 The current diagnostic model emits errors only; machine-readable output uses
-`severity: "error"` for every diagnostic. Before v1, diagnostics should gain a
+`severity: "error"` for every diagnostic. Diagnostics should gain a
 first-class severity and lint policy rather than encoding warnings as prose or
 one-off command behavior.
 
@@ -83,7 +82,7 @@ cannot update immutable binding `x`
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/name-resolution/immutable_update.muga](./conformance/v1/rejecting/name-resolution/immutable_update.muga)
+- [conformance/current/rejecting/name-resolution/immutable_update.muga](./conformance/current/rejecting/name-resolution/immutable_update.muga)
 
 ## E002: Duplicate Binding In Current Scope
 
@@ -101,7 +100,7 @@ duplicate binding `x` in the current scope
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/name-resolution/duplicate_mutable_binding.muga](./conformance/v1/rejecting/name-resolution/duplicate_mutable_binding.muga)
+- [conformance/current/rejecting/name-resolution/duplicate_mutable_binding.muga](./conformance/current/rejecting/name-resolution/duplicate_mutable_binding.muga)
 
 ## E003: Shadowing Prohibited
 
@@ -123,7 +122,7 @@ shadowing is prohibited for `x`
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/name-resolution/shadowing_in_block.muga](./conformance/v1/rejecting/name-resolution/shadowing_in_block.muga)
+- [conformance/current/rejecting/name-resolution/shadowing_in_block.muga](./conformance/current/rejecting/name-resolution/shadowing_in_block.muga)
 
 ## E004: Outer-Scope Mutation Prohibited
 
@@ -134,12 +133,12 @@ Trigger:
 Recommended message:
 
 ```txt
-cannot update outer-scope mutable binding `x` in v1
+cannot update outer-scope mutable binding `x`
 ```
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/name-resolution/outer_scope_mutation.muga](./conformance/v1/rejecting/name-resolution/outer_scope_mutation.muga)
+- [conformance/current/rejecting/name-resolution/outer_scope_mutation.muga](./conformance/current/rejecting/name-resolution/outer_scope_mutation.muga)
 
 ## E005: Annotation Required
 
@@ -156,9 +155,9 @@ type annotation required because inference is not unique
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/typing/ambiguous_identity.muga](./conformance/v1/rejecting/typing/ambiguous_identity.muga)
-- [conformance/v1/rejecting/typing/ambiguous_higher_order_parameter.muga](./conformance/v1/rejecting/typing/ambiguous_higher_order_parameter.muga)
-- [conformance/v1/rejecting/typing/ambiguous_println_callback.muga](./conformance/v1/rejecting/typing/ambiguous_println_callback.muga)
+- [conformance/current/rejecting/typing/ambiguous_identity.muga](./conformance/current/rejecting/typing/ambiguous_identity.muga)
+- [conformance/current/rejecting/typing/ambiguous_higher_order_parameter.muga](./conformance/current/rejecting/typing/ambiguous_higher_order_parameter.muga)
+- [conformance/current/rejecting/typing/ambiguous_println_callback.muga](./conformance/current/rejecting/typing/ambiguous_println_callback.muga)
 
 ## E006: Recursive Function Requires Annotation
 
@@ -174,7 +173,7 @@ recursive function requires at least one parameter or return type annotation
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/typing/unannotated_recursion.muga](./conformance/v1/rejecting/typing/unannotated_recursion.muga)
+- [conformance/current/rejecting/typing/unannotated_recursion.muga](./conformance/current/rejecting/typing/unannotated_recursion.muga)
 
 ## E007: Mutual Recursion Requires Explicit Signatures
 
@@ -185,12 +184,12 @@ Trigger:
 Recommended message:
 
 ```txt
-mutually recursive functions require explicit signatures in v1
+mutually recursive functions require explicit signatures
 ```
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/typing/unannotated_mutual_recursion.muga](./conformance/v1/rejecting/typing/unannotated_mutual_recursion.muga)
+- [conformance/current/rejecting/typing/unannotated_mutual_recursion.muga](./conformance/current/rejecting/typing/unannotated_mutual_recursion.muga)
 
 ## E008: Unknown Field
 
@@ -240,7 +239,7 @@ Trigger:
 Recommended message:
 
 ```txt
-record fields may not have function type in v1
+record fields may not have function type
 ```
 
 ## E012: Invalid Record Update
@@ -260,7 +259,7 @@ invalid record update
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/typing/invalid_record_update.muga](./conformance/v1/rejecting/typing/invalid_record_update.muga)
+- [conformance/current/rejecting/typing/invalid_record_update.muga](./conformance/current/rejecting/typing/invalid_record_update.muga)
 
 ## E013: Mutable Capture Across `spawn`
 
@@ -283,14 +282,14 @@ Required guidance:
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/name-resolution/spawn_mut_capture.muga](./conformance/v1/rejecting/name-resolution/spawn_mut_capture.muga)
+- [conformance/current/rejecting/name-resolution/spawn_mut_capture.muga](./conformance/current/rejecting/name-resolution/spawn_mut_capture.muga)
 
-## Required V1 Guidance
+## Required Diagnostic Guidance
 
-These diagnostic behaviors are part of the evolving v1 contract and are
+These diagnostic behaviors are part of the current language contract and are
 checked by the release-quality gate even when the exact code is not one of the
-original `E001`-`E012` examples. Before `1.0.0`, the contract may still change
-together with its specifications and conformance fixtures.
+original `E001`-`E012` examples. The contract changes together with its
+specifications and current conformance fixtures.
 
 ### Ambiguity
 
@@ -396,7 +395,7 @@ Required guidance:
 
 Referenced fixtures:
 
-- [conformance/v1/rejecting/typing/spawn_outside_group.muga](./conformance/v1/rejecting/typing/spawn_outside_group.muga)
+- [conformance/current/rejecting/typing/spawn_outside_group.muga](./conformance/current/rejecting/typing/spawn_outside_group.muga)
 
 ## R022: Invalid Runtime Resource Handle
 

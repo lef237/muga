@@ -1,7 +1,7 @@
 # Muga Roadmap
 
 This file is the single working checklist for implementation order. Language
-rules belong in [spec-v1.md](./spec-v1.md) and [spec/](./spec/). Executable
+rules belong in [LANGUAGE.md](./LANGUAGE.md) and [spec/](./spec/). Executable
 behavior should be proved with Rust tests, conformance fixtures, and runnable
 Muga samples.
 
@@ -49,7 +49,7 @@ Baseline checks recorded during the 2026-06-05 implementation audit:
 - [x] `git diff --check`
 - [x] `scripts/clippy-check.sh`
 - [x] `cargo test --locked`
-- [x] `scripts/v1-release-gate.sh`
+- [x] `scripts/release-gate.sh`
 
 ## Current State
 
@@ -66,7 +66,7 @@ Muga currently has:
 - [x] app and package archive workflows through `.mga` and `.mgp`
 - [x] source-free app bundles, app archive round-trips, non-mutating install
   inventory, and generated app completion packages
-- [x] core v1 language surface: immutable-by-default bindings, `mut`, records,
+- [x] current core language surface: immutable-by-default bindings, `mut`, records,
   enums, functions, closures, local inference, explicit generic
   records/functions, `Option`, `Result`, prefix `try`, exhaustive `match`,
   `for`, `break`, `continue`, `return`, `Unit`, package imports, `pub opaque
@@ -100,30 +100,27 @@ These are direction-setting commitments, not just missing implementation work.
   source bodies.
 - [x] Muga prefers explicit recoverable error values over implicit exceptions.
 
-## Versioning And V1 Direction
+## Continuous Improvement And Versioning
 
-Muga is not on a short release-candidate path. The `v1` specifications and
-conformance directory describe the evolving contract that the project may
-eventually stabilize as `1.0.0`; they do not mean that the current feature set
-is frozen or mature enough for that promise.
+Muga improves through small releases without treating `1.0.0` as a feature
+bucket or deadline. Work is promoted because it improves the current language,
+not because it is labeled “for 1.0” or “after 1.0”.
 
-- [ ] Keep releases in the current `0.x` line and increment only PATCH for
-  each small release (`0.6.0` to `0.6.1`, then `0.6.2`, and so on), including
-  pre-v1 feature and breaking releases. See [RELEASING.md](./RELEASING.md).
-- [ ] Continue testing the language on sustained, non-trivial programs before
-  treating the v1 candidate surface as closed.
-- [ ] Allow the candidate v1 language, standard packages, tools, and formats to
-  change when real usage exposes a foundational gap. Keep the specs,
-  diagnostics, samples, and conformance fixtures aligned with each change.
-- [ ] Treat `scripts/v1-release-gate.sh` as the minimum quality gate for every
-  release, not as proof that the project is ready to call itself v1.
-- [ ] Start `1.0.0-rc.N` only after all v1 maturity criteria below are met and
-  the expected post-v1 work is compatible maintenance rather than foundational
-  language or ecosystem work.
+- [ ] Increment `Z` for normal releases (`0.6.0` to `0.6.1`, then `0.6.2`,
+  and so on), including features, fixes, redesigns, and removals during `0.x`.
+- [ ] Leave every decision to increment `Y` to the maintainer. No task type,
+  release count, or roadmap milestone changes `Y` automatically.
+- [ ] Continue testing the language on sustained, non-trivial programs and let
+  the current specification grow, shrink, or change when usage exposes a gap.
+- [ ] Keep specifications, diagnostics, samples, and `conformance/current/`
+  aligned with every user-visible change.
+- [ ] Treat `scripts/release-gate.sh` as the minimum quality gate for every
+  release, not as evidence that foundational design is complete.
 
-### V1 Maturity Criteria
+### 1.0 Readiness Criteria
 
-All of these are required before the first v1 release candidate:
+Version `1.0.0` names a maturity judgment, not completion of the ordinary
+roadmap. All of these are required before the first `1.0.0` release candidate:
 
 - [ ] Real-world validation: multiple sustained programs exercise the language,
   standard packages, dependency model, artifacts, and deployment workflows;
@@ -142,13 +139,17 @@ All of these are required before the first v1 release candidate:
   compatibility policy, release process, and recovery procedures are explicit
   and have been exercised.
 - [ ] Documentation quality: the language and standard packages are taught and
-  referenced without relying on implementation archaeology, and all v1
+  referenced without relying on implementation archaeology, and all current
   documents describe one consistent contract.
-- [ ] Low post-v1 redesign risk: known remaining work can be delivered mostly
+- [ ] Low post-1.0 redesign risk: known remaining work can be delivered mostly
   as compatible fixes, performance improvements, or optional additions without
   reopening the language's foundations.
 
-## Pre-v1 P0: Compatibility And Durability
+Meeting these criteria permits a `1.0.0-rc.N`; it does not require every parked
+idea to be implemented. Until then Muga simply continues its normal `0.x`
+release sequence.
+
+## Current P0: Compatibility And Durability
 
 These are foundational requirements discovered during the 2026-07-12 maturity
 audit. They take priority over expanding the language surface because they
@@ -158,8 +159,8 @@ build state.
 - [ ] Make `muga.toml` validation strict: reject unknown sections and fields,
   duplicate fields, and malformed non-comment lines with source locations and
   actionable diagnostics instead of silently ignoring them.
-- [ ] Design a source-compatibility declaration for manifest projects before
-  pre-v1 changes accumulate. Decide whether this is a language revision,
+- [ ] Design a source-compatibility declaration for manifest projects as
+  changes accumulate. Decide whether this is a language revision,
   edition, compiler compatibility range, or a combination, and define how an
   older project is diagnosed or migrated by a newer compiler.
 - [ ] Enforce the recorded `muga_version` compatibility policy when reading an
@@ -173,7 +174,7 @@ build state.
   not destroy the last valid lockfile, artifact, archive, or installation
   record.
 
-## Pre-v1 P1: Diagnostics, Robustness, And Portability
+## Current P1: Diagnostics, Robustness, And Portability
 
 - [ ] Add a first-class diagnostic severity model and lint pipeline. Start with
   unused imports, bindings, and parameters, unreachable code, and discarded
@@ -193,13 +194,13 @@ build state.
   ownership in text and JSON modes, broken-pipe handling, and Ctrl-C behavior
   including cleanup of child processes, tasks, and partial output.
 
-## Pre-v1 P1: Language And Standard-Library Maturity
+## Current P1: Language And Standard-Library Maturity
 
 These items were promoted by the 2026-07-12 language-surface audit. Promotion
-means Muga must implement them or record an evidence-backed decision not to
-include them before v1; it does not pre-approve unreviewed syntax.
+means Muga should evaluate or implement them as current work; it does not
+pre-approve unreviewed syntax or tie the decision to a future version label.
 
-- [ ] Decide the numeric scope for v1. If Muga remains a general-purpose
+- [ ] Decide the current numeric scope. If Muga remains a general-purpose
   language, specify and implement an explicit `Float64` type, literals,
   arithmetic, conversions, formatting, JSON numbers, `NaN`/infinity behavior,
   equality, and hashing. Keep decimal money arithmetic as a separate later
@@ -218,14 +219,14 @@ include them before v1; it does not pre-approve unreviewed syntax.
   monotonic clock, sleep, checked duration arithmetic, and OS-backed secure
   random bytes. Defer calendar/time-zone policy and seeded PRNG design until
   their contracts are explicit.
-- [ ] Decide whether opt-in compiler-derived equality and hashing belong in v1.
+- [ ] Decide whether opt-in compiler-derived equality and hashing belong in Muga.
   Any design must avoid a behavior-conformance system, persist capabilities in
   package interfaces, reject unsupported payloads such as functions and
   handles, define `Float64`/`NaN` behavior, and unlock structural assertions,
   `List.contains`, `Set[T]`, and non-scalar map keys only when sound.
 - [ ] After ordinary unused warnings exist, test typo-created bindings in real
   programs. Add a narrowly scoped similar-name warning only if recurring
-  mistakes escape those warnings; it is not a baseline v1 requirement. Reopen
+  mistakes escape those warnings; it is not a baseline requirement. Reopen
   explicit update syntax only if diagnostics still leave material correctness
   problems. Do not reserve `set` as the leading candidate: it is visually close
   to a future `Set[T]` type and overlaps with collection `.set(...)` vocabulary.
@@ -233,15 +234,15 @@ include them before v1; it does not pre-approve unreviewed syntax.
   If real callback, strategy, parser, validator, or event-handler APIs need
   them, allow storage while keeping invocation explicit through `call(field,
   args...)` or another non-dot-call form.
-- [ ] Resolve the Phase 1 concurrency admission gate before v1 stabilization.
+- [ ] Resolve the Phase 1 concurrency stability gate.
   Validate the contract with at least one runtime that provides overlapping
   progress for suspended/blocking tasks or actual parallel execution, plus real
   cancellation, failure propagation, capture safety, and resource cleanup.
   Parallel speedup is not required. If the contract is not ready, keep the
-  implementation experimental but defer `group` / `spawn` / `Task` from the
-  stable v1 contract instead of deleting the code merely to satisfy the gate.
+  implementation experimental instead of treating `group` / `spawn` / `Task`
+  as stable or deleting the code merely to satisfy the gate.
 
-## Pre-v1 P1: Runtime Performance Foundations
+## Current P1: Runtime Performance Foundations
 
 - [ ] Replace one-shot millisecond health checks with repeatable benchmark
   scenarios covering warm-up, multiple iterations, median/tail latency,
@@ -261,11 +262,11 @@ include them before v1; it does not pre-approve unreviewed syntax.
   and repeated runtime type/field strings. Do not prioritize these changes
   ahead of measured aggregate-copy and map costs.
 
-## Pre-v1 P1: API Surface Reduction
+## Current P1: API Surface Reduction
 
 - [ ] Choose one canonical filesystem API over `path::Path`; remove the
-  duplicate String-path operations and `_path` suffixes before v1 unless real
-  programs prove both forms have distinct value.
+  duplicate String-path operations and `_path` suffixes before stabilizing the
+  API unless real programs prove both forms have distinct value.
 - [ ] Make typed schema-driven `std::cli` parsing the primary API. Move manual
   `positional_*`, `option_*`, and flag scanning behind a clearly low-level
   namespace or remove them when usage evidence shows they are redundant.
@@ -283,18 +284,18 @@ Finished work is summarized here. Full checklists, audit notes, and decision
 logs live in git history; the resulting rules live in the specs, `errors.md`,
 and `RELEASING.md`.
 
-- [x] `std::process` (the last capability under the previous near-term v1
+- [x] `std::process` (the last capability under the previous near-term 1.0
   plan): narrow
   recoverable process execution through explicit `Options` / `Output` records,
   nonzero child exits captured as `Result::Ok(Output)`, no shell
   interpolation, `path::Path` cwd, explicit env overrides, and source-free
   bundle coverage.
-- [x] Previous v1 release-hardening pass: aligned the then-current
-  `spec-v1.md` boundary with the implementation, audited unfinished work, added
+- [x] Previous 1.0-oriented release-hardening pass: aligned the then-current language
+  boundary with the implementation, audited unfinished work, added
   template/sample/bundle test coverage, and established the release-quality
-  gate. This pass is historical evidence, not a declaration of v1 readiness or
+  gate. This pass is historical evidence, not a declaration of 1.0 readiness or
   a permanent feature freeze.
-- [x] Pre-v1 implementation audit (2026-06-05): hotspot review across parser,
+- [x] Implementation audit (2026-06-05): hotspot review across parser,
   resolver, typing, MIR/VM, artifacts, and CLI contracts; production
   panic-site classification; regression tests for formatter idempotence,
   `using` cleanup paths, package visibility, reserved `std` package paths,
@@ -326,7 +327,7 @@ cancellation, and cleanup behavior before either surface is committed.
 
 ## Maturity Track P2: Backend Performance Path
 
-Backend work follows the pre-v1 measurement, representation, and API work
+Backend work follows the current measurement, representation, and API work
 above. Performance claims still require evidence.
 
 - [ ] Introduce control-flow-oriented MIR only after the VM and artifact tests
@@ -350,11 +351,11 @@ Distribution should build on the existing `.mgp` / `.mga` work.
 ## Parked Non-Blockers
 
 These are known implementation gaps or design extensions. Parking an item here
-does not mean it is planned or permanently deferred until after v1. It means
+does not mean it is planned or permanently deferred. It means
 the current `0.x` implementation may keep shipping without it, and the feature
 should not be promoted only because it would make a few examples shorter. Real
 usage may still show that a parked item, or a different solution to the same
-problem, is necessary for a mature v1.
+problem, is necessary for the mature language.
 
 Move a parked item into active work only when all of these are true:
 
@@ -407,16 +408,17 @@ Move a parked item into active work only when all of these are true:
   needs syntax at all or whether a standard package abstraction (like
   `task::spawn_map`) is simpler.
 - [ ] `pub opaque record` for user-defined hidden record representations; this
-  is not in the current v1 candidate. Revisit only after real package APIs need
+  is not in the current language. Revisit only after real package APIs need
   smart constructors while hiding ordinary Muga record fields. Keep this
   separate from runtime/compiler-backed `pub opaque type`.
 
 ## Documentation Hygiene
 
 - [ ] Keep this file as the roadmap and avoid adding another planning document.
-- [ ] Keep detailed language prose in `spec-v1.md` or split `spec/` files.
+- [ ] Keep the compact current language overview in `LANGUAGE.md` and detailed
+  prose in the split `spec/` files.
 - [ ] Keep example programs runnable under `samples/`; invalid or
-  not-yet-implemented source belongs under `conformance/v1/rejecting/` or
+  not-yet-implemented source belongs under `conformance/current/rejecting/` or
   `spec/snippets/`.
 - [ ] When implementation changes a public rule, update the closest spec and
   add a focused Rust test in the same change.
@@ -425,7 +427,7 @@ Move a parked item into active work only when all of these are true:
 
 ## Stability Rules
 
-- [ ] Keep the v1 source model small.
+- [ ] Keep the current source model small.
 - [ ] Prefer code, samples, conformance fixtures, and Rust tests over long
   design prose.
 - [ ] Do not add syntax only to reduce character count. Prefer explicit spelling
@@ -485,9 +487,9 @@ Muga shipped `0.5.0`, shipped structured task groups
 to establish representative benchmarks and real-program workloads, reduce
 duplicated standard-library and CLI surfaces, improve `Map` and aggregate
 representations, and make evidence-backed decisions on numeric scope, ranges,
-equality/hash, and whether task syntax is ready to stabilize in v1 or should
-remain experimental outside the v1 contract.
-`scripts/v1-release-gate.sh` remains the baseline release-quality command, but
-passing it does not by itself establish v1 readiness.
+equality/hash, and whether task syntax is ready to become stable or should
+remain experimental.
+`scripts/release-gate.sh` remains the baseline release-quality command, but
+passing it does not by itself establish `1.0.0` readiness.
 Channels, `select`, service IO, remote registries, broad collection systems,
 and native backend work stay deferred until those foundations justify them.

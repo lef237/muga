@@ -18,7 +18,7 @@ The package system should support the following goals:
 
 The draft introduces a distinction between:
 
-- script files, which are the current v1 file form
+- script files, which are the current standalone file form
 - package files, which are used for multi-file programs and libraries
 - modules, which are the encapsulation boundary inside a package
 
@@ -43,7 +43,7 @@ The module model is meant for:
 - hiding implementation details without creating many tiny packages
 - keeping package boundaries focused on import, build, and cache behavior
 
-In the current draft, a module is one `.muga` source file in package mode. Future manifest support may allow explicit multi-file modules, but v1 should start with file-as-module because it is simple and cheap to compile.
+In the current draft, a module is one `.muga` source file in package mode. Future manifest support may allow explicit multi-file modules, but the current language uses file-as-module because it is simple and cheap to compile.
 
 ## 3. Two File Modes
 
@@ -51,7 +51,7 @@ In the current draft, a module is one `.muga` source file in package mode. Futur
 
 A script file does not begin with `package`.
 
-It keeps the current v1 behavior:
+It keeps the current script behavior:
 
 - top-level statements are allowed
 - top-level bindings may execute
@@ -111,7 +111,7 @@ resources = "resources"
 
 The current hand-written manifest reader is permissive: unknown sections,
 unknown `[package]` fields, and some malformed lines may be ignored. That is an
-implementation limitation, not the intended stable behavior. Before v1,
+implementation limitation, not the intended stable behavior. Before the schema becomes stable,
 `muga.toml` must have a versioned, strict schema with source-aware diagnostics.
 It must reject unknown or duplicate semantic fields, malformed non-comment
 lines, and unsupported section shapes. A misspelled field such as `resoruces`
@@ -126,11 +126,11 @@ combination. The chosen mechanism must:
 - distinguish source-language compatibility from artifact and lockfile format
   versions
 - produce a clear diagnostic when the requested contract is unsupported
-- provide a documented migration path for intentional pre-v1 breaking changes
+- provide a documented migration path for intentional breaking changes during `0.x`
 - participate in package content identity and build cache keys
 
 Until this mechanism is implemented, `muga.toml` does not pin a source-language
-contract and pre-v1 projects must be upgraded together with the compiler.
+contract and affected projects must be upgraded together with the compiler.
 
 The `source` value selects the package source root. It defaults to `src`, must
 be a relative slash-separated path, must stay inside the manifest package root,
@@ -172,7 +172,7 @@ Muga separates compilation units from encapsulation units:
 
 - a package is the import, dependency, interface, and build-cache unit
 - a module is the local encapsulation unit
-- in v1 draft form, one package file is one module
+- in the current draft, one package file is one module
 
 This avoids the problem where every private implementation detail is visible everywhere in the package. Code can build small abstractions inside one file without splitting the project into many tiny directories.
 
@@ -193,7 +193,7 @@ Current implementation note:
 
 - the compiler currently implements top-level module-private, `pkg`, and `pub` visibility before flattening
 - imports expose only `pub` items
-- per-field record visibility is not part of the committed v1 package model
+- per-field record visibility is not part of the current package model
 - package-level flattening still exists for the compatibility AST returned by `check_path`; package-aware typed HIR now carries package item identity, is generated from unflattened module checks, and lowers through the existing HIR/bytecode VM path for default package execution
 
 Example:
@@ -305,7 +305,7 @@ http::serve
 auth_session::Token
 ```
 
-v1-like package rules:
+Current package rules:
 
 - wildcard imports are not part of the draft
 - selective imports are not part of the draft
@@ -423,7 +423,7 @@ Across packages:
 
 To support both minimal annotations and fast package compilation, package interfaces store **resolved public signatures**.
 
-For the current v1 candidate, public functions require explicit public
+In the current design, public functions require explicit public
 signatures in source. Public-signature inference may be reconsidered once the
 current artifact workflow and diagnostics are stable and real package usage
 shows that it is needed.
@@ -432,7 +432,7 @@ The longer-term policy is that users should not have to write every public signa
 
 The important boundary is:
 
-- authors targeting the current v1 candidate write explicit public function signatures
+- authors targeting the current design write explicit public function signatures
 - private package bodies may still use local inference when the type is unique
 - importers read cached package interfaces, not the full bodies of unchanged dependencies
 - package interfaces contain concrete resolved signatures
@@ -443,14 +443,14 @@ If public-signature inference is added later, the defining package may infer a p
 
 Every `pub fn` must have a public signature.
 
-In the current v1 candidate, that signature must be explicit enough for the compiler to know the full callable type before downstream package checking:
+In the current design, that signature must be explicit enough for the compiler to know the full callable type before downstream package checking:
 
 - public parameter types must be explicit
 - the public return type must be explicit
 - generic public functions must declare their type parameters explicitly
 
-Public-signature inference is not in the current v1 candidate. If real usage
-justifies adding it before or after v1, the signature may come from explicit
+Public-signature inference is not in the current design. If real usage
+justifies adding it later, the signature may come from explicit
 annotations, local inference inside the defining package, or a mix of both,
 and the generated package interface will still store the resolved signature.
 
@@ -473,7 +473,7 @@ age_next: User -> Int
 
 The generated package interface would store those resolved signatures.
 
-In v1, write the signatures explicitly:
+Currently, write the signatures explicitly:
 
 ```txt
 pub fn display_name(user: User): String {
@@ -507,9 +507,9 @@ These are invalid without more annotations because the exported signature is amb
 
 `record` fields already require explicit types, so `pub record` introduces no additional annotation burden there.
 
-In the committed v1 model, a `pub record` is transparent: its field names and field types are part of the public record shape. Importing packages can use record literals, field access, and `record.with(...)` for those public fields.
+In the current model, a `pub record` is transparent: its field names and field types are part of the public record shape. Importing packages can use record literals, field access, and `record.with(...)` for those public fields.
 
-`pub enum` exposes its enum name, type parameters, variant names, and payload types through the package interface. Variant constructors and patterns remain qualified as `alias::Enum::Variant`; unqualified variant imports are not part of v1.
+`pub enum` exposes its enum name, type parameters, variant names, and payload types through the package interface. Variant constructors and patterns remain qualified as `alias::Enum::Variant`; unqualified variant imports are not currently supported.
 
 If a representation should be hidden inside a module or package, keep the record itself non-public and expose functions that do not leak that non-public type across a wider visibility boundary.
 
@@ -531,7 +531,7 @@ cloneable, not sendable, not shareable, not structurally comparable, not
 serializable, not closeable, and no named close function.
 
 `pub opaque type` is not a general `type` declaration and is not a type alias.
-It should not be used merely to shorten signatures. In v1 it is mainly for
+It should not be used merely to shorten signatures. Currently it is mainly for
 compiler-provided, runtime-backed, native-backed, or external-backed values such
 as `std::fs::File` and `std::bytes::Bytes`, where no source-level record layout
 is available or promised. A user package may write the declaration, but without
@@ -540,7 +540,7 @@ that type in ordinary Muga source.
 
 For ordinary user-defined Muga data whose fields exist but should be hidden from
 importing packages, the more coherent future feature is `pub opaque record`.
-That feature is not implemented in v1.
+That feature is not implemented.
 
 The remaining opaque representation directions are:
 
@@ -581,7 +581,7 @@ For compiler purposes, `.mgi` is the public package interface. For application t
 
 Future generators may consume `.mgi` to produce API documentation, schema files, TypeScript clients, or service stubs. Those generators should not inspect private package bodies, depend on source file order, or infer behavior-conformance semantics from naming conventions.
 
-This is not a v1 requirement. Before implementing generators, the design must define:
+This is not a current requirement. Before implementing generators, the design must define:
 
 - stable external naming rules for packages, items, enum variants, and fields
 - supported type mappings for each target schema or client language
@@ -1126,7 +1126,7 @@ Multi-file operations such as a package build or app installation must also
 define their commit boundary and recovery behavior. Atomicity of one file must
 not be presented as transactionality of an entire artifact set. The current
 implementation still uses direct writes in several paths; crash-safe replacement
-and interruption tests are pre-v1 work.
+and interruption tests are current work.
 
 ### 17.12 Current Implementation Boundary
 
@@ -1169,8 +1169,7 @@ It currently:
 - includes loaded direct/transitive dependency interface hashes in `.mgc` check cache keys
 - writes `.mgc` check cache artifacts only after package-aware artifact checking succeeds
 - currently writes several lockfile, artifact, archive, bundle, and installation
-  files directly; crash-safe temporary-file replacement remains required before
-  v1
+  files directly; crash-safe temporary-file replacement remains active work
 - writes `.mgi`, `.mgb`, and `.mgc` artifacts through `muga build` to `.muga/build` under the nearest manifest root, or under the entry file's directory when no manifest is present, reporting each artifact as `written` or `reused`
 - writes or updates `muga.lock` next to `muga.toml` during manifest `muga build`, preserving the file when generated content is unchanged, refreshing well-formed stale local metadata, and rejecting malformed or unsupported existing lockfiles with `PK026`
 - computes a `sha256:<hex>` package content hash over `muga.toml`, sorted `.muga` source files under the manifest source root, and sorted files under the optional manifest resource root, rejecting symlinked source/resource roots or entries instead of following them
@@ -1195,7 +1194,7 @@ It currently:
 
 Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns package naming, source-root inference, and local path dependency roots. Artifact-backed checking, running, and custom-root artifact emission are explicit CLI workflows through `--artifact-root`, `--built`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. `muga build` is a fixed default-output convenience over the same artifact writer, and `--built` is a fixed default-input convenience over the same artifact-backed check/run paths; neither is manifest configuration. Project-level artifact-root config should be reconsidered after lockfiles and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.
 
-The current top-level artifact commands are also a pre-v1 CLI consolidation
+The current top-level artifact commands are also an active CLI consolidation
 target. `muga build` should remain the ordinary project workflow. Explicit
 interface, check-cache, and combined artifact emission should either move under
 one clearly advanced artifact namespace or be marked unstable; Muga should not

@@ -1,14 +1,14 @@
-# Muga Spec v1
+# Muga Language Specification
 
-This is the compact overview of the evolving v1 target. The split
+This is the compact overview of the current Muga language. The split
 specifications in [spec/](./spec) are the detailed references; this file exists
-to show the whole language shape without duplicating every rule. While Muga is
-in the `0.x` series, this contract may still change and must not be read as a
-claim that v1 has shipped.
+to show the whole language shape without duplicating every rule. During the
+`0.x` series, every part of this specification may grow, shrink, or change as
+small releases improve the language.
 
 ## Goals
 
-Muga v1 prioritizes:
+Muga prioritizes:
 
 - simple local reading
 - low syntactic overhead
@@ -18,23 +18,20 @@ Muga v1 prioritizes:
 
 The language is compiler-first. The current VM is a reference execution backend, not a separate semantics engine.
 
-## V1 Completion Boundary
+## Specification Status
 
-The grammar and behavior described here are the current v1 candidate, not a
-closed or already-complete surface. Pre-v1 experience may reveal that this
-candidate must grow, shrink, or change. Such changes must update the detailed
-specifications, diagnostics, samples, and conformance fixtures together.
+This is a living specification of what the current compiler accepts and what
+the current runtime means. It is not a frozen future feature boundary. Each
+language change must update the detailed specifications, diagnostics, samples,
+and current conformance fixtures together.
 
-Implementing this candidate and passing `scripts/v1-release-gate.sh` are
-necessary release-quality checks, but they are not sufficient to declare v1.
-Muga reaches v1 only when the broader maturity criteria in
-[ROADMAP.md](./ROADMAP.md) are satisfied: the language and standard packages
-cover sustained real programs; semantics and public formats are stable;
-compiler, runtime, tooling, diagnostics, documentation, portability, and
-performance are dependable; and the remaining work is predominantly
-compatible maintenance rather than foundational redesign.
+Passing `scripts/release-gate.sh` proves a release-quality baseline, not
+language maturity. Muga will use the `1.0.0` name only after continued small
+releases and sustained real programs show that foundational redesign is no
+longer needed. The independent readiness criteria live in
+[ROADMAP.md](./ROADMAP.md#10-readiness-criteria).
 
-The v1 grammar includes:
+The current grammar includes:
 
 - script files with top-level statements
 - package files with `package`, `import`, `pub`, `pkg`, and `as`
@@ -60,8 +57,8 @@ The following are not planned for ordinary Muga code:
 - `protocol`, `trait`, `interface`, or `typeclass` declarations for shared behavior
 - behavior-conformance systems, protocol bounds, trait bounds, typeclass solving, default implementations, blanket implementations, protocol objects, or conformance-based dot lookup
 
-The following are explicitly not v1 completion blockers and are not active
-implementation work. Reconsider them only after real Muga programs show that
+The following are not currently planned or active implementation work.
+Reconsider them only after real Muga programs show that
 the current explicit forms are hard to read, easy to misuse, or blocking an
 important workflow:
 
@@ -76,17 +73,17 @@ important workflow:
   (`group` / `spawn` / `std::task`): channels, `select`, `async`, or `await`
 - `String.len()`, substring/slice indexing, and richer parse error types until their semantics are explicitly chosen
 
-The following are active pre-v1 maturity decisions rather than accepted
-syntax or permanently parked ideas:
+The following are active maturity decisions rather than accepted syntax or
+permanently parked ideas:
 
-- whether a general-purpose v1 requires explicit `Float64`
+- whether the general-purpose language requires explicit `Float64`
 - allocation-free integer ranges and a small eager collection helper core
 - opt-in compiler-derived equality/hash without traits or overloaded dispatch
 - whether function values may be stored in records with an explicit non-dot
   invocation form
 - whether `group` / `spawn` demonstrate overlapping progress, cancellation,
-  capture safety, and cleanup strongly enough to stabilize in v1 or should
-  remain experimental outside the v1 contract
+  capture safety, and cleanup strongly enough to become stable or should
+  remain experimental
 - consolidation of duplicate filesystem, CLI, JSON, and artifact-command APIs
 - indexed `Map` lookup, shared/copy-on-write aggregate representations, and a
   repeatable benchmark contract before backend expansion
@@ -181,7 +178,7 @@ access fields, match on it, compare it structurally, or format it through
 current slice.
 
 `pub opaque type` is not Muga's general `type` declaration and is not a type
-alias. In v1 it is a narrow interface form for compiler/runtime/native/external
+alias. Currently it is a narrow interface form for compiler/runtime/native/external
 values such as `std::fs::File` and `std::bytes::Bytes`, or for package
 interfaces that deliberately do not commit to a source-level field layout.
 Ordinary user-defined data should use `record` or `enum`. If real packages need
@@ -264,9 +261,9 @@ fn birthday(user: User): User {
 older = user.birthday()
 ```
 
-`self` is only a conventional parameter name. v1 has no classes, inheritance, receiver overloading, or function-valued record fields.
+`self` is only a conventional parameter name. Muga has no classes, inheritance, receiver overloading, or function-valued record fields.
 
-Function-valued record storage is a pre-v1 re-evaluation item, not implemented
+Function-valued record storage is an active re-evaluation item, not implemented
 syntax. Any accepted design must keep field-value invocation distinct from dot
 calls and must not introduce methods or receiver dispatch.
 
@@ -302,7 +299,7 @@ match result {
 }
 ```
 
-`Option[T]` is the canonical optional spelling. `T?` is reserved as possible future shorthand, and any future `?.` syntax should be Option-only optional chaining. `Result[T, E]` is explicit; prefix `try expr` propagates `Result` errors, while postfix Result propagation `expr?` is not part of v1. If a future Result chain propagation form is added, it should use postfix keyword syntax `expr.try`; that is also outside v1.
+`Option[T]` is the canonical optional spelling. `T?` is reserved as possible future shorthand, and any future `?.` syntax should be Option-only optional chaining. `Result[T, E]` is explicit; prefix `try expr` propagates `Result` errors, while postfix Result propagation `expr?` is not currently supported. If a future Result chain propagation form is added, it should use postfix keyword syntax `expr.try`; that is also not currently supported.
 
 User-defined enum declarations are implemented with optional unconstrained type parameters, zero-payload and one-payload variants, qualified constructors/patterns, payload discard `_` inside one-payload variant patterns, and exhaustive `match`.
 
@@ -326,7 +323,7 @@ Package-mode visibility:
 - `pkg` items are visible to sibling files in the same package
 - `pub` items are importable from other packages
 
-Package interfaces and implementation artifacts are explicit v1 workflow artifacts:
+Package interfaces and implementation artifacts are explicit workflow artifacts:
 
 - `.mgi` stores public package interfaces
 - `.mgc` stores package check-cache proofs
@@ -340,7 +337,7 @@ Package interfaces and implementation artifacts are explicit v1 workflow artifac
 
 ### CLI Process Contract Target
 
-Before v1, every command must share a documented process-level contract in
+Before its process behavior becomes stable, every command must share a documented process-level contract in
 addition to its text and JSON payload schema. The contract must define:
 
 - stable exit-status classes for success, program/compiler/runtime failure,
@@ -427,7 +424,7 @@ Implemented:
 - `std::fs::write_bytes` and `std::fs::write_bytes_path` for current full-file
   binary writes over opaque `std::bytes::Bytes`; a minimal binary handle,
   Bytes builder, UTF-8/list conversion, slicing, concatenation, hex, and Base64
-  layer is promoted pre-v1 maturity work, while general streams, broad
+  layer is promoted current maturity work, while general streams, broad
   cryptography, and async IO remain deferred
 - `std::string` helper package with `string::concat_all` and `string::join` for pure `List[String]` concatenation and separator joins while keeping non-string conversion explicit
 - `std::fmt` helper package with `fmt::repeat`, `fmt::pad_left`, `fmt::pad_right`, `fmt::truncate_chars`, and `fmt::format_values` for pure formatting over explicit `String` values while language interpolation, localization, and builders remain deferred
@@ -452,7 +449,7 @@ Implemented:
 - `std::json` helper package for explicit `json::Value` parse/encode, integer-number conversion, value/object-field scalar/composite accessor/default/required helpers, scalar array projection helpers, direct scalar-array object-field helpers, typed-segment JSON path helpers, typed JSON path scalar projection helpers, typed JSON path collection projection helpers, and compiler-owned `json::decode_or[T](value, fallback)` / strict `json::decode[T](value)` schema decoding for `String`, `Int`, `Bool`, `Option[T]`, recursive `List[T]`, typed `Map[String, T]`, `Map[String, json::Value]`, concrete non-generic records over supported fields, and concrete non-generic enums over supported payloads, all returning `json::Error`
 - compiler-provided `std::test` scalar assertion helpers for `muga test`
 - `muga --help`, `muga -h`, `muga help`, and `muga help <command>` for command usage
-- `muga fmt [--check]` for deterministic formatting of v1 source files while preserving line comments
+- `muga fmt [--check]` for deterministic formatting of current source files while preserving line comments
 - `muga doc <entry>` for Markdown docs generated from public package interface records, enums, opaque types, functions, and item-level public source comments
 - `muga syntax --format json <entry>` for faster editor feedback from lexing and parsing one source file
 - entry source context in CLI JSON `diagnostics[].context`, plus entry package context for package check diagnostics, artifact-root context for artifact-backed check diagnostics, and concrete artifact-file context for `.mgi`, `.mgc`, and `.mgb` diagnostics when available
@@ -486,19 +483,19 @@ path-aware `json::ErrorKind::Validation` values through `std::json`; through
 `std::config`, the same decode failure is reported as `config::ErrorKind::Decode`
 with the validation message and offset.
 Generic enum decoding, record-level or cross-field validation, user-defined
-validator functions, and TOML remain outside the v1 JSON/config decoder surface.
+validator functions, and TOML remain outside the current JSON/config decoder surface.
 
 Not implemented:
 
 `std::process` and structured task groups (`group` / `spawn` / `std::task`)
-are implemented. Implemented task syntax still must pass the roadmap's v1
-admission gate. The remaining items in this list are parked work unless the
+are implemented. Implemented task syntax still must pass the roadmap's
+stability gate. The remaining items in this list are parked work unless the
 roadmap explicitly promotes a decision or implementation slice.
 
 - public-signature inference for `pub fn`
 - URL/Git/registry dependency forms, remote package fetching, publishing/install workflows, and full published-package lockfile enforcement
 - project-mode artifact-root configuration and full incremental package artifact reuse
-- opt-in derived equality/hash is an active pre-v1 decision; map literals,
+- opt-in derived equality/hash is an active decision; map literals,
   `Set[T]`, arbitrary `Map` key types, and broad collection systems remain
   parked until that decision provides a sound foundation
 - broader JSON schema decoding targets such as generic records, generic enums,

@@ -1,7 +1,7 @@
-# Records and Dot Expressions Specification v1
+# Records and Dot Expressions Specification
 
-Status: evolving v1 candidate while Muga is in the `0.x` series; see
-[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+Status: current language specification; see
+[LANGUAGE.md](../LANGUAGE.md#specification-status).
 
 This document defines nominal records, record literals, field access, record update, chained dot calls, and their interaction with receiver-style functions.
 
@@ -9,13 +9,13 @@ This document defines nominal records, record literals, field access, record upd
 
 Muga remains function-centered.
 
-v1 explicitly does not introduce:
+Muga explicitly does not introduce:
 
 - classes
 - member ownership semantics
 - method dispatch as a separate semantic category
 
-Instead, v1 uses:
+Instead, Muga uses:
 
 - records as concrete named data containers
 - ordinary functions as the place where operations are defined
@@ -32,18 +32,18 @@ record User {
 }
 ```
 
-v1 rules:
+Rules:
 
 - record declarations are top-level only
 - a record introduces a nominal type name
 - field names must be unique within the record
 - field order is declaration order, but field access is by name
-- record fields must not have function type in v1
-- v1 does not include per-field visibility modifiers
+- record fields must not have function type
+- Muga does not include per-field visibility modifiers
 - record visibility is controlled at the top-level record declaration
 - a visible record is transparent: its declared fields are nameable wherever the record shape is visible
 
-Per-field visibility is not a committed v1 feature. It is also not the preferred first answer for public type names with hidden representations; future `opaque record` or `opaque type` designs should be considered first.
+Per-field visibility is not currently planned. It is also not the preferred first answer for public type names with hidden representations; future `opaque record` or `opaque type` designs should be considered first.
 
 Example:
 
@@ -62,7 +62,7 @@ pub fn display_name(user: User): String {
 
 Here `User` is public and its fields are part of the public record shape. Other packages can name `User`, construct it with a record literal, read its fields, and use `record.with(...)` on those fields.
 
-If a representation should be hidden inside a module or package, the v1 recommendation is to keep the record non-public and expose functions that do not leak that non-public type across a wider visibility boundary. Passing a hidden representation across package boundaries should be handled by a future opaque representation feature, not by making transparent records more complicated in v1.
+If a representation should be hidden inside a module or package, the current recommendation is to keep the record non-public and expose functions that do not leak that non-public type across a wider visibility boundary. Passing a hidden representation across package boundaries should be handled by a future opaque representation feature, not by making transparent records more complicated.
 
 ## 3. Record Literals
 
@@ -75,7 +75,7 @@ User {
 }
 ```
 
-v1 rules:
+Rules:
 
 - the type name must resolve to a declared record
 - every declared field must be provided exactly once
@@ -83,7 +83,7 @@ v1 rules:
 - field initializers are checked against the declared field types
 - the record type and record shape must be visible at the literal site
 
-A public record is transparent in v1, so importing packages may construct it with a record literal when the public record type is visible.
+A public record is transparent, so importing packages may construct it with a record literal when the public record type is visible.
 
 ## 4. Field Access
 
@@ -103,9 +103,9 @@ point.x
 config.port
 ```
 
-In v1, field access is read-only syntax. Assignment through field access such as `user.name = "Ada"` is not part of v1.
+Currently, field access is read-only syntax. Assignment through field access such as `user.name = "Ada"` is not supported.
 
-Field access is allowed when the static type is a visible record type whose shape is available in the current context. v1 has no per-field visibility restriction beyond record-level visibility.
+Field access is allowed when the static type is a visible record type whose shape is available in the current context. Muga has no per-field visibility restriction beyond record-level visibility.
 
 ## 5. Record Update
 
@@ -115,7 +115,7 @@ A record update has the form:
 expr.with(field1: value1, field2: value2)
 ```
 
-v1 rules:
+Rules:
 
 - the base expression must have a record type
 - the result has the same record type as the base expression
@@ -178,11 +178,11 @@ is equivalent to:
 users::birthday(user).age
 ```
 
-Because v1 has no overloading, there is at most one visible ordinary function named `name`.
+Because Muga has no overloading, there is at most one visible ordinary function named `name`.
 
-## 7. No Function-Valued Fields in v1
+## 7. No Function-Valued Fields
 
-Record fields may not have function type in v1.
+Record fields may not have function type.
 
 Therefore the following is invalid:
 
@@ -196,11 +196,11 @@ This keeps the meaning of dot expressions stable:
 
 - `expr.name` always means field access
 - `expr.name(...)` and `expr.alias::name(...)` always mean chained call
-- function-valued field call is not part of the v1 language model
+- function-valued field call is not part of the current language model
 
 This restriction is separate from higher-order functions.
 
-Muga v1 still allows function values in ordinary bindings and parameter positions. The prohibition applies only to record fields.
+Muga still allows function values in ordinary bindings and parameter positions. The prohibition applies only to record fields.
 
 ## 8. Receiver Parameters
 
@@ -214,7 +214,7 @@ fn display_name(self: User): String {
 }
 ```
 
-v1 rules:
+Rules:
 
 - the receiver parameter must be first
 - the receiver parameter must have an explicit record-type annotation
@@ -234,15 +234,15 @@ and chained-call syntax may desugar to the same call:
 user.display_name()
 ```
 
-## 9. v1 Limitation: No Receiver Overloading
+## 9. Current Limitation: No Receiver Overloading
 
-The current v1 model keeps one ordinary function namespace and does not add overloading by receiver type.
+The current model keeps one ordinary function namespace and does not add overloading by receiver type.
 
 Therefore, the following is invalid in the same scope:
 
 ```txt
 fn len(self: List): Int { ... }
-fn len(self: String): Int { ... }   // duplicate binding in v1
+fn len(self: String): Int { ... }   // duplicate binding
 ```
 
 This is the main short-term limitation of the receiver-style design under the current no-overloading policy.
@@ -318,7 +318,7 @@ apply(10, fn(n: Int): Int {
 
 ## 13. Generic Records
 
-Generic record declarations are part of the v1 target.
+Generic record declarations are part of the current language.
 
 ```txt
 record Box[T] {
@@ -334,12 +334,12 @@ box: Box[Int] = Box {
 }
 ```
 
-Record literals use the record name itself. For generic records, type arguments are inferred from field values or from an expected type such as a binding annotation, parameter type, return type, or surrounding expression. When an expected generic record type is known, the instantiated field types are also available to contextual field values such as `[]`, `Map.empty()`, and `Option::None`. Explicit record-literal type arguments such as `Box[Int] { ... }` are not part of the v1 surface syntax.
+Record literals use the record name itself. For generic records, type arguments are inferred from field values or from an expected type such as a binding annotation, parameter type, return type, or surrounding expression. When an expected generic record type is known, the instantiated field types are also available to contextual field values such as `[]`, `Map.empty()`, and `Option::None`. Explicit record-literal type arguments such as `Box[Int] { ... }` are not part of the current surface syntax.
 
 Generic record fields still follow the same record rules:
 
-- fields may not have function type in v1
-- v1 has no per-field visibility modifiers
+- fields may not have function type
+- Muga has no per-field visibility modifiers
 - field access remains `expr.name`
 - record update remains `expr.with(...)`
 
@@ -445,7 +445,7 @@ conformance, conformance-based dispatch, or overloaded method lookup.
 
 ### 14.3 Function-Valued Field Re-evaluation
 
-The current v1 candidate prohibits function-valued fields to keep
+The current design prohibits function-valued fields to keep
 `expr.name(...)` reserved for chained ordinary-function calls. Before the
 surface is frozen, real callback, strategy, parser, validator, and event-handler
 APIs should test whether storing functions in records is nevertheless needed.

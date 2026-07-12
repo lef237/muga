@@ -2464,7 +2464,7 @@ impl TypeChecker {
             if matches!(self.resolve_type(&field_ty), Type::Function(_)) {
                 self.diagnostics.push(Diagnostic::new(
                     "E011",
-                    "record fields may not have function type in v1",
+                    "record fields may not have function type",
                     field.span,
                 ));
             }
@@ -7614,7 +7614,7 @@ impl TypeChecker {
                             self.diagnostics.push(
                                 Diagnostic::new(
                                     "E007",
-                                    "mutually recursive functions require explicit signatures in v1",
+                                    "mutually recursive functions require explicit signatures",
                                     func.span,
                                 )
                                 .with_suggestion(

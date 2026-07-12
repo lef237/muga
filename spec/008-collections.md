@@ -2,7 +2,7 @@
 
 Status: design draft with implemented first slices. The Rust compiler implements local binding annotations, `List[T]` type annotations, list literals, empty-list expected-type checking, typed HIR/package-interface representation, bytecode lowering, VM list values, `len` / `is_empty` / `push` / `get` / `set`, direct list indexing, `for item in list` iteration over `List[T]`, narrow `std::list` helpers, `Option[T]`, `Option::Some`, `Option::None`, exhaustive Option `match`, the first `Map[K, V]` slice, and narrow `std::map` key/value helpers.
 
-This draft defines the recommended direction for Muga collections on top of the v1 generics MVP.
+This draft defines the recommended direction for Muga collections on top of the current generics MVP.
 
 ## 1. Design Goals
 
@@ -32,7 +32,7 @@ The recommended order is:
 9. narrow helper packages that do not require iterator abstractions or structural equality (implemented for `std::list` and `std::map`)
 10. later collection extensions such as `Set[T]`, fixed arrays, and map
     literals; the narrow Bytes builder and codec foundation is tracked
-    separately as pre-v1 standard-library work
+    separately as active standard-library work
 
 This order keeps the first implementation small.
 
@@ -77,7 +77,7 @@ fn id[T](value: T): T {
 }
 ```
 
-Generics are part of the v1 target. The first collection implementation may still be phased so that generic type expressions and builtin generic collection types land before user-defined generic records and functions.
+Generics are supported by the current language. The first collection implementation may still be phased so that generic type expressions and builtin generic collection types land before user-defined generic records and functions.
 
 ## 5. List
 
@@ -167,7 +167,7 @@ total = kept.list::fold(0, add)
 
 `list::map` and `list::filter` return new lists and preserve item order. `list::fold` processes items left-to-right. `list::any` and `list::all` return `Bool` and may stop once the result is known. These helpers are ordinary package functions; they do not introduce iterator abstractions or lazy views.
 
-`List.contains` remains deferred because the v1 equality policy is scalar-only and does not define generic structural equality for list elements.
+`List.contains` remains deferred because the current equality policy is scalar-only and does not define generic structural equality for list elements.
 
 ### 5.1 Collection And Range Maturity Target
 
@@ -176,7 +176,7 @@ The next eager helpers should be chosen from real programs, with `find`,
 comparator-based `sort_by` as the first candidates. Comparator parameters keep
 ordering explicit without adding traits or overloaded comparison.
 
-Muga also needs allocation-free integer range iteration before v1 if ordinary
+Muga also needs allocation-free integer range iteration if ordinary
 numeric loops are in scope. Prefer a small builtin `Range` value constructed by
 `range(start, end)` and accepted directly by `for` before adding range
 punctuation or a general iterator abstraction. A range must not allocate a
@@ -399,7 +399,7 @@ Initial key types should be limited to simple built-in comparable/hashable types
 - `Int`
 - `Bool`
 
-Arbitrary record keys should be deferred. The v1 equality policy is scalar-only and does not define structural equality or hashing for records, enums, lists, maps, `Option`, or `Result`.
+Arbitrary record keys should be deferred. The current equality policy is scalar-only and does not define structural equality or hashing for records, enums, lists, maps, `Option`, or `Result`.
 
 Implemented initial operations:
 
@@ -444,7 +444,7 @@ pub record Entry[K, V] {
 ```
 
 The VM currently preserves insertion order with a linear entry vector. Before
-v1, it should add a key-to-entry index or another measured representation so
+the representation becomes stable, it should add a key-to-entry index or another measured representation so
 normal lookup and update do not remain linear while deterministic iteration is
 preserved.
 

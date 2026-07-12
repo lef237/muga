@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const CONFORMANCE_ROOT: &str = "conformance/v1";
+const CONFORMANCE_ROOT: &str = "conformance/current";
 
 #[test]
 fn valid_conformance_programs_run() {

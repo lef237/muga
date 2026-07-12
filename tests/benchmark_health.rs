@@ -35,7 +35,7 @@ fn compiler_stage_health_check_reports_elapsed_times() {
 fn package_artifact_reuse_health_check_reports_elapsed_times() {
     let workspace = benchmark_temp_root("package-artifact-reuse");
     copy_dir(
-        Path::new("conformance/v1/package-artifacts/basic"),
+        Path::new("conformance/current/package-artifacts/basic"),
         &workspace,
     )
     .unwrap_or_else(|error| {

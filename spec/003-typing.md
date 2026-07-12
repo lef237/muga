@@ -1,9 +1,9 @@
-# Typing Specification v1
+# Typing Specification
 
-Status: evolving v1 candidate while Muga is in the `0.x` series; see
-[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+Status: current language specification; see
+[LANGUAGE.md](../LANGUAGE.md#specification-status).
 
-This document defines the v1 typing policy, with emphasis on inference-first ergonomics and the limited cases where annotations are mandatory.
+This document defines the current typing policy, with emphasis on inference-first ergonomics and the limited cases where annotations are mandatory.
 
 ## 1. Typing Policy
 
@@ -15,14 +15,14 @@ The language prefers omission of type annotations.
 
 ## 2. Built-in Types and Source Type Expressions
 
-The minimal v1 built-in types are:
+The minimal built-in types are:
 
 - `Int`
 - `Bool`
 - `String`
 - `Unit`
 
-In addition, v1 introduces:
+In addition, Muga provides:
 
 - user-defined nominal record types introduced by `record`
 - source-level function types written with `->`
@@ -58,7 +58,7 @@ Examples:
 
 `Unit` has exactly one source value, written `()`. It is the preferred success value for effect-only fallible APIs such as future file writes, closes, and directory operations: `Result[Unit, E]`.
 
-The v1 target includes a restricted generics MVP.
+The language includes a restricted generics MVP.
 
 Examples:
 
@@ -76,7 +76,7 @@ The current Rust implementation supports generic type expressions for compiler-k
 
 ## 3. Prelude Built-ins
 
-The v1 prelude currently provides:
+The prelude currently provides:
 
 - `print`
 - `println`
@@ -564,7 +564,7 @@ pub fn option_bool(args: List[String], name: String): Result[Option[Bool], Strin
 pub fn option_bool_or(args: List[String], name: String, default_value: Bool): Result[Bool, String]
 ```
 
-`list::map`, `list::filter`, and `map::keys` / `map::values` allocate new lists at the source level. `list::map`, `list::filter`, and `list::fold` process items in list order. `list::any` and `list::all` return `Bool` and may stop once the result is known. `map::keys` and `map::values` return lists in the map's deterministic entry order; replacing an existing key does not move that key. `List.contains` remains deferred while equality is scalar-only. `map::entries` is promoted pre-v1 work once the public `map::Entry[K, V]` record shape in [008-collections.md](./008-collections.md) is validated; it does not require structural equality.
+`list::map`, `list::filter`, and `map::keys` / `map::values` allocate new lists at the source level. `list::map`, `list::filter`, and `list::fold` process items in list order. `list::any` and `list::all` return `Bool` and may stop once the result is known. `map::keys` and `map::values` return lists in the map's deterministic entry order; replacing an existing key does not move that key. `List.contains` remains deferred while equality is scalar-only. `map::entries` is active work once the public `map::Entry[K, V]` record shape in [008-collections.md](./008-collections.md) is validated; it does not require structural equality.
 
 `cli::has_flag(args, "verbose")` matches `--verbose`; `cli::has_short_flag(args, "v")` matches `-v`; `cli::help_requested(args)` matches `--help` and `-h`; `cli::option(args, "output")` matches `--output value` and `--output=value`; `cli::option_values(args, "tag")` collects repeated `--tag value` and `--tag=value` occurrences in encounter order. `--` stops flag and option parsing and makes later values positional. Before `--`, `cli::positional` counts values that do not start with `--`. A separate `--name` option with no non-option following value is skipped by the lookup helpers. The schema helpers are lowered by the compiler for supported concrete record and enum targets, including command enums, wrapper records, value sources, validation metadata, generated usage/help text, and recoverable `cli::Error` values. Global parser state and shell integration remain outside the source language.
 
@@ -573,7 +573,7 @@ pub fn option_bool_or(args: List[String], name: String, default_value: Bool): Re
 ### 4.1 Standard-Library Surface Consolidation Target
 
 The implemented package slices contain transitional overlap that should not be
-frozen accidentally. Before v1:
+frozen accidentally. Before these APIs become stable:
 
 - filesystem operations should use `path::Path` as their one canonical path
   input; String-path twins and `_path` suffixes should be removed unless real
@@ -593,7 +593,7 @@ frozen accidentally. Before v1:
 
 Removal or renaming requires sample, template, completion, generated-schema,
 artifact, and migration coverage. Keeping compatibility aliases throughout the
-entire `0.x` series is not required, but v1 must not expose two preferred
+entire `0.x` series is not required, but the stable language must not expose two preferred
 spellings for the same operation.
 
 Because `print`, `println`, `len`, and `is_empty` accept several concrete types, none of them by itself makes an unconstrained parameter uniquely inferable.
@@ -616,11 +616,11 @@ fn show(x) {
 }
 ```
 
-still requires annotation in v1.
+still requires an annotation.
 
 ## 5. Higher-Order Functions
 
-v1 supports higher-order functions.
+Muga supports higher-order functions.
 
 Allowed in principle:
 
@@ -659,7 +659,7 @@ fn offset(x: Int, f) {
 }
 ```
 
-By contrast, this remains ambiguous in v1:
+By contrast, this remains ambiguous:
 
 ```txt
 fn apply(x, f) {
@@ -667,7 +667,7 @@ fn apply(x, f) {
 }
 ```
 
-This also remains ambiguous in v1:
+This also remains ambiguous:
 
 ```txt
 fn show(x: Int, f) {
@@ -712,7 +712,7 @@ has type `User` if and only if:
 - every declared field is provided exactly once
 - no extra fields are present
 - each field initializer has the declared field type
-- every record field type must be a non-function type in v1
+- every record field type must be a non-function type
 
 ## 7. Field Access and Chained Call Typing
 
@@ -739,7 +739,7 @@ Then:
 2. otherwise, if the corresponding ordinary call is valid, the chained call is typed as that UFCS-style desugaring
 3. otherwise, the expression is a type error
 
-Because record fields may not have function type in v1, `expr.name(...)` and `expr.alias::name(...)` never mean a call through a function-valued field.
+Because record fields may not have function type, `expr.name(...)` and `expr.alias::name(...)` never mean a call through a function-valued field.
 
 ## 8. Record Update Typing
 
@@ -761,7 +761,7 @@ Unspecified fields are preserved from the base value.
 
 The update is non-destructive. The result is a new record value rather than a mutation of the original record.
 
-`expr.with(...)` is not typed as an ordinary chained call in v1.
+`expr.with(...)` is not typed as an ordinary chained call.
 
 ## 9. Operator Typing Rules
 
@@ -778,15 +778,15 @@ String concatenation uses explicit `String.concat(other)`. The `+` operator rema
 
 ### 9.1 Equality Policy
 
-The v1 equality policy is intentionally scalar-only:
+The current equality policy is intentionally scalar-only:
 
 - `Int == Int` / `Int != Int`
 - `Bool == Bool` / `Bool != Bool`
 - `String == String` / `String != String`
 
-Both operands must have the same supported scalar type. v1 does not define implicit conversions, cross-type equality, pointer/reference identity, or dynamic equality.
+Both operands must have the same supported scalar type. Muga does not define implicit conversions, cross-type equality, pointer/reference identity, or dynamic equality.
 
-Structural equality is not part of v1. `==` and `!=` are rejected for records, user-defined enums, `Option[T]`, `Result[T, E]`, `List[T]`, `Map[K, V]`, `Unit`, functions, and builtins. Compare scalar fields or payloads explicitly with `match`, field access, and scalar helpers. The `std::test` package follows the same policy by exposing only scalar equality assertions.
+Structural equality is not currently supported. `==` and `!=` are rejected for records, user-defined enums, `Option[T]`, `Result[T, E]`, `List[T]`, `Map[K, V]`, `Unit`, functions, and builtins. Compare scalar fields or payloads explicitly with `match`, field access, and scalar helpers. The `std::test` package follows the same policy by exposing only scalar equality assertions.
 
 `List.contains`, structural `assert_eq`, `Set[T]`, arbitrary `Map` key types,
 and any future derived equality/hash support must not be added merely by relying
@@ -798,7 +798,7 @@ capabilities.
 
 ### 9.2 Derived Equality And Hashing Decision
 
-Before v1, Muga should evaluate opt-in compiler-derived equality and hashing as
+Muga should evaluate opt-in compiler-derived equality and hashing as
 a closed capability, not as a trait, protocol, overloaded operator, or dynamic
 dispatch system. If accepted, derivation must be recorded in package
 interfaces, recurse only through supported payloads, reject functions,
@@ -810,7 +810,7 @@ Until that design is accepted, the scalar-only rules above remain normative.
 
 ## 10. Inference Sources
 
-v1 inference may use:
+Current inference may use:
 
 - literal types
 - operator constraints
@@ -819,7 +819,7 @@ v1 inference may use:
 - explicit annotations already present in the same declaration
 - explicit function-type annotations on parameters
 
-v1 does not use call sites in other functions or modules as an inference source.
+Muga does not use call sites in other functions or modules as an inference source.
 
 In future module or package boundaries, explicit function-type annotations are expected to remain the preferred interface style even when a local implementation might be inferable.
 
@@ -836,7 +836,7 @@ fn inc(x) {
 }
 ```
 
-If `+` here is the integer addition operator in v1, `x` is inferred as `Int`.
+Because `+` is defined here only as integer addition, `x` is inferred as `Int`.
 
 ## 11. Local Bindings
 
@@ -860,7 +860,7 @@ total = total + 1
 
 `total` has type `Int`.
 
-Mutable updates must preserve the original type exactly. v1 does not define implicit conversions or subtyping.
+Mutable updates must preserve the original type exactly. Muga does not define implicit conversions or subtyping.
 
 Local bindings may also hold function values.
 
@@ -928,7 +928,7 @@ fn double(x) {
 }
 ```
 
-If `*` is defined only for `Int` in v1, `x` is inferred as `Int`.
+Because `*` is defined only for `Int`, `x` is inferred as `Int`.
 
 Inference fails when a parameter remains unconstrained.
 
@@ -964,7 +964,7 @@ If the body does not provide enough information to infer a unique return type, a
 
 ## 15. Inference Boundary
 
-v1 intentionally uses local-only inference.
+Muga intentionally uses local-only inference.
 
 Allowed:
 
@@ -1010,7 +1010,7 @@ Annotations are required in the following cases:
 5. a receiver parameter must have an explicit type annotation
 6. a higher-order parameter shape is not uniquely inferable
 
-For v1, an explicit function signature means:
+An explicit function signature means:
 
 - at least one parameter or the return type is annotated for direct recursion
 - every function in a mutually recursive group has enough annotations to determine its full callable type before body checking
@@ -1062,7 +1062,7 @@ fn fact(n) {
 
 Mutually recursive functions require explicit signatures.
 
-In v1, this means each function in the recursive group must carry enough annotations for its callable type to be known before any body in the group is checked.
+Currently, this means each function in the recursive group must carry enough annotations for its callable type to be known before any body in the group is checked.
 
 Valid:
 

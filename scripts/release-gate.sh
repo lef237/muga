@@ -2,7 +2,7 @@
 set -euo pipefail
 
 run_publish_dry_run=0
-gate_tmp="${HOME}/tmp/muga-v1-release-gate.$$"
+gate_tmp="${HOME}/tmp/muga-release-gate.$$"
 
 for arg in "$@"; do
   case "$arg" in
@@ -11,7 +11,7 @@ for arg in "$@"; do
       ;;
     *)
       echo "unknown argument: $arg" >&2
-      echo "usage: scripts/v1-release-gate.sh [--with-publish-dry-run]" >&2
+      echo "usage: scripts/release-gate.sh [--with-publish-dry-run]" >&2
       exit 2
       ;;
   esac

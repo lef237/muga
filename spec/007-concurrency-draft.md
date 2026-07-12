@@ -329,10 +329,10 @@ their results as a `List[U]`, in input order. See
   before it returns, which is the hook a future parallel runtime needs; a
   plain `list::map` makes no such promise and must stay sequential.
 
-### 5.9 V1 Admission Gate
+### 5.9 Stability Gate
 
 Phase 1 syntax is implemented, but implementation alone does not guarantee it
-belongs in the stable v1 surface. Before stabilization, Muga must validate the
+belongs in the stable language surface. Before stabilization, Muga must validate the
 same contract with at least one runtime that provides overlapping progress for
 suspended or blocking tasks, actual parallel execution, or both. That runtime
 must implement real sibling cancellation and failure propagation, preserve the
@@ -341,10 +341,10 @@ when a group exits. CPU parallel speedup is not an admission requirement;
 structured concurrency may earn its value through IO overlap, lifetime control,
 and cancellation.
 
-If that contract is not ready for v1, the implemented syntax may remain
-available as an explicitly experimental pre-v1 feature, but `group`, `spawn`,
+If that contract is not ready to stabilize, the implemented syntax may remain
+available as an explicitly experimental feature, but `group`, `spawn`,
 `join`, `spawn_map`, and the internal `Task` contract should be deferred from
-the stable v1 contract. Deferral does not require deleting the implementation.
+the stable language contract. Deferral does not require deleting the implementation.
 Channels, `select`, and a stable service-IO surface must wait for this gate;
 focused IO prototypes may be used to test suspension and cancellation.
 

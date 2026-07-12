@@ -1282,7 +1282,7 @@ fn cli_explain_reports_catalog_entry_on_stdout() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("conformance/v1/rejecting/name-resolution/immutable_update.muga"),
+        stdout.contains("conformance/current/rejecting/name-resolution/immutable_update.muga"),
         "{stdout}"
     );
 }
@@ -1505,7 +1505,7 @@ fn cli_check_json_reports_diagnostic_contract_on_stdout() {
     let output = muga_command()
         .arg("check")
         .arg("--format=json")
-        .arg("conformance/v1/rejecting/name-resolution/immutable_update.muga")
+        .arg("conformance/current/rejecting/name-resolution/immutable_update.muga")
         .output()
         .expect("muga command should run");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1514,7 +1514,7 @@ fn cli_check_json_reports_diagnostic_contract_on_stdout() {
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
     assert!(
         stdout.starts_with(
-            "{\"schemaVersion\":1,\"command\":\"check\",\"entry\":{\"path\":\"conformance/v1/rejecting/name-resolution/immutable_update.muga\",\"uri\":\"file://"
+            "{\"schemaVersion\":1,\"command\":\"check\",\"entry\":{\"path\":\"conformance/current/rejecting/name-resolution/immutable_update.muga\",\"uri\":\"file://"
         ),
         "{stdout}"
     );
@@ -1532,7 +1532,7 @@ fn cli_check_json_reports_diagnostic_contract_on_stdout() {
     assert!(stdout.contains("\"suggestions\":["), "{stdout}");
     assert!(
         stdout.contains(
-            "\"context\":[{\"kind\":\"source\",\"role\":\"entry\",\"path\":\"conformance/v1/rejecting/name-resolution/immutable_update.muga\",\"uri\":\"file://"
+            "\"context\":[{\"kind\":\"source\",\"role\":\"entry\",\"path\":\"conformance/current/rejecting/name-resolution/immutable_update.muga\",\"uri\":\"file://"
         ),
         "{stdout}"
     );
@@ -5407,9 +5407,9 @@ if total==3{total}else{0}
 fn muga_fmt_outputs_parseable_idempotent_source_for_repository_samples() {
     let root = temp_package_root("fmt-repository-samples");
     let samples_root = root.join("samples");
-    let conformance_root = root.join("conformance/v1");
+    let conformance_root = root.join("conformance/current");
     copy_repository_fixture_tree(Path::new("samples"), &samples_root);
-    copy_repository_fixture_tree(Path::new("conformance/v1"), &conformance_root);
+    copy_repository_fixture_tree(Path::new("conformance/current"), &conformance_root);
 
     let paths = recursive_muga_paths(&samples_root)
         .into_iter()
@@ -25683,7 +25683,7 @@ fn main(): Bool {
 }
 
 #[test]
-fn structural_equality_is_rejected_by_v1_policy() {
+fn structural_equality_is_rejected_by_current_policy() {
     let source = r#"
 record Point {
   x: Int

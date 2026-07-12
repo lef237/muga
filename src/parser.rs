@@ -1218,7 +1218,7 @@ impl Parser {
             if matches!(self.peek_kind(), TokenKind::Comma) {
                 return Err(Diagnostic::new(
                     "P018",
-                    "enum variants support at most one payload type in v1",
+                    "enum variants support at most one payload type",
                     self.current_span(),
                 ));
             }

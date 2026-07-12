@@ -4,28 +4,34 @@ Muga is published to crates.io as `muga`.
 
 ## Choosing the Next Version
 
-Follow semantic versioning (`MAJOR.MINOR.PATCH`):
+Muga version numbers use `X.Y.Z`. During active `0.x` development, `Z` is the
+normal release counter:
 
-Muga uses the following project-specific policy while it is still pre-v1:
-
-| Project phase | Field to bump | Example |
+| Release decision | Field to bump | Example |
 |---|---|---|
-| Any pre-v1 release, including features and breaking changes | PATCH | `0.6.0` → `0.6.1` |
-| v1 release candidates, after the v1 entry criteria are met | prerelease | `1.0.0-rc.1` → `1.0.0-rc.2` |
-| First mature, long-lived compatibility release | MAJOR | `1.0.0-rc.N` → `1.0.0` |
-| Compatible maintenance after v1 | PATCH | `1.0.0` → `1.0.1` |
+| Normal small release, including a feature, fix, redesign, or removal | PATCH (`Z`) | `0.6.0` → `0.6.1` |
+| Maintainer chooses to mark a broader development generation | MINOR (`Y`) | `0.6.23` → `0.7.0` |
+| First mature, long-lived compatibility release | MAJOR (`X`) | `1.0.0-rc.N` → `1.0.0` |
 
-Before `1.0.0`, increment only the patch component for each release. A pre-v1
-feature or breaking change therefore moves `0.6.0` to `0.6.1`, not to `0.7.0`
-or `1.0.0`. The `0.x` version communicates that the language, standard
-packages, tools, and artifact contracts may still change; every such change
-must still be documented and tested.
+Increment `Z` by default. There is no automatic change category, threshold, or
+release count that increments `Y`; that decision belongs to the maintainer.
+Changing `Y` within `0.x` does not imply readiness for `1.0.0`.
 
-Do not infer v1 readiness from the amount of implemented functionality, a
-completed checklist, or a passing release gate alone. Reserve `1.0.0-rc.N`
-and `1.0.0` until the maturity criteria in [ROADMAP.md](./ROADMAP.md) are met
-and the project is ready to maintain the resulting language and ecosystem with
-minimal redesign after v1.
+Numeric components are not limited to one or two digits, so the sequence does
+not run out: `0.6.99`, `0.6.100`, and later values are valid. In practice the
+available range is vastly larger than any plausible number of releases.
+
+The `0.x` version communicates that the language, standard packages, tools,
+and artifact contracts may still change. Every change must still be documented
+and tested. Reserve `1.0.0-rc.N` and `1.0.0` for the point when continued small
+releases show that foundational redesign is no longer needed and the readiness
+criteria in [ROADMAP.md](./ROADMAP.md#10-readiness-criteria) are met. A completed
+feature checklist or passing release gate alone does not establish readiness.
+
+After `1.0.0`, use semantic-versioning meaning: PATCH for compatible fixes,
+MINOR only for compatible additions the project intentionally chooses to make,
+and MAJOR for a breaking compatibility change. The goal is to keep such
+post-1.0 changes uncommon, not to forbid maintenance or compatible improvement.
 
 The current version is in the `version` field of `Cargo.toml`.
 
@@ -33,22 +39,21 @@ The current version is in the `version` field of `Cargo.toml`.
 
 ### 1. Run pre-release checks
 
-When preparing any release, run the offline release-quality gate. For v1
-release candidates and later, also confirm the scope against
-[spec-v1.md](./spec-v1.md) and the v1 maturity criteria in
-[ROADMAP.md](./ROADMAP.md).
+When preparing any release, run the offline release-quality gate and confirm
+that user-visible behavior agrees with [LANGUAGE.md](./LANGUAGE.md), the topic
+specifications, and [ROADMAP.md](./ROADMAP.md).
 
 ```bash
-scripts/v1-release-gate.sh
+scripts/release-gate.sh
 ```
 
 Fix any errors before proceeding.
 
-Before the first v1 release candidate, the release gate must also run on every
+Before the first `1.0.0` release candidate, the release gate must also run on every
 documented supported host, exercise crash-safe write recovery, and replay the
 checked-in fuzz regression corpus. A green Linux-only run or a time-limited fuzz
-session is useful pre-v1 evidence but is not sufficient by itself for the v1
-operational-quality criterion in [ROADMAP.md](./ROADMAP.md).
+session is useful evidence but is not sufficient by itself for the `1.0.0`
+operational-quality criterion in [ROADMAP.md](./ROADMAP.md#10-readiness-criteria).
 
 ### 2. Bump the version
 
@@ -76,7 +81,7 @@ git commit -m "chore: bump version to vX.Y.Z"
 After the version bump commit and before tagging, run the full release gate with the crates.io publish dry run:
 
 ```bash
-scripts/v1-release-gate.sh --with-publish-dry-run
+scripts/release-gate.sh --with-publish-dry-run
 ```
 
 This may contact crates.io. Fix any errors before tagging.
@@ -101,7 +106,7 @@ git push origin vX.Y.Z
 ```
 
 Pushing a `v*` tag triggers the `release.yml` GitHub Actions workflow, which
-runs `scripts/v1-release-gate.sh --with-publish-dry-run`, publishes it to
+runs `scripts/release-gate.sh --with-publish-dry-run`, publishes it to
 crates.io, and creates a GitHub Release.
 
 ### 7. Verify the release

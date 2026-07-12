@@ -6,15 +6,13 @@ checks.
 
 ## Release And Checks
 
-- `scripts/v1-release-gate.sh`: local release-quality gate for the evolving v1
-  target. Its historical name does not mean that a passing run is sufficient
-  to declare v1. It runs formatting,
+- `scripts/release-gate.sh`: release-neutral local quality gate. It runs formatting,
   clippy, tests, build, CLI smoke checks, API-diff gating, and offline
   package/app archive verification, app archive unpack/run/install smoke, and
   packaging verification.
 - `scripts/benchmark-health-check.sh`: release-neutral local benchmark health
   checks. These are currently one-shot sanity measurements, not statistical
-  benchmarks or public performance claims. Before v1, the roadmap calls for
+  benchmarks or public performance claims. The roadmap calls for
   representative warm/cold workloads, repeated latency and allocation/memory
   measurements, and machine-readable cross-release comparison output.
 - `scripts/clippy-check.sh`: clippy policy wrapper used by the release gate.

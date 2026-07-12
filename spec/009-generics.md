@@ -1,13 +1,13 @@
-# Generics Specification v1
+# Generics Specification
 
-Status: evolving v1 design candidate with an implemented MVP while Muga is in
-the `0.x` series; see [spec-v1.md](../spec-v1.md#v1-completion-boundary). The
-current Rust compiler implements generic type expressions for builtin
+Status: current design with an implemented MVP; see
+[LANGUAGE.md](../LANGUAGE.md#specification-status). The current Rust compiler
+implements generic type expressions for builtin
 collection-like types `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`,
 plus explicit user-defined generic records/functions and generic package
 interface persistence.
 
-Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing shared-behavior declarations such as protocols, traits, interfaces, typeclasses, or overloaded dispatch.
+Generics are part of Muga in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing shared-behavior declarations such as protocols, traits, interfaces, typeclasses, or overloaded dispatch.
 
 ## 1. Design Goals
 
@@ -21,11 +21,11 @@ Generics should support:
 - fast local type checking
 - stable package interfaces
 
-Generics should not turn v1 into a whole-program inference language.
+Generics should not turn Muga into a whole-program inference language.
 
-## 2. v1 Scope
+## 2. Current Scope
 
-Muga v1 includes:
+Muga includes:
 
 - generic type expressions: `Name[T]`, `Name[K, V]`
 - builtin generic types: `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]` (implemented for these names)
@@ -34,7 +34,7 @@ Muga v1 includes:
 - local type-argument inference at function call sites
 - generic signatures stored in package interfaces
 
-Muga v1 does not include:
+Muga does not include:
 
 - explicit call-site type arguments
 - protocol bounds, trait bounds, typeclass constraints, or other shared-behavior bounds
@@ -97,7 +97,7 @@ Muga uses `[]` instead of `<>` because `<` and `>` are ordinary comparison opera
 
 ## 4. Source Type Expressions
 
-The v1 type expression grammar becomes:
+The current type expression grammar is:
 
 ```ebnf
 type_expr          := function_type
@@ -124,7 +124,7 @@ Map[String, List[Int]]
 
 Explicit source-level references are not part of the generic type model.
 
-For example, v1 should not add forms such as:
+For example, Muga should not add forms such as:
 
 ```muga
 List[ref User]   // not planned
@@ -249,7 +249,7 @@ Muga should not infer type arguments from arbitrary downstream package call site
 
 ## 9. Explicit Call-Site Type Arguments
 
-Explicit call-site type arguments are not part of the v1 MVP.
+Explicit call-site type arguments are not part of the current MVP.
 
 Potential future syntax:
 
@@ -263,7 +263,7 @@ This is useful, but it competes syntactically with future indexing syntax such a
 items[0]
 ```
 
-The v1 MVP should rely on local type-argument inference and expected types instead. If explicit call-site type arguments are added later, they should be limited to positions that remain unambiguous for the parser.
+The current MVP should rely on local type-argument inference and expected types instead. If explicit call-site type arguments are added later, they should be limited to positions that remain unambiguous for the parser.
 
 ## 10. Generic Built-ins And Collections
 
@@ -287,7 +287,7 @@ parsed: Result[Int, String] = Result::Ok(1)
 
 `Option[T]` construction and consumption are implemented as `Option::Some(value)`, `Option::None`, and exhaustive Option `match`. `Result[T, E]` construction and consumption are implemented as `Result::Ok(value)`, `Result::Err(error)`, and exhaustive Result `match`. General user-defined enum declarations are implemented for the current MVP shape.
 
-`T?` is reserved as possible future shorthand for `Option[T]`, but `Option[T]` is the canonical v1 spelling.
+`T?` is reserved as possible future shorthand for `Option[T]`, but `Option[T]` is the canonical spelling.
 Any future `?.` syntax should be Option-only optional chaining.
 Result propagation uses visible `try` syntax rather than postfix Result propagation `expr?`: prefix `try expr` is implemented, and future dot-chain propagation should use postfix keyword `expr.try`.
 
@@ -307,7 +307,7 @@ fn first_or[T](xs: List[T], fallback: T): T {
 }
 ```
 
-Polymorphic recursion is not part of v1.
+Polymorphic recursion is not currently supported.
 
 That means a generic function's recursive calls should use the same type parameters rather than recursively calling itself at unrelated instantiations.
 
@@ -346,4 +346,4 @@ The implemented foundation followed these slices:
 7. update typed HIR to preserve generic signatures and instantiated types
 8. update package symbol graph and interfaces to store generic signatures
 
-The compiler may choose monomorphization, boxed runtime representation, or another backend strategy later. The source-level v1 semantics should not depend on that backend choice.
+The compiler may choose monomorphization, boxed runtime representation, or another backend strategy later. The current source-level semantics should not depend on that backend choice.

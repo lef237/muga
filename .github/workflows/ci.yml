@@ -14,5 +14,5 @@ jobs:
         run: |
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
           rustup default 1.95.0
-      - name: Run v1 release gate
-        run: scripts/v1-release-gate.sh
+      - name: Run release gate
+        run: scripts/release-gate.sh

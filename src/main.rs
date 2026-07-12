@@ -2693,7 +2693,7 @@ fn diagnostic_explanation(code: &str) -> Option<String> {
     .expect("writing diagnostic explanation should not fail");
     writeln!(
         &mut output,
-        "Use the diagnostic message, related notes, suggestions, and `errors.md` v1 guidance for the actionable fix."
+        "Use the diagnostic message, related notes, suggestions, and `errors.md` guidance for the actionable fix."
     )
     .expect("writing diagnostic explanation should not fail");
     Some(output)

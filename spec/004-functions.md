@@ -1,7 +1,7 @@
-# Function Specification v1
+# Function Specification
 
-Status: evolving v1 candidate while Muga is in the `0.x` series; see
-[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+Status: current language specification; see
+[LANGUAGE.md](../LANGUAGE.md#specification-status).
 
 This document defines function declarations, anonymous functions, higher-order use, parameter semantics, return semantics, and recursion-related requirements.
 
@@ -77,7 +77,7 @@ fn offset(x: Int, f) {
 }
 ```
 
-This remains invalid in v1:
+This remains invalid:
 
 ```txt
 fn apply(x, f) {
@@ -128,22 +128,22 @@ user.display_name()
 user.users::birthday()
 ```
 
-In v1, the receiver parameter rules are:
+Currently, the receiver parameter rules are:
 
 - the receiver parameter must be the first parameter
 - the receiver parameter must have an explicit record-type annotation
 - any identifier may be used for that parameter; `self` is conventional but not required
 - that parameter is still just an immutable binding inside the body
 
-## 4. v1 Namespace Limitation
+## 4. Current Namespace Limitation
 
-v1 still has a single ordinary function namespace and does not add overloading by receiver type.
+Muga has a single ordinary function namespace and does not add overloading by receiver type.
 
 Therefore, the following is not allowed in the same scope:
 
 ```txt
 fn len(self: List[Int]): Int { ... }
-fn len(self: String): Int { ... }   // duplicate binding in v1
+fn len(self: String): Int { ... }   // duplicate binding
 ```
 
 This keeps resolution simple and compile-time cost low. Common method names
@@ -152,7 +152,7 @@ distinct function names, not with future behavior-conformance dispatch.
 
 ## 5. Generic Functions
 
-Generic functions are part of the v1 target.
+Generic functions are part of the current language.
 
 ```txt
 fn id[T](value: T): T {
@@ -252,7 +252,7 @@ fn add_base(x: Int) {
 }
 ```
 
-Captured outer bindings remain subject to the ordinary v1 rules:
+Captured outer bindings remain subject to the ordinary current rules:
 
 - outer bindings may be read
 - outer mutable bindings may not be updated from the inner function
@@ -358,14 +358,14 @@ fn parses_age(): Result[Unit, String] {
 }
 ```
 
-There is no generic structural `assert_eq` in v1. Test equality follows the language equality policy: scalar equality for `Int`, `Bool`, and `String` only. Records, enums, `Option`, `Result`, lists, and maps should be checked by matching or projecting scalar fields explicitly.
+There is no generic structural `assert_eq`. Test equality follows the language equality policy: scalar equality for `Int`, `Bool`, and `String` only. Records, enums, `Option`, `Result`, lists, and maps should be checked by matching or projecting scalar fields explicitly.
 
 Attributes other than `@test`, and `@test` on non-function declarations, are
-rejected in v1.
+rejected.
 
 ## 13. Summary
 
-Functions in v1 are ordinary immutable bindings of function values, with:
+Functions are ordinary immutable bindings of function values, with:
 
 - immutable parameters
 - optional `@test` metadata for the `muga test` tool

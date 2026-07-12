@@ -386,10 +386,7 @@ impl Resolver {
                     self.diagnostics.push(
                         Diagnostic::new(
                             "E004",
-                            format!(
-                                "cannot update outer-scope mutable binding `{}` in v1",
-                                stmt.name
-                            ),
+                            format!("cannot update outer-scope mutable binding `{}`", stmt.name),
                             stmt.span,
                         )
                         .with_related("outer mutable binding is declared here", binding.span)

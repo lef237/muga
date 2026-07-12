@@ -18,8 +18,8 @@ jobs:
         run: |
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
           rustup default 1.95.0
-      - name: Run v1 release gate with publish dry run
-        run: scripts/v1-release-gate.sh --with-publish-dry-run
+      - name: Run release gate with publish dry run
+        run: scripts/release-gate.sh --with-publish-dry-run
       - name: Authenticate to crates.io
         id: auth
         uses: rust-lang/crates-io-auth-action@v1
