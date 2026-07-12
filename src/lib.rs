@@ -23,6 +23,7 @@ pub mod runtime;
 pub mod schema_export;
 pub mod span;
 pub(crate) mod std_package;
+pub mod style;
 pub mod symbol;
 pub mod token;
 pub mod typed_hir;
@@ -447,6 +448,60 @@ pub fn check_path(path: &Path) -> Result<Program, Vec<Diagnostic>> {
 
     if diagnostics.is_empty() {
         Ok(program)
+    } else {
+        Err(diagnostics)
+    }
+}
+
+/// Typechecks a source entry and enforces Muga's canonical call style.
+pub fn lint_path(path: &Path) -> Result<(), Vec<Diagnostic>> {
+    if package::entry_package_path_from_entry(path)?.is_some() {
+        let check = check_package_aware_path(path)?;
+        let mut diagnostics = Vec::new();
+        for module_check in &check.module_checks {
+            let Some(package_path) = check
+                .packages
+                .package_graph
+                .package(module_check.package)
+                .map(|package| package.path.as_str())
+            else {
+                continue;
+            };
+            let Some(file) = check
+                .packages
+                .packages
+                .iter()
+                .find(|package| package.path == package_path)
+                .and_then(|package| {
+                    package
+                        .files
+                        .iter()
+                        .find(|file| file.module_path == module_check.module_path)
+                })
+            else {
+                continue;
+            };
+            diagnostics.extend(style::lint_call_style(
+                &file.program,
+                &module_check.type_output,
+            ));
+        }
+        return if diagnostics.is_empty() {
+            Ok(())
+        } else {
+            Err(diagnostics)
+        };
+    }
+
+    let program = package::load_flattened_program_from_entry(path)?;
+    let mut diagnostics = resolver::resolve(&program);
+    let types = typing::typecheck_program(&program);
+    diagnostics.extend(types.diagnostics.clone());
+    if diagnostics.is_empty() {
+        diagnostics.extend(style::lint_call_style(&program, &types));
+    }
+    if diagnostics.is_empty() {
+        Ok(())
     } else {
         Err(diagnostics)
     }

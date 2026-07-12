@@ -427,3 +427,12 @@ Manifest, lockfile, and `.mgp` archive diagnostics must fail loudly rather than 
 ## Future Feature Syntax
 
 Syntax reserved for future features should fail as unsupported or invalid syntax. It should not be documented or tested as runnable sample source until the feature is implemented. Examples include channels, `select`, optional chaining, postfix Result propagation, broad catch-all matching, references, and call-site type arguments. `group`, `spawn`, and `std::task::join` are implemented structured task group syntax, not future syntax; their diagnostics are `T030` and `E013` above.
+
+# Lint diagnostics
+
+## L001: named function call should use chained-call syntax
+
+A named function with one or more value arguments was called using ordinary
+call syntax. Move the first argument before the function name and use it as the
+chain receiver. Zero-argument named functions, calls through function values,
+and enum variant constructors keep ordinary-call syntax.

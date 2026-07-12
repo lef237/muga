@@ -722,6 +722,18 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Mode::Lint => match muga::lint_path(Path::new(&cli.path)) {
+            Ok(()) => {
+                println!("ok");
+                ExitCode::SUCCESS
+            }
+            Err(diagnostics) => {
+                for diagnostic in diagnostics {
+                    eprintln!("{diagnostic}");
+                }
+                ExitCode::from(1)
+            }
+        },
         Mode::Metadata => match muga::check_package_aware_path(Path::new(&cli.path)) {
             Ok(check) => {
                 println!("{}", metadata_json_output(Path::new(&cli.path), &check));
@@ -1474,6 +1486,7 @@ enum Mode {
     UnpackPackageArchive,
     Syntax,
     Check,
+    Lint,
     Run,
     RunAppBundle,
     Test,
@@ -1640,6 +1653,7 @@ impl Cli {
                     | "verify-package-archive"
                     | "unpack-package-archive"
                     | "check"
+                    | "lint"
                     | "run"
                     | "run-app-bundle"
                     | "test"
@@ -1680,6 +1694,7 @@ impl Cli {
                 "unpack-package-archive" => Mode::UnpackPackageArchive,
                 "syntax" => Mode::Syntax,
                 "check" => Mode::Check,
+                "lint" => Mode::Lint,
                 "run" => Mode::Run,
                 "run-app-bundle" => Mode::RunAppBundle,
                 "test" => Mode::Test,
@@ -2554,6 +2569,7 @@ impl Mode {
             Mode::UnpackPackageArchive => "unpack-package-archive",
             Mode::Syntax => "syntax",
             Mode::Check => "check",
+            Mode::Lint => "lint",
             Mode::Run => "run",
             Mode::RunAppBundle => "run-app-bundle",
             Mode::Test => "test",
@@ -2593,6 +2609,7 @@ fn usage() -> &'static str {
         "       muga emit-app-completions [--format text|json] --output-dir <dir> [--program <name>] --type <type> [--package <package>] <bundle-dir>\n",
         "       muga syntax --format json <source-file>\n",
         "       muga check [--format text|json] [--artifact-root <dir>|--built] <source-file>\n",
+        "       muga lint <source-file>\n",
         "       muga run [--format text|json] [--artifact-root <dir>|--built] <source-file> [-- <program-arg>...]\n",
         "       muga run-app-bundle [--format text|json] <bundle-dir> [-- <program-arg>...]\n",
         "       muga test [--format text|json] <source-file>\n",

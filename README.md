@@ -119,6 +119,7 @@ muga doctor
 muga explain E001
 muga syntax --format json path/to/file.muga
 muga check path/to/file.muga
+muga lint path/to/file.muga
 muga run path/to/file.muga -- arg1 arg2
 muga test path/to/file.muga
 muga fmt path/to/file.muga
@@ -149,6 +150,7 @@ Detailed topic specs live in [spec/](./spec/).
 
 - [samples/](./samples/): runnable Muga programs and package examples that
   teach the language.
+- [STYLE.md](./STYLE.md): canonical source style and lint-enforced conventions.
 - [conformance/](./conformance/): fixtures that pin accepted programs,
   rejected diagnostics, and artifact-backed execution.
 - [errors.md](./errors.md): diagnostic catalog.
