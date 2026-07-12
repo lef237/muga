@@ -450,7 +450,7 @@ Implemented:
 - compiler-provided `std::test` scalar assertion helpers for `muga test`
 - `muga --help`, `muga -h`, `muga help`, and `muga help <command>` for command usage
 - `muga fmt [--check]` for deterministic formatting of current source files while preserving line comments
-- `muga lint <entry>` for canonical source style, including chained calls for named functions with value arguments
+- `muga lint [--fix] <entry>` for canonical source style, including checked or automatically rewritten chained calls for named functions with value arguments
 - `muga doc <entry>` for Markdown docs generated from public package interface records, enums, opaque types, functions, and item-level public source comments
 - `muga syntax --format json <entry>` for faster editor feedback from lexing and parsing one source file
 - entry source context in CLI JSON `diagnostics[].context`, plus entry package context for package check diagnostics, artifact-root context for artifact-backed check diagnostics, and concrete artifact-file context for `.mgi`, `.mgc`, and `.mgb` diagnostics when available

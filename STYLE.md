@@ -24,3 +24,5 @@ Ordinary-call syntax remains canonical for:
 
 Run `muga lint <source-file>` to check this rule. `muga check` continues to
 accept both call forms because ordinary calls remain part of the language.
+Run `muga lint --fix <source-file>` to rewrite eligible calls and format the
+changed source files while preserving line comments.

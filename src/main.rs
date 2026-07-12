@@ -722,9 +722,20 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Mode::Lint => match muga::lint_path(Path::new(&cli.path)) {
-            Ok(()) => {
-                println!("ok");
+        Mode::Lint => match if cli.lint_fix {
+            muga::fix_lint_path(Path::new(&cli.path)).map(Some)
+        } else {
+            muga::lint_path(Path::new(&cli.path)).map(|()| None)
+        } {
+            Ok(outcome) => {
+                if let Some(outcome) = outcome {
+                    for path in &outcome.changed_files {
+                        println!("fixed\t{}", path.display());
+                    }
+                    println!("fixed {} call(s)", outcome.fixed_calls);
+                } else {
+                    println!("ok");
+                }
                 ExitCode::SUCCESS
             }
             Err(diagnostics) => {
@@ -1523,6 +1534,7 @@ struct Cli {
     use_built_artifacts: bool,
     output_format: OutputFormat,
     format_check: bool,
+    lint_fix: bool,
     source_free_app_bundle: bool,
     replace_owned_install: bool,
     new_template: muga::ProjectTemplate,
@@ -1585,6 +1597,7 @@ impl Cli {
             use_built_artifacts: false,
             output_format: OutputFormat::Text,
             format_check: false,
+            lint_fix: false,
             source_free_app_bundle: false,
             replace_owned_install: false,
             new_template: muga::ProjectTemplate::App,
@@ -1732,6 +1745,7 @@ impl Cli {
         let mut output_format = OutputFormat::Text;
         let mut output_format_was_set = false;
         let mut format_check = false;
+        let mut lint_fix = false;
         let mut source_free_app_bundle = false;
         let mut replace_owned_install = false;
         let mut new_template = muga::ProjectTemplate::App;
@@ -1890,6 +1904,11 @@ impl Cli {
                     return Err("--check was provided more than once".to_string());
                 }
                 format_check = true;
+            } else if arg == "--fix" {
+                if lint_fix {
+                    return Err("--fix was provided more than once".to_string());
+                }
+                lint_fix = true;
             } else if arg == "--source-free" {
                 if source_free_app_bundle {
                     return Err("--source-free was provided more than once".to_string());
@@ -2245,6 +2264,9 @@ impl Cli {
         if format_check && mode != Mode::Fmt {
             return Err("--check is only supported with `fmt`".to_string());
         }
+        if lint_fix && mode != Mode::Lint {
+            return Err("--fix is only supported with `lint`".to_string());
+        }
         if source_free_app_bundle && mode != Mode::EmitAppBundle {
             return Err("--source-free is only supported with `emit-app-bundle`".to_string());
         }
@@ -2531,6 +2553,7 @@ impl Cli {
             use_built_artifacts,
             output_format,
             format_check,
+            lint_fix,
             source_free_app_bundle,
             replace_owned_install,
             new_template,
@@ -2609,7 +2632,7 @@ fn usage() -> &'static str {
         "       muga emit-app-completions [--format text|json] --output-dir <dir> [--program <name>] --type <type> [--package <package>] <bundle-dir>\n",
         "       muga syntax --format json <source-file>\n",
         "       muga check [--format text|json] [--artifact-root <dir>|--built] <source-file>\n",
-        "       muga lint <source-file>\n",
+        "       muga lint [--fix] <source-file>\n",
         "       muga run [--format text|json] [--artifact-root <dir>|--built] <source-file> [-- <program-arg>...]\n",
         "       muga run-app-bundle [--format text|json] <bundle-dir> [-- <program-arg>...]\n",
         "       muga test [--format text|json] <source-file>\n",

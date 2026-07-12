@@ -436,3 +436,8 @@ A named function with one or more value arguments was called using ordinary
 call syntax. Move the first argument before the function name and use it as the
 chain receiver. Zero-argument named functions, calls through function values,
 and enum variant constructors keep ordinary-call syntax.
+
+## L002: failed to write lint fix
+
+`muga lint --fix` could not write a rewritten source file. Check the reported
+path, permissions, and available storage, then run the command again.

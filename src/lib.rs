@@ -356,6 +356,12 @@ pub struct FormatPathOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LintFixOutcome {
+    pub changed_files: Vec<PathBuf>,
+    pub fixed_calls: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TestRunOutcome {
     pub tests: Vec<TestCaseResult>,
 }
@@ -481,10 +487,12 @@ pub fn lint_path(path: &Path) -> Result<(), Vec<Diagnostic>> {
             else {
                 continue;
             };
-            diagnostics.extend(style::lint_call_style(
-                &file.program,
-                &module_check.type_output,
-            ));
+            if file.path.is_some() {
+                diagnostics.extend(style::lint_call_style(
+                    &file.program,
+                    &module_check.type_output,
+                ));
+            }
         }
         return if diagnostics.is_empty() {
             Ok(())
@@ -505,6 +513,85 @@ pub fn lint_path(path: &Path) -> Result<(), Vec<Diagnostic>> {
     } else {
         Err(diagnostics)
     }
+}
+
+/// Rewrites lint-eligible calls and formats each changed source file.
+pub fn fix_lint_path(path: &Path) -> Result<LintFixOutcome, Vec<Diagnostic>> {
+    if package::entry_package_path_from_entry(path)?.is_some() {
+        let check = check_package_aware_path(path)?;
+        let mut outcome = LintFixOutcome {
+            changed_files: Vec::new(),
+            fixed_calls: 0,
+        };
+        for module_check in &check.module_checks {
+            let Some(package_path) = check
+                .packages
+                .package_graph
+                .package(module_check.package)
+                .map(|package| package.path.as_str())
+            else {
+                continue;
+            };
+            let Some(file) = check
+                .packages
+                .packages
+                .iter()
+                .find(|package| package.path == package_path)
+                .and_then(|package| {
+                    package
+                        .files
+                        .iter()
+                        .find(|file| file.module_path == module_check.module_path)
+                })
+            else {
+                continue;
+            };
+            let Some(source_path) = &file.path else {
+                continue;
+            };
+            let mut program = file.program.clone();
+            let fixed = style::fix_call_style(&mut program, &module_check.type_output);
+            if fixed == 0 {
+                continue;
+            }
+            let formatted = formatter::format_program_preserving_comments(&program, &file.source);
+            write_lint_fix(source_path, formatted)?;
+            outcome.fixed_calls += fixed;
+            outcome.changed_files.push(source_path.clone());
+        }
+        return Ok(outcome);
+    }
+
+    let source = read_format_source(path)?;
+    let tokens = lexer::lex(&source)?;
+    let mut program = parser::parse(tokens)?;
+    let mut diagnostics = resolver::resolve(&program);
+    let types = typing::typecheck_program(&program);
+    diagnostics.extend(types.diagnostics.clone());
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    let fixed_calls = style::fix_call_style(&mut program, &types);
+    let mut changed_files = Vec::new();
+    if fixed_calls > 0 {
+        let formatted = formatter::format_program_preserving_comments(&program, &source);
+        write_lint_fix(path, formatted)?;
+        changed_files.push(path.to_path_buf());
+    }
+    Ok(LintFixOutcome {
+        changed_files,
+        fixed_calls,
+    })
+}
+
+fn write_lint_fix(path: &Path, source: String) -> Result<(), Vec<Diagnostic>> {
+    fs::write(path, source).map_err(|error| {
+        vec![Diagnostic::new(
+            "L002",
+            format!("failed to write lint fix to `{}`: {error}", path.display()),
+            Default::default(),
+        )]
+    })
 }
 
 pub fn format_source(source: &str) -> Result<String, Vec<Diagnostic>> {

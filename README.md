@@ -120,6 +120,7 @@ muga explain E001
 muga syntax --format json path/to/file.muga
 muga check path/to/file.muga
 muga lint path/to/file.muga
+muga lint --fix path/to/file.muga
 muga run path/to/file.muga -- arg1 arg2
 muga test path/to/file.muga
 muga fmt path/to/file.muga
