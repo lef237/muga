@@ -107,6 +107,31 @@ source = "src"
 resources = "resources"
 ```
 
+### 4.1 Manifest Validation And Compatibility Target
+
+The current hand-written manifest reader is permissive: unknown sections,
+unknown `[package]` fields, and some malformed lines may be ignored. That is an
+implementation limitation, not the intended stable behavior. Before v1,
+`muga.toml` must have a versioned, strict schema with source-aware diagnostics.
+It must reject unknown or duplicate semantic fields, malformed non-comment
+lines, and unsupported section shapes. A misspelled field such as `resoruces`
+must never silently change package contents or runtime resource availability.
+
+Manifest projects also need an explicit source-compatibility declaration before
+the language contract is frozen. The exact spelling remains a design decision;
+it may be a language revision, edition, compiler compatibility range, or a
+combination. The chosen mechanism must:
+
+- prevent a newer compiler from silently reinterpreting an older project
+- distinguish source-language compatibility from artifact and lockfile format
+  versions
+- produce a clear diagnostic when the requested contract is unsupported
+- provide a documented migration path for intentional pre-v1 breaking changes
+- participate in package content identity and build cache keys
+
+Until this mechanism is implemented, `muga.toml` does not pin a source-language
+contract and pre-v1 projects must be upgraded together with the compiler.
+
 The `source` value selects the package source root. It defaults to `src`, must
 be a relative slash-separated path, must stay inside the manifest package root,
 and must not use tool metadata directories such as `.git` or `.muga`.
@@ -825,7 +850,11 @@ Hash representation: `sha256:` followed by lower-case hexadecimal. Other algorit
 
 Current implementation note: `emit-package-archive --archive-root <dir> <entry>` writes the first deterministic Muga-native `.mgp` source/resource archive. Its bytes are the canonical local input containing `muga.toml`, sorted `.muga` files under the declared source root, and sorted regular files under the optional declared resource root; `.muga` and `.git` tool directories are ignored. Before writing, package archive emission validates that archived manifest `source` and `resources` roots are materializable relative slash-separated roots, rejects archive output roots inside the package source/resource roots, and rejects symlinked source/resource roots or entries instead of following them. The `sha256:<hex>` content hash is computed directly over those archive bytes and appears in the archive filename. The optional `--dependency-snippet` output keeps the archive bytes unchanged but prints a pasteable `[dependencies]` entry using the manifest package name, archive path, and content hash. Library readback validates `.mgp` bytes against optional expected `sha256:<hex>` values, parses manifest, source, and resource entries without trusting filenames, preserves arbitrary resource bytes, and rejects malformed length-prefixed entries, duplicate or unsorted source/resource paths, non-UTF-8 manifest/source entries, unsafe manifest `source` or `resources` roots, source/resource-root escapes, undeclared resource entries, tool metadata directories, and non-source file entries. Library materialization then writes validated archive bytes into an absent or empty local source/resource tree, preserves the validated content hash, and rejects non-empty destinations. Local archive dependencies use the same verifier, materialize to `.muga/packages`, reject cached source/resource trees whose recomputed hash no longer matches the declared hash, and reject malformed archive dependency or lockfile metadata instead of silently repairing it. `emit-app-bundle --source-free --output-dir <dir> [--program <name>] <entry>` now can omit copied source files while keeping declared resources, bundle-local dependency manifests/resources under `.muga/bundle-deps`, `.muga/app-bundle` entry metadata, and `.muga/build` artifacts in a bundle with a `bin/<program>` launcher; without `--source-free`, the same command also copies root and dependency source trees plus source-hash `muga.lock` metadata for inspection. `run-app-bundle <bundle-dir>` executes the bundle from `muga.toml`, `.muga/app-bundle`, manifest resources, `.mgi` interfaces, and `.mgb` implementation artifacts without reading copied source files; `install-app [--replace-owned] --output-dir <bin-dir> [--program <name>] <bundle-dir>` writes a wrapper plus `<bin-dir>/.muga/installed-apps/<program>.toml` ownership metadata into an explicit bin directory without editing shell profiles, and only replaces an existing launcher/metadata when `--replace-owned` verifies prior Muga ownership; `uninstall-app --output-dir <bin-dir> --program <name>` removes only that ownership-verified launcher and metadata, leaving bundles and shell profiles untouched; `emit-app-completions --output-dir <dir> [--program <name>] --type <type> [--package <package>] <bundle-dir>` writes generated app completion packages from bundle `.mgi` interfaces without requiring source files; `emit-app-archive` and `unpack-app-archive` round-trip that bundle directory as a deterministic `.mga` file. The future registry security design must keep this `.mgp` hash as the package identity and treat registries as naming/discovery services rather than trust roots. This slice deliberately does not yet include precomputed interface bytes, URL/Git fetching, registries, publish workflows, shell-profile install workflows, or full published-package lockfile enforcement.
 
-Current edition/fingerprint note: Muga has no edition selector yet. Future package artifacts and lockfiles should record language edition and semantic feature-set fingerprints as semantic interpretation metadata while keeping `.mgp` `sha256:<hex>` values as package byte identity. This is design-only and does not add manifest syntax, cross-edition imports, artifact bytes, or edition migration tooling.
+The source-compatibility declaration described in
+[section 4.1](#41-manifest-validation-and-compatibility-target) must also be
+recorded in future package artifacts and lockfiles as semantic interpretation
+metadata. It remains separate from the `.mgp` `sha256:<hex>` package byte
+identity.
 
 Two consequences:
 
@@ -922,6 +951,11 @@ The user reviews the diff to `muga.toml` and `muga.lock` and commits both to ver
 `muga.lock` is the source of truth for what actually gets built. It is generated by the resolver and should be committed to version control.
 
 Current implementation note: today, `muga build` writes the first minimal `muga.lock` metadata for manifest projects, focused on local path dependencies and local `.mgp` archive dependencies. Path entries record source descriptors plus `source_hash = "sha256:<hex>"` over the dependency `muga.toml`, `.muga` files under its source root, and declared resource bytes when present, using the same symlink-rejecting selection as `.mgp` archive emission. Archive entries record `source = { archive = "..." }` plus `hash = "sha256:<hex>"`, validate the archive bytes on first materialization, and reuse only cache entries whose source/resource tree re-hashes to the same content hash. Existing well-formed local lockfiles are refreshed when stale. Malformed, duplicate, graph-inconsistent, unsupported, or archive-hash-incomplete existing lockfiles are rejected with `PK026` and are not silently overwritten. Local path `source_hash` remains rebuild/review metadata for local development; local archive `hash` is the package content identity for the archive bytes. Current builds do not yet enforce the lockfile as the source of truth for URL/Git/registry package bytes.
+
+The current reader requires `muga_version` to exist and be a string but does
+not yet compare it with the running compiler. Until that check is implemented,
+the field is provenance metadata rather than an enforced compatibility guard.
+The compatibility check below is target behavior.
 
 The lockfile records, for every direct and transitive dependency:
 
@@ -1060,7 +1094,10 @@ Default trust model:
 
 - the lockfile hash is the trust root for every dependency
 - the resolver refuses to install or run any artifact whose hash does not match
-- the compiler version recorded in the lockfile is checked against the running compiler; mismatch produces a warning, and a downgrade across a major version produces an error
+- the compiler version recorded in the lockfile is checked against the running
+  compiler according to the source-compatibility policy; unsupported
+  combinations are errors and safe-but-not-identical combinations may produce
+  warnings
 
 Optional layers, deferred to a separate specification:
 
@@ -1071,7 +1108,27 @@ Optional layers, deferred to a separate specification:
 
 These layers are additive. None of them changes the meaning of the content hash, and none of them is required for a build to succeed. Once a transparency log is operational, the optional `hash` field in 17.3 gains an additional verification path — the log can be cross-checked against the lockfile entry without any change to the manifest format.
 
-### 17.11 Current Implementation Boundary
+### 17.11 Crash-Safe Compiler Writes
+
+Compiler-owned persistent state must not be replaced in place. The target
+write protocol for `muga.lock`, `.mgi`, `.mgb`, `.mgc`, `.mgp`, `.mga`, bundle
+metadata, launchers, and installation ownership metadata is:
+
+1. serialize and validate the complete new contents before touching the
+   destination
+2. write a uniquely named sibling temporary file without following symlinks
+3. flush the file, and the parent directory where the supported host requires
+   it for the documented durability guarantee
+4. atomically replace or install the destination
+5. remove abandoned temporary files without deleting the last valid output
+
+Multi-file operations such as a package build or app installation must also
+define their commit boundary and recovery behavior. Atomicity of one file must
+not be presented as transactionality of an entire artifact set. The current
+implementation still uses direct writes in several paths; crash-safe replacement
+and interruption tests are pre-v1 work.
+
+### 17.12 Current Implementation Boundary
 
 The current implementation has a local package loader, minimal manifest mode with manifest-local `source`/`resources` roots, local path dependencies and local archive dependencies, optional manifest-declared package resources, package identity data, in-memory package interface summaries, persisted package interface artifacts with span-independent public hashes, explicit package check cache artifacts, explicit MIR-lowered bytecode package implementation artifacts with package-local source hashes, build-time reuse for unchanged generated artifacts with visible written/reused status, dependency-level parallel package artifact builds, generated/validated `muga.lock` metadata for local path dependency source descriptors plus `source_hash` values and local archive source descriptors plus `hash` values, the first library-level package content hash over `muga.toml` plus sorted source files and declared resources with symlinked roots/entries rejected, deterministic `.mgp` source/resource archive emission with optional pasteable dependency snippet output plus package-boundary output and manifest-root validation, library `.mgp` readback/hash validation, library materialization of validated `.mgp` bytes into absent or empty local source/resource trees, local `.mgp` archive dependency cache consumption through `.muga/packages`, read-only runtime package resource lookup through `std::fs::read_resource_text` and `std::fs::read_resource_bytes`, runtime `std::bytes::Bytes` values with SHA-256 hashing support, non-mutating app bundle emission with optional source-free output through `emit-app-bundle --source-free`, source-free app bundle execution through `run-app-bundle`, non-mutating app launcher and ownership metadata placement plus guarded owned updates/uninstalls through `install-app --replace-owned` and `uninstall-app`, source-free app completion package emission through `emit-app-completions`, deterministic `.mga` app archive emission/unpacking, and focused local archive cache/lockfile failure coverage. It does not yet have URL/Git/registry dependency forms, remote package fetching, publishing/install workflows, full lockfile enforcement, registries, or full incremental project-level artifact reuse.
 
@@ -1111,6 +1168,9 @@ It currently:
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
 - includes loaded direct/transitive dependency interface hashes in `.mgc` check cache keys
 - writes `.mgc` check cache artifacts only after package-aware artifact checking succeeds
+- currently writes several lockfile, artifact, archive, bundle, and installation
+  files directly; crash-safe temporary-file replacement remains required before
+  v1
 - writes `.mgi`, `.mgb`, and `.mgc` artifacts through `muga build` to `.muga/build` under the nearest manifest root, or under the entry file's directory when no manifest is present, reporting each artifact as `written` or `reused`
 - writes or updates `muga.lock` next to `muga.toml` during manifest `muga build`, preserving the file when generated content is unchanged, refreshing well-formed stale local metadata, and rejecting malformed or unsupported existing lockfiles with `PK026`
 - computes a `sha256:<hex>` package content hash over `muga.toml`, sorted `.muga` source files under the manifest source root, and sorted files under the optional manifest resource root, rejecting symlinked source/resource roots or entries instead of following them

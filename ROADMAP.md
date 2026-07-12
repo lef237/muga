@@ -147,6 +147,51 @@ All of these are required before the first v1 release candidate:
   as compatible fixes, performance improvements, or optional additions without
   reopening the language's foundations.
 
+## Pre-v1 P0: Compatibility And Durability
+
+These are foundational requirements discovered during the 2026-07-12 maturity
+audit. They take priority over expanding the language surface because they
+prevent silent misconfiguration, accidental reinterpretation, and corrupted
+build state.
+
+- [ ] Make `muga.toml` validation strict: reject unknown sections and fields,
+  duplicate fields, and malformed non-comment lines with source locations and
+  actionable diagnostics instead of silently ignoring them.
+- [ ] Design a source-compatibility declaration for manifest projects before
+  pre-v1 changes accumulate. Decide whether this is a language revision,
+  edition, compiler compatibility range, or a combination, and define how an
+  older project is diagnosed or migrated by a newer compiler.
+- [ ] Enforce the recorded `muga_version` compatibility policy when reading an
+  existing `muga.lock`. The current parser validates only that the field exists
+  and is a string; it does not compare it with the running compiler.
+- [ ] Make compiler-owned writes crash-safe. Write lockfiles, `.mgi`, `.mgb`,
+  `.mgc`, archives, bundle metadata, and installation ownership metadata to a
+  sibling temporary file, flush as required by the durability policy, and
+  atomically replace the destination only after successful serialization.
+- [ ] Add interruption and failure-path tests proving that a failed write does
+  not destroy the last valid lockfile, artifact, archive, or installation
+  record.
+
+## Pre-v1 P1: Diagnostics, Robustness, And Portability
+
+- [ ] Add a first-class diagnostic severity model and lint pipeline. Start with
+  suspiciously similar new bindings, unused imports, bindings, and parameters,
+  unreachable code, and discarded `Result` values; define command-line and
+  machine-readable allow/warn/deny behavior before stabilizing it.
+- [ ] Add fuzz targets for the lexer, parser, manifest and lockfile readers,
+  persisted package artifacts, and `.mgp` / `.mga` archive readers. Every
+  arbitrary input must either produce a bounded result or a diagnostic, never
+  an uncontrolled panic or unbounded allocation.
+- [ ] Define and test nesting, recursion, graph, file-count, and byte-size
+  limits at untrusted input boundaries. Limit failures must use stable,
+  actionable diagnostics.
+- [ ] Define the supported host matrix and run CI on at least Linux, macOS, and
+  Windows for path, process, filesystem, archive, bundle, install/uninstall,
+  line-ending, and artifact reproducibility behavior.
+- [ ] Stabilize the CLI process contract: exit status classes, stdout/stderr
+  ownership in text and JSON modes, broken-pipe handling, and Ctrl-C behavior
+  including cleanup of child processes, tasks, and partial output.
+
 ## Completed Milestones
 
 Finished work is summarized here. Full checklists, audit notes, and decision

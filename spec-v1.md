@@ -314,6 +314,25 @@ Package interfaces and implementation artifacts are explicit v1 workflow artifac
 
 `muga syntax --format json <entry>` lexes and parses one source file for faster editor feedback. It emits the same diagnostic JSON envelope as `check`, including entry source context in `diagnostics[].context`, but does not run resolver, typechecker, package import loading, or artifact checks. Package `check --format json` diagnostics add entry package context when available, and artifact-backed checks also add artifact-root context. Artifact diagnostics that know a concrete `.mgi`, `.mgc`, or `.mgb` path add artifact-file context with the artifact kind and `file://` URI. Stale or hash-mismatched artifact diagnostics also add artifact hash, source hash, dependency interface hash, and regeneration-command context when the compiler has that data. `muga run --format json <entry>` reports captured program stdout, the currently empty program stderr channel, the returned `main` value when present, and compiler/runtime diagnostics as one schema-versioned JSON object. `muga explain <diagnostic-code>` prints `errors.md` diagnostic guidance for exact catalog entries or stable diagnostic-code families. `muga test --format json <entry>` reports discovered tests, pass/fail status, failure messages, per-test stdout, summary counts, and pre-run compiler diagnostics as one schema-versioned JSON object.
 
+### CLI Process Contract Target
+
+Before v1, every command must share a documented process-level contract in
+addition to its text and JSON payload schema. The contract must define:
+
+- stable exit-status classes for success, program/compiler/runtime failure,
+  invalid CLI use, and interruption
+- which stream owns human-readable diagnostics and which stream owns JSON
+  output, without mixing non-JSON text into a machine-readable response
+- successful broken-pipe handling when output is intentionally truncated by a
+  downstream consumer
+- Ctrl-C and host-signal behavior, including cleanup of spawned child
+  processes, structured tasks, temporary files, and partially installed output
+
+The current CLI commonly uses status `0` for success, `1` for command or
+program failure, and `2` for argument parsing failure, but this has not yet been
+specified and tested as the complete stable contract. Existing behavior must
+not be treated as final where commands are inconsistent.
+
 `muga metadata --format json <entry>` checks a package entrypoint and emits
 package/module/item/export metadata plus public interface docs and rendered
 types for editor, LSP, CI, and agent consumers. Public interface metadata

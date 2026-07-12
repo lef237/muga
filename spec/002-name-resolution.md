@@ -261,4 +261,7 @@ mut count = 0
 coutn = count + 1
 ```
 
-If `coutn` is not otherwise defined, the resolver accepts it as a new immutable binding. A compiler or linter should warn on suspiciously similar names.
+If `coutn` is not otherwise defined, the resolver accepts it as a new immutable
+binding. The planned lint pipeline should warn when a newly introduced binding
+is suspiciously similar to a visible binding without changing name-resolution
+semantics; see the planned warning contract in [errors.md](../errors.md#planned-warning-and-lint-contract).

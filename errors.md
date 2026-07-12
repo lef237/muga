@@ -29,6 +29,26 @@ Current code families:
 
 When adding a new public diagnostic code or changing the trigger for an existing code, update this catalog and add or adjust a focused test.
 
+### Planned Warning And Lint Contract
+
+The current diagnostic model emits errors only; machine-readable output uses
+`severity: "error"` for every diagnostic. Before v1, diagnostics should gain a
+first-class severity and lint policy rather than encoding warnings as prose or
+one-off command behavior.
+
+The first warning candidates are:
+
+- a newly introduced binding suspiciously resembles an existing binding
+- unused imports, local bindings, and parameters
+- unreachable statements or expressions
+- a `Result` value is discarded where failure is likely to be accidental
+
+The lint design must define stable lint identifiers, default levels,
+allow/warn/deny configuration, a command-line `--deny-warnings`-style CI mode,
+suppression scope, and JSON severity. Warnings must not change whether a program
+is accepted unless their configured level is `deny`. The exact configuration
+syntax is not yet committed.
+
 The machine-readable diagnostic schema and CLI output envelope are defined by
 the CLI `--format json` implementations and pinned by Rust tests. Tools should
 use that JSON contract where available instead of scraping display text.

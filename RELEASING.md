@@ -44,6 +44,12 @@ scripts/v1-release-gate.sh
 
 Fix any errors before proceeding.
 
+Before the first v1 release candidate, the release gate must also run on every
+documented supported host, exercise crash-safe write recovery, and replay the
+checked-in fuzz regression corpus. A green Linux-only run or a time-limited fuzz
+session is useful pre-v1 evidence but is not sufficient by itself for the v1
+operational-quality criterion in [ROADMAP.md](./ROADMAP.md).
+
 ### 2. Bump the version
 
 Edit the `version` field in `Cargo.toml`:
