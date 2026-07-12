@@ -30,7 +30,9 @@ The recommended order is:
 7. `for item in list` iteration for `List[T]` only (implemented)
 8. `Map[K, V]` with scalar keys and value-returning operations (implemented)
 9. narrow helper packages that do not require iterator abstractions or structural equality (implemented for `std::list` and `std::map`)
-10. later collection extensions such as `Set[T]`, fixed arrays, bytes, builders, and map literals
+10. later collection extensions such as `Set[T]`, fixed arrays, and map
+    literals; the narrow Bytes builder and codec foundation is tracked
+    separately as pre-v1 standard-library work
 
 This order keeps the first implementation small.
 
@@ -166,6 +168,19 @@ total = kept.list::fold(0, add)
 `list::map` and `list::filter` return new lists and preserve item order. `list::fold` processes items left-to-right. `list::any` and `list::all` return `Bool` and may stop once the result is known. These helpers are ordinary package functions; they do not introduce iterator abstractions or lazy views.
 
 `List.contains` remains deferred because the v1 equality policy is scalar-only and does not define generic structural equality for list elements.
+
+### 5.1 Collection And Range Maturity Target
+
+The next eager helpers should be chosen from real programs, with `find`,
+`position`, `reverse`, `concat`, `flat_map`, `take`, `drop`, and
+comparator-based `sort_by` as the first candidates. Comparator parameters keep
+ordering explicit without adding traits or overloaded comparison.
+
+Muga also needs allocation-free integer range iteration before v1 if ordinary
+numeric loops are in scope. Prefer a small builtin `Range` value constructed by
+`range(start, end)` and accepted directly by `for` before adding range
+punctuation or a general iterator abstraction. A range must not allocate a
+`List[Int]` proportional to its length.
 
 ## 6. Option
 
@@ -418,7 +433,20 @@ values = ages.map::values()
 
 Both helpers allocate new lists at the source level and return entries in the map's deterministic entry order. Inserting a new key appends that key to the order; replacing an existing key updates the value without moving the key.
 
-`map::entries` remains deferred until Muga has a concrete public entry-record shape and a clear reason to expose it. It must not imply structural equality or hashing for entries.
+`map::entries` should be added once the public shape below is validated in real
+code; it does not require structural equality or hashing:
+
+```muga
+pub record Entry[K, V] {
+  key: K
+  value: V
+}
+```
+
+The VM currently preserves insertion order with a linear entry vector. Before
+v1, it should add a key-to-entry index or another measured representation so
+normal lookup and update do not remain linear while deterministic iteration is
+preserved.
 
 ## 8. Map Literals
 
@@ -445,17 +473,17 @@ This syntax is not decided.
 
 ## 9. Deferred Collection Topics
 
-The following should not block the first collection implementation:
+The following remain deferred unless promoted by the roadmap decisions:
 
 - `Set[T]`
 - fixed-size `Array[T, N]`
-- `Bytes`
 - tuple types
 - map literals
 - arbitrary record keys for `Map`
 - collection comprehensions
-- builder or mutable collection APIs
 - equality and hashing constraint systems
 - advanced generic features such as higher-kinded types and specialization
 
-The immediate goal is a small, typed, useful collection core.
+The promoted Bytes builder and opt-in derived equality/hash investigations are
+separate narrow work. They must not be used to introduce a general mutable
+collection API or behavior-constraint system by accident.

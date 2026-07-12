@@ -38,10 +38,17 @@ one-off command behavior.
 
 The first warning candidates are:
 
-- a newly introduced binding suspiciously resembles an existing binding
 - unused imports, local bindings, and parameters
 - unreachable statements or expressions
 - a `Result` value is discarded where failure is likely to be accidental
+
+A similar-name lint is not a baseline requirement. First use the ordinary
+unused warnings and real-program evidence to determine whether misspelled
+updates routinely escape detection. Only if they do, consider a narrow warning
+for a plain `name = value` introduction that differs by a small edit from an
+earlier mutable binding in the same function. It should not compare every
+identifier in scope, and it must remain configurable because intentional pairs
+such as `user` / `users` or `item` / `items` are common.
 
 The lint design must define stable lint identifiers, default levels,
 allow/warn/deny configuration, a command-line `--deny-warnings`-style CI mode,

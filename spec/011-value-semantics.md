@@ -37,11 +37,15 @@ Implementation observations:
 
 - runtime values are represented as `Value`
 - `Int` and `Bool` are immediate values
-- `String` and `Record` are owned values inside `Value`
+- `String`, `Bytes`, `List`, `Map`, and `Record` are owned aggregate values
+  inside `Value`
 - `Function` values are already shared through `Rc`
 - `LoadName` reads a binding value and pushes it onto the stack
 - function calls pop evaluated argument values and bind them to immutable parameter bindings in a new function environment
 - field access returns a cloned field value
+- list indexing and map lookup return cloned values
+- the current insertion-ordered `Map` stores a linear entry vector, so lookup,
+  membership, insertion replacement, and removal scan entries
 - `record.with(...)` consumes the base record value, replaces selected fields in a local copy, and returns a record value
 
 This is sufficient for the current interpreter/VM, but it is not the desired long-term performance model for large records, strings, lists, maps, or buffers.
@@ -178,7 +182,8 @@ The compiler and runtime should optimize ordinary values with internal represent
 
 - immediate scalar values for `Int` and `Bool`
 - shared immutable storage for `String`
-- shared immutable storage for future `List[T]`, `Map[K, V]`, and buffers
+- shared immutable storage for `List[T]`, `Map[K, V]`, records, enum payloads,
+  and buffers
 - resource handles for files, sockets, timers, and OS-backed state
 - compact record layout in MIR/native backends
 - stack allocation for non-escaping values
@@ -195,6 +200,28 @@ The performance goal should be:
 - measure allocation and copy behavior continuously
 
 The main risk is a naive implementation that copies large aggregates repeatedly. That is an IR and backend problem, not a reason to expose pointer syntax in ordinary Muga code.
+
+### 6.1 Pre-v1 Representation Priorities
+
+Before control-flow MIR or a native backend, measure and address the costs that
+already exist in the reference VM:
+
+1. add repeatable benchmark scenarios with warm-up, multiple iterations,
+   median/tail latency, allocation counts, peak memory, large aggregates,
+   compiler stages, cold/warm package builds, and VM instruction throughput
+2. replace linear `Map` operations with an indexed representation that retains
+   deterministic insertion-order iteration
+3. move `String`, `Bytes`, `List`, `Map`, records, and enum payloads to shared
+   immutable or copy-on-write storage where source-observable value semantics
+   stay unchanged
+4. measure clone elimination for field access, indexing, lookup, calls, and
+   non-destructive updates
+5. only then optimize lower-impact front-end allocations such as the lexer's
+   whole-source `Vec[char]` copy or repeated runtime name strings
+
+Benchmark output should have a machine-readable comparison form. Noisy
+wall-clock thresholds should not become correctness tests, and native-backend
+work should not substitute for fixing avoidable costs in the reference path.
 
 ## 7. Top-Tier Compiled-Language Performance
 

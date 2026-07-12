@@ -83,6 +83,27 @@ For `x = e`, current-scope immutable names include ordinary immutable bindings, 
 
 The exact static resolution rules are normative in [002-name-resolution.md](./002-name-resolution.md).
 
+### 3.3 Update-Ambiguity Evaluation
+
+Using `x = e` for both immutable introduction and mutable update keeps source
+small, but a misspelled update can introduce a new immutable binding. Ordinary
+unused-binding warnings are the first mitigation and should be tested in
+representative programs before a specialized lint or syntax change is designed.
+
+A similar-name warning is optional, not a baseline v1 requirement. Consider it
+only if real mistakes routinely escape unused warnings, and then limit it to a
+plain binding introduction that closely resembles an earlier mutable binding
+in the same function. Broad comparisons across every visible identifier would
+produce noise for intentional names such as `item` / `items`.
+
+An explicit update form should be reconsidered only if those diagnostics leave
+material correctness problems. No spelling is currently preferred. In
+particular, `set` should not be reserved as the leading candidate because it is
+visually close to a future `Set[T]` type and overlaps with collection
+`.set(...)` vocabulary. If an explicit form is eventually adopted, it must
+reject an unresolved target and replace ordinary `x = e` updates rather than
+create two equivalent mutable-update spellings.
+
 ## 4. Blocks and Scope
 
 The language uses lexical scoping.
@@ -199,6 +220,17 @@ The minimal v1 literal set is:
 Raw strings and multiline strings are not part of v1.
 
 Integer literals are 64-bit signed. The accepted value range is `-2^63 ..= 2^63 - 1`. To accommodate `-2^63`, an integer literal that immediately follows a unary `-` and is not followed by `.` or `(` is parsed as a single signed literal. In every other position a positive integer literal must fit in `i64`.
+
+### 6.4 Numeric Maturity Target
+
+The current candidate is integer-only. Before v1, Muga must either document a
+deliberately integer-only application scope or specify an explicit `Float64`
+type for general-purpose numeric and JSON work. A `Float64` design must cover
+literals, arithmetic, explicit `Int` conversion, formatting, JSON
+serialization, `NaN`, infinities, signed zero, equality, hashing, diagnostics,
+and persisted interfaces. It must not introduce implicit cross-type numeric
+conversion. Decimal money arithmetic should remain a distinct later type or
+package rather than an implicit mode of binary floating point.
 
 ## 7. Operators and Precedence
 

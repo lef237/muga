@@ -1195,6 +1195,15 @@ It currently:
 
 Artifact-root configuration is intentionally not part of `muga.toml` yet. The current manifest owns package naming, source-root inference, and local path dependency roots. Artifact-backed checking, running, and custom-root artifact emission are explicit CLI workflows through `--artifact-root`, `--built`, `emit-artifacts`, `emit-interface`, and `emit-check-cache`. `muga build` is a fixed default-output convenience over the same artifact writer, and `--built` is a fixed default-input convenience over the same artifact-backed check/run paths; neither is manifest configuration. Project-level artifact-root config should be reconsidered after lockfiles and a package-aware project driver exist, most likely as a non-semantic `[build]` or `[cache]` setting rather than as part of package identity.
 
+The current top-level artifact commands are also a pre-v1 CLI consolidation
+target. `muga build` should remain the ordinary project workflow. Explicit
+interface, check-cache, and combined artifact emission should either move under
+one clearly advanced artifact namespace or be marked unstable; Muga should not
+freeze several overlapping top-level commands merely because they are useful
+to compiler tests. Any consolidation must preserve the underlying library APIs,
+machine-readable output, source-free verification coverage, and a documented
+migration path for tooling users.
+
 This is enough to validate the package surface and the next interface boundary. It is not the final compilation model. The dependency layers in 17.1 to 17.10 are target design, to be implemented incrementally on top of the existing manifest, package graph, typed HIR, and interface-summary work.
 
 ## 18. Example

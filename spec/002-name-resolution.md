@@ -262,6 +262,9 @@ coutn = count + 1
 ```
 
 If `coutn` is not otherwise defined, the resolver accepts it as a new immutable
-binding. The planned lint pipeline should warn when a newly introduced binding
-is suspiciously similar to a visible binding without changing name-resolution
-semantics; see the planned warning contract in [errors.md](../errors.md#planned-warning-and-lint-contract).
+binding. An ordinary unused-binding warning can catch the common case where the
+mistyped name is never read. A specialized similar-name warning should be added
+only if real programs show recurring mistakes that escape unused warnings, and
+then should be limited to plain introductions close to an earlier mutable
+binding in the same function without changing name-resolution semantics. See
+the planned warning contract in [errors.md](../errors.md#planned-warning-and-lint-contract).

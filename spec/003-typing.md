@@ -564,11 +564,37 @@ pub fn option_bool(args: List[String], name: String): Result[Option[Bool], Strin
 pub fn option_bool_or(args: List[String], name: String, default_value: Bool): Result[Bool, String]
 ```
 
-`list::map`, `list::filter`, and `map::keys` / `map::values` allocate new lists at the source level. `list::map`, `list::filter`, and `list::fold` process items in list order. `list::any` and `list::all` return `Bool` and may stop once the result is known. `map::keys` and `map::values` return lists in the map's deterministic entry order; replacing an existing key does not move that key. `List.contains` and `map::entries` remain deferred because v1 equality is scalar-only and map entries need a deliberate public record shape.
+`list::map`, `list::filter`, and `map::keys` / `map::values` allocate new lists at the source level. `list::map`, `list::filter`, and `list::fold` process items in list order. `list::any` and `list::all` return `Bool` and may stop once the result is known. `map::keys` and `map::values` return lists in the map's deterministic entry order; replacing an existing key does not move that key. `List.contains` remains deferred while equality is scalar-only. `map::entries` is promoted pre-v1 work once the public `map::Entry[K, V]` record shape in [008-collections.md](./008-collections.md) is validated; it does not require structural equality.
 
 `cli::has_flag(args, "verbose")` matches `--verbose`; `cli::has_short_flag(args, "v")` matches `-v`; `cli::help_requested(args)` matches `--help` and `-h`; `cli::option(args, "output")` matches `--output value` and `--output=value`; `cli::option_values(args, "tag")` collects repeated `--tag value` and `--tag=value` occurrences in encounter order. `--` stops flag and option parsing and makes later values positional. Before `--`, `cli::positional` counts values that do not start with `--`. A separate `--name` option with no non-option following value is skipped by the lookup helpers. The schema helpers are lowered by the compiler for supported concrete record and enum targets, including command enums, wrapper records, value sources, validation metadata, generated usage/help text, and recoverable `cli::Error` values. Global parser state and shell integration remain outside the source language.
 
 `path::join(base, child)` combines a `Path` with a child path string using host path semantics and returns a new `Path`. `path::parent(path)` returns the parent path as `Option[Path]`; paths without a meaningful parent return `Option::None`. `path::file_name(path)` returns the final path component as `Option[String]`; paths without a file name or with a non-Unicode file name return `Option::None`. `path::extension(path)` returns the final extension as `Option[String]`; paths without an extension or with a non-Unicode extension return `Option::None`. `path::file_stem(path)` returns the final file stem as `Option[String]`; paths without a file stem or with a non-Unicode file stem return `Option::None`. `path::is_absolute(path)` classifies the path using host path semantics. `read_text` and `read_text_path` read a UTF-8 text file into a `String`. `read_bytes` and `read_bytes_path` read a binary file into opaque `std::bytes::Bytes`. `write_bytes` and `write_bytes_path` write opaque `Bytes` as full-file binary output. `read_resource_text(package_path, resource_path)` reads a UTF-8 text resource from a manifest-declared package resource root without returning a host path. `read_resource_bytes(package_path, resource_path)` reads bytes from that same resource-root map and returns opaque `std::bytes::Bytes`; the first `std::bytes` helpers are `bytes::size`, `bytes::empty`, and zero-based `bytes::at(bytes, index): Option[Int]`. `hash::sha256_hex(bytes)` returns a 64-character lowercase SHA-256 hex digest for `Bytes`. `read_dir_path` lists direct directory entries as `path::Path` values in deterministic sorted order, and `read_dir_recursive_path` returns deterministic read-only descendants without recursing into symlink directories. `directory_size_metadata_path`, `file_metadata_path`, `path_metadata_path`, and `path_size_metadata_path` expose the current metadata slice. `write_text`, `write_text_path`, `write_bytes`, `write_bytes_path`, `create_dir_path`, `create_dir_all_path`, `remove_file_path`, `remove_dir_path`, `remove_dir_all_path`, `copy_file_path`, `copy_dir_all_path`, `move_dir_all_path`, and `rename_path` use `Unit` as the success payload. Single-path recoverable filesystem failures return `Result::Err(io::IOError)`. Two-path recoverable filesystem failures return `Result::Err(io::PathPairError)` with `from_path` and `to_path` populated. Recursive directory copy and move are no-overwrite operations in the current slice. `exists_path`, `is_file_path`, and `is_dir_path` are non-throwing metadata predicates and return `false` for missing or inaccessible paths. `std::fs::File` is the current runtime-backed opaque handle. `open_text`, `create_text`, and `append_text` acquire read, write, and append handles; `read_text_from`, `write_text_to`, and `flush` borrow a handle and return recoverable `io::IOError` values for host IO or wrong-mode failures; `close` consumes the handle and returns `Result[Unit, io::IOError]`. Statement-form `using` may manage such handles when the enclosing function returns a compatible `Result[T, io::IOError]`. The current slice intentionally does not add binary file handles, byte mutation, codecs, streaming hash handles, broader cryptographic APIs, stdout/stderr handles, permissions APIs, network APIs, streaming APIs, or asynchronous IO.
+
+### 4.1 Standard-Library Surface Consolidation Target
+
+The implemented package slices contain transitional overlap that should not be
+frozen accidentally. Before v1:
+
+- filesystem operations should use `path::Path` as their one canonical path
+  input; String-path twins and `_path` suffixes should be removed unless real
+  programs demonstrate distinct semantics
+- schema-driven `cli::parse[T]` should be the primary CLI API; manual
+  positional/option/flag scanning should move to a clearly low-level namespace
+  or be removed when redundant
+- the combinatorial JSON accessor/default/required matrix should contract around
+  parse/encode, typed decode/conversion, and a small composable dynamic `Value`
+  traversal core
+- `Bytes` should gain UTF-8/list conversion, slicing, concatenation, hex and
+  Base64 codecs, an efficient builder, and binary file handles without implying
+  a broad cryptography framework
+- time should gain `Duration`, a monotonic clock, sleep, and checked arithmetic;
+  OS-backed secure random bytes should be a narrow recoverable API separate
+  from any future seeded PRNG
+
+Removal or renaming requires sample, template, completion, generated-schema,
+artifact, and migration coverage. Keeping compatibility aliases throughout the
+entire `0.x` series is not required, but v1 must not expose two preferred
+spellings for the same operation.
 
 Because `print`, `println`, `len`, and `is_empty` accept several concrete types, none of them by itself makes an unconstrained parameter uniquely inferable.
 
@@ -762,7 +788,25 @@ Both operands must have the same supported scalar type. v1 does not define impli
 
 Structural equality is not part of v1. `==` and `!=` are rejected for records, user-defined enums, `Option[T]`, `Result[T, E]`, `List[T]`, `Map[K, V]`, `Unit`, functions, and builtins. Compare scalar fields or payloads explicitly with `match`, field access, and scalar helpers. The `std::test` package follows the same policy by exposing only scalar equality assertions.
 
-`List.contains`, structural `assert_eq`, `Map.entries`, `Set[T]`, arbitrary `Map` key types, and any future derived equality/hash support must not be added merely by relying on runtime value shape. They require an explicit spec update for structural equality, hashing, package-interface persistence, diagnostics, and focused tests.
+`List.contains`, structural `assert_eq`, `Set[T]`, arbitrary `Map` key types,
+and any future derived equality/hash support must not be added merely by relying
+on runtime value shape. They require an explicit spec update for structural
+equality, hashing, package-interface persistence, diagnostics, and focused
+tests. `map::entries` is independent: it exposes existing key/value pairs
+through a deliberate public record shape and does not grant equality or hash
+capabilities.
+
+### 9.2 Derived Equality And Hashing Decision
+
+Before v1, Muga should evaluate opt-in compiler-derived equality and hashing as
+a closed capability, not as a trait, protocol, overloaded operator, or dynamic
+dispatch system. If accepted, derivation must be recorded in package
+interfaces, recurse only through supported payloads, reject functions,
+builtins, tasks, and runtime handles, and define any future `Float64` `NaN` and
+signed-zero behavior. Only types with the recorded capability may unlock
+structural assertions, `List.contains`, `Set[T]`, or non-scalar map keys.
+
+Until that design is accepted, the scalar-only rules above remain normative.
 
 ## 10. Inference Sources
 

@@ -442,3 +442,17 @@ If per-field visibility is ever added, the recommended constraints are:
 
 Records remain data declarations. They do not participate in behavior
 conformance, conformance-based dispatch, or overloaded method lookup.
+
+### 14.3 Function-Valued Field Re-evaluation
+
+The current v1 candidate prohibits function-valued fields to keep
+`expr.name(...)` reserved for chained ordinary-function calls. Before the
+surface is frozen, real callback, strategy, parser, validator, and event-handler
+APIs should test whether storing functions in records is nevertheless needed.
+
+If the prohibition is relaxed, storage and invocation must remain separate:
+`expr.field` may retrieve a function value, while calling that value must use an
+explicit non-dot-call form such as `call(expr.field, args...)`. The change must
+not introduce member-owned methods, receiver overloads, behavior conformance,
+or ambiguity with chained calls. If representative programs remain clear with
+ordinary higher-order parameters and wrapper functions, keep the prohibition.

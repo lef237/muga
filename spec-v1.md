@@ -76,6 +76,26 @@ important workflow:
   (`group` / `spawn` / `std::task`): channels, `select`, `async`, or `await`
 - `String.len()`, substring/slice indexing, and richer parse error types until their semantics are explicitly chosen
 
+The following are active pre-v1 maturity decisions rather than accepted
+syntax or permanently parked ideas:
+
+- whether a general-purpose v1 requires explicit `Float64`
+- allocation-free integer ranges and a small eager collection helper core
+- opt-in compiler-derived equality/hash without traits or overloaded dispatch
+- whether function values may be stored in records with an explicit non-dot
+  invocation form
+- whether `group` / `spawn` demonstrate overlapping progress, cancellation,
+  capture safety, and cleanup strongly enough to stabilize in v1 or should
+  remain experimental outside the v1 contract
+- consolidation of duplicate filesystem, CLI, JSON, and artifact-command APIs
+- indexed `Map` lookup, shared/copy-on-write aggregate representations, and a
+  repeatable benchmark contract before backend expansion
+
+The decision criteria and implementation order live in
+[ROADMAP.md](./ROADMAP.md); detailed constraints live in the topic specs. Until
+a decision is implemented and promoted into this overview, the current grammar
+and typing rules remain authoritative.
+
 ## Core Rules
 
 Bindings are immutable by default:
@@ -246,6 +266,10 @@ older = user.birthday()
 
 `self` is only a conventional parameter name. v1 has no classes, inheritance, receiver overloading, or function-valued record fields.
 
+Function-valued record storage is a pre-v1 re-evaluation item, not implemented
+syntax. Any accepted design must keep field-value invocation distinct from dot
+calls and must not introduce methods or receiver dispatch.
+
 ## Collections And Enum-Like Standard Types
 
 Implemented collection/error core:
@@ -400,7 +424,11 @@ Implemented:
 - `std::fs::PathStatus`, `PathKind`, `PathInfo`, `PathMetadata`, and `PathSizeMetadata` plus `std::fs::path_status(target_path)`, `path_kind(target_path)`, `path_info(target_path)`, `path_metadata_path(target_path)`, and `path_size_metadata_path(target_path)` for grouping existing path status predicates, modified-time metadata, and optional regular-file size while broader metadata fields remain deferred
 - `std::fs::read_dir_recursive_path(root_path)` and `std::fs::DirectorySizeMetadata` / `directory_size_metadata_path(root_path)` for deterministic read-only descendant traversal and recursive byte/count aggregation while globbing, public symlink classification, and sandbox policy remain deferred
 - `std::fs::remove_dir_all_path(dir_path)`, `std::fs::copy_dir_all_path(from_path, to_path)`, and `std::fs::move_dir_all_path(from_path, to_path)` for recursive directory removal, no-overwrite recursive directory copy, and no-overwrite copy-then-remove directory move while trash/recycle-bin integration, globbing, public symlink classification, merge/overwrite copy policy, atomic rename fallback, rollback, and sandbox policy remain deferred
-- `std::fs::write_bytes` and `std::fs::write_bytes_path` for full-file binary writes over opaque `std::bytes::Bytes` while binary handles, streams, codecs, and mutable buffers remain deferred
+- `std::fs::write_bytes` and `std::fs::write_bytes_path` for current full-file
+  binary writes over opaque `std::bytes::Bytes`; a minimal binary handle,
+  Bytes builder, UTF-8/list conversion, slicing, concatenation, hex, and Base64
+  layer is promoted pre-v1 maturity work, while general streams, broad
+  cryptography, and async IO remain deferred
 - `std::string` helper package with `string::concat_all` and `string::join` for pure `List[String]` concatenation and separator joins while keeping non-string conversion explicit
 - `std::fmt` helper package with `fmt::repeat`, `fmt::pad_left`, `fmt::pad_right`, `fmt::truncate_chars`, and `fmt::format_values` for pure formatting over explicit `String` values while language interpolation, localization, and builders remain deferred
 - `std::list` and `std::map` helper packages for narrow collection transformations and key/value extraction
@@ -463,13 +491,16 @@ validator functions, and TOML remain outside the v1 JSON/config decoder surface.
 Not implemented:
 
 `std::process` and structured task groups (`group` / `spawn` / `std::task`)
-are implemented. The remaining items in this list are parked work unless the
-roadmap promotes a specific correctness or release-readiness issue to P0.
+are implemented. Implemented task syntax still must pass the roadmap's v1
+admission gate. The remaining items in this list are parked work unless the
+roadmap explicitly promotes a decision or implementation slice.
 
 - public-signature inference for `pub fn`
 - URL/Git/registry dependency forms, remote package fetching, publishing/install workflows, and full published-package lockfile enforcement
 - project-mode artifact-root configuration and full incremental package artifact reuse
-- structural equality, map literals, `Set[T]`, arbitrary `Map` key types, and broad collection APIs
+- opt-in derived equality/hash is an active pre-v1 decision; map literals,
+  `Set[T]`, arbitrary `Map` key types, and broad collection systems remain
+  parked until that decision provides a sound foundation
 - broader JSON schema decoding targets such as generic records, generic enums,
   nested `Option[Option[T]]`, non-string map keys, record-level or cross-field
   validation, user-defined validators, or stricter schema policies beyond the implemented

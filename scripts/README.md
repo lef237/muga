@@ -13,7 +13,10 @@ checks.
   package/app archive verification, app archive unpack/run/install smoke, and
   packaging verification.
 - `scripts/benchmark-health-check.sh`: release-neutral local benchmark health
-  checks. These are sanity measurements, not public performance claims.
+  checks. These are currently one-shot sanity measurements, not statistical
+  benchmarks or public performance claims. Before v1, the roadmap calls for
+  representative warm/cold workloads, repeated latency and allocation/memory
+  measurements, and machine-readable cross-release comparison output.
 - `scripts/clippy-check.sh`: clippy policy wrapper used by the release gate.
 
 ## Privacy Guard

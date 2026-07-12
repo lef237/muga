@@ -38,9 +38,10 @@ Muga samples.
   item and joins all results before returning; see
   spec/007-concurrency-draft.md#58-spawn_map-fan-out-over-a-runtime-sized-collection
   and `samples/packages/app/std_task_spawn_map/main.muga`.
-- [ ] **NOW:** gather real usage of `task::spawn_map` and the rest of the
-  Phase 1 core before deciding whether to promote Phase 2 (channels) or
-  service IO work.
+- [ ] **NOW:** establish representative benchmark and real-program workloads,
+  then use them to audit standard-library duplication, aggregate copying,
+  `Map` scaling, and the actual value of Phase 1 task syntax before expanding
+  the language or starting Phase 2 concurrency.
 
 Baseline checks recorded during the 2026-06-05 implementation audit:
 
@@ -175,9 +176,9 @@ build state.
 ## Pre-v1 P1: Diagnostics, Robustness, And Portability
 
 - [ ] Add a first-class diagnostic severity model and lint pipeline. Start with
-  suspiciously similar new bindings, unused imports, bindings, and parameters,
-  unreachable code, and discarded `Result` values; define command-line and
-  machine-readable allow/warn/deny behavior before stabilizing it.
+  unused imports, bindings, and parameters, unreachable code, and discarded
+  `Result` values; define command-line and machine-readable allow/warn/deny
+  behavior before stabilizing it.
 - [ ] Add fuzz targets for the lexer, parser, manifest and lockfile readers,
   persisted package artifacts, and `.mgp` / `.mga` archive readers. Every
   arbitrary input must either produce a bounded result or a diagnostic, never
@@ -191,6 +192,90 @@ build state.
 - [ ] Stabilize the CLI process contract: exit status classes, stdout/stderr
   ownership in text and JSON modes, broken-pipe handling, and Ctrl-C behavior
   including cleanup of child processes, tasks, and partial output.
+
+## Pre-v1 P1: Language And Standard-Library Maturity
+
+These items were promoted by the 2026-07-12 language-surface audit. Promotion
+means Muga must implement them or record an evidence-backed decision not to
+include them before v1; it does not pre-approve unreviewed syntax.
+
+- [ ] Decide the numeric scope for v1. If Muga remains a general-purpose
+  language, specify and implement an explicit `Float64` type, literals,
+  arithmetic, conversions, formatting, JSON numbers, `NaN`/infinity behavior,
+  equality, and hashing. Keep decimal money arithmetic as a separate later
+  type or package rather than an implicit numeric mode.
+- [ ] Add allocation-free integer ranges that `for` can consume without first
+  constructing a `List[Int]`. Prefer a small `range(start, end)` value before
+  committing range punctuation or a general iterator/protocol system.
+- [ ] Fill the small eager collection core with evidence-backed helpers such
+  as `find`, `position`, `reverse`, `concat`, `flat_map`, `take`, `drop`, and
+  comparator-based `sort_by`; add a concrete public `map::Entry[K, V]` shape
+  and `map::entries` without waiting for structural equality.
+- [ ] Expand `Bytes` into a usable binary foundation: UTF-8 conversion,
+  list conversion, slicing, concatenation, hex and Base64 codecs, an efficient
+  builder, and binary file handles. Keep broad cryptography separate.
+- [ ] Add a minimal operational time and randomness layer: `Duration`, a
+  monotonic clock, sleep, checked duration arithmetic, and OS-backed secure
+  random bytes. Defer calendar/time-zone policy and seeded PRNG design until
+  their contracts are explicit.
+- [ ] Decide whether opt-in compiler-derived equality and hashing belong in v1.
+  Any design must avoid a behavior-conformance system, persist capabilities in
+  package interfaces, reject unsupported payloads such as functions and
+  handles, define `Float64`/`NaN` behavior, and unlock structural assertions,
+  `List.contains`, `Set[T]`, and non-scalar map keys only when sound.
+- [ ] After ordinary unused warnings exist, test typo-created bindings in real
+  programs. Add a narrowly scoped similar-name warning only if recurring
+  mistakes escape those warnings; it is not a baseline v1 requirement. Reopen
+  explicit update syntax only if diagnostics still leave material correctness
+  problems. Do not reserve `set` as the leading candidate: it is visually close
+  to a future `Set[T]` type and overlaps with collection `.set(...)` vocabulary.
+- [ ] Re-evaluate the blanket prohibition on function-valued record fields.
+  If real callback, strategy, parser, validator, or event-handler APIs need
+  them, allow storage while keeping invocation explicit through `call(field,
+  args...)` or another non-dot-call form.
+- [ ] Resolve the Phase 1 concurrency admission gate before v1 stabilization.
+  Validate the contract with at least one runtime that provides overlapping
+  progress for suspended/blocking tasks or actual parallel execution, plus real
+  cancellation, failure propagation, capture safety, and resource cleanup.
+  Parallel speedup is not required. If the contract is not ready, keep the
+  implementation experimental but defer `group` / `spawn` / `Task` from the
+  stable v1 contract instead of deleting the code merely to satisfy the gate.
+
+## Pre-v1 P1: Runtime Performance Foundations
+
+- [ ] Replace one-shot millisecond health checks with repeatable benchmark
+  scenarios covering warm-up, multiple iterations, median/tail latency,
+  allocations, peak memory, compiler stages, cold/warm package builds, VM
+  instruction throughput, and large `String` / `List` / `Map` / record values.
+  Emit machine-readable results suitable for comparing releases without using
+  noisy wall-clock thresholds as correctness tests.
+- [ ] Replace the VM's insertion-ordered linear `Map` lookup with an indexed
+  representation that preserves deterministic iteration while making normal
+  `get`, `contains`, `insert`, and `remove` scale near constant time.
+- [ ] Introduce shared immutable or copy-on-write storage for `String`, `Bytes`,
+  `List`, `Map`, records, and enum payloads. Preserve source-level value
+  semantics while measuring and eliminating field-access, lookup, argument,
+  and update clones.
+- [ ] After aggregate costs are measured, reduce front-end allocation where it
+  matters, including reconsidering the lexer's whole-source `Vec[char]` copy
+  and repeated runtime type/field strings. Do not prioritize these changes
+  ahead of measured aggregate-copy and map costs.
+
+## Pre-v1 P1: API Surface Reduction
+
+- [ ] Choose one canonical filesystem API over `path::Path`; remove the
+  duplicate String-path operations and `_path` suffixes before v1 unless real
+  programs prove both forms have distinct value.
+- [ ] Make typed schema-driven `std::cli` parsing the primary API. Move manual
+  `positional_*`, `option_*`, and flag scanning behind a clearly low-level
+  namespace or remove them when usage evidence shows they are redundant.
+- [ ] Reduce the combinatorial `std::json` accessor matrix. Keep parse/encode,
+  typed `decode[T]` / conversion, and a small composable dynamic `Value`
+  traversal core; remove convenience combinations that duplicate those paths.
+- [ ] Consolidate public artifact commands around `muga build`. Group expert
+  interface/cache/artifact emission under one clearly advanced namespace or
+  mark it unstable instead of stabilizing several overlapping top-level
+  commands.
 
 ## Completed Milestones
 
@@ -226,8 +311,10 @@ and `RELEASING.md`.
 
 ## Maturity Track P2: Service IO
 
-Do not start this before task lifetime, shutdown, and backpressure semantics
-are explicit.
+Do not stabilize service IO before the Phase 1 concurrency admission gate is
+resolved and task lifetime, shutdown, and backpressure semantics are explicit.
+Focused IO prototypes may still be used to validate scheduler suspension,
+cancellation, and cleanup behavior before either surface is committed.
 
 - [ ] Choose the first service IO target: sockets or minimal HTTP/JSON.
 - [ ] Keep resource handles opaque and closeable.
@@ -237,15 +324,11 @@ are explicit.
 - [ ] Keep JSON integration explicit through `std::json` schemas.
 - [ ] Prove source, built-artifact, and source-free bundle execution.
 
-## Maturity Track P2: Performance Path
+## Maturity Track P2: Backend Performance Path
 
-Performance work needs evidence before native backend claims.
+Backend work follows the pre-v1 measurement, representation, and API work
+above. Performance claims still require evidence.
 
-- [ ] Extend benchmark health checks with representative compiler, package,
-  artifact, and runtime workloads.
-- [ ] Identify the hottest runtime representations with measurements.
-- [ ] Improve `List`, `Map`, `String`, and `Bytes` representation only when
-  source semantics remain unchanged.
 - [ ] Introduce control-flow-oriented MIR only after the VM and artifact tests
   show the current bytecode path is the bottleneck.
 - [ ] Keep native backend work deferred until MIR, package artifacts, and
@@ -290,10 +373,9 @@ Move a parked item into active work only when all of these are true:
   package interfaces, docs, API diffs, and artifact-backed checking.
 - [ ] project-mode artifact-root configuration and full incremental package
   artifact reuse; revisit after real projects show repeated build pain.
-- [ ] structural equality, `List.contains`, structural `assert_eq`,
-  `Map.entries`, `Set[T]`, arbitrary `Map` key types, map literals, and broad
-  collection APIs; not queued. Revisit only with an explicit equality/hash
-  design that does not introduce behavior-conformance systems.
+- [ ] `Set[T]`, arbitrary `Map` key types, map literals, and structural
+  collection operations remain parked until the promoted equality/hash and
+  range/collection decisions establish a sound smaller foundation.
 - [ ] broader JSON/config schema targets such as generic records, generic
   enums, nested `Option[Option[T]]`, non-string map keys, and record-level,
   cross-field, or user-defined validation beyond the implemented narrow
@@ -309,15 +391,15 @@ Move a parked item into active work only when all of these are true:
   handle families, `using` expressions, multiple `using` bindings, and
   aggregate cleanup errors; revisit after `std::process` and more handle APIs
   prove the need.
-- [ ] binary streams, codecs, broad cryptography, service runtime APIs, and
-  async IO; revisit after resource handles, `std::process`, and later task
-  lifetime rules are stable.
+- [ ] broad cryptography, service runtime APIs, and async IO remain parked;
+  the minimal Bytes codecs, builder, and binary file-handle foundation are
+  promoted above and should not imply a broad crypto or streaming framework.
 - [ ] URL/Git/registry dependencies, remote fetching, publishing workflows,
   package signing, SBOMs, and full published-package lockfile enforcement;
   revisit after local `.mgp` / `.mga` workflows are stable in real use.
-- [ ] control-flow-oriented MIR, native backend, and representation performance
-  work; revisit after benchmark data shows the reference VM or current bytecode
-  is the limiting factor.
+- [ ] control-flow-oriented MIR and a native backend remain parked until the
+  promoted benchmark and runtime-representation work shows the reference VM or
+  current bytecode is the limiting factor.
 - [ ] concurrency features beyond implemented Phase 1 structured task groups:
   channels, `select`, timeouts, and the later phases in
   `spec/007-concurrency-draft.md`; the draft is not an implementation queue.
@@ -399,11 +481,13 @@ future backlog items.
 
 Muga shipped `0.5.0`, shipped structured task groups
 (`group` / `spawn` / `std::task::join`) as `0.6.0`, and then added
-`task::spawn_map` to close the dynamic fan-out gap.
+`task::spawn_map` to close the dynamic fan-out gap. The next maturity work is
+to establish representative benchmarks and real-program workloads, reduce
+duplicated standard-library and CLI surfaces, improve `Map` and aggregate
+representations, and make evidence-backed decisions on numeric scope, ranges,
+equality/hash, and whether task syntax is ready to stabilize in v1 or should
+remain experimental outside the v1 contract.
 `scripts/v1-release-gate.sh` remains the baseline release-quality command, but
 passing it does not by itself establish v1 readiness.
-The next concrete step is gathering real usage of `task::spawn_map` and the
-Phase 1 core before deciding whether to promote Phase 2 (channels) or service
-IO work. Channels, `select`, service IO, remote registries, broad collections,
-and native backend work stay deferred until real task-group usage justifies
-them.
+Channels, `select`, service IO, remote registries, broad collection systems,
+and native backend work stay deferred until those foundations justify them.
