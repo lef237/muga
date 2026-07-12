@@ -488,9 +488,10 @@ pub fn lint_path(path: &Path) -> Result<(), Vec<Diagnostic>> {
                 continue;
             };
             if file.path.is_some() {
-                diagnostics.extend(style::lint_call_style(
+                diagnostics.extend(style::lint_call_style_with_source(
                     &file.program,
                     &module_check.type_output,
+                    &file.source,
                 ));
             }
         }
@@ -506,7 +507,10 @@ pub fn lint_path(path: &Path) -> Result<(), Vec<Diagnostic>> {
     let types = typing::typecheck_program(&program);
     diagnostics.extend(types.diagnostics.clone());
     if diagnostics.is_empty() {
-        diagnostics.extend(style::lint_call_style(&program, &types));
+        let source = read_format_source(path)?;
+        diagnostics.extend(style::lint_call_style_with_source(
+            &program, &types, &source,
+        ));
     }
     if diagnostics.is_empty() {
         Ok(())
@@ -550,7 +554,11 @@ pub fn fix_lint_path(path: &Path) -> Result<LintFixOutcome, Vec<Diagnostic>> {
                 continue;
             };
             let mut program = file.program.clone();
-            let fixed = style::fix_call_style(&mut program, &module_check.type_output);
+            let fixed = style::fix_call_style_with_source(
+                &mut program,
+                &module_check.type_output,
+                &file.source,
+            );
             if fixed == 0 {
                 continue;
             }
@@ -574,7 +582,7 @@ pub fn fix_lint_path(path: &Path) -> Result<LintFixOutcome, Vec<Diagnostic>> {
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
-    let fixed_calls = style::fix_call_style(&mut program, &types);
+    let fixed_calls = style::fix_call_style_with_source(&mut program, &types, &source);
     let mut changed_files = Vec::new();
     if fixed_calls > 0 {
         let formatted = formatter::format_program_preserving_comments(&program, &source);

@@ -28,3 +28,15 @@ Run `muga lint <source-file>` to check this rule. `muga check` continues to
 accept both call forms because ordinary calls remain part of the language.
 Run `muga lint --fix <source-file>` to rewrite eligible calls and format the
 changed source files while preserving line comments.
+
+Suppress one lint code for calls that begin on the next physical line with an
+explicit comment:
+
+```muga
+// muga-lint: allow-next-line L001 -- arguments are intentionally symmetric
+result = equals(expected, actual)
+```
+
+The suppression applies only to the named code and only to the immediately
+following line. Both `muga lint` and `muga lint --fix` honor it. A reason after
+`--` is optional but recommended.
