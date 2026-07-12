@@ -1,5 +1,8 @@
 # Name Resolution Specification v1
 
+Status: evolving v1 candidate while Muga is in the `0.x` series; see
+[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+
 This document is normative for scope construction, binding introduction, update resolution, shadowing, non-local update rejection, and the name-oriented part of dot-expression resolution.
 
 ## 1. Scope Model

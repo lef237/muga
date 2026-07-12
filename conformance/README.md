@@ -1,9 +1,11 @@
 # Muga Conformance Fixtures
 
-This directory contains executable fixtures for the v1 language contract. The
-suite is intentionally separate from `samples/`: samples teach the language,
-while conformance fixtures pin behavior that future compiler versions and
-alternate implementations should preserve. Diagnostic sections in
+This directory contains executable fixtures for the evolving v1 language
+contract. Until Muga reaches `1.0.0`, these fixtures pin the current candidate
+behavior but may change together with the specifications. After v1, they become
+the compatibility suite that future compiler versions and alternate
+implementations must preserve. The suite is intentionally separate from
+`samples/`: samples teach the language. Diagnostic sections in
 [errors.md](../errors.md) link to rejecting fixtures here as their referenced
 fixtures.
 

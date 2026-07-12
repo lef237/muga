@@ -6,6 +6,20 @@ This programming language incorporates the concept of muga, featuring a simple a
 
 Muga emphasizes both code aesthetics and efficiency, providing an environment where developers can freely express their creative ideas.
 
+## Project Status
+
+Muga is under active development in the `0.x` series. The documents named
+`v1` describe the evolving contract that Muga intends to stabilize, not a
+claim that the language is already ready for `1.0.0`.
+
+Muga will adopt the v1 name only after the language, standard packages,
+tooling, diagnostics, package and artifact formats, documentation, and
+real-world usage have matured enough for a long-lived compatibility promise.
+Until then, releases advance the patch component in small steps (for example,
+`0.6.0` to `0.6.1`), including releases that add features or revise the
+pre-v1 contract. See [RELEASING.md](./RELEASING.md) for the versioning policy
+and [ROADMAP.md](./ROADMAP.md) for the current maturity work.
+
 ## Why Muga
 
 - **Small surface, one spelling per operation.** No classes, inheritance,

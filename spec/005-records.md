@@ -1,5 +1,8 @@
 # Records and Dot Expressions Specification v1
 
+Status: evolving v1 candidate while Muga is in the `0.x` series; see
+[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+
 This document defines nominal records, record literals, field access, record update, chained dot calls, and their interaction with receiver-style functions.
 
 ## 1. Core Direction

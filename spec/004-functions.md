@@ -1,5 +1,8 @@
 # Function Specification v1
 
+Status: evolving v1 candidate while Muga is in the `0.x` series; see
+[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+
 This document defines function declarations, anonymous functions, higher-order use, parameter semantics, return semantics, and recursion-related requirements.
 
 ## 1. Function Declarations

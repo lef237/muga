@@ -1,6 +1,9 @@
 # Error Catalog v1
 
-This document defines the expected diagnostic categories for the v1 split specification. The wording may vary by implementation, but the category and trigger condition should remain stable.
+Status: evolving v1 candidate while Muga is in the `0.x` series; see
+[spec-v1.md](./spec-v1.md#v1-completion-boundary).
+
+This document defines the expected diagnostic categories for the v1 split specification. The wording may vary by implementation, but the category and trigger condition should remain stable within each pre-v1 release.
 
 ## Diagnostic Stability Policy
 
@@ -257,7 +260,10 @@ Referenced fixtures:
 
 ## Required V1 Guidance
 
-These diagnostic behaviors are part of the v1 release gate even when the exact code is not one of the original `E001`-`E012` examples.
+These diagnostic behaviors are part of the evolving v1 contract and are
+checked by the release-quality gate even when the exact code is not one of the
+original `E001`-`E012` examples. Before `1.0.0`, the contract may still change
+together with its specifications and conformance fixtures.
 
 ### Ambiguity
 

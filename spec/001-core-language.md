@@ -1,5 +1,8 @@
 # Core Language Specification v1
 
+Status: evolving v1 candidate while Muga is in the `0.x` series; see
+[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+
 This document defines the surface language and the core execution-facing rules. Name resolution, typing, and function-specific rules are split into companion documents:
 
 - [002-name-resolution.md](./002-name-resolution.md)

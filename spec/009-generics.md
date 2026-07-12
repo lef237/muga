@@ -1,6 +1,11 @@
 # Generics Specification v1
 
-Status: v1 design draft with an implemented MVP. The current Rust compiler implements generic type expressions for builtin collection-like types `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`, plus explicit user-defined generic records/functions and generic package interface persistence.
+Status: evolving v1 design candidate with an implemented MVP while Muga is in
+the `0.x` series; see [spec-v1.md](../spec-v1.md#v1-completion-boundary). The
+current Rust compiler implements generic type expressions for builtin
+collection-like types `List[T]`, `Option[T]`, `Result[T, E]`, and `Map[K, V]`,
+plus explicit user-defined generic records/functions and generic package
+interface persistence.
 
 Generics are in scope for Muga v1, but only in a deliberately small form. The goal is to support practical typed code such as `List[T]`, `Option[T]`, `Result[T, E]`, `Map[K, V]`, reusable records, and simple reusable functions without introducing shared-behavior declarations such as protocols, traits, interfaces, typeclasses, or overloaded dispatch.
 

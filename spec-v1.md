@@ -1,6 +1,10 @@
 # Muga Spec v1
 
-This is the compact v1 overview. The split specifications in [spec/](./spec) are the detailed references; this file exists to show the whole language shape without duplicating every rule.
+This is the compact overview of the evolving v1 target. The split
+specifications in [spec/](./spec) are the detailed references; this file exists
+to show the whole language shape without duplicating every rule. While Muga is
+in the `0.x` series, this contract may still change and must not be read as a
+claim that v1 has shipped.
 
 ## Goals
 
@@ -16,7 +20,19 @@ The language is compiler-first. The current VM is a reference execution backend,
 
 ## V1 Completion Boundary
 
-The v1 surface syntax is considered closed around the grammar defined in this overview and the detailed specs. Finishing v1 means implementing and documenting that closed surface, keeping runnable samples and rejection tests aligned with it, preserving the explicit package artifact workflow, and passing `scripts/v1-release-gate.sh`.
+The grammar and behavior described here are the current v1 candidate, not a
+closed or already-complete surface. Pre-v1 experience may reveal that this
+candidate must grow, shrink, or change. Such changes must update the detailed
+specifications, diagnostics, samples, and conformance fixtures together.
+
+Implementing this candidate and passing `scripts/v1-release-gate.sh` are
+necessary release-quality checks, but they are not sufficient to declare v1.
+Muga reaches v1 only when the broader maturity criteria in
+[ROADMAP.md](./ROADMAP.md) are satisfied: the language and standard packages
+cover sustained real programs; semantics and public formats are stable;
+compiler, runtime, tooling, diagnostics, documentation, portability, and
+performance are dependable; and the remaining work is predominantly
+compatible maintenance rather than foundational redesign.
 
 The v1 grammar includes:
 

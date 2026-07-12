@@ -6,15 +6,26 @@ Muga is published to crates.io as `muga`.
 
 Follow semantic versioning (`MAJOR.MINOR.PATCH`):
 
-| Change type | Field to bump | Example |
-|---|---|---|
-| Bug fixes or internal refactoring | PATCH | `0.1.3` → `0.1.4` |
-| Backwards-compatible new features | MINOR | `0.1.3` → `0.2.0` |
-| Breaking changes | MAJOR | `0.1.3` → `1.0.0` |
+Muga uses the following project-specific policy while it is still pre-v1:
 
-Before `1.0.0`, use `0.x` releases to communicate that the language and package
-specifications may still change. Reserve `1.0.0-rc.N` and `1.0.0` for the point
-where the project is ready to make the v1 compatibility promise explicit.
+| Project phase | Field to bump | Example |
+|---|---|---|
+| Any pre-v1 release, including features and breaking changes | PATCH | `0.6.0` → `0.6.1` |
+| v1 release candidates, after the v1 entry criteria are met | prerelease | `1.0.0-rc.1` → `1.0.0-rc.2` |
+| First mature, long-lived compatibility release | MAJOR | `1.0.0-rc.N` → `1.0.0` |
+| Compatible maintenance after v1 | PATCH | `1.0.0` → `1.0.1` |
+
+Before `1.0.0`, increment only the patch component for each release. A pre-v1
+feature or breaking change therefore moves `0.6.0` to `0.6.1`, not to `0.7.0`
+or `1.0.0`. The `0.x` version communicates that the language, standard
+packages, tools, and artifact contracts may still change; every such change
+must still be documented and tested.
+
+Do not infer v1 readiness from the amount of implemented functionality, a
+completed checklist, or a passing release gate alone. Reserve `1.0.0-rc.N`
+and `1.0.0` until the maturity criteria in [ROADMAP.md](./ROADMAP.md) are met
+and the project is ready to maintain the resulting language and ecosystem with
+minimal redesign after v1.
 
 The current version is in the `version` field of `Cargo.toml`.
 
@@ -22,9 +33,10 @@ The current version is in the `version` field of `Cargo.toml`.
 
 ### 1. Run pre-release checks
 
-When preparing a release, run the offline release gate. For v1 release
-candidates and later, also confirm the scope against [spec-v1.md](./spec-v1.md)
-and [ROADMAP.md](./ROADMAP.md).
+When preparing any release, run the offline release-quality gate. For v1
+release candidates and later, also confirm the scope against
+[spec-v1.md](./spec-v1.md) and the v1 maturity criteria in
+[ROADMAP.md](./ROADMAP.md).
 
 ```bash
 scripts/v1-release-gate.sh

@@ -1,5 +1,8 @@
 # Typing Specification v1
 
+Status: evolving v1 candidate while Muga is in the `0.x` series; see
+[spec-v1.md](../spec-v1.md#v1-completion-boundary).
+
 This document defines the v1 typing policy, with emphasis on inference-first ergonomics and the limited cases where annotations are mandatory.
 
 ## 1. Typing Policy

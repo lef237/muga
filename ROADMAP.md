@@ -42,7 +42,7 @@ Muga samples.
   Phase 1 core before deciding whether to promote Phase 2 (channels) or
   service IO work.
 
-Last verified locally on 2026-06-05 during the pre-v1 implementation audit:
+Baseline checks recorded during the 2026-06-05 implementation audit:
 
 - [x] `cargo fmt --check`
 - [x] `git diff --check`
@@ -99,21 +99,53 @@ These are direction-setting commitments, not just missing implementation work.
   source bodies.
 - [x] Muga prefers explicit recoverable error values over implicit exceptions.
 
-## V1 Release Strategy
+## Versioning And V1 Direction
 
-The recommended path is now to stop adding v1 user-visible features and
-stabilize for release.
+Muga is not on a short release-candidate path. The `v1` specifications and
+conformance directory describe the evolving contract that the project may
+eventually stabilize as `1.0.0`; they do not mean that the current feature set
+is frozen or mature enough for that promise.
 
-- [x] Treat `std::process` as the last planned user-visible feature before v1.
-- [x] Do not start structured concurrency, service IO, remote registries,
-  native backend work, broad collections, or new source syntax before v1.
-- [x] Spend the remaining v1 work on release hardening:
-  documentation alignment, sample/template coverage, diagnostics, and release
-  gate reliability.
-- [x] Only promote another task to pre-v1 P0 if it is a correctness bug,
-  release-gate failure, source-free/artifact fallback violation, broken sample
-  or template, broken public diagnostic contract, or direct contradiction in
-  the v1 specs.
+- [ ] Keep releases in the current `0.x` line and increment only PATCH for
+  each small release (`0.6.0` to `0.6.1`, then `0.6.2`, and so on), including
+  pre-v1 feature and breaking releases. See [RELEASING.md](./RELEASING.md).
+- [ ] Continue testing the language on sustained, non-trivial programs before
+  treating the v1 candidate surface as closed.
+- [ ] Allow the candidate v1 language, standard packages, tools, and formats to
+  change when real usage exposes a foundational gap. Keep the specs,
+  diagnostics, samples, and conformance fixtures aligned with each change.
+- [ ] Treat `scripts/v1-release-gate.sh` as the minimum quality gate for every
+  release, not as proof that the project is ready to call itself v1.
+- [ ] Start `1.0.0-rc.N` only after all v1 maturity criteria below are met and
+  the expected post-v1 work is compatible maintenance rather than foundational
+  language or ecosystem work.
+
+### V1 Maturity Criteria
+
+All of these are required before the first v1 release candidate:
+
+- [ ] Real-world validation: multiple sustained programs exercise the language,
+  standard packages, dependency model, artifacts, and deployment workflows;
+  remaining gaps are understood rather than hidden by small samples alone.
+- [ ] Language stability: core semantics, type behavior, error handling,
+  concurrency, resource lifetime, package boundaries, and compatibility rules
+  are coherent and no known foundational redesign is queued.
+- [ ] Implementation reliability: the compiler and reference runtime are robust
+  against invalid input and ordinary host failures, with regression,
+  conformance, stress, and negative-path coverage appropriate for a mature
+  language implementation.
+- [ ] Tooling and ecosystem completeness: formatting, testing, documentation,
+  editor-facing queries, build artifacts, dependency locking, distribution,
+  installation, and upgrade workflows are dependable for real projects.
+- [ ] Operational quality: supported platforms, performance expectations,
+  compatibility policy, release process, and recovery procedures are explicit
+  and have been exercised.
+- [ ] Documentation quality: the language and standard packages are taught and
+  referenced without relying on implementation archaeology, and all v1
+  documents describe one consistent contract.
+- [ ] Low post-v1 redesign risk: known remaining work can be delivered mostly
+  as compatible fixes, performance improvements, or optional additions without
+  reopening the language's foundations.
 
 ## Completed Milestones
 
@@ -121,14 +153,17 @@ Finished work is summarized here. Full checklists, audit notes, and decision
 logs live in git history; the resulting rules live in the specs, `errors.md`,
 and `RELEASING.md`.
 
-- [x] `std::process` (the last planned v1 standard-library capability): narrow
+- [x] `std::process` (the last capability under the previous near-term v1
+  plan): narrow
   recoverable process execution through explicit `Options` / `Output` records,
   nonzero child exits captured as `Result::Ok(Output)`, no shell
   interpolation, `path::Path` cwd, explicit env overrides, and source-free
   bundle coverage.
-- [x] V1 release hardening: v1 feature freeze, `spec-v1.md` boundary aligned
-  with the implementation, unfinished-work audit, template/sample/bundle test
-  coverage, and the release gate as the authoritative readiness command.
+- [x] Previous v1 release-hardening pass: aligned the then-current
+  `spec-v1.md` boundary with the implementation, audited unfinished work, added
+  template/sample/bundle test coverage, and established the release-quality
+  gate. This pass is historical evidence, not a declaration of v1 readiness or
+  a permanent feature freeze.
 - [x] Pre-v1 implementation audit (2026-06-05): hotspot review across parser,
   resolver, typing, MIR/VM, artifacts, and CLI contracts; production
   panic-site classification; regression tests for formatter idempotence,
@@ -144,7 +179,7 @@ and `RELEASING.md`.
   checks. Design decisions and semantics are recorded in
   [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) section 5.
 
-## Post-v1 P2: Service IO
+## Maturity Track P2: Service IO
 
 Do not start this before task lifetime, shutdown, and backpressure semantics
 are explicit.
@@ -157,7 +192,7 @@ are explicit.
 - [ ] Keep JSON integration explicit through `std::json` schemas.
 - [ ] Prove source, built-artifact, and source-free bundle execution.
 
-## Post-v1 P2: Performance Path
+## Maturity Track P2: Performance Path
 
 Performance work needs evidence before native backend claims.
 
@@ -171,7 +206,7 @@ Performance work needs evidence before native backend claims.
 - [ ] Keep native backend work deferred until MIR, package artifacts, and
   runtime representation have measurable pressure.
 
-## Post-v1 P2: Distribution Path
+## Maturity Track P2: Distribution Path
 
 Distribution should build on the existing `.mgp` / `.mga` work.
 
@@ -187,9 +222,11 @@ Distribution should build on the existing `.mgp` / `.mga` work.
 ## Parked Non-Blockers
 
 These are known implementation gaps or design extensions. Parking an item here
-does not mean it is planned. It means the current implementation is allowed to
-ship without it, and the feature should not be promoted only because it would
-make a few examples shorter.
+does not mean it is planned or permanently deferred until after v1. It means
+the current `0.x` implementation may keep shipping without it, and the feature
+should not be promoted only because it would make a few examples shorter. Real
+usage may still show that a parked item, or a different solution to the same
+problem, is necessary for a mature v1.
 
 Move a parked item into active work only when all of these are true:
 
@@ -228,7 +265,7 @@ Move a parked item into active work only when all of these are true:
   aggregate cleanup errors; revisit after `std::process` and more handle APIs
   prove the need.
 - [ ] binary streams, codecs, broad cryptography, service runtime APIs, and
-  async IO; revisit after resource handles, `std::process`, and post-v1 task
+  async IO; revisit after resource handles, `std::process`, and later task
   lifetime rules are stable.
 - [ ] URL/Git/registry dependencies, remote fetching, publishing workflows,
   package signing, SBOMs, and full published-package lockfile enforcement;
@@ -243,9 +280,9 @@ Move a parked item into active work only when all of these are true:
   needs syntax at all or whether a standard package abstraction (like
   `task::spawn_map`) is simpler.
 - [ ] `pub opaque record` for user-defined hidden record representations; this
-  is not a v1 feature. Revisit only after real package APIs need smart
-  constructors while hiding ordinary Muga record fields. Keep this separate from
-  runtime/compiler-backed `pub opaque type`.
+  is not in the current v1 candidate. Revisit only after real package APIs need
+  smart constructors while hiding ordinary Muga record fields. Keep this
+  separate from runtime/compiler-backed `pub opaque type`.
 
 ## Documentation Hygiene
 
@@ -318,7 +355,8 @@ future backlog items.
 Muga shipped `0.5.0`, shipped structured task groups
 (`group` / `spawn` / `std::task::join`) as `0.6.0`, and then added
 `task::spawn_map` to close the dynamic fan-out gap.
-`scripts/v1-release-gate.sh` remains the authoritative readiness command.
+`scripts/v1-release-gate.sh` remains the baseline release-quality command, but
+passing it does not by itself establish v1 readiness.
 The next concrete step is gathering real usage of `task::spawn_map` and the
 Phase 1 core before deciding whether to promote Phase 2 (channels) or service
 IO work. Channels, `select`, service IO, remote registries, broad collections,

@@ -398,13 +398,16 @@ Across packages:
 
 To support both minimal annotations and fast package compilation, package interfaces store **resolved public signatures**.
 
-For the v1 completion target, public functions still require explicit public signatures in source. Public-signature inference is the intended later policy once the current artifact workflow and diagnostics are stable.
+For the current v1 candidate, public functions require explicit public
+signatures in source. Public-signature inference may be reconsidered once the
+current artifact workflow and diagnostics are stable and real package usage
+shows that it is needed.
 
 The longer-term policy is that users should not have to write every public signature by hand when the compiler can infer it uniquely.
 
 The important boundary is:
 
-- v1 package authors write explicit public function signatures
+- authors targeting the current v1 candidate write explicit public function signatures
 - private package bodies may still use local inference when the type is unique
 - importers read cached package interfaces, not the full bodies of unchanged dependencies
 - package interfaces contain concrete resolved signatures
@@ -415,13 +418,16 @@ If public-signature inference is added later, the defining package may infer a p
 
 Every `pub fn` must have a public signature.
 
-In the v1 completion target, that signature must be explicit enough for the compiler to know the full callable type before downstream package checking:
+In the current v1 candidate, that signature must be explicit enough for the compiler to know the full callable type before downstream package checking:
 
 - public parameter types must be explicit
 - the public return type must be explicit
 - generic public functions must declare their type parameters explicitly
 
-Public-signature inference remains a post-v1 extension. If added later, the signature may come from explicit annotations, local inference inside the defining package, or a mix of both, and the generated package interface will still store the resolved signature.
+Public-signature inference is not in the current v1 candidate. If real usage
+justifies adding it before or after v1, the signature may come from explicit
+annotations, local inference inside the defining package, or a mix of both,
+and the generated package interface will still store the resolved signature.
 
 ```txt
 pub fn display_name(user: User) {
@@ -433,7 +439,7 @@ pub fn age_next(user: User) {
 }
 ```
 
-These are examples of the post-v1 inference direction, where the compiler could infer the exported signatures:
+These are examples of a possible future inference direction, where the compiler could infer the exported signatures:
 
 ```txt
 display_name: User -> String

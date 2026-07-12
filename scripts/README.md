@@ -6,7 +6,9 @@ checks.
 
 ## Release And Checks
 
-- `scripts/v1-release-gate.sh`: local v1 release gate. It runs formatting,
+- `scripts/v1-release-gate.sh`: local release-quality gate for the evolving v1
+  target. Its historical name does not mean that a passing run is sufficient
+  to declare v1. It runs formatting,
   clippy, tests, build, CLI smoke checks, API-diff gating, and offline
   package/app archive verification, app archive unpack/run/install smoke, and
   packaging verification.
