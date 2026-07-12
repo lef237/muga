@@ -554,6 +554,9 @@ pub fn fix_lint_path(path: &Path) -> Result<LintFixOutcome, Vec<Diagnostic>> {
             if fixed == 0 {
                 continue;
             }
+            if !source_has_explicit_package(&file.source)? {
+                program.package = None;
+            }
             let formatted = formatter::format_program_preserving_comments(&program, &file.source);
             write_lint_fix(source_path, formatted)?;
             outcome.fixed_calls += fixed;
@@ -592,6 +595,14 @@ fn write_lint_fix(path: &Path, source: String) -> Result<(), Vec<Diagnostic>> {
             Default::default(),
         )]
     })
+}
+
+fn source_has_explicit_package(source: &str) -> Result<bool, Vec<Diagnostic>> {
+    let tokens = lexer::lex(source)?;
+    Ok(tokens
+        .iter()
+        .find(|token| !matches!(token.kind, token::TokenKind::Newline))
+        .is_some_and(|token| matches!(token.kind, token::TokenKind::Package)))
 }
 
 pub fn format_source(source: &str) -> Result<String, Vec<Diagnostic>> {

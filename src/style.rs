@@ -43,37 +43,75 @@ pub fn fix_call_style(program: &mut Program, types: &TypeCheckOutput) -> usize {
         .filter(|call| is_named_function(call.callee, &binding_kinds))
         .map(|call| call.expr_id)
         .collect();
+    let enum_constructors: HashSet<ExprId> = types
+        .calls
+        .iter()
+        .filter(|call| is_enum_constructor(call.callee))
+        .map(|call| call.expr_id)
+        .collect();
     let mut fixed = 0;
-    fix_statements(&mut program.statements, &eligible, &mut fixed);
+    fix_statements(
+        &mut program.statements,
+        &eligible,
+        &enum_constructors,
+        &mut fixed,
+    );
     fixed
 }
 
-fn fix_statements(statements: &mut [Stmt], eligible: &HashSet<ExprId>, fixed: &mut usize) {
+fn fix_statements(
+    statements: &mut [Stmt],
+    eligible: &HashSet<ExprId>,
+    enum_constructors: &HashSet<ExprId>,
+    fixed: &mut usize,
+) {
     for statement in statements {
         match statement {
-            Stmt::Assign(stmt) => fix_expr(&mut stmt.value, eligible, fixed),
-            Stmt::FuncDecl(stmt) => fix_value_block(&mut stmt.body, eligible, fixed),
+            Stmt::Assign(stmt) => fix_expr(&mut stmt.value, eligible, enum_constructors, fixed),
+            Stmt::FuncDecl(stmt) => {
+                fix_value_block(&mut stmt.body, eligible, enum_constructors, fixed)
+            }
             Stmt::If(stmt) => {
-                fix_expr(&mut stmt.condition, eligible, fixed);
-                fix_statements(&mut stmt.then_branch.statements, eligible, fixed);
+                fix_expr(&mut stmt.condition, eligible, enum_constructors, fixed);
+                fix_statements(
+                    &mut stmt.then_branch.statements,
+                    eligible,
+                    enum_constructors,
+                    fixed,
+                );
                 if let Some(branch) = &mut stmt.else_branch {
-                    fix_statements(&mut branch.statements, eligible, fixed);
+                    fix_statements(&mut branch.statements, eligible, enum_constructors, fixed);
                 }
             }
             Stmt::While(stmt) => {
-                fix_expr(&mut stmt.condition, eligible, fixed);
-                fix_statements(&mut stmt.body.statements, eligible, fixed);
+                fix_expr(&mut stmt.condition, eligible, enum_constructors, fixed);
+                fix_statements(
+                    &mut stmt.body.statements,
+                    eligible,
+                    enum_constructors,
+                    fixed,
+                );
             }
             Stmt::For(stmt) => {
-                fix_expr(&mut stmt.iterable, eligible, fixed);
-                fix_statements(&mut stmt.body.statements, eligible, fixed);
+                fix_expr(&mut stmt.iterable, eligible, enum_constructors, fixed);
+                fix_statements(
+                    &mut stmt.body.statements,
+                    eligible,
+                    enum_constructors,
+                    fixed,
+                );
             }
             Stmt::Using(stmt) => {
-                fix_expr(&mut stmt.value, eligible, fixed);
-                fix_statements(&mut stmt.body.statements, eligible, fixed);
+                fix_expr(&mut stmt.value, eligible, enum_constructors, fixed);
+                fix_statements(
+                    &mut stmt.body.statements,
+                    eligible,
+                    enum_constructors,
+                    fixed,
+                );
             }
-            Stmt::Return(stmt) => fix_expr(&mut stmt.value, eligible, fixed),
-            Stmt::Expr(stmt) => fix_expr(&mut stmt.expr, eligible, fixed),
+            Stmt::Return(stmt) => fix_expr(&mut stmt.value, eligible, enum_constructors, fixed),
+            Stmt::Expr(stmt) => fix_expr(&mut stmt.expr, eligible, enum_constructors, fixed),
             Stmt::RecordDecl(_)
             | Stmt::EnumDecl(_)
             | Stmt::OpaqueTypeDecl(_)
@@ -83,68 +121,91 @@ fn fix_statements(statements: &mut [Stmt], eligible: &HashSet<ExprId>, fixed: &m
     }
 }
 
-fn fix_value_block(block: &mut ast::ValueBlock, eligible: &HashSet<ExprId>, fixed: &mut usize) {
-    fix_statements(&mut block.statements, eligible, fixed);
-    fix_expr(&mut block.expr, eligible, fixed);
+fn fix_value_block(
+    block: &mut ast::ValueBlock,
+    eligible: &HashSet<ExprId>,
+    enum_constructors: &HashSet<ExprId>,
+    fixed: &mut usize,
+) {
+    fix_statements(&mut block.statements, eligible, enum_constructors, fixed);
+    fix_expr(&mut block.expr, eligible, enum_constructors, fixed);
 }
 
-fn fix_expr(expr: &mut Expr, eligible: &HashSet<ExprId>, fixed: &mut usize) {
+fn fix_expr(
+    expr: &mut Expr,
+    eligible: &HashSet<ExprId>,
+    enum_constructors: &HashSet<ExprId>,
+    fixed: &mut usize,
+) {
     match expr {
-        Expr::ListLit(expr) => fix_exprs(&mut expr.items, eligible, fixed),
+        Expr::ListLit(expr) => fix_exprs(&mut expr.items, eligible, enum_constructors, fixed),
         Expr::Index(expr) => {
-            fix_expr(&mut expr.base, eligible, fixed);
-            fix_expr(&mut expr.index, eligible, fixed);
+            fix_expr(&mut expr.base, eligible, enum_constructors, fixed);
+            fix_expr(&mut expr.index, eligible, enum_constructors, fixed);
         }
         Expr::RecordLit(expr) => {
             for field in &mut expr.fields {
-                fix_expr(&mut field.value, eligible, fixed);
+                fix_expr(&mut field.value, eligible, enum_constructors, fixed);
             }
         }
-        Expr::Field(expr) => fix_expr(&mut expr.base, eligible, fixed),
+        Expr::Field(expr) => fix_expr(&mut expr.base, eligible, enum_constructors, fixed),
         Expr::RecordUpdate(expr) => {
-            fix_expr(&mut expr.base, eligible, fixed);
+            fix_expr(&mut expr.base, eligible, enum_constructors, fixed);
             for field in &mut expr.fields {
-                fix_expr(&mut field.value, eligible, fixed);
+                fix_expr(&mut field.value, eligible, enum_constructors, fixed);
             }
         }
-        Expr::Unary(expr) => fix_expr(&mut expr.expr, eligible, fixed),
+        Expr::Unary(expr) => fix_expr(&mut expr.expr, eligible, enum_constructors, fixed),
         Expr::Binary(expr) => {
-            fix_expr(&mut expr.left, eligible, fixed);
-            fix_expr(&mut expr.right, eligible, fixed);
+            fix_expr(&mut expr.left, eligible, enum_constructors, fixed);
+            fix_expr(&mut expr.right, eligible, enum_constructors, fixed);
         }
         Expr::Call(expr) => {
-            fix_expr(&mut expr.callee, eligible, fixed);
-            fix_exprs(&mut expr.args, eligible, fixed);
+            fix_expr(&mut expr.callee, eligible, enum_constructors, fixed);
+            fix_exprs(&mut expr.args, eligible, enum_constructors, fixed);
             if expr.origin == CallOrigin::Ordinary
                 && !expr.args.is_empty()
+                && expr.type_args.is_empty()
                 && eligible.contains(&expr.id)
             {
                 expr.origin = CallOrigin::Chained;
                 *fixed += 1;
+            } else if matches!(
+                expr.origin,
+                CallOrigin::Chained | CallOrigin::QualifiedChained
+            ) && enum_constructors.contains(&expr.id)
+            {
+                expr.origin = CallOrigin::Ordinary;
+                *fixed += 1;
             }
         }
-        Expr::Try(expr) => fix_expr(&mut expr.expr, eligible, fixed),
+        Expr::Try(expr) => fix_expr(&mut expr.expr, eligible, enum_constructors, fixed),
         Expr::If(expr) => {
-            fix_expr(&mut expr.condition, eligible, fixed);
-            fix_value_block(&mut expr.then_branch, eligible, fixed);
-            fix_value_block(&mut expr.else_branch, eligible, fixed);
+            fix_expr(&mut expr.condition, eligible, enum_constructors, fixed);
+            fix_value_block(&mut expr.then_branch, eligible, enum_constructors, fixed);
+            fix_value_block(&mut expr.else_branch, eligible, enum_constructors, fixed);
         }
         Expr::Match(expr) => {
-            fix_expr(&mut expr.value, eligible, fixed);
+            fix_expr(&mut expr.value, eligible, enum_constructors, fixed);
             for arm in &mut expr.arms {
-                fix_expr(&mut arm.value, eligible, fixed);
+                fix_expr(&mut arm.value, eligible, enum_constructors, fixed);
             }
         }
-        Expr::Fn(expr) => fix_value_block(&mut expr.body, eligible, fixed),
-        Expr::Group(expr) => fix_value_block(&mut expr.body, eligible, fixed),
-        Expr::Spawn(expr) => fix_expr(&mut expr.expr, eligible, fixed),
+        Expr::Fn(expr) => fix_value_block(&mut expr.body, eligible, enum_constructors, fixed),
+        Expr::Group(expr) => fix_value_block(&mut expr.body, eligible, enum_constructors, fixed),
+        Expr::Spawn(expr) => fix_expr(&mut expr.expr, eligible, enum_constructors, fixed),
         Expr::Int(_) | Expr::Bool(_) | Expr::String(_) | Expr::Unit(_) | Expr::Ident(_) => {}
     }
 }
 
-fn fix_exprs(expressions: &mut [Expr], eligible: &HashSet<ExprId>, fixed: &mut usize) {
+fn fix_exprs(
+    expressions: &mut [Expr],
+    eligible: &HashSet<ExprId>,
+    enum_constructors: &HashSet<ExprId>,
+    fixed: &mut usize,
+) {
     for expression in expressions {
-        fix_expr(expression, eligible, fixed);
+        fix_expr(expression, eligible, enum_constructors, fixed);
     }
 }
 
@@ -235,11 +296,11 @@ fn visit_expr(
             visit_expr(&expr.right, calls, binding_kinds, diagnostics);
         }
         Expr::Call(expr) => {
+            let resolved_callee = calls.get(&expr.id).copied();
             if expr.origin == CallOrigin::Ordinary
                 && !expr.args.is_empty()
-                && calls
-                    .get(&expr.id)
-                    .is_some_and(|callee| is_named_function(*callee, binding_kinds))
+                && expr.type_args.is_empty()
+                && resolved_callee.is_some_and(|callee| is_named_function(callee, binding_kinds))
             {
                 diagnostics.push(
                     Diagnostic::new(
@@ -249,6 +310,21 @@ fn visit_expr(
                     )
                     .with_suggestion(
                         "move the first argument before the function name as the chain receiver",
+                    ),
+                );
+            } else if matches!(
+                expr.origin,
+                CallOrigin::Chained | CallOrigin::QualifiedChained
+            ) && resolved_callee.is_some_and(is_enum_constructor)
+            {
+                diagnostics.push(
+                    Diagnostic::new(
+                        "L003",
+                        "enum constructors use ordinary-call syntax",
+                        expr.span,
+                    )
+                    .with_suggestion(
+                        "move the chain receiver into the enum constructor argument list",
                     ),
                 );
             }
@@ -289,6 +365,9 @@ fn is_named_function(
     callee: TypedCalleeInfo,
     binding_kinds: &HashMap<BindingId, BindingKind>,
 ) -> bool {
+    if is_enum_constructor(callee) {
+        return false;
+    }
     let binding = match callee {
         TypedCalleeInfo::Binding(binding)
         | TypedCalleeInfo::PackageItem { binding, .. }
@@ -298,6 +377,20 @@ fn is_named_function(
         }
     };
     binding_kinds.get(&binding) == Some(&BindingKind::Function)
+}
+
+fn is_enum_constructor(callee: TypedCalleeInfo) -> bool {
+    match callee {
+        TypedCalleeInfo::EnumVariant { .. } => true,
+        TypedCalleeInfo::Builtin { name, .. } => matches!(
+            name,
+            "Option::Some" | "Option::None" | "Result::Ok" | "Result::Err"
+        ),
+        TypedCalleeInfo::Binding(_)
+        | TypedCalleeInfo::PackageItem { .. }
+        | TypedCalleeInfo::Value
+        | TypedCalleeInfo::Error => false,
+    }
 }
 
 #[cfg(test)]
@@ -347,6 +440,20 @@ fn main(): Value { Value::Number(1) }
 "#,
         );
         assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+    }
+
+    #[test]
+    fn reports_and_fixes_builtin_enum_constructor_chains() {
+        let source = "fn main(): Result[Int, String] { 1.Result::Ok() }\n";
+        let tokens = lexer::lex(source).expect("source should lex");
+        let mut program = parser::parse(tokens).expect("source should parse");
+        let types = typing::typecheck_program(&program);
+        let diagnostics = lint_call_style(&program, &types);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "L003");
+        assert_eq!(fix_call_style(&mut program, &types), 1);
+        let formatted = formatter::format_program_preserving_comments(&program, source);
+        assert!(formatted.contains("Result::Ok(1)"), "{formatted}");
     }
 
     #[test]

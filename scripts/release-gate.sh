@@ -36,6 +36,7 @@ cargo fmt --check
 scripts/clippy-check.sh
 cargo test --locked
 cargo build --locked
+scripts/lint-muga-sources.sh
 
 mkdir -p "$gate_tmp"
 

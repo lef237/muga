@@ -19,6 +19,8 @@ These are the canonical spellings of the corresponding ordinary calls
 Ordinary-call syntax remains canonical for:
 
 - zero-argument named functions, such as `now()`
+- named calls with explicit call-site type arguments, until chained call-site
+  type arguments are supported
 - calls through function values, such as `callback(value)`
 - enum variant constructors, such as `Result::Ok(value)`
 

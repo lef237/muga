@@ -441,3 +441,9 @@ and enum variant constructors keep ordinary-call syntax.
 
 `muga lint --fix` could not write a rewritten source file. Check the reported
 path, permissions, and available storage, then run the command again.
+
+## L003: enum constructor should use ordinary-call syntax
+
+An enum constructor was written as a chained call. Move the receiver into the
+constructor argument list. Enum construction is the canonical exception to
+the named-function chained-call rule.
