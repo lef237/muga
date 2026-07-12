@@ -11,8 +11,6 @@ fn unbox[T](box: Box[T]): T {
 }
 
 fn main(): Int {
-  wrapped = Box {
-    value: id(41)
-  }
-  unbox(wrapped) + 1
+  wrapped = Box { value: 41.id() }
+  wrapped.unbox() + 1
 }

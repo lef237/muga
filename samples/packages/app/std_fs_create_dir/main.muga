@@ -4,8 +4,8 @@ import std::fs
 import std::path
 
 fn main(): String {
-  existing = path::from_string("samples/packages/app/std_fs_create_dir")
-  match fs::create_dir_path(existing) {
+  existing = "samples/packages/app/std_fs_create_dir".path::from_string()
+  match existing.fs::create_dir_path() {
     Result::Ok(value) => "created"
     Result::Err(error) => error.operation
   }

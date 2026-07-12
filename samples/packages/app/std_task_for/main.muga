@@ -4,15 +4,17 @@ import std::task
 import std::list
 
 fn announce(label: String): String {
-  println(concat("done:", label))
+  "done:".concat(label).println()
 }
 
 fn main(): Int {
   labels = ["a", "b", "c"]
   group {
     for label in labels {
-      spawn announce(label)
+      spawn label.announce()
     }
-    list::fold(labels, 0, fn(total, label) { total + 1 })
+    labels.list::fold(0, fn(total, label) {
+      total + 1
+    })
   }
 }

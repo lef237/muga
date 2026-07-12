@@ -30,26 +30,15 @@ fn mode_text(mode: Mode): String {
 
 fn default_settings(): Settings {
   tags: List[String] = ["base"]
-  Settings {
-    owner: "fallback",
-    server: Server { host: "localhost", port: 8080 },
-    tags: tags,
-    mode: Mode::Dev
-  }
+  Settings { owner: "fallback", server: Server { host: "localhost", port: 8080 }, tags: tags, mode: Mode::Dev }
 }
 
 fn render(settings: Settings): String {
-  string::join([
-    settings.owner,
-    settings.server.host,
-    settings.server.port.to_string(),
-    settings.tags.len().to_string(),
-    mode_text(settings.mode)
-  ], "|")
+  [settings.owner, settings.server.host, settings.server.port.to_string(), settings.tags.len().to_string(), settings.mode.mode_text()].string::join("|")
 }
 
 fn main(): Result[String, config::Error] {
-  required: Settings = try config::load_json(path::from_string("samples/packages/app/std_config/required.json"))
-  overlay = try config::load_json_or(path::from_string("samples/packages/app/std_config/overlay.json"), default_settings())
-  Result::Ok(string::join([render(required), render(overlay)], " || "))
+  required: Settings = try "samples/packages/app/std_config/required.json".path::from_string().config::load_json()
+  overlay = try "samples/packages/app/std_config/overlay.json".path::from_string().config::load_json_or(default_settings())
+  Result::Ok([required.render(), overlay.render()].string::join(" || "))
 }

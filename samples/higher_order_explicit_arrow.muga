@@ -1,9 +1,9 @@
 fn show(x: Int, f: Int -> String): String {
-  println(f(x))
+  f(x).println()
 }
 
 fn main(): String {
-  show(10, fn(n: Int): String {
+  10.show(fn(n: Int): String {
     if n > 9 {
       "big"
     } else {

@@ -9,6 +9,8 @@ fn work(n: Int): Int {
 
 fn main(): Int {
   items = [1, 2, 3, 4, 5]
-  results = task::spawn_map(items, work)
-  list::fold(results, 0, fn(total, item) { total + item })
+  results = items.task::spawn_map(work)
+  results.list::fold(0, fn(total, item) {
+    total + item
+  })
 }

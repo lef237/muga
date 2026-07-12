@@ -7,8 +7,8 @@ fn apply(x: Int, f): Int {
 }
 
 fn main() {
-  first = apply(10, inc)
-  second = apply(10, fn(n) {
+  first = 10.apply(inc)
+  second = 10.apply(fn(n) {
     n + 1
   })
   first + second

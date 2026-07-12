@@ -4,7 +4,7 @@ import company::analytics::numbers as analytics_numbers
 import company::finance::numbers as finance_numbers
 
 fn main(): Int {
-  analytics = analytics_numbers::score(1)
-  finance = finance_numbers::score(1)
+  analytics = 1.analytics_numbers::score()
+  finance = 1.finance_numbers::score()
   analytics + finance
 }

@@ -3,7 +3,7 @@ package app::std_path_with_extension
 import std::path
 
 fn main(): String {
-  source = path::from_string("reports/daily.txt")
-  output = path::with_extension(source, "json")
-  path::as_string(output)
+  source = "reports/daily.txt".path::from_string()
+  output = source.path::with_extension("json")
+  output.path::as_string()
 }

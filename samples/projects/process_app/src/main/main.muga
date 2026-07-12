@@ -1,6 +1,6 @@
 import std::process
 
 fn main(): Result[String, process::Error] {
-  output = try process::run("sh", ["-c", "printf process-app"])
+  output = try "sh".process::run(["-c", "printf process-app"])
   Result::Ok(output.stdout)
 }

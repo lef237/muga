@@ -19,5 +19,5 @@ fn second_number(items: List[Int]): String {
 fn main(): String {
   items: Map[String, Int] = Map.empty()
   filled = items.insert("a", 1).insert("b", 2)
-  first(filled.map::keys()).concat(":").concat(second_number(filled.map::values()))
+  filled.map::keys().first().concat(":").concat(filled.map::values().second_number())
 }

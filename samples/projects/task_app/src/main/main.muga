@@ -6,7 +6,7 @@ record Profile {
 }
 
 fn fetch_label(id: Int): String {
-  concat("user-", to_string(id))
+  "user-".concat(id.to_string())
 }
 
 fn fetch_score(id: Int): Int {
@@ -15,12 +15,9 @@ fn fetch_score(id: Int): Int {
 
 fn main(): String {
   group {
-    label_task = spawn fetch_label(3)
-    score_task = spawn fetch_score(3)
-    profile = Profile {
-      label: label_task.task::join()
-      score: score_task.task::join()
-    }
-    concat(profile.label, concat("/", to_string(profile.score)))
+    label_task = spawn 3.fetch_label()
+    score_task = spawn 3.fetch_score()
+    profile = Profile { label: label_task.task::join(), score: score_task.task::join() }
+    profile.label.concat("/".concat(profile.score.to_string()))
   }
 }

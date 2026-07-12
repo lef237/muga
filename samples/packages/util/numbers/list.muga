@@ -5,15 +5,15 @@ pub fn singleton(x: Int): List[Int] {
 }
 
 pub fn singleton_len(x: Int): Int {
-  singleton(x).len()
+  x.singleton().len()
 }
 
 pub fn singleton_first(x: Int): Int {
-  singleton(x)[0]
+  x.singleton()[0]
 }
 
 pub fn singleton_get(x: Int): Option[Int] {
-  singleton(x).get(0)
+  x.singleton().get(0)
 }
 
 pub fn empty_get(): Option[Int] {
@@ -21,5 +21,5 @@ pub fn empty_get(): Option[Int] {
 }
 
 pub fn replace_singleton(x: Int, value: Int): List[Int] {
-  singleton(x).set(0, value)
+  x.singleton().set(0, value)
 }

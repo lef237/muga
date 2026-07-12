@@ -3,5 +3,5 @@ package app::split_main
 import util::numbers
 
 fn main(): Int {
-  numbers::inc_twice(base())
+  base().numbers::inc_twice()
 }

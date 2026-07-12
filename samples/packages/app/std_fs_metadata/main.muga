@@ -13,16 +13,16 @@ fn kind_name(kind: fs::PathKind): String {
 }
 
 fn main(): String {
-  source = path::from_string("samples/packages/app/std_fs_metadata/main.muga")
-  folder = path::from_string("samples/packages/app/std_fs_metadata")
-  missing = path::from_string("samples/packages/app/std_fs_metadata/missing.txt")
-  source_status: fs::PathStatus = fs::path_status(source)
-  folder_status = fs::path_status(folder)
-  source_info = fs::path_info(source)
-  folder_info = fs::path_info(folder)
-  missing_info = fs::path_info(missing)
+  source = "samples/packages/app/std_fs_metadata/main.muga".path::from_string()
+  folder = "samples/packages/app/std_fs_metadata".path::from_string()
+  missing = "samples/packages/app/std_fs_metadata/missing.txt".path::from_string()
+  source_status: fs::PathStatus = source.fs::path_status()
+  folder_status = folder.fs::path_status()
+  source_info = source.fs::path_info()
+  folder_info = folder.fs::path_info()
+  missing_info = missing.fs::path_info()
   missing_status = missing_info.status
-  first = kind_name(source_info.kind).concat("/").concat(source_status.is_file.to_string())
-  second = first.concat("/").concat(kind_name(folder_info.kind)).concat("/").concat(folder_status.is_dir.to_string())
-  second.concat("/").concat(kind_name(missing_info.kind)).concat("/").concat(missing_status.exists.to_string())
+  first = source_info.kind.kind_name().concat("/").concat(source_status.is_file.to_string())
+  second = first.concat("/").concat(folder_info.kind.kind_name()).concat("/").concat(folder_status.is_dir.to_string())
+  second.concat("/").concat(missing_info.kind.kind_name()).concat("/").concat(missing_status.exists.to_string())
 }

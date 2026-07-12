@@ -3,7 +3,7 @@ package app::std_path_with_file_name
 import std::path
 
 fn main(): String {
-  source = path::from_string("reports/daily.txt")
-  output = path::with_file_name(source, "summary.txt")
-  path::as_string(output)
+  source = "reports/daily.txt".path::from_string()
+  output = source.path::with_file_name("summary.txt")
+  output.path::as_string()
 }

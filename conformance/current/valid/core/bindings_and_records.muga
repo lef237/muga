@@ -3,7 +3,6 @@
 // spec: spec/001-core-language.md#3-core-binding-forms
 // spec: spec/005-records.md
 // expect-main: 2
-
 record Counter {
   value: Int
 }
@@ -15,8 +14,6 @@ fn increment(counter: Counter): Counter {
 fn main(): Int {
   mut total: Int = 0
   total = total + 1
-  counter = Counter {
-    value: total
-  }
-  increment(counter).value
+  counter = Counter { value: total }
+  counter.increment().value
 }

@@ -3,8 +3,8 @@ package app::std_path_file_stem
 import std::path
 
 fn main(): String {
-  file_path = path::from_string("samples/packages/app/std_path_file_stem/main.muga")
-  match path::file_stem(file_path) {
+  file_path = "samples/packages/app/std_path_file_stem/main.muga".path::from_string()
+  match file_path.path::file_stem() {
     Option::Some(value) => value
     Option::None => "missing"
   }

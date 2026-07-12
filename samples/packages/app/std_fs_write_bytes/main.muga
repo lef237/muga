@@ -7,11 +7,11 @@ import std::io
 import std::path
 
 fn main(): Result[String, io::IOError] {
-  data = try fs::read_bytes("samples/packages/app/std_hash/payload.bin")
+  data = try "samples/packages/app/std_hash/payload.bin".fs::read_bytes()
   tmp_dir = try env::temp_dir()
-  target = path::join(tmp_dir, "muga-std-fs-write-bytes-sample.bin")
-  done = try fs::write_bytes_path(target, data)
-  written = try fs::read_bytes_path(target)
-  removed = try fs::remove_file_path(target)
-  Result::Ok(bytes::size(written).to_string())
+  target = tmp_dir.path::join("muga-std-fs-write-bytes-sample.bin")
+  done = try target.fs::write_bytes_path(data)
+  written = try target.fs::read_bytes_path()
+  removed = try target.fs::remove_file_path()
+  Result::Ok(written.bytes::size().to_string())
 }

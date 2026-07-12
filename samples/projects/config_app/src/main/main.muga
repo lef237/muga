@@ -58,11 +58,11 @@ fn config_error_kind_name(kind: config::ErrorKind): String {
 }
 
 fn config_error_message(error: config::Error): String {
-  string::concat_all(["config ", config_error_kind_name(error.kind), " ", error.offset.to_string(), ": ", error.message])
+  ["config ", error.kind.config_error_kind_name(), " ", error.offset.to_string(), ": ", error.message].string::concat_all()
 }
 
 fn discovered_config_path(): String {
-  match env::get_var("MUGA_CONFIG_PATH") {
+  match "MUGA_CONFIG_PATH".env::get_var() {
     Option::Some(value) => value
     Option::None => "samples/projects/config_app/config/settings.json"
   }
@@ -80,7 +80,7 @@ fn cli_error_kind_name(kind: cli::ErrorKind): String {
 }
 
 fn cli_error_message(error: cli::Error): String {
-  string::concat_all(["cli ", cli_error_kind_name(error.kind), " ", error.argument, ": ", error.message])
+  ["cli ", error.kind.cli_error_kind_name(), " ", error.argument, ": ", error.message].string::concat_all()
 }
 
 fn config_value_follows(args: List[String], index: Int): Bool {
@@ -102,7 +102,7 @@ fn settings_args(args: List[String]): List[String] {
         return out
       }
       if arg == "--config" {
-        skip_next = config_value_follows(args, index)
+        skip_next = args.config_value_follows(index)
       } else if arg.starts_with("--config=") {
       } else {
         out = out.push(arg)
@@ -114,7 +114,7 @@ fn settings_args(args: List[String]): List[String] {
 }
 
 fn emit_usage(usage: String): Result[String, String] {
-  printed = println(usage)
+  printed = usage.println()
   Result::Ok(usage)
 }
 
@@ -140,27 +140,27 @@ fn limit_or(limits: Map[String, Int], key: String, fallback: Int): Int {
 }
 
 fn render_settings(settings: Settings): String {
-  owner = option_string(settings.owner.name, "unknown")
-  team = option_string(settings.owner.team, "none")
-  first_port = first_server_port(settings.servers)
-  workers = limit_or(settings.limits, "workers", 0)
-  string::join([settings.name, settings.port.to_string(), settings.verbose.to_string(), settings.tags.len().to_string(), owner, team, settings.servers.len().to_string(), first_port.to_string(), workers.to_string()], "|")
+  owner = settings.owner.name.option_string("unknown")
+  team = settings.owner.team.option_string("none")
+  first_port = settings.servers.first_server_port()
+  workers = settings.limits.limit_or("workers", 0)
+  [settings.name, settings.port.to_string(), settings.verbose.to_string(), settings.tags.len().to_string(), owner, team, settings.servers.len().to_string(), first_port.to_string(), workers.to_string()].string::join("|")
 }
 
 fn run_config(args: List[String]): Result[String, String] {
-  config_path = path::from_string(cli::option_or(args, "config", discovered_config_path()))
-  configured = try result::map_err(config::load_json_or(config_path, default_settings()), config_error_message)
-  settings = try result::map_err(cli::parse_or(settings_args(args), configured), cli_error_message)
-  rendered = render_settings(settings)
-  printed = println(string::concat_all(["config ", rendered]))
+  config_path = args.cli::option_or("config", discovered_config_path()).path::from_string()
+  configured = try config_path.config::load_json_or(default_settings()).result::map_err(config_error_message)
+  settings = try args.settings_args().cli::parse_or(configured).result::map_err(cli_error_message)
+  rendered = settings.render_settings()
+  printed = ["config ", rendered].string::concat_all().println()
   Result::Ok(rendered)
 }
 
 fn main(): Result[String, String] {
   args = env::args()
-  request = try result::map_err(cli::parse_request_or(settings_args(args), "config-app", default_settings()), cli_error_message)
+  request = try args.settings_args().cli::parse_request_or("config-app", default_settings()).result::map_err(cli_error_message)
   match request {
-    cli::Request::Help(usage) => emit_usage(string::concat_all([usage, "\n  --config <Path>  default: $MUGA_CONFIG_PATH or samples/projects/config_app/config/settings.json"]))
-    cli::Request::Parsed(_) => run_config(args)
+    cli::Request::Help(usage) => [usage, "\n  --config <Path>  default: $MUGA_CONFIG_PATH or samples/projects/config_app/config/settings.json"].string::concat_all().emit_usage()
+    cli::Request::Parsed(_) => args.run_config()
   }
 }

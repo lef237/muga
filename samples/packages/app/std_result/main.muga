@@ -24,7 +24,7 @@ fn main(): Int {
   err: Result[Int, String] = Result::Err("bad")
   mapped_err = err.result::map_err(tag_error)
   probe: Result[Int, String] = Result::Ok(1)
-  if result::is_ok(probe) and result::is_err(mapped_err) {
+  if probe.result::is_ok() and mapped_err.result::is_err() {
     value + mapped_err.result::value_or(7)
   } else {
     0

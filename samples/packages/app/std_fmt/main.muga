@@ -4,14 +4,14 @@ import std::fmt
 import std::string
 
 fn main(): String {
-  ruler = fmt::repeat("-", 3)
-  left = fmt::pad_left("Muga", 7, ".")
-  right = fmt::pad_right("go", 5, "*")
-  clipped = fmt::truncate_chars("abcdef", 4)
-  empty = fmt::truncate_chars("abcdef", 0)
-  rendered = match fmt::format_values("{} {{ok}} {}", ["Muga", "fmt"]) {
+  ruler = "-".fmt::repeat(3)
+  left = "Muga".fmt::pad_left(7, ".")
+  right = "go".fmt::pad_right(5, "*")
+  clipped = "abcdef".fmt::truncate_chars(4)
+  empty = "abcdef".fmt::truncate_chars(0)
+  rendered = match "{} {{ok}} {}".fmt::format_values(["Muga", "fmt"]) {
     Result::Ok(value) => value
     Result::Err(error) => "format error"
   }
-  string::join([ruler, left, right, clipped, empty, rendered], "|")
+  [ruler, left, right, clipped, empty, rendered].string::join("|")
 }

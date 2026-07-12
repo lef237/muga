@@ -69,29 +69,29 @@ fn tags_text(tags: List[String]): String {
   if tags.len() == 0 {
     "none"
   } else {
-    string::join(tags, ",")
+    tags.string::join(",")
   }
 }
 
 fn render_run(command: RunCommand): String {
-  string::join(["run", command.target, command.count.to_string(), action_text(command.action), command.dry_run.to_string(), tags_text(command.tags), option_text(command.owner)], "|")
+  ["run", command.target, command.count.to_string(), command.action.action_text(), command.dry_run.to_string(), command.tags.tags_text(), command.owner.option_text()].string::join("|")
 }
 
 fn render_inspect(command: InspectCommand): String {
-  string::join(["inspect", command.target, command.verbose.to_string()], "|")
+  ["inspect", command.target, command.verbose.to_string()].string::join("|")
 }
 
 fn render_command(command: Command): String {
   match command {
-    Command::Run(run_options) => render_run(run_options)
-    Command::Inspect(inspect_command) => render_inspect(inspect_command)
+    Command::Run(run_options) => run_options.render_run()
+    Command::Inspect(inspect_command) => inspect_command.render_inspect()
   }
 }
 
 fn render_root(root: Root): String {
-  rendered = render_command(root.command)
+  rendered = root.command.render_command()
   match root.profile {
-    Option::Some(profile) => string::join(["profile", profile, rendered], "|")
+    Option::Some(profile) => ["profile", profile, rendered].string::join("|")
     Option::None => rendered
   }
 }
@@ -108,25 +108,25 @@ fn cli_error_kind_name(kind: cli::ErrorKind): String {
 }
 
 fn cli_error_message(error: cli::Error): String {
-  string::concat_all(["cli ", cli_error_kind_name(error.kind), " ", error.argument, ": ", error.message])
+  ["cli ", error.kind.cli_error_kind_name(), " ", error.argument, ": ", error.message].string::concat_all()
 }
 
 fn emit_usage(usage: String): Result[String, String] {
-  printed = println(usage)
+  printed = usage.println()
   Result::Ok(usage)
 }
 
 fn run_command(root: Root): Result[String, String] {
-  rendered = render_root(root)
-  printed = println(string::concat_all(["cli-tool ", rendered]))
+  rendered = root.render_root()
+  printed = ["cli-tool ", rendered].string::concat_all().println()
   Result::Ok(rendered)
 }
 
 fn main(): Result[String, String] {
   args = env::args()
-  request = try result::map_err(cli::parse_request[Root](args, "cli-tool"), cli_error_message)
+  request = try cli::parse_request[Root](args, "cli-tool").result::map_err(cli_error_message)
   match request {
-    cli::Request::Help(usage) => emit_usage(usage)
-    cli::Request::Parsed(root) => run_command(root)
+    cli::Request::Help(usage) => usage.emit_usage()
+    cli::Request::Parsed(root) => root.run_command()
   }
 }

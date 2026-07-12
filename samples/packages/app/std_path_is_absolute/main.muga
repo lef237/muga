@@ -3,6 +3,6 @@ package app::std_path_is_absolute
 import std::path
 
 fn main(): Bool {
-  file_path = path::from_string("samples/packages/app/std_path_is_absolute/main.muga")
-  path::is_absolute(file_path)
+  file_path = "samples/packages/app/std_path_is_absolute/main.muga".path::from_string()
+  file_path.path::is_absolute()
 }

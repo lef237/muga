@@ -17,25 +17,25 @@ fn kind_name(kind: fs::PathKind): String {
 
 fn default_export_path(): Result[path::Path, io::IOError] {
   tmp_dir = try env::temp_dir()
-  Result::Ok(path::join(tmp_dir, "muga-resource-export-payload.bin"))
+  Result::Ok(tmp_dir.path::join("muga-resource-export-payload.bin"))
 }
 
 fn export_path(): Result[path::Path, io::IOError] {
   default_path = try default_export_path()
-  Result::Ok(path::from_string(cli::positional_or(env::args(), 0, path::as_string(default_path))))
+  Result::Ok(env::args().cli::positional_or(0, default_path.path::as_string()).path::from_string())
 }
 
 fn render_result(size: Int, metadata: fs::PathMetadata, digest: String): String {
-  size.to_string().concat("|").concat(kind_name(metadata.kind)).concat("|").concat(metadata.status.is_file.to_string()).concat("|").concat(digest)
+  size.to_string().concat("|").concat(metadata.kind.kind_name()).concat("|").concat(metadata.status.is_file.to_string()).concat("|").concat(digest)
 }
 
 fn main(): Result[String, io::IOError] {
-  data = try fs::read_resource_bytes("resource_export", "static/payload.bin")
-  digest = hash::sha256_hex(data)
+  data = try "resource_export".fs::read_resource_bytes("static/payload.bin")
+  digest = data.hash::sha256_hex()
   target = try export_path()
-  wrote = try fs::write_bytes_path(target, data)
-  metadata = try fs::path_metadata_path(target)
-  written = try fs::read_bytes_path(target)
-  removed = try fs::remove_file_path(target)
-  Result::Ok(render_result(bytes::size(written), metadata, digest))
+  wrote = try target.fs::write_bytes_path(data)
+  metadata = try target.fs::path_metadata_path()
+  written = try target.fs::read_bytes_path()
+  removed = try target.fs::remove_file_path()
+  Result::Ok(written.bytes::size().render_result(metadata, digest))
 }

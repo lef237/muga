@@ -9,8 +9,12 @@ fn work(n: Int): Int {
 
 fn main(): Int {
   group {
-    tasks = [spawn work(1), spawn work(2), spawn work(3)]
-    results = list::map(tasks, fn(item) { item.task::join() })
-    list::fold(results, 0, fn(total, item) { total + item })
+    tasks = [spawn 1.work(), spawn 2.work(), spawn 3.work()]
+    results = tasks.list::map(fn(item) {
+      item.task::join()
+    })
+    results.list::fold(0, fn(total, item) {
+      total + item
+    })
   }
 }

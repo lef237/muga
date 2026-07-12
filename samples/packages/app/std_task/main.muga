@@ -3,7 +3,7 @@ package app::std_task
 import std::task
 
 fn fetch_label(id: Int): String {
-  concat("item-", to_string(id))
+  "item-".concat(id.to_string())
 }
 
 fn fetch_score(id: Int): Int {
@@ -12,10 +12,10 @@ fn fetch_score(id: Int): Int {
 
 fn main(): String {
   group {
-    label_task = spawn fetch_label(7)
-    score_task = spawn fetch_score(7)
-    label = task::join(label_task)
+    label_task = spawn 7.fetch_label()
+    score_task = spawn 7.fetch_score()
+    label = label_task.task::join()
     score = score_task.task::join()
-    concat(label, concat("/", to_string(score)))
+    label.concat("/".concat(score.to_string()))
   }
 }

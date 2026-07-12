@@ -3,7 +3,7 @@ package app::std_env
 import std::env
 
 fn main(): String {
-  match env::get_var("__MUGA_STD_ENV_SAMPLE_SHOULD_NOT_EXIST_8D73769F") {
+  match "__MUGA_STD_ENV_SAMPLE_SHOULD_NOT_EXIST_8D73769F".env::get_var() {
     Option::Some(value) => value
     Option::None => "missing"
   }

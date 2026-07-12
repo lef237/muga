@@ -4,28 +4,28 @@ import std::fs
 import std::path
 
 fn copied_payload_summary(base: path::Path, target: path::Path): String {
-  copied_payload = path::join(path::join(target, "nested"), "payload.txt")
-  text = match fs::read_text_path(copied_payload) {
+  copied_payload = target.path::join("nested").path::join("payload.txt")
+  text = match copied_payload.fs::read_text_path() {
     Result::Ok(value) => value
     Result::Err(error) => error.operation
   }
-  removed = match fs::remove_dir_all_path(base) {
+  removed = match base.fs::remove_dir_all_path() {
     Result::Ok(value) => true
     Result::Err(error) => false
   }
-  text.concat("|").concat(removed.to_string()).concat("|").concat(fs::exists_path(base).to_string())
+  text.concat("|").concat(removed.to_string()).concat("|").concat(base.fs::exists_path().to_string())
 }
 
 fn main(): String {
-  base = path::from_string("samples/packages/app/std_fs_copy_dir_all/generated")
-  source = path::join(base, "source")
-  nested = path::join(source, "nested")
-  target = path::join(base, "target")
-  payload = path::join(nested, "payload.txt")
-  match fs::create_dir_all_path(nested) {
-    Result::Ok(created) => match fs::write_text_path(payload, "payload") {
-      Result::Ok(written) => match fs::copy_dir_all_path(source, target) {
-        Result::Ok(copied) => copied_payload_summary(base, target)
+  base = "samples/packages/app/std_fs_copy_dir_all/generated".path::from_string()
+  source = base.path::join("source")
+  nested = source.path::join("nested")
+  target = base.path::join("target")
+  payload = nested.path::join("payload.txt")
+  match nested.fs::create_dir_all_path() {
+    Result::Ok(created) => match payload.fs::write_text_path("payload") {
+      Result::Ok(written) => match source.fs::copy_dir_all_path(target) {
+        Result::Ok(copied) => base.copied_payload_summary(target)
         Result::Err(error) => error.operation
       }
       Result::Err(error) => error.operation

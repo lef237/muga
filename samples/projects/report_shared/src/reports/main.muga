@@ -8,11 +8,8 @@ pub record Report {
 }
 
 pub fn load_report(file_path: path::Path): Result[Report, io::IOError] {
-  text = try fs::read_text_path(file_path)
-  Result::Ok(Report {
-    title: "daily",
-    body: text.trim()
-  })
+  text = try file_path.fs::read_text_path()
+  Result::Ok(Report { title: "daily", body: text.trim() })
 }
 
 pub fn summarize(report: Report): String {
@@ -24,7 +21,7 @@ pub fn render_summary(summary: String, source_path: String): String {
 }
 
 pub fn error_operation(file_path: path::Path): String {
-  match fs::read_text_path(file_path) {
+  match file_path.fs::read_text_path() {
     Result::Ok(text) => text
     Result::Err(error) => error.operation
   }

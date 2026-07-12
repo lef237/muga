@@ -6,16 +6,16 @@ fn parse_positive(label: String, n: Int): Result[Int, String] {
   if n > 0 {
     Result::Ok(n)
   } else {
-    Result::Err(concat(label, " must be positive"))
+    Result::Err(label.concat(" must be positive"))
   }
 }
 
 fn main(): Result[Int, String] {
   group {
-    a_task = spawn parse_positive("a", 2)
-    b_task = spawn parse_positive("b", 3)
+    a_task = spawn "a".parse_positive(2)
+    b_task = spawn "b".parse_positive(3)
     a = try a_task.task::join()
-    b = try task::join(b_task)
+    b = try b_task.task::join()
     Result::Ok(a + b)
   }
 }

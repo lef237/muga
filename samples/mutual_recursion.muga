@@ -2,7 +2,7 @@ fn is_even(n: Int): Bool {
   if n == 0 {
     true
   } else {
-    is_odd(n - 1)
+    (n - 1).is_odd()
   }
 }
 
@@ -10,10 +10,10 @@ fn is_odd(n: Int): Bool {
   if n == 0 {
     false
   } else {
-    is_even(n - 1)
+    (n - 1).is_even()
   }
 }
 
 fn main(): Bool {
-  is_even(10)
+  10.is_even()
 }

@@ -4,14 +4,14 @@ import std::cli
 
 fn main(): Result[String, String] {
   args = ["input.txt", "--verbose", "--output=out.txt", "--count=2", "--enabled=true", "--tag=tool", "--tag=service", "--tag", "--ignored", "--", "--literal"]
-  first = cli::positional_or(args, 0, "missing")
-  second = cli::positional_or(args, 1, "missing")
-  verbose = cli::has_flag(args, "verbose").to_string()
-  output = cli::option_or(args, "output", "stdout")
-  tags = cli::option_values(args, "tag")
-  fallback_tags = cli::option_values_or(args, "missing", ["default"])
-  count = try cli::option_int_or(args, "count", 0)
-  enabled = try cli::option_bool_or(args, "enabled", false)
+  first = args.cli::positional_or(0, "missing")
+  second = args.cli::positional_or(1, "missing")
+  verbose = args.cli::has_flag("verbose").to_string()
+  output = args.cli::option_or("output", "stdout")
+  tags = args.cli::option_values("tag")
+  fallback_tags = args.cli::option_values_or("missing", ["default"])
+  count = try args.cli::option_int_or("count", 0)
+  enabled = try args.cli::option_bool_or("enabled", false)
   text = first.concat("|").concat(second).concat("|").concat(verbose).concat("|").concat(output)
   Result::Ok(text.concat("|").concat(count.to_string()).concat("|").concat(enabled.to_string()).concat("|").concat(tags.len().to_string()).concat("|").concat(tags[0]).concat("|").concat(tags[1]).concat("|").concat(fallback_tags[0]))
 }

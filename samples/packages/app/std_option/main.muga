@@ -19,7 +19,7 @@ fn main(): Int {
   mapped = present.option::map(inc)
   kept = mapped.option::and_then(keep_positive)
   missing: Option[Int] = Option::None
-  if option::is_some(kept) and option::is_none(missing) {
+  if kept.option::is_some() and missing.option::is_none() {
     kept.option::value_or(0) + missing.option::value_or(5)
   } else {
     0

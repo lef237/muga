@@ -3,7 +3,7 @@ fn read(value: Int): Result[Int, String] {
 }
 
 fn compute(): Result[Int, String] {
-  value = try read(41)
+  value = try 41.read()
   Result::Ok(value + 1)
 }
 

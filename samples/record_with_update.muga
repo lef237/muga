@@ -8,11 +8,7 @@ fn birthday(user: User): User {
 }
 
 fn main(): Int {
-  user = User {
-    name: "Ada"
-    age: 20
-  }
-
-  older = birthday(user)
+  user = User { name: "Ada", age: 20 }
+  older = user.birthday()
   older.age
 }

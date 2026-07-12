@@ -6,8 +6,8 @@ fn main() {
   double = fn(n) {
     n * 2
   }
-  first = offset(10, double)
-  second = offset(10, fn(n) {
+  first = 10.offset(double)
+  second = 10.offset(fn(n) {
     n + 3
   })
   first + second

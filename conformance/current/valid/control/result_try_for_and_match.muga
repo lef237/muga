@@ -3,13 +3,12 @@
 // spec: spec/001-core-language.md#5-statements-and-expressions
 // spec: spec/013-enums-results.md
 // expect-main: 5
-
 fn read(value: Int): Result[Int, String] {
   Result::Ok(value)
 }
 
 fn compute(value: Int): Result[Int, String] {
-  read_value = try read(value)
+  read_value = try value.read()
   Result::Ok(read_value + 1)
 }
 
@@ -21,8 +20,7 @@ fn main(): Int {
     }
     total = total + item
   }
-
-  match compute(total) {
+  match total.compute() {
     Result::Ok(value) => value
     Result::Err(message) => 0
   }

@@ -4,7 +4,7 @@ import std::string
 
 fn main(): String {
   empty: List[String] = []
-  prefix = string::join(empty, ",")
-  rendered = string::join(["Muga", 8080.to_string(), true.to_string()], "|")
-  string::concat_all([prefix, "config ", rendered])
+  prefix = empty.string::join(",")
+  rendered = ["Muga", 8080.to_string(), true.to_string()].string::join("|")
+  [prefix, "config ", rendered].string::concat_all()
 }

@@ -47,11 +47,11 @@ fn defaults(): Settings {
 
 fn main(): Result[String, cli::Error] {
   args = ["-H", "api", "--profile_name", "compat", "-t", "blue", "--tags=green", "-b", "--mode", "Batch", "-s", "secret"]
-  settings = try cli::parse_or(args, defaults())
-  usage = cli::usage_for("cli-schema", defaults())
+  settings = try args.cli::parse_or(defaults())
+  usage = "cli-schema".cli::usage_for(defaults())
   hidden_is_omitted = (!usage.contains("--token")).to_string()
   alias_is_documented = usage.contains("aliases: --server-host").to_string()
   about_is_documented = usage.contains("Configure the schema sample").to_string()
-  text = string::join([settings.host, settings.profile, settings.tags.len().to_string(), settings.tags[0], settings.tags[1], settings.batch.to_string(), mode_text(settings.mode), token_text(settings.token), hidden_is_omitted, alias_is_documented, about_is_documented], "|")
+  text = [settings.host, settings.profile, settings.tags.len().to_string(), settings.tags[0], settings.tags[1], settings.batch.to_string(), settings.mode.mode_text(), settings.token.token_text(), hidden_is_omitted, alias_is_documented, about_is_documented].string::join("|")
   Result::Ok(text)
 }

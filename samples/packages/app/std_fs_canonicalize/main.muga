@@ -4,9 +4,9 @@ import std::fs
 import std::path
 
 fn main(): String {
-  source = path::from_string("samples/packages/app/std_fs_canonicalize/main.muga")
-  match fs::canonicalize_path(source) {
-    Result::Ok(resolved) => match path::file_name(resolved) {
+  source = "samples/packages/app/std_fs_canonicalize/main.muga".path::from_string()
+  match source.fs::canonicalize_path() {
+    Result::Ok(resolved) => match resolved.path::file_name() {
       Option::Some(name) => name
       Option::None => "missing"
     }

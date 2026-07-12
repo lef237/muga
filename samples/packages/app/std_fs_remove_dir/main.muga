@@ -4,8 +4,8 @@ import std::fs
 import std::path
 
 fn main(): String {
-  missing = path::from_string("samples/packages/app/std_fs_remove_dir/missing")
-  match fs::remove_dir_path(missing) {
+  missing = "samples/packages/app/std_fs_remove_dir/missing".path::from_string()
+  match missing.fs::remove_dir_path() {
     Result::Ok(value) => "removed"
     Result::Err(error) => error.operation
   }

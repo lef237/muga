@@ -4,8 +4,8 @@ import std::fs
 import std::path
 
 fn main(): String {
-  file_path = path::from_string("samples/packages/app/std_hash/payload.bin")
-  match fs::file_size_path(file_path) {
+  file_path = "samples/packages/app/std_hash/payload.bin".path::from_string()
+  match file_path.fs::file_size_path() {
     Result::Ok(size) => size.to_string()
     Result::Err(error) => error.operation
   }

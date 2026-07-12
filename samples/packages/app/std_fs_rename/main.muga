@@ -4,9 +4,9 @@ import std::fs
 import std::path
 
 fn main(): String {
-  source = path::from_string("samples/packages/app/std_fs_rename/missing.txt")
-  target = path::from_string("samples/packages/app/std_fs_rename/renamed.txt")
-  match fs::rename_path(source, target) {
+  source = "samples/packages/app/std_fs_rename/missing.txt".path::from_string()
+  target = "samples/packages/app/std_fs_rename/renamed.txt".path::from_string()
+  match source.fs::rename_path(target) {
     Result::Ok(value) => "renamed"
     Result::Err(error) => error.operation
   }

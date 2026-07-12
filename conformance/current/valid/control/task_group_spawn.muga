@@ -1,7 +1,6 @@
 // conformance: valid
 // spec: spec/007-concurrency-draft.md#5-phase-1-structured-task-core-implemented
 // expect-main: 42
-
 fn double(n: Int): Int {
   n * 2
 }
@@ -9,7 +8,7 @@ fn double(n: Int): Int {
 fn main(): Int {
   base = 40
   group {
-    t = spawn double(base)
+    t = spawn base.double()
     u = spawn group {
       v = spawn (base + 1)
       2

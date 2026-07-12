@@ -5,11 +5,11 @@ import std::io
 import std::path
 
 fn main(): Result[String, io::IOError] {
-  root = path::from_string("samples/packages/app/std_fs_remove_dir_all/generated")
-  nested = path::join(root, "nested")
-  payload = path::join(nested, "payload.txt")
-  created = try fs::create_dir_all_path(nested)
-  written = try fs::write_text_path(payload, "payload")
-  removed = try fs::remove_dir_all_path(root)
-  Result::Ok(fs::exists_path(root).to_string())
+  root = "samples/packages/app/std_fs_remove_dir_all/generated".path::from_string()
+  nested = root.path::join("nested")
+  payload = nested.path::join("payload.txt")
+  created = try nested.fs::create_dir_all_path()
+  written = try payload.fs::write_text_path("payload")
+  removed = try root.fs::remove_dir_all_path()
+  Result::Ok(root.fs::exists_path().to_string())
 }

@@ -5,7 +5,7 @@ import std::path
 
 fn main(): String {
   match env::current_dir() {
-    Result::Ok(dir) => path::is_absolute(dir).to_string()
+    Result::Ok(dir) => dir.path::is_absolute().to_string()
     Result::Err(error) => error.operation
   }
 }
