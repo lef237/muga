@@ -47,6 +47,13 @@ Muga samples.
   unused/unreachable/discarded-`Result` warnings that the lint contract in
   `errors.md` still requires. Diagnostics remain error-only
   (`severity: "error"` is fixed in `src/diagnostic.rs`).
+- [x] **DONE:** recorded "Positioning And Differentiation" on 2026-07-17
+  after a competitive-landscape review: self-contained distribution, a
+  completed structured-concurrency contract, machine-consumable tooling, an
+  approachable imperative surface, and focused domains, with explicit
+  non-goals. The review confirmed the current P0-before-surface priority
+  order; a standalone-executable design item was queued under "Maturity
+  Track P2: Distribution Path".
 - [ ] **NOW:** work the "Current P0: Compatibility And Durability" list below.
   Strict `muga.toml` validation landed on 2026-07-17; next is `muga.lock`
   `muga_version` enforcement, then crash-safe compiler-owned writes with
@@ -116,6 +123,64 @@ These are direction-setting commitments, not just missing implementation work.
   honest; source-free execution must not silently fall back to dependency
   source bodies.
 - [x] Muga prefers explicit recoverable error values over implicit exceptions.
+
+## Positioning And Differentiation
+
+Recorded on 2026-07-17 after a competitive-landscape review of established
+statically typed languages. The review confirmed the existing priority order —
+compatibility and durability P0 work before surface growth — and recorded
+where Muga should differentiate instead of imitating. Muga does not compete on
+feature count, package count, ecosystem breadth, or the maturity of other
+runtimes. The one-sentence positioning is:
+
+> Muga is a quiet, statically typed language for building self-contained
+> tools and reliable services, designed for local reasoning and
+> machine-assisted development.
+
+The long-term differentiation bets, each building on work already tracked on
+this roadmap:
+
+- **Self-contained distribution.** A deployed Muga program should eventually
+  be one executable that needs no separately installed runtime, interpreter,
+  or VM on the target machine. The first practical step is embedding the
+  reference VM and built artifacts into a small launcher (tracked under
+  "Maturity Track P2: Distribution Path"); native code generation stays
+  deferred until that path shows measured pressure.
+- **A completed structured-concurrency contract, not more concurrency
+  surface.** The differentiator is `group` / `spawn` / `Task` with real
+  overlapping progress, sibling cancellation, failure propagation, capture
+  safety, resource cleanup, and deterministic test scheduling — the Phase 1
+  stability gate already tracked under "Language And Standard-Library
+  Maturity" — not channels, `select`, or actor systems. Parked concurrency
+  syntax stays parked until that contract is proven.
+- **Machine-consumable tooling as a product surface.** Stable machine-readable
+  diagnostics, editor/agent queries, API diffing, and explainable rebuilds are
+  a primary interface of the language, not an accessory. The language
+  semantics stay analysis-friendly on purpose: no overloading, no implicit
+  conversions, no shadowing, no hidden dispatch, one spelling per operation,
+  so automated edits cannot silently change meaning.
+- **An approachable imperative surface with strong static guarantees.**
+  Familiar `while` / `for` / `mut` control flow combined with
+  immutability-by-default, `Option` / `Result`, prefix `try`, and exhaustive
+  `match` targets programmers coming from mainstream imperative languages who
+  want stronger compile-time guarantees without adopting a class hierarchy,
+  a trait system, or a primarily functional style.
+- **Focused domains before breadth.** Prove the language on command-line and
+  developer tools first, then automation and data processing, then small
+  reliable services (behind the existing Service IO gate). Each domain should
+  get one canonical, template-supported path rather than many alternatives.
+
+Explicit non-goals for differentiation, in addition to "Not Planned":
+
+- do not add alternate compilation or runtime targets to chase the reach of
+  other ecosystems
+- do not build or operate a remote package registry before local archive
+  identity, lockfile behavior, and install inventory are stable (already
+  deferred under "Maturity Track P2: Distribution Path")
+- do not publish performance claims without repeatable benchmark scenarios
+  (tracked under "Current P1: Runtime Performance Foundations")
+- do not compete on type-system expressiveness; the "Not Planned" list stays
+  authoritative
 
 ## Continuous Improvement And Versioning
 
@@ -362,6 +427,15 @@ above. Performance claims still require evidence.
 
 Distribution should build on the existing `.mgp` / `.mga` work.
 
+- [ ] Design a self-contained executable output (working name
+  `muga build --standalone`): embed the reference VM, built `.mgi` / `.mgb`
+  artifacts, and declared resources into one launcher binary so deployment is
+  copying a single file with no separately installed runtime. Reuse the
+  source-free app bundle model as the content source. Start with the current
+  host only; cross-compilation, signing, and reproducible output follow after
+  the single-host slice works. This is the distribution bet recorded under
+  "Positioning And Differentiation" and does not unpark native code
+  generation.
 - [ ] Harden install inventory UX and diagnostics around app bundle ownership.
 - [ ] Add more source-free bundle smoke cases for std packages that use host
   effects.
