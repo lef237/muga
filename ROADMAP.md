@@ -55,8 +55,8 @@ Muga samples.
   order; a standalone-executable design item was queued under "Maturity
   Track P2: Distribution Path".
 - [ ] **NOW:** work the "Current P0: Compatibility And Durability" list below.
-  Strict `muga.toml` validation landed on 2026-07-17; next is `muga.lock`
-  `muga_version` enforcement, then crash-safe compiler-owned writes with
+  Strict `muga.toml` validation and `muga.lock` `muga_version` enforcement
+  landed on 2026-07-17; next is crash-safe compiler-owned writes with
   failure-path tests.
   The 2026-07-12 maturity audit promoted these over expanding the language
   surface because they prevent silent misconfiguration, accidental
@@ -251,9 +251,15 @@ build state.
   changes accumulate. Decide whether this is a language revision,
   edition, compiler compatibility range, or a combination, and define how an
   older project is diagnosed or migrated by a newer compiler.
-- [ ] Enforce the recorded `muga_version` compatibility policy when reading an
-  existing `muga.lock`. The current parser validates only that the field exists
-  and is a string; it does not compare it with the running compiler.
+- [x] Enforce the recorded `muga_version` compatibility policy when reading an
+  existing `muga.lock`. Done on 2026-07-17: the reader requires a
+  `MAJOR.MINOR.PATCH` value (pre-release/build metadata accepted but ignored
+  by comparison), rejects lockfiles recorded by a newer compiler with `PK026`
+  without rewriting them, and keeps accepting same-or-older recorded
+  versions, which the next successful build refreshes to the running
+  compiler's version. Remaining: warning-level reporting for
+  accepted-but-different versions waits for the diagnostic severity model,
+  and full published-package lockfile enforcement stays deferred.
 - [ ] Make compiler-owned writes crash-safe. Write lockfiles, `.mgi`, `.mgb`,
   `.mgc`, archives, bundle metadata, and installation ownership metadata to a
   sibling temporary file, flush as required by the durability policy, and

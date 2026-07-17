@@ -5025,6 +5025,30 @@ fn parse_lockfile_text(text: &str, path: &Path) -> Result<(), Vec<Diagnostic>> {
                     let version = parse_lockfile_string(value).ok_or_else(|| {
                         lockfile_diagnostic(path, line_number, "`muga_version` must be a string")
                     })?;
+                    let Some(recorded) = parse_muga_version_triple(&version) else {
+                        return Err(lockfile_diagnostic(
+                            path,
+                            line_number,
+                            format!(
+                                "`muga_version` `{version}` must be a `MAJOR.MINOR.PATCH` version"
+                            ),
+                        ));
+                    };
+                    let current_version = env!("CARGO_PKG_VERSION");
+                    if let Some(current) = parse_muga_version_triple(current_version)
+                        && recorded > current
+                    {
+                        return Err(lockfile_diagnostic(
+                            path,
+                            line_number,
+                            format!(
+                                "`muga_version` `{version}` was written by a newer muga than \
+                                 this compiler (`{current_version}`); upgrade muga to at \
+                                 least `{version}`, or delete `muga.lock` and rebuild to \
+                                 re-resolve it with this compiler"
+                            ),
+                        ));
+                    }
                     if muga_version.replace(version).is_some() {
                         return Err(lockfile_diagnostic(
                             path,
@@ -5388,6 +5412,28 @@ fn parse_lockfile_dependency_list(
         dependencies.push(dependency);
     }
     Ok(dependencies)
+}
+
+fn parse_muga_version_triple(version: &str) -> Option<(u64, u64, u64)> {
+    let core = version
+        .split_once(['-', '+'])
+        .map(|(core, _)| core)
+        .unwrap_or(version);
+    let mut parts = core.split('.');
+    let major = parse_muga_version_component(parts.next()?)?;
+    let minor = parse_muga_version_component(parts.next()?)?;
+    let patch = parse_muga_version_component(parts.next()?)?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+fn parse_muga_version_component(part: &str) -> Option<u64> {
+    if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    part.parse().ok()
 }
 
 fn parse_lockfile_string(value: &str) -> Option<String> {
@@ -7119,7 +7165,7 @@ fn is_mangled_item_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::sha256_hex;
+    use super::{parse_muga_version_triple, sha256_hex};
 
     #[test]
     fn sha256_hex_matches_known_digest() {
@@ -7127,5 +7173,22 @@ mod tests {
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn current_compiler_version_parses_as_version_triple() {
+        assert!(parse_muga_version_triple(env!("CARGO_PKG_VERSION")).is_some());
+    }
+
+    #[test]
+    fn version_triples_parse_and_ignore_pre_release_and_build_metadata() {
+        assert_eq!(parse_muga_version_triple("0.6.0"), Some((0, 6, 0)));
+        assert_eq!(parse_muga_version_triple("1.0.0-rc.1"), Some((1, 0, 0)));
+        assert_eq!(parse_muga_version_triple("1.2.3+build.5"), Some((1, 2, 3)));
+        assert_eq!(parse_muga_version_triple("banana"), None);
+        assert_eq!(parse_muga_version_triple("1.2"), None);
+        assert_eq!(parse_muga_version_triple("1.2.3.4"), None);
+        assert_eq!(parse_muga_version_triple("1.2.x"), None);
+        assert_eq!(parse_muga_version_triple(""), None);
     }
 }

@@ -424,6 +424,8 @@ Artifact-backed commands are deliberately explicit. Diagnostics for package arti
 
 Manifest, lockfile, and `.mgp` archive diagnostics must fail loudly rather than silently rewriting unsafe state. This includes malformed lockfiles, unsupported dependency forms, missing archive hashes, path/archive form mistakes, stale archive caches, cache path collisions, package-name mismatches, archive hash mismatches, non-canonical archive layout, source-root escapes, non-UTF-8 paths, duplicate entries, and non-source archive entries.
 
+Lockfile `muga_version` values must be `MAJOR.MINOR.PATCH` versions (pre-release and build metadata are accepted but ignored by comparison). A lockfile recorded by a newer compiler than the running one is rejected as `PK026` and left unmodified rather than reinterpreted or rewritten; the diagnostic must name both versions and suggest upgrading muga or deliberately deleting `muga.lock` and rebuilding. Same-or-older recorded versions are accepted and refreshed by the next successful build.
+
 ## Future Feature Syntax
 
 Syntax reserved for future features should fail as unsupported or invalid syntax. It should not be documented or tested as runnable sample source until the feature is implemented. Examples include channels, `select`, optional chaining, postfix Result propagation, broad catch-all matching, references, and call-site type arguments. `group`, `spawn`, and `std::task::join` are implemented structured task group syntax, not future syntax; their diagnostics are `T030` and `E013` above.
