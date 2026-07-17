@@ -1127,9 +1127,10 @@ These layers are additive. None of them changes the meaning of the content hash,
 
 ### 17.11 Crash-Safe Compiler Writes
 
-Compiler-owned persistent state must not be replaced in place. The target
-write protocol for `muga.lock`, `.mgi`, `.mgb`, `.mgc`, `.mgp`, `.mga`, bundle
-metadata, launchers, and installation ownership metadata is:
+Compiler-owned persistent state must not be replaced in place. The write
+protocol for `muga.lock`, `.mgi`, `.mgb`, `.mgc`, `.mgp`, `.mga`, bundle
+metadata, launchers, generated completion packages, and installation ownership
+metadata is:
 
 1. serialize and validate the complete new contents before touching the
    destination
@@ -1139,11 +1140,35 @@ metadata, launchers, and installation ownership metadata is:
 4. atomically replace or install the destination
 5. remove abandoned temporary files without deleting the last valid output
 
-Multi-file operations such as a package build or app installation must also
-define their commit boundary and recovery behavior. Atomicity of one file must
-not be presented as transactionality of an entire artifact set. The current
-implementation still uses direct writes in several paths; crash-safe replacement
-and interruption tests are current work.
+The guarantee this buys is per file: at any moment the destination holds
+either its previous complete contents or the complete new contents, and a
+command that reports success has made the new contents durable. Multi-file
+operations such as a package build or app installation still own their own
+commit boundary and recovery behavior. Atomicity of one file is not
+transactionality of an artifact set: an interrupted build can leave some
+artifacts new and others old, each individually valid, and the next build
+reconciles them.
+
+Two consequences of the protocol are deliberate. Replacing a destination that
+is a symlink replaces the link with the new regular file instead of writing
+through it to the link target, because the compiler owns the name, not
+whatever it points at. Replacement also needs write permission on the
+containing directory, not just on the destination file, since the temporary
+sibling is created there.
+
+Current implementation note: every compiler-owned write listed above goes
+through the crash-safe writer, and failure-path tests cover a failed lockfile
+and artifact replacement leaving the last valid output intact. Temporary
+files are named `.<destination>.tmp-<pid>-<serial>`, never carry an artifact
+extension, and are ignored by every reader and archive/content-hash scan.
+Step 5 currently covers the writer's own failures: a process killed mid-write
+can leave its temporary file behind, and nothing sweeps temporary files
+belonging to other processes, because a safe sweep cannot yet distinguish an
+abandoned file from a concurrent build's. Ordinary source writes (`muga fmt`,
+`muga lint --fix`), `muga new` scaffolding, archive materialization into an
+empty tree, and `std::fs` writes performed by Muga programs are outside this
+protocol: they are not compiler-owned state, and for user source the symlink
+consequence above needs a deliberate decision first.
 
 ### 17.12 Current Implementation Boundary
 
@@ -1185,8 +1210,10 @@ It currently:
 - persists `.mgi` direct dependency metadata and follows those dependencies when artifact-backed checking needs transitive public-signature type interfaces
 - includes loaded direct/transitive dependency interface hashes in `.mgc` check cache keys
 - writes `.mgc` check cache artifacts only after package-aware artifact checking succeeds
-- currently writes several lockfile, artifact, archive, bundle, and installation
-  files directly; crash-safe temporary-file replacement remains active work
+- replaces every compiler-owned lockfile, artifact, archive, bundle, completion,
+  and installation file through the crash-safe protocol in
+  [section 17.11](#1711-crash-safe-compiler-writes) rather than writing the
+  destination in place
 - writes `.mgi`, `.mgb`, and `.mgc` artifacts through `muga build` to `.muga/build` under the nearest manifest root, or under the entry file's directory when no manifest is present, reporting each artifact as `written` or `reused`
 - writes or updates `muga.lock` next to `muga.toml` during manifest `muga build`, preserving the file when generated content is unchanged, refreshing well-formed stale local metadata, and rejecting malformed or unsupported existing lockfiles with `PK026`
 - computes a `sha256:<hex>` package content hash over `muga.toml`, sorted `.muga` source files under the manifest source root, and sorted files under the optional manifest resource root, rejecting symlinked source/resource roots or entries instead of following them

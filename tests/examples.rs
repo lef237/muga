@@ -10593,6 +10593,183 @@ fn main(): Int {
     );
 }
 
+#[cfg(unix)]
+fn set_directory_mode(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .expect("directory metadata should be readable")
+        .permissions();
+    permissions.set_mode(mode);
+    fs::set_permissions(path, permissions).expect("directory permissions should be set");
+}
+
+/// Names the sibling temporary files a crash-safe write creates, so a test can
+/// prove a failed write left none of them behind.
+fn crash_safe_temporary_names(root: &Path) -> Vec<String> {
+    fs::read_dir(root)
+        .expect("directory should be readable")
+        .map(|entry| {
+            entry
+                .expect("directory entry should be readable")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|name| name.contains(".tmp-"))
+        .collect()
+}
+
+fn write_lockfile_write_failure_fixture(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let workspace = temp_package_root(name);
+    let app_root = workspace.join("app");
+    let shared_root = workspace.join("shared");
+    write_package_file(
+        &shared_root,
+        "muga.toml",
+        r#"
+[package]
+name = "shared"
+source = "src"
+"#,
+    );
+    write_package_file(
+        &shared_root,
+        "src/logging/main.muga",
+        r#"
+pub fn value(): Int {
+  11
+}
+"#,
+    );
+    write_package_file(
+        &app_root,
+        "muga.toml",
+        r#"
+[package]
+name = "app"
+source = "src"
+
+[dependencies]
+shared = { path = "../shared" }
+"#,
+    );
+    let entry = write_package_file(
+        &app_root,
+        "src/main/main.muga",
+        r#"
+import shared::logging as logging
+
+fn main(): Int {
+  logging::value() + 1
+}
+"#,
+    );
+    (app_root, entry)
+}
+
+#[cfg(unix)]
+#[test]
+fn build_keeps_the_last_valid_lockfile_when_the_replacement_fails() {
+    let (app_root, entry) = write_lockfile_write_failure_fixture("build-lockfile-write-failure");
+    let dependency = app_root
+        .parent()
+        .expect("app root should have a workspace parent")
+        .join("shared/src/logging/main.muga");
+
+    muga::build_package_artifacts(&entry).expect("first build should write the lockfile");
+    let lockfile_path = app_root.join("muga.lock");
+    let first_lockfile = fs::read_to_string(&lockfile_path).expect("lockfile should be written");
+
+    // Change the dependency so the recorded source hash is stale and the next
+    // build has to replace the lockfile.
+    fs::write(
+        &dependency,
+        r#"
+pub fn value(): Int {
+  99
+}
+"#
+        .trim_start(),
+    )
+    .expect("dependency source should be overwritten");
+    set_directory_mode(&app_root, 0o555);
+    let result = muga::build_package_artifacts(&entry);
+    set_directory_mode(&app_root, 0o755);
+
+    let diagnostics = result.expect_err("build should fail when the lockfile cannot be replaced");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK025"
+                && diagnostic
+                    .message
+                    .contains("failed to write package lockfile")
+        }),
+        "{diagnostics:#?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&lockfile_path).expect("lockfile should still exist"),
+        first_lockfile
+    );
+    assert!(
+        crash_safe_temporary_names(&app_root).is_empty(),
+        "{:?}",
+        crash_safe_temporary_names(&app_root)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn build_keeps_the_last_valid_artifact_when_the_replacement_fails() {
+    let (app_root, entry) = write_lockfile_write_failure_fixture("build-artifact-write-failure");
+    let source = app_root.join("src/main/main.muga");
+
+    muga::build_package_artifacts(&entry).expect("first build should write artifacts");
+    let artifact_root = app_root.join(".muga/build");
+    let artifact_path = artifact_root.join("app__main.mgi");
+    let first_artifact =
+        fs::read_to_string(&artifact_path).expect("interface artifact should be written");
+
+    // Change the entry package so its artifacts are stale and the next build
+    // has to replace them.
+    fs::write(
+        &source,
+        r#"
+import shared::logging as logging
+
+pub fn extra(): Int {
+  7
+}
+
+fn main(): Int {
+  logging::value() + extra()
+}
+"#
+        .trim_start(),
+    )
+    .expect("entry source should be overwritten");
+    set_directory_mode(&artifact_root, 0o555);
+    let result = muga::build_package_artifacts(&entry);
+    set_directory_mode(&artifact_root, 0o755);
+
+    let diagnostics = result.expect_err("build should fail when an artifact cannot be replaced");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("failed to write")),
+        "{diagnostics:#?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&artifact_path).expect("interface artifact should still exist"),
+        first_artifact
+    );
+    assert!(
+        crash_safe_temporary_names(&artifact_root).is_empty(),
+        "{:?}",
+        crash_safe_temporary_names(&artifact_root)
+    );
+}
+
 #[test]
 fn build_orders_package_artifacts_by_dependency_levels() {
     let workspace = temp_package_root("build-dependency-level-order");

@@ -3378,7 +3378,7 @@ fn write_cli_completion_package(
     let mut written = Vec::with_capacity(files.len());
     for (file_name, contents) in files {
         let path = output_dir.join(file_name);
-        fs::write(&path, contents).map_err(|error| {
+        muga::durable_write::replace_file(&path, contents).map_err(|error| {
             vec![cli_completion_error(format!(
                 "`{command_name}` cannot write `{}`: {error}",
                 path.display()

@@ -5,6 +5,7 @@ pub mod cache;
 pub mod cli_schema;
 pub mod diagnostic;
 pub mod doc;
+pub mod durable_write;
 pub mod formatter;
 pub mod identity;
 pub mod implementation_artifact;
@@ -1747,7 +1748,7 @@ pub fn write_app_bundle_archive(
             ))]
         })?;
     }
-    fs::write(&path, bytes).map_err(|error| {
+    durable_write::replace_file(&path, bytes).map_err(|error| {
         vec![app_bundle_diagnostic(format!(
             "failed to write app archive `{}`: {error}",
             path.display()
@@ -1841,7 +1842,7 @@ fn unpack_verified_app_bundle_archive_files(
                 ))]
             })?;
         }
-        fs::write(&target, &file.contents).map_err(|error| {
+        durable_write::replace_file(&target, &file.contents).map_err(|error| {
             vec![app_bundle_diagnostic(format!(
                 "failed to write app archive output `{}`: {error}",
                 target.display()
@@ -2788,7 +2789,7 @@ fn write_app_bundle_text_file(
             ))]
         })?;
     }
-    fs::write(target, text).map_err(|error| {
+    durable_write::replace_file(target, text).map_err(|error| {
         vec![app_bundle_diagnostic(format!(
             "failed to write app bundle {context} `{}`: {error}",
             target.display()
@@ -4393,7 +4394,7 @@ fn write_package_build_artifact_text(
         }
     }
 
-    fs::write(&path, text).map_err(|error| {
+    durable_write::replace_file(&path, text).map_err(|error| {
         Diagnostic::new(
             diagnostic_code,
             format!(

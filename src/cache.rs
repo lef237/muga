@@ -8,6 +8,7 @@ use crate::{
     diagnostic::{
         Diagnostic, artifact_file_context, artifact_hash_context, regeneration_command_context,
     },
+    durable_write,
     interface::{PackageInterfaceGraph, stable_hash_hex},
     package,
     span::Span,
@@ -269,7 +270,7 @@ pub fn write_package_check_artifact(
             )
         })?;
     }
-    fs::write(path, key.to_persisted_text()).map_err(|error| {
+    durable_write::replace_file(path, key.to_persisted_text()).map_err(|error| {
         Diagnostic::new(
             "PK020",
             format!(

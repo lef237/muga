@@ -11,6 +11,7 @@ use crate::{
         Diagnostic, DiagnosticContext, artifact_file_context, artifact_hash_context,
         regeneration_command_context,
     },
+    durable_write,
     identity::{PackageId, PackageItemId},
     json_decode::JsonDecodeValidationRule,
     package::{PackageItemInfo, PackageItemKind, PackageSymbolGraph},
@@ -552,7 +553,7 @@ impl PackageInterfaceGraph {
         path: &Path,
         symbols: &SymbolTable,
     ) -> Result<(), Diagnostic> {
-        fs::write(path, self.to_persisted_text(symbols)).map_err(|error| {
+        durable_write::replace_file(path, self.to_persisted_text(symbols)).map_err(|error| {
             Diagnostic::new(
                 "PK018",
                 format!(
@@ -591,7 +592,7 @@ impl PackageInterfaceGraph {
                 )
             })?;
         }
-        fs::write(&path, text).map_err(|error| {
+        durable_write::replace_file(&path, text).map_err(|error| {
             Diagnostic::new(
                 "PK018",
                 format!(

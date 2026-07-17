@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::ast::*;
 use crate::diagnostic::{Diagnostic, DiagnosticContext, file_uri_for_path};
+use crate::durable_write;
 use crate::identity::{ModuleId, PackageId, PackageItemId};
 use crate::interface::{PackageExportGraph, PackageInterface, PackageInterfaceGraph};
 use crate::span::{Position, Span};
@@ -195,7 +196,7 @@ pub fn write_lockfile_from_entry(path: &Path) -> Result<Option<PathBuf>, Vec<Dia
             )]);
         }
     }
-    fs::write(&lockfile_path, text).map_err(|error| {
+    durable_write::replace_file(&lockfile_path, text).map_err(|error| {
         vec![Diagnostic::new(
             "PK025",
             format!(
@@ -288,7 +289,7 @@ pub fn write_package_archive_from_entry(
             )]
         })?;
     }
-    fs::write(&path, archive_bytes).map_err(|error| {
+    durable_write::replace_file(&path, archive_bytes).map_err(|error| {
         vec![Diagnostic::new(
             "PK027",
             format!(

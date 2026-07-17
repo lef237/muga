@@ -55,9 +55,14 @@ Muga samples.
   order; a standalone-executable design item was queued under "Maturity
   Track P2: Distribution Path".
 - [ ] **NOW:** work the "Current P0: Compatibility And Durability" list below.
-  Strict `muga.toml` validation and `muga.lock` `muga_version` enforcement
-  landed on 2026-07-17; next is crash-safe compiler-owned writes with
-  failure-path tests.
+  Strict `muga.toml` validation, `muga.lock` `muga_version` enforcement, and
+  crash-safe compiler-owned writes with failure-path tests all landed on
+  2026-07-17. The one item left on that list is the source-compatibility
+  declaration for manifest projects (language revision, edition, or compiler
+  compatibility range); it is a design decision, so start by choosing the
+  mechanism against the criteria recorded under the item. Once it lands, the
+  P0 list is complete and "Current P1: Diagnostics, Robustness, And
+  Portability" becomes the next slice.
   The 2026-07-12 maturity audit promoted these over expanding the language
   surface because they prevent silent misconfiguration, accidental
   reinterpretation, and corrupted build state. The earlier benchmark and
@@ -260,13 +265,28 @@ build state.
   compiler's version. Remaining: warning-level reporting for
   accepted-but-different versions waits for the diagnostic severity model,
   and full published-package lockfile enforcement stays deferred.
-- [ ] Make compiler-owned writes crash-safe. Write lockfiles, `.mgi`, `.mgb`,
-  `.mgc`, archives, bundle metadata, and installation ownership metadata to a
-  sibling temporary file, flush as required by the durability policy, and
-  atomically replace the destination only after successful serialization.
-- [ ] Add interruption and failure-path tests proving that a failed write does
+- [x] Make compiler-owned writes crash-safe. Done on 2026-07-17: a shared
+  writer in `src/durable_write.rs` creates a uniquely named sibling temporary
+  file with `create_new` so it cannot follow a symlink or reuse a leftover,
+  flushes the file, atomically renames it over the destination, flushes the
+  parent directory on hosts that need it, and removes its temporary file on
+  failure. Lockfiles, `.mgi`, `.mgb`, `.mgc`, `.mgp`, `.mga`, bundle metadata,
+  launchers, generated completion packages, and installation ownership
+  metadata all go through it.
+- [x] Add interruption and failure-path tests proving that a failed write does
   not destroy the last valid lockfile, artifact, archive, or installation
-  record.
+  record. Done on 2026-07-17: unit tests cover creation, replacement,
+  temporary-file cleanup on a failed replacement, and symlinked destinations;
+  integration tests prove a failed lockfile and a failed artifact replacement
+  leave the last valid file byte-identical with no temporary left behind.
+  Remaining: nothing sweeps temporary files abandoned by a killed process,
+  because a safe sweep cannot yet distinguish them from a concurrent build's;
+  see spec/006-packages.md#1711-crash-safe-compiler-writes.
+- [ ] Decide whether ordinary source rewrites (`muga fmt`, `muga lint --fix`)
+  should join the crash-safe protocol. They are user-owned rather than
+  compiler-owned state, and atomic replacement would replace a symlinked
+  source file with a regular file, so the change needs a deliberate decision
+  rather than consistency alone.
 
 ## Current P1: Diagnostics, Robustness, And Portability
 
