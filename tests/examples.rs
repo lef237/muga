@@ -1925,6 +1925,197 @@ fn main(): Int {
 }
 
 #[test]
+fn project_manifest_rejects_unrecognized_and_duplicate_entries() {
+    let cases = vec![
+        (
+            "unknown section",
+            r#"
+[package]
+name = "strict_manifest"
+
+[workspace]
+members = "app"
+"#,
+            "manifest section `[workspace]`",
+            4,
+        ),
+        (
+            "unknown field",
+            r#"
+[package]
+name = "strict_manifest"
+version = "0.1.0"
+"#,
+            "manifest [package] field `version`",
+            3,
+        ),
+        (
+            "duplicate field",
+            r#"
+[package]
+name = "strict_manifest"
+name = "other_name"
+"#,
+            "manifest `name`",
+            3,
+        ),
+        (
+            "duplicate section",
+            r#"
+[package]
+name = "strict_manifest"
+
+[package]
+source = "src"
+"#,
+            "manifest section `[package]`",
+            4,
+        ),
+        (
+            "malformed line",
+            r#"
+[package]
+name = "strict_manifest"
+source
+"#,
+            "manifest line `source`",
+            3,
+        ),
+        (
+            "unterminated section header",
+            r#"
+[package
+name = "strict_manifest"
+"#,
+            "manifest line `[package`",
+            1,
+        ),
+        (
+            "field before section",
+            r#"
+name = "strict_manifest"
+
+[package]
+name = "strict_manifest"
+"#,
+            "appears before any section header",
+            1,
+        ),
+        (
+            "duplicate dependency",
+            r#"
+[package]
+name = "strict_manifest"
+
+[dependencies]
+shared = { path = "../shared" }
+shared = { path = "../other" }
+"#,
+            "manifest dependency `shared`",
+            6,
+        ),
+    ];
+
+    for (name, manifest, expected_message, expected_line) in cases {
+        let root = temp_package_root(&format!(
+            "project-manifest-strict-{}",
+            name.replace(' ', "-")
+        ));
+        write_package_file(&root, "muga.toml", manifest);
+        let entry = write_package_file(
+            &root,
+            "src/main/main.muga",
+            r#"
+fn main(): String {
+  "ok"
+}
+"#,
+        );
+
+        let diagnostics = muga::package::project_manifest_metadata_from_entry(&entry)
+            .expect_err("strict manifest validation should reject the manifest");
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "PK014"
+                    && diagnostic.message.contains(expected_message)
+                    && diagnostic.span.start.line == expected_line
+            }),
+            "{name}: {diagnostics:#?}"
+        );
+    }
+}
+
+#[test]
+fn project_manifest_diagnostics_point_at_the_manifest_file() {
+    let root = temp_package_root("project-manifest-strict-context");
+    write_package_file(
+        &root,
+        "muga.toml",
+        r#"
+[package]
+name = "strict_manifest"
+version = "0.1.0"
+"#,
+    );
+    let entry = write_package_file(
+        &root,
+        "src/main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+
+    let diagnostics = muga::package::project_manifest_metadata_from_entry(&entry)
+        .expect_err("unknown manifest field should be rejected");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK014")
+        .expect("manifest validation should report PK014");
+    assert!(
+        diagnostic.context.iter().any(|context| matches!(
+            context,
+            muga::diagnostic::DiagnosticContext::Source { role, path, .. }
+                if role == "manifest" && path == &root.join("muga.toml").display().to_string()
+        )),
+        "a manifest span must name the manifest it points into: {diagnostic:#?}"
+    );
+}
+
+#[test]
+fn project_manifest_accepts_comments_and_optional_fields() {
+    let root = temp_package_root("project-manifest-strict-accepts");
+    write_package_file(
+        &root,
+        "muga.toml",
+        r#"
+# a leading comment
+[package]
+name = "strict_manifest" # a trailing comment
+source = "src"
+resources = "resources"
+"#,
+    );
+    let entry = write_package_file(
+        &root,
+        "src/main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+
+    let manifest = muga::package::project_manifest_metadata_from_entry(&entry)
+        .expect("manifest with comments and optional fields should parse")
+        .expect("entry inside a manifest project should resolve a manifest");
+    assert_eq!(manifest.package_path, "strict_manifest");
+    assert_eq!(manifest.source_root, root.join("src"));
+    assert_eq!(manifest.resource_root, Some(root.join("resources")));
+}
+
+#[test]
 fn project_manifest_rejects_source_roots_outside_package_root() {
     let cases = vec![
         ("empty", "", "must name a source directory"),

@@ -47,9 +47,10 @@ Muga samples.
   unused/unreachable/discarded-`Result` warnings that the lint contract in
   `errors.md` still requires. Diagnostics remain error-only
   (`severity: "error"` is fixed in `src/diagnostic.rs`).
-- [ ] **NOW:** work the "Current P0: Compatibility And Durability" list below,
-  starting with strict `muga.toml` validation, then `muga.lock` `muga_version`
-  enforcement, then crash-safe compiler-owned writes with failure-path tests.
+- [ ] **NOW:** work the "Current P0: Compatibility And Durability" list below.
+  Strict `muga.toml` validation landed on 2026-07-17; next is `muga.lock`
+  `muga_version` enforcement, then crash-safe compiler-owned writes with
+  failure-path tests.
   The 2026-07-12 maturity audit promoted these over expanding the language
   surface because they prevent silent misconfiguration, accidental
   reinterpretation, and corrupted build state. The earlier benchmark and
@@ -172,9 +173,15 @@ audit. They take priority over expanding the language surface because they
 prevent silent misconfiguration, accidental reinterpretation, and corrupted
 build state.
 
-- [ ] Make `muga.toml` validation strict: reject unknown sections and fields,
+- [x] Make `muga.toml` validation strict: reject unknown sections and fields,
   duplicate fields, and malformed non-comment lines with source locations and
-  actionable diagnostics instead of silently ignoring them.
+  actionable diagnostics instead of silently ignoring them. Done on 2026-07-17:
+  the reader accepts only `[package]` / `[dependencies]`, only `name`,
+  `source`, and `resources` under `[package]`, and rejects unknown sections and
+  fields, duplicate sections/fields/dependency names, fields before any section
+  header, and malformed lines as `PK014` with the offending manifest line.
+  Remaining: the schema is still unversioned, and spans cover the whole line
+  rather than the offending key or value.
 - [ ] Design a source-compatibility declaration for manifest projects as
   changes accumulate. Decide whether this is a language revision,
   edition, compiler compatibility range, or a combination, and define how an

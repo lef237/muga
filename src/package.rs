@@ -4,10 +4,10 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use crate::ast::*;
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{Diagnostic, DiagnosticContext, file_uri_for_path};
 use crate::identity::{ModuleId, PackageId, PackageItemId};
 use crate::interface::{PackageExportGraph, PackageInterface, PackageInterfaceGraph};
-use crate::span::Span;
+use crate::span::{Position, Span};
 use crate::symbol::SymbolTable;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -4163,54 +4163,82 @@ fn parse_manifest_inner_impl(
         )]
     })?;
 
-    let mut in_package = false;
-    let mut in_dependencies = false;
+    let mut section = None;
+    let mut seen_sections = HashSet::new();
     let mut name = None;
-    let mut source_dir = "src".to_string();
+    let mut source_dir = None;
     let mut resource_dir = None;
-    let mut dependency_sources = Vec::new();
+    let mut dependency_sources: Vec<(String, ManifestDependencySource)> = Vec::new();
 
-    for raw_line in source.lines() {
+    for (index, raw_line) in source.lines().enumerate() {
         let line = strip_manifest_comment(raw_line).trim();
         if line.is_empty() {
             continue;
         }
-        if line.starts_with('[') && line.ends_with(']') {
-            in_package = line == "[package]";
-            in_dependencies = line == "[dependencies]";
+        let span = manifest_line_span(index + 1, raw_line);
+        if line.starts_with('[') {
+            section = Some(parse_manifest_section(
+                line,
+                path,
+                span,
+                &mut seen_sections,
+            )?);
             continue;
         }
-        if !in_package && !in_dependencies {
-            continue;
-        }
+        let Some(section) = section else {
+            return Err(vec![
+                manifest_diagnostic(
+                    format!(
+                        "manifest field `{line}` in {} appears before any section header",
+                        path.display()
+                    ),
+                    path,
+                    span,
+                )
+                .with_suggestion("declare fields under `[package]` or `[dependencies]`"),
+            ]);
+        };
         let Some((key, value)) = line.split_once('=') else {
-            continue;
+            return Err(vec![manifest_malformed_line_diagnostic(line, path, span)]);
         };
         let key = key.trim();
-        if in_dependencies {
+        if key.is_empty() {
+            return Err(vec![manifest_malformed_line_diagnostic(line, path, span)]);
+        }
+        if section == ManifestSection::Dependencies {
             let Some(package_name) = parse_manifest_key(key) else {
-                return Err(vec![Diagnostic::new(
-                    "PK014",
+                return Err(vec![manifest_diagnostic(
                     format!(
                         "manifest dependency key `{key}` in {} is invalid",
                         path.display()
                     ),
-                    Span::default(),
+                    path,
+                    span,
                 )]);
             };
             if !is_valid_package_path(&package_name) {
-                return Err(vec![Diagnostic::new(
-                    "PK014",
+                return Err(vec![manifest_diagnostic(
                     format!(
                         "manifest dependency name `{package_name}` is not a valid package path"
                     ),
-                    Span::default(),
+                    path,
+                    span,
                 )]);
             }
             if is_reserved_standard_package_path(&package_name) {
                 return Err(vec![reserved_standard_package_diagnostic(
                     &package_name,
-                    Span::default(),
+                    span,
+                )]);
+            }
+            if dependency_sources
+                .iter()
+                .any(|(declared, _)| *declared == package_name)
+            {
+                return Err(vec![manifest_duplicate_diagnostic(
+                    &format!("dependency `{package_name}`"),
+                    path,
+                    span,
                 )]);
             }
             let dependency_source =
@@ -4218,30 +4246,57 @@ fn parse_manifest_inner_impl(
             dependency_sources.push((package_name, dependency_source));
             continue;
         }
+        if !matches!(key, "name" | "source" | "resources") {
+            return Err(vec![
+                manifest_diagnostic(
+                    format!(
+                        "manifest [package] field `{key}` in {} is not a known field",
+                        path.display()
+                    ),
+                    path,
+                    span,
+                )
+                .with_suggestion(
+                    "[package] currently supports only `name`, `source`, and `resources`",
+                ),
+            ]);
+        }
         let Some(value) = parse_manifest_string(value.trim()) else {
-            return Err(vec![Diagnostic::new(
-                "PK014",
+            return Err(vec![manifest_diagnostic(
                 format!(
                     "manifest field `{key}` in {} must be a string",
                     path.display()
                 ),
-                Span::default(),
+                path,
+                span,
             )]);
         };
         match key {
-            "name" => name = Some(value),
+            "name" => {
+                if name.replace(value).is_some() {
+                    return Err(vec![manifest_duplicate_diagnostic("`name`", path, span)]);
+                }
+            }
             "source" => {
                 validate_manifest_source_dir(&value, path)?;
-                source_dir = value;
+                if source_dir.replace(value).is_some() {
+                    return Err(vec![manifest_duplicate_diagnostic("`source`", path, span)]);
+                }
             }
-            "resources" => {
+            _ => {
                 validate_manifest_resource_dir(&value, path)?;
-                resource_dir = Some(value);
+                if resource_dir.replace(value).is_some() {
+                    return Err(vec![manifest_duplicate_diagnostic(
+                        "`resources`",
+                        path,
+                        span,
+                    )]);
+                }
             }
-            _ => {}
         }
     }
 
+    let source_dir = source_dir.unwrap_or_else(|| "src".to_string());
     let Some(name) = name else {
         return Err(vec![Diagnostic::new(
             "PK014",
@@ -4281,6 +4336,101 @@ fn parse_manifest_inner_impl(
         direct_dependencies,
         dependencies,
     })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum ManifestSection {
+    Package,
+    Dependencies,
+}
+
+/// Builds a manifest diagnostic whose span points into `manifest_path` rather
+/// than into the entry source file the command was invoked on.
+fn manifest_diagnostic(message: String, manifest_path: &Path, span: Span) -> Diagnostic {
+    Diagnostic::new("PK014", message, span).with_context(DiagnosticContext::source(
+        "manifest",
+        manifest_path.display().to_string(),
+        file_uri_for_path(manifest_path),
+    ))
+}
+
+fn parse_manifest_section(
+    line: &str,
+    manifest_path: &Path,
+    span: Span,
+    seen: &mut HashSet<ManifestSection>,
+) -> Result<ManifestSection, Vec<Diagnostic>> {
+    let Some(header) = line
+        .strip_prefix('[')
+        .and_then(|line| line.strip_suffix(']'))
+    else {
+        return Err(vec![manifest_malformed_line_diagnostic(
+            line,
+            manifest_path,
+            span,
+        )]);
+    };
+    let section = match header.trim() {
+        "package" => ManifestSection::Package,
+        "dependencies" => ManifestSection::Dependencies,
+        header => {
+            return Err(vec![
+                manifest_diagnostic(
+                    format!(
+                        "manifest section `[{header}]` in {} is not a known section",
+                        manifest_path.display()
+                    ),
+                    manifest_path,
+                    span,
+                )
+                .with_suggestion(
+                    "a manifest currently supports only `[package]` and `[dependencies]`",
+                ),
+            ]);
+        }
+    };
+    if !seen.insert(section) {
+        return Err(vec![manifest_duplicate_diagnostic(
+            &format!("section `[{}]`", header.trim()),
+            manifest_path,
+            span,
+        )]);
+    }
+    Ok(section)
+}
+
+fn manifest_malformed_line_diagnostic(line: &str, manifest_path: &Path, span: Span) -> Diagnostic {
+    manifest_diagnostic(
+        format!(
+            "manifest line `{line}` in {} is not a section header or a `key = value` field",
+            manifest_path.display()
+        ),
+        manifest_path,
+        span,
+    )
+    .with_suggestion(
+        "write `key = \"value\"`, a `[package]` / `[dependencies]` header, or a `#` comment",
+    )
+}
+
+fn manifest_duplicate_diagnostic(subject: &str, manifest_path: &Path, span: Span) -> Diagnostic {
+    manifest_diagnostic(
+        format!(
+            "manifest {subject} in {} is declared more than once",
+            manifest_path.display()
+        ),
+        manifest_path,
+        span,
+    )
+    .with_suggestion("declare each manifest section and field exactly once")
+}
+
+fn manifest_line_span(line_number: usize, raw_line: &str) -> Span {
+    let end_column = raw_line.trim_end().chars().count() + 1;
+    Span::new(
+        Position::new(line_number, 1),
+        Position::new(line_number, end_column),
+    )
 }
 
 fn validate_manifest_source_dir(value: &str, manifest_path: &Path) -> Result<(), Vec<Diagnostic>> {
