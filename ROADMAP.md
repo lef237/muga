@@ -38,10 +38,26 @@ Muga samples.
   item and joins all results before returning; see
   spec/007-concurrency-draft.md#58-spawn_map-fan-out-over-a-runtime-sized-collection
   and `samples/packages/app/std_task_spawn_map/main.muga`.
-- [ ] **NOW:** establish representative benchmark and real-program workloads,
-  then use them to audit standard-library duplication, aggregate copying,
-  `Map` scaling, and the actual value of Phase 1 task syntax before expanding
-  the language or starting Phase 2 concurrency.
+- [x] **DONE:** shipped a first `muga lint` slice on 2026-07-17 (unreleased):
+  the `L001` chained-call style lint, `muga lint --fix` rewriting with `L002`
+  for write failures, `// muga-lint: allow-next-line <codes>` suppressions,
+  migrated samples and conformance fixtures, and blank-line preservation in
+  the formatter. This built the lint command, suppression, and autofix
+  plumbing; it did not add the severity model, warn/deny policy, or the
+  unused/unreachable/discarded-`Result` warnings that the lint contract in
+  `errors.md` still requires. Diagnostics remain error-only
+  (`severity: "error"` is fixed in `src/diagnostic.rs`).
+- [ ] **NOW:** work the "Current P0: Compatibility And Durability" list below,
+  starting with strict `muga.toml` validation, then `muga.lock` `muga_version`
+  enforcement, then crash-safe compiler-owned writes with failure-path tests.
+  The 2026-07-12 maturity audit promoted these over expanding the language
+  surface because they prevent silent misconfiguration, accidental
+  reinterpretation, and corrupted build state. The earlier benchmark and
+  duplication-audit cursor is not dropped: it stays queued under "Current P1:
+  Runtime Performance Foundations" and "Current P1: API Surface Reduction".
+- [ ] **NEXT:** `v0.6.0` is the last published release; the lint slice and the
+  formatter change are user-visible and still unreleased. Decide a `0.6.1`
+  release once the current P0 slice lands, following `RELEASING.md`.
 
 Baseline checks recorded during the 2026-06-05 implementation audit:
 
