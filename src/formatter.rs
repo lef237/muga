@@ -1,7 +1,7 @@
 use crate::ast::*;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque},
 };
 
 const INDENT: &str = "  ";
@@ -175,7 +175,16 @@ impl Formatter {
             stmt.span.end.line,
             indent + 1,
         ));
-        for field in &stmt.fields {
+        let mut prev_line = stmt.span.start.line;
+        for (index, field) in stmt.fields.iter().enumerate() {
+            let target_line = field
+                .attributes
+                .first()
+                .map(|attribute| attribute.span.start.line)
+                .unwrap_or(field.span.start.line);
+            if index > 0 && self.has_gap_before(prev_line, target_line) {
+                out.push('\n');
+            }
             if field.attributes.is_empty() {
                 out.push_str(&self.format_own_comments_before(field.span.start.line, indent + 1));
             } else {
@@ -189,6 +198,7 @@ impl Formatter {
                 out = self.append_trailing(field.span.end.line, out);
             }
             out.push('\n');
+            prev_line = field.span.end.line;
         }
         out.push_str(&self.format_own_comments_before(stmt.span.end.line, indent + 1));
         out.push_str(&self.indent(indent));
@@ -209,7 +219,16 @@ impl Formatter {
             stmt.span.end.line,
             indent + 1,
         ));
-        for variant in &stmt.variants {
+        let mut prev_line = stmt.span.start.line;
+        for (index, variant) in stmt.variants.iter().enumerate() {
+            let target_line = variant
+                .attributes
+                .first()
+                .map(|attribute| attribute.span.start.line)
+                .unwrap_or(variant.span.start.line);
+            if index > 0 && self.has_gap_before(prev_line, target_line) {
+                out.push('\n');
+            }
             if variant.attributes.is_empty() {
                 out.push_str(&self.format_own_comments_before(variant.span.start.line, indent + 1));
             } else {
@@ -226,6 +245,7 @@ impl Formatter {
                 out = self.append_trailing(variant.span.end.line, out);
             }
             out.push('\n');
+            prev_line = variant.span.end.line;
         }
         out.push_str(&self.format_own_comments_before(stmt.span.end.line, indent + 1));
         out.push_str(&self.indent(indent));
@@ -321,12 +341,16 @@ impl Formatter {
             block.span.end.line,
             indent + 1,
         ));
-        for statement in &block.statements {
-            out.push_str(
-                &self.format_own_comments_before(stmt_comment_start_line(statement), indent + 1),
-            );
+        let mut prev_line = block.span.start.line;
+        for (index, statement) in block.statements.iter().enumerate() {
+            let target_line = stmt_comment_start_line(statement);
+            if index > 0 && self.has_gap_before(prev_line, target_line) {
+                out.push('\n');
+            }
+            out.push_str(&self.format_own_comments_before(target_line, indent + 1));
             out.push_str(&self.format_stmt_in_block(statement, indent + 1, block.span.end.line));
             out.push('\n');
+            prev_line = statement.span().end.line;
         }
         out.push_str(&self.format_own_comments_before(block.span.end.line, indent + 1));
         out.push_str(&self.indent(indent));
@@ -341,17 +365,23 @@ impl Formatter {
             block.span.end.line,
             indent + 1,
         ));
-        for statement in &block.statements {
-            out.push_str(
-                &self.format_own_comments_before(stmt_comment_start_line(statement), indent + 1),
-            );
+        let mut prev_line = block.span.start.line;
+        for (index, statement) in block.statements.iter().enumerate() {
+            let target_line = stmt_comment_start_line(statement);
+            if index > 0 && self.has_gap_before(prev_line, target_line) {
+                out.push('\n');
+            }
+            out.push_str(&self.format_own_comments_before(target_line, indent + 1));
             out.push_str(&self.format_stmt_in_block(statement, indent + 1, block.span.end.line));
             out.push('\n');
+            prev_line = statement.span().end.line;
         }
         if !block.terminal_return {
-            out.push_str(
-                &self.format_own_comments_before(block.expr.span().start.line, indent + 1),
-            );
+            let expr_target_line = block.expr.span().start.line;
+            if !block.statements.is_empty() && self.has_gap_before(prev_line, expr_target_line) {
+                out.push('\n');
+            }
+            out.push_str(&self.format_own_comments_before(expr_target_line, indent + 1));
             out.push_str(&self.indent(indent + 1));
             let expr_line = block.expr.span().end.line;
             let formatted_expr = |formatter: &Self| {
@@ -601,10 +631,13 @@ impl Formatter {
             expr.span.end.line,
             indent + 1,
         ));
-        for arm in &expr.arms {
-            out.push_str(
-                &self.format_own_comments_before(arm.pattern.span().start.line, indent + 1),
-            );
+        let mut prev_line = expr.span.start.line;
+        for (index, arm) in expr.arms.iter().enumerate() {
+            let target_line = arm.pattern.span().start.line;
+            if index > 0 && self.has_gap_before(prev_line, target_line) {
+                out.push('\n');
+            }
+            out.push_str(&self.format_own_comments_before(target_line, indent + 1));
             out.push_str(&self.indent(indent + 1));
             out.push_str(&self.format_match_pattern(&arm.pattern));
             out.push_str(" => ");
@@ -613,6 +646,7 @@ impl Formatter {
                 out = self.append_trailing(arm.span.end.line, out);
             }
             out.push('\n');
+            prev_line = arm.span.end.line;
         }
         out.push_str(&self.format_own_comments_before(expr.span.end.line, indent + 1));
         out.push_str(&self.indent(indent));
@@ -815,6 +849,18 @@ impl Formatter {
     fn is_trailing_suppressed(&self, line: usize) -> bool {
         self.suppressed_trailing_lines.borrow().contains(&line)
     }
+
+    /// Whether a preserved blank line should be emitted between two items of a
+    /// vertical list (block statements, record fields, enum variants, match arms).
+    /// `prev_line` is the previous item's end line; `next_line` is the next item's
+    /// own start line (before accounting for any leading comments).
+    fn has_gap_before(&self, prev_line: usize, next_line: usize) -> bool {
+        let comments = self.comments.borrow();
+        let boundary = comments
+            .first_own_comment_line_before(next_line)
+            .unwrap_or(next_line);
+        comments.has_blank_line_between(prev_line, boundary)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -827,6 +873,7 @@ struct LineComment {
 struct CommentStore {
     own_line: VecDeque<LineComment>,
     trailing: BTreeMap<usize, Vec<String>>,
+    blank_lines: HashSet<usize>,
 }
 
 impl CommentStore {
@@ -834,6 +881,9 @@ impl CommentStore {
         let mut store = Self::default();
         for (line_index, line) in source.lines().enumerate() {
             let line_number = line_index + 1;
+            if line.trim().is_empty() {
+                store.blank_lines.insert(line_number);
+            }
             let Some(comment_start) = line_comment_start(line) else {
                 continue;
             };
@@ -848,6 +898,22 @@ impl CommentStore {
             }
         }
         store
+    }
+
+    /// Line of the earliest queued own-line comment that precedes `line`, if any,
+    /// without consuming it. Used to find the true start of a "leading comments +
+    /// statement" group when checking for a preserved blank line before it.
+    fn first_own_comment_line_before(&self, line: usize) -> Option<usize> {
+        self.own_line
+            .front()
+            .filter(|comment| comment.line < line)
+            .map(|comment| comment.line)
+    }
+
+    /// Whether the source has a blank line strictly between `start_exclusive` and
+    /// `end_exclusive`.
+    fn has_blank_line_between(&self, start_exclusive: usize, end_exclusive: usize) -> bool {
+        (start_exclusive + 1..end_exclusive).any(|line| self.blank_lines.contains(&line))
     }
 
     fn format_own_comments_before(&mut self, line: usize, indent: usize) -> String {
