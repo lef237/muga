@@ -5,6 +5,7 @@ pub mod cache;
 pub mod cli_schema;
 pub mod diagnostic;
 pub mod doc;
+pub mod durable_write;
 pub mod formatter;
 pub mod identity;
 pub mod implementation_artifact;
@@ -1332,6 +1333,7 @@ fn emit_app_bundle_with_source_mode(
     } else {
         let manifest = app_bundle_manifest_text(
             &project.package_path,
+            project.language_revision,
             &source_relative,
             resource_relative.as_deref(),
             &project.direct_dependencies,
@@ -1747,7 +1749,7 @@ pub fn write_app_bundle_archive(
             ))]
         })?;
     }
-    fs::write(&path, bytes).map_err(|error| {
+    durable_write::replace_file(&path, bytes).map_err(|error| {
         vec![app_bundle_diagnostic(format!(
             "failed to write app archive `{}`: {error}",
             path.display()
@@ -1841,7 +1843,7 @@ fn unpack_verified_app_bundle_archive_files(
                 ))]
             })?;
         }
-        fs::write(&target, &file.contents).map_err(|error| {
+        durable_write::replace_file(&target, &file.contents).map_err(|error| {
             vec![app_bundle_diagnostic(format!(
                 "failed to write app archive output `{}`: {error}",
                 target.display()
@@ -2276,6 +2278,7 @@ fn copy_app_bundle_dependency(
     let dependency_output_root = output_dir.join(dependency_root_relative);
     let manifest = app_bundle_manifest_text(
         &dependency.package_path,
+        dependency.language_revision,
         &source_relative,
         resource_relative.as_deref(),
         &dependency.dependencies,
@@ -2315,6 +2318,7 @@ fn copy_app_bundle_dependency(
 
 fn app_bundle_manifest_text(
     package_path: &str,
+    language_revision: u32,
     source_relative: &Path,
     resource_relative: Option<&Path>,
     direct_dependencies: &[String],
@@ -2327,6 +2331,9 @@ fn app_bundle_manifest_text(
         "name = {}\n",
         app_bundle_manifest_string(package_path)
     ));
+    // The bundled manifest keeps the revision its package declared, so a
+    // bundle is read under the same contract its source was written for.
+    out.push_str(&format!("language_revision = {language_revision}\n"));
     out.push_str(&format!(
         "source = {}\n",
         app_bundle_manifest_string(&app_bundle_manifest_path_value(source_relative))
@@ -2788,7 +2795,7 @@ fn write_app_bundle_text_file(
             ))]
         })?;
     }
-    fs::write(target, text).map_err(|error| {
+    durable_write::replace_file(target, text).map_err(|error| {
         vec![app_bundle_diagnostic(format!(
             "failed to write app bundle {context} `{}`: {error}",
             target.display()
@@ -4393,7 +4400,7 @@ fn write_package_build_artifact_text(
         }
     }
 
-    fs::write(&path, text).map_err(|error| {
+    durable_write::replace_file(&path, text).map_err(|error| {
         Diagnostic::new(
             diagnostic_code,
             format!(

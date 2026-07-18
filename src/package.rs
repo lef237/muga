@@ -5,10 +5,26 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::ast::*;
 use crate::diagnostic::{Diagnostic, DiagnosticContext, file_uri_for_path};
+use crate::durable_write;
 use crate::identity::{ModuleId, PackageId, PackageItemId};
 use crate::interface::{PackageExportGraph, PackageInterface, PackageInterfaceGraph};
 use crate::span::{Position, Span};
 use crate::symbol::SymbolTable;
+
+/// The one source-language revision this compiler implements.
+///
+/// A manifest project declares the revision it was written for through
+/// `[package] language_revision`, and this compiler builds only that
+/// revision: it refuses anything else rather than reinterpreting the
+/// project's source under different rules. The number is bumped only when a
+/// release changes what existing source means, so ordinary releases leave
+/// every manifest alone. It is independent of the compiler version, the
+/// lockfile format version, and the artifact formats.
+///
+/// While Muga is in `0.x` the compiler implements exactly one revision at a
+/// time and does not keep older ones working; see
+/// spec/006-packages.md#41-manifest-validation-and-compatibility-target.
+pub const SUPPORTED_LANGUAGE_REVISION: u32 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PackageArchiveOutput {
@@ -40,6 +56,7 @@ pub struct ProjectManifestMetadata {
     pub source_root: PathBuf,
     pub resource_root: Option<PathBuf>,
     pub package_path: String,
+    pub language_revision: u32,
     pub direct_dependencies: Vec<String>,
     pub dependencies: Vec<ProjectManifestDependencyMetadata>,
 }
@@ -50,6 +67,7 @@ pub struct ProjectManifestDependencyMetadata {
     pub root: PathBuf,
     pub source_root: PathBuf,
     pub resource_root: Option<PathBuf>,
+    pub language_revision: u32,
     pub source_kind: PackageLockfileDependencySourceKind,
     pub source: String,
     pub hash: Option<String>,
@@ -195,7 +213,7 @@ pub fn write_lockfile_from_entry(path: &Path) -> Result<Option<PathBuf>, Vec<Dia
             )]);
         }
     }
-    fs::write(&lockfile_path, text).map_err(|error| {
+    durable_write::replace_file(&lockfile_path, text).map_err(|error| {
         vec![Diagnostic::new(
             "PK025",
             format!(
@@ -288,7 +306,7 @@ pub fn write_package_archive_from_entry(
             )]
         })?;
     }
-    fs::write(&path, archive_bytes).map_err(|error| {
+    durable_write::replace_file(&path, archive_bytes).map_err(|error| {
         vec![Diagnostic::new(
             "PK027",
             format!(
@@ -1631,6 +1649,7 @@ struct ProjectManifest {
     source_root: PathBuf,
     resource_root: Option<PathBuf>,
     name: String,
+    language_revision: u32,
     direct_dependencies: Vec<String>,
     dependencies: HashMap<String, ProjectDependency>,
 }
@@ -1641,6 +1660,7 @@ struct ProjectDependency {
     source_root: PathBuf,
     resource_root: Option<PathBuf>,
     name: String,
+    language_revision: u32,
     source: ProjectDependencySource,
     dependencies: Vec<String>,
 }
@@ -1903,6 +1923,13 @@ impl PackageLoader {
         }
 
         let mut input = format!("package\t{entry_package}\n");
+        // The declared revision decides what the same source text means, so a
+        // cached check made under one revision must not be reused under
+        // another. File-based package mode has no manifest and therefore no
+        // declaration to fingerprint.
+        if let Some(manifest) = self.manifest.as_ref() {
+            input.push_str(&format!("revision\t{}\n", manifest.language_revision));
+        }
         for file in files {
             input.push_str(&format!(
                 "file\t{}\t{}\n{}\n",
@@ -4166,6 +4193,7 @@ fn parse_manifest_inner_impl(
     let mut section = None;
     let mut seen_sections = HashSet::new();
     let mut name = None;
+    let mut language_revision = None;
     let mut source_dir = None;
     let mut resource_dir = None;
     let mut dependency_sources: Vec<(String, ManifestDependencySource)> = Vec::new();
@@ -4246,7 +4274,7 @@ fn parse_manifest_inner_impl(
             dependency_sources.push((package_name, dependency_source));
             continue;
         }
-        if !matches!(key, "name" | "source" | "resources") {
+        if !matches!(key, "name" | "source" | "resources" | "language_revision") {
             return Err(vec![
                 manifest_diagnostic(
                     format!(
@@ -4257,9 +4285,20 @@ fn parse_manifest_inner_impl(
                     span,
                 )
                 .with_suggestion(
-                    "[package] currently supports only `name`, `source`, and `resources`",
+                    "[package] currently supports only `name`, `language_revision`, `source`, and `resources`",
                 ),
             ]);
+        }
+        if key == "language_revision" {
+            let declared = parse_manifest_language_revision(value.trim(), path, span)?;
+            if language_revision.replace(declared).is_some() {
+                return Err(vec![manifest_duplicate_diagnostic(
+                    "`language_revision`",
+                    path,
+                    span,
+                )]);
+            }
+            continue;
         }
         let Some(value) = parse_manifest_string(value.trim()) else {
             return Err(vec![manifest_diagnostic(
@@ -4317,6 +4356,30 @@ fn parse_manifest_inner_impl(
             Span::default(),
         )]);
     }
+    // Absence is an error rather than a default: a project that never declared
+    // a revision is exactly the project a later compiler would silently
+    // reinterpret.
+    let Some(language_revision) = language_revision else {
+        return Err(vec![
+            Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest {} must declare [package] language_revision",
+                    path.display()
+                ),
+                Span::default(),
+            )
+            .with_context(DiagnosticContext::source(
+                "manifest",
+                path.display().to_string(),
+                file_uri_for_path(path),
+            ))
+            .with_suggestion(format!(
+                "add `language_revision = {SUPPORTED_LANGUAGE_REVISION}` under [package] to \
+                 declare the source-language revision this project is written for"
+            )),
+        ]);
+    };
 
     let root = path.parent().map(Path::to_path_buf).unwrap_or_default();
     let source_root = root.join(source_dir);
@@ -4333,9 +4396,79 @@ fn parse_manifest_inner_impl(
         source_root,
         resource_root,
         name,
+        language_revision,
         direct_dependencies,
         dependencies,
     })
+}
+
+/// Reads `[package] language_revision` and holds the compiler to the one
+/// revision it implements. Refusing an unimplemented revision is the whole
+/// point of the field: the alternative is compiling the project's source
+/// under rules it was never written for.
+fn parse_manifest_language_revision(
+    value: &str,
+    path: &Path,
+    span: Span,
+) -> Result<u32, Vec<Diagnostic>> {
+    if parse_manifest_string(value).is_some() {
+        return Err(vec![
+            manifest_diagnostic(
+                format!(
+                    "manifest [package] language_revision in {} must be a number, not a string",
+                    path.display()
+                ),
+                path,
+                span,
+            )
+            .with_suggestion(format!(
+                "write `language_revision = {SUPPORTED_LANGUAGE_REVISION}`"
+            )),
+        ]);
+    }
+    let Ok(declared) = value.parse::<u32>() else {
+        return Err(vec![
+            manifest_diagnostic(
+                format!(
+                    "manifest [package] language_revision `{value}` in {} is not a revision number",
+                    path.display()
+                ),
+                path,
+                span,
+            )
+            .with_suggestion(format!(
+                "write `language_revision = {SUPPORTED_LANGUAGE_REVISION}`"
+            )),
+        ]);
+    };
+    if declared == SUPPORTED_LANGUAGE_REVISION {
+        return Ok(declared);
+    }
+    let message = if declared > SUPPORTED_LANGUAGE_REVISION {
+        format!(
+            "manifest {} declares language revision {declared}, which this muga does not \
+             implement; it implements revision {SUPPORTED_LANGUAGE_REVISION}",
+            path.display()
+        )
+    } else {
+        format!(
+            "manifest {} declares language revision {declared}, which this muga no longer \
+             implements; it implements revision {SUPPORTED_LANGUAGE_REVISION}",
+            path.display()
+        )
+    };
+    let suggestion = if declared > SUPPORTED_LANGUAGE_REVISION {
+        "upgrade muga to a release that implements this revision".to_string()
+    } else {
+        format!(
+            "migrate the project to revision {SUPPORTED_LANGUAGE_REVISION} and set \
+             `language_revision = {SUPPORTED_LANGUAGE_REVISION}`; see the release notes for the \
+             revision change"
+        )
+    };
+    Err(vec![
+        manifest_diagnostic(message, path, span).with_suggestion(suggestion),
+    ])
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -4597,6 +4730,7 @@ fn parse_manifest_dependencies(
                 source_root: dependency_manifest.source_root.clone(),
                 resource_root: dependency_manifest.resource_root.clone(),
                 name: dependency_manifest.name.clone(),
+                language_revision: dependency_manifest.language_revision,
                 source,
                 dependencies: dependency_manifest.direct_dependencies.clone(),
             },
@@ -4807,6 +4941,7 @@ fn project_manifest_metadata(manifest: &ProjectManifest) -> ProjectManifestMetad
         source_root: manifest.source_root.clone(),
         resource_root: manifest.resource_root.clone(),
         package_path: manifest.name.clone(),
+        language_revision: manifest.language_revision,
         direct_dependencies,
         dependencies,
     }
@@ -4838,6 +4973,7 @@ fn project_manifest_dependency_metadata(
         root: dependency.root.clone(),
         source_root: dependency.source_root.clone(),
         resource_root: dependency.resource_root.clone(),
+        language_revision: dependency.language_revision,
         source_kind,
         source,
         hash,
@@ -5025,6 +5161,30 @@ fn parse_lockfile_text(text: &str, path: &Path) -> Result<(), Vec<Diagnostic>> {
                     let version = parse_lockfile_string(value).ok_or_else(|| {
                         lockfile_diagnostic(path, line_number, "`muga_version` must be a string")
                     })?;
+                    let Some(recorded) = parse_muga_version_triple(&version) else {
+                        return Err(lockfile_diagnostic(
+                            path,
+                            line_number,
+                            format!(
+                                "`muga_version` `{version}` must be a `MAJOR.MINOR.PATCH` version"
+                            ),
+                        ));
+                    };
+                    let current_version = env!("CARGO_PKG_VERSION");
+                    if let Some(current) = parse_muga_version_triple(current_version)
+                        && recorded > current
+                    {
+                        return Err(lockfile_diagnostic(
+                            path,
+                            line_number,
+                            format!(
+                                "`muga_version` `{version}` was written by a newer muga than \
+                                 this compiler (`{current_version}`); upgrade muga to at \
+                                 least `{version}`, or delete `muga.lock` and rebuild to \
+                                 re-resolve it with this compiler"
+                            ),
+                        ));
+                    }
                     if muga_version.replace(version).is_some() {
                         return Err(lockfile_diagnostic(
                             path,
@@ -5388,6 +5548,28 @@ fn parse_lockfile_dependency_list(
         dependencies.push(dependency);
     }
     Ok(dependencies)
+}
+
+fn parse_muga_version_triple(version: &str) -> Option<(u64, u64, u64)> {
+    let core = version
+        .split_once(['-', '+'])
+        .map(|(core, _)| core)
+        .unwrap_or(version);
+    let mut parts = core.split('.');
+    let major = parse_muga_version_component(parts.next()?)?;
+    let minor = parse_muga_version_component(parts.next()?)?;
+    let patch = parse_muga_version_component(parts.next()?)?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+fn parse_muga_version_component(part: &str) -> Option<u64> {
+    if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    part.parse().ok()
 }
 
 fn parse_lockfile_string(value: &str) -> Option<String> {
@@ -7119,7 +7301,7 @@ fn is_mangled_item_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::sha256_hex;
+    use super::{parse_muga_version_triple, sha256_hex};
 
     #[test]
     fn sha256_hex_matches_known_digest() {
@@ -7127,5 +7309,22 @@ mod tests {
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn current_compiler_version_parses_as_version_triple() {
+        assert!(parse_muga_version_triple(env!("CARGO_PKG_VERSION")).is_some());
+    }
+
+    #[test]
+    fn version_triples_parse_and_ignore_pre_release_and_build_metadata() {
+        assert_eq!(parse_muga_version_triple("0.6.0"), Some((0, 6, 0)));
+        assert_eq!(parse_muga_version_triple("1.0.0-rc.1"), Some((1, 0, 0)));
+        assert_eq!(parse_muga_version_triple("1.2.3+build.5"), Some((1, 2, 3)));
+        assert_eq!(parse_muga_version_triple("banana"), None);
+        assert_eq!(parse_muga_version_triple("1.2"), None);
+        assert_eq!(parse_muga_version_triple("1.2.3.4"), None);
+        assert_eq!(parse_muga_version_triple("1.2.x"), None);
+        assert_eq!(parse_muga_version_triple(""), None);
     }
 }

@@ -1,4 +1,5 @@
 [package]
 name = "resource_export"
+language_revision = 1
 source = "src"
 resources = "resources"

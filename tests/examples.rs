@@ -1651,6 +1651,7 @@ fn cli_metadata_json_reports_package_graph_for_editor_tools() {
         r#"
 [package]
 name = "meta_app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -1742,6 +1743,7 @@ fn cli_workspace_json_reports_loaded_packages_for_editor_tools() {
         r#"
 [package]
 name = "workspace_shared"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -1761,6 +1763,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "workspace_app"
+language_revision = 1
 source = "src"
 resources = "resources"
 
@@ -1856,6 +1859,7 @@ fn project_manifest_metadata_reports_roots_and_dependency_sources() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -1875,6 +1879,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 resources = "resources"
 
@@ -1932,54 +1937,59 @@ fn project_manifest_rejects_unrecognized_and_duplicate_entries() {
             r#"
 [package]
 name = "strict_manifest"
+language_revision = 1
 
 [workspace]
 members = "app"
 "#,
             "manifest section `[workspace]`",
-            4,
+            5,
         ),
         (
             "unknown field",
             r#"
 [package]
 name = "strict_manifest"
+language_revision = 1
 version = "0.1.0"
 "#,
             "manifest [package] field `version`",
-            3,
+            4,
         ),
         (
             "duplicate field",
             r#"
 [package]
 name = "strict_manifest"
+language_revision = 1
 name = "other_name"
 "#,
             "manifest `name`",
-            3,
+            4,
         ),
         (
             "duplicate section",
             r#"
 [package]
 name = "strict_manifest"
+language_revision = 1
 
 [package]
 source = "src"
 "#,
             "manifest section `[package]`",
-            4,
+            5,
         ),
         (
             "malformed line",
             r#"
 [package]
 name = "strict_manifest"
+language_revision = 1
 source
 "#,
             "manifest line `source`",
-            3,
+            4,
         ),
         (
             "unterminated section header",
@@ -1997,6 +2007,7 @@ name = "strict_manifest"
 
 [package]
 name = "strict_manifest"
+language_revision = 1
 "#,
             "appears before any section header",
             1,
@@ -2006,13 +2017,14 @@ name = "strict_manifest"
             r#"
 [package]
 name = "strict_manifest"
+language_revision = 1
 
 [dependencies]
 shared = { path = "../shared" }
 shared = { path = "../other" }
 "#,
             "manifest dependency `shared`",
-            6,
+            7,
         ),
     ];
 
@@ -2046,6 +2058,190 @@ fn main(): String {
 }
 
 #[test]
+fn project_manifest_requires_a_language_revision_declaration() {
+    let root = temp_package_root("project-manifest-missing-revision");
+    write_package_file(
+        &root,
+        "muga.toml",
+        r#"
+[package]
+name = "revision_probe"
+source = "src"
+"#,
+    );
+    let entry = write_package_file(
+        &root,
+        "src/main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+
+    let diagnostics = muga::package::project_manifest_metadata_from_entry(&entry)
+        .expect_err("a manifest without a language revision should be rejected");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "PK014")
+        .unwrap_or_else(|| panic!("{diagnostics:#?}"));
+    assert!(
+        diagnostic
+            .message
+            .contains("must declare [package] language_revision"),
+        "{diagnostic:#?}"
+    );
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .any(|suggestion| suggestion.message.contains("add `language_revision = 1`")),
+        "{diagnostic:#?}"
+    );
+}
+
+#[test]
+fn project_manifest_rejects_unusable_language_revisions() {
+    let cases = vec![
+        (
+            "newer revision",
+            "language_revision = 2",
+            "declares language revision 2, which this muga does not implement",
+            "upgrade muga",
+        ),
+        (
+            "older revision",
+            "language_revision = 0",
+            "declares language revision 0, which this muga no longer implements",
+            "migrate the project to revision 1",
+        ),
+        (
+            "string revision",
+            "language_revision = \"1\"",
+            "must be a number, not a string",
+            "write `language_revision = 1`",
+        ),
+        (
+            "malformed revision",
+            "language_revision = one",
+            "language_revision `one`",
+            "write `language_revision = 1`",
+        ),
+    ];
+
+    for (name, declaration, expected_message, expected_suggestion) in cases {
+        let root = temp_package_root(&format!(
+            "project-manifest-revision-{}",
+            name.replace(' ', "-")
+        ));
+        write_package_file(
+            &root,
+            "muga.toml",
+            &format!(
+                r#"
+[package]
+name = "revision_probe"
+{declaration}
+source = "src"
+"#
+            ),
+        );
+        let entry = write_package_file(
+            &root,
+            "src/main/main.muga",
+            r#"
+fn main(): String {
+  "ok"
+}
+"#,
+        );
+
+        let Err(diagnostics) = muga::package::project_manifest_metadata_from_entry(&entry) else {
+            panic!("{name}: an unusable language revision should be rejected");
+        };
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "PK014"
+                    && diagnostic.message.contains(expected_message)
+                    && diagnostic
+                        .suggestions
+                        .iter()
+                        .any(|suggestion| suggestion.message.contains(expected_suggestion))
+            }),
+            "{name}: {diagnostics:#?}"
+        );
+    }
+}
+
+#[test]
+fn project_manifest_rejects_a_duplicate_language_revision() {
+    let root = temp_package_root("project-manifest-duplicate-revision");
+    write_package_file(
+        &root,
+        "muga.toml",
+        r#"
+[package]
+name = "revision_probe"
+language_revision = 1
+language_revision = 1
+source = "src"
+"#,
+    );
+    let entry = write_package_file(
+        &root,
+        "src/main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+
+    let diagnostics = muga::package::project_manifest_metadata_from_entry(&entry)
+        .expect_err("a duplicate language revision should be rejected");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK014"
+                && diagnostic.message.contains("manifest `language_revision`")
+                && diagnostic.span.start.line == 4
+        }),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn project_manifest_reports_the_declared_language_revision() {
+    let root = temp_package_root("project-manifest-revision-metadata");
+    write_package_file(
+        &root,
+        "muga.toml",
+        r#"
+[package]
+name = "revision_probe"
+language_revision = 1
+source = "src"
+"#,
+    );
+    let entry = write_package_file(
+        &root,
+        "src/main/main.muga",
+        r#"
+fn main(): String {
+  "ok"
+}
+"#,
+    );
+
+    let manifest = muga::package::project_manifest_metadata_from_entry(&entry)
+        .expect("a declared revision should parse")
+        .expect("entry inside a manifest project should resolve a manifest");
+    assert_eq!(
+        manifest.language_revision,
+        muga::package::SUPPORTED_LANGUAGE_REVISION
+    );
+}
+
+#[test]
 fn project_manifest_diagnostics_point_at_the_manifest_file() {
     let root = temp_package_root("project-manifest-strict-context");
     write_package_file(
@@ -2054,6 +2250,7 @@ fn project_manifest_diagnostics_point_at_the_manifest_file() {
         r#"
 [package]
 name = "strict_manifest"
+language_revision = 1
 version = "0.1.0"
 "#,
     );
@@ -2093,6 +2290,7 @@ fn project_manifest_accepts_comments_and_optional_fields() {
 # a leading comment
 [package]
 name = "strict_manifest" # a trailing comment
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -2147,6 +2345,7 @@ fn project_manifest_rejects_source_roots_outside_package_root() {
                 r#"
 [package]
 name = "unsafe_source"
+language_revision = 1
 source = "{source}"
 "#
             ),
@@ -2185,6 +2384,7 @@ fn project_manifest_rejects_dependency_source_roots_outside_package_root() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "../external-src"
 "#,
     );
@@ -2203,6 +2403,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -2244,6 +2445,7 @@ fn cli_completions_json_reports_visible_package_items_for_editor_tools() {
         r#"
 [package]
 name = "completion_app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -2345,6 +2547,7 @@ fn cli_definition_json_reports_local_and_package_targets_for_editor_tools() {
         r#"
 [package]
 name = "definition_app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -2466,6 +2669,7 @@ fn cli_references_json_reports_entry_module_references_for_editor_tools() {
         r#"
 [package]
 name = "references_app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -2592,6 +2796,7 @@ fn cli_hover_json_reports_public_declaration_for_editor_tools() {
         r#"
 [package]
 name = "hover_app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -2666,6 +2871,7 @@ fn json_backed_editor_workflow_uses_existing_command_contracts() {
         r#"
 [package]
 name = "editor_app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -2970,6 +3176,7 @@ fn cli_doc_emits_public_interface_markdown() {
         r#"
 [package]
 name = "doc_app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -5853,6 +6060,7 @@ fn cli_fmt_preserves_manifest_inferred_package_shape() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -6092,6 +6300,7 @@ fn main(): Int {
         r#"
 [package]
 name = "std::custom"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -7878,6 +8087,7 @@ fn manifest_local_path_dependency_loads_external_package() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -7896,6 +8106,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -7935,6 +8146,7 @@ fn cli_build_and_run_built_use_local_path_dependency_artifacts() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -7953,6 +8165,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -8019,6 +8232,7 @@ fn build_reuses_unchanged_local_path_dependency_artifacts() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -8037,6 +8251,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -8147,6 +8362,7 @@ fn build_writes_local_path_dependency_lockfile() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -8171,6 +8387,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -8253,6 +8470,7 @@ fn cli_build_reports_reuse_and_refreshes_local_path_lockfile_after_dependency_ed
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -8271,6 +8489,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -8453,6 +8672,7 @@ fn manifest_local_archive_dependency_materializes_cache_and_runs() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -8479,6 +8699,7 @@ pub fn value(): Int {
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -8544,6 +8765,7 @@ fn manifest_local_archive_dependency_materializes_declared_resources_and_validat
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -8625,6 +8847,7 @@ fn cli_build_refreshes_local_archive_lockfile_after_archive_dependency_update() 
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -8773,6 +8996,7 @@ fn manifest_local_archive_dependency_rejects_hash_mismatch() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -8799,6 +9023,7 @@ pub fn value(): Int {
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -8840,6 +9065,7 @@ fn manifest_local_archive_dependency_rejects_stale_cache_hash() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -8867,6 +9093,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -8886,6 +9113,7 @@ pub fn value(): Int {
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -9047,6 +9275,7 @@ fn package_content_hash_covers_manifest_and_sorted_sources() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -9104,6 +9333,7 @@ fn main(): Int {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -9132,6 +9362,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 
 # The manifest bytes are part of the canonical package content input.
@@ -9155,6 +9386,7 @@ fn package_content_hash_covers_manifest_declared_resources() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -9203,6 +9435,7 @@ fn main(): Int {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -9253,6 +9486,7 @@ fn package_archive_emission_writes_deterministic_source_archive() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -9362,6 +9596,7 @@ fn main(): Int {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -9383,6 +9618,7 @@ fn package_archive_emission_includes_manifest_declared_resources() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -9451,6 +9687,7 @@ fn main(): Int {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -9473,6 +9710,7 @@ fn package_archive_preserves_binary_manifest_resources() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -9531,6 +9769,7 @@ fn package_archive_emission_rejects_archive_root_inside_package_roots() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -9580,6 +9819,7 @@ fn package_archive_emission_rejects_unsafe_manifest_source_root() {
             r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "{}"
 "#,
             external_source_root.display()
@@ -9623,6 +9863,7 @@ fn package_archive_emission_rejects_symlinked_sources_and_resources() {
         r#"
 [package]
 name = "source_link_probe"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -9672,6 +9913,7 @@ pub fn value(): String {
         r#"
 [package]
 name = "resource_link_probe"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -9717,6 +9959,7 @@ fn package_archive_emission_rejects_symlinked_source_and_resource_roots() {
         r#"
 [package]
 name = "source_root_link_probe"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -9753,6 +9996,7 @@ fn main(): String {
         r#"
 [package]
 name = "resource_root_link_probe"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -9791,6 +10035,7 @@ fn package_archive_readback_validates_hash_and_entries() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -10108,6 +10353,7 @@ fn package_archive_materialization_writes_validated_source_tree() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -10343,6 +10589,7 @@ fn build_rejects_malformed_local_path_dependency_lockfile() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -10361,6 +10608,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -10454,6 +10702,328 @@ dependencies = []
 }
 
 #[test]
+fn build_rejects_lockfile_recorded_by_newer_muga() {
+    let app_root = temp_package_root("build-newer-muga-lockfile");
+    write_package_file(
+        &app_root,
+        "muga.toml",
+        r#"
+[package]
+name = "app"
+language_revision = 1
+source = "src"
+"#,
+    );
+    let entry = write_package_file(
+        &app_root,
+        "src/main/main.muga",
+        r#"
+fn main(): Int {
+  0
+}
+"#,
+    );
+    let lockfile_path = app_root.join("muga.lock");
+    let newer_lockfile = r#"
+# muga.lock -- generated by muga; do not edit by hand
+lockfile_version = 1
+muga_version = "999.0.0"
+"#
+    .trim_start();
+    fs::write(&lockfile_path, newer_lockfile).expect("newer lockfile should be written");
+
+    let diagnostics = muga::build_package_artifacts(&entry)
+        .expect_err("build should reject lockfile recorded by newer muga");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK026"
+                && diagnostic.message.contains("invalid package lockfile")
+                && diagnostic
+                    .message
+                    .contains("was written by a newer muga than this compiler")
+        }),
+        "{diagnostics:#?}"
+    );
+    let retained_lockfile =
+        fs::read_to_string(&lockfile_path).expect("newer lockfile should remain");
+    assert_eq!(retained_lockfile, newer_lockfile);
+}
+
+#[test]
+fn build_rejects_lockfile_with_malformed_muga_version() {
+    let app_root = temp_package_root("build-malformed-muga-version-lockfile");
+    write_package_file(
+        &app_root,
+        "muga.toml",
+        r#"
+[package]
+name = "app"
+language_revision = 1
+source = "src"
+"#,
+    );
+    let entry = write_package_file(
+        &app_root,
+        "src/main/main.muga",
+        r#"
+fn main(): Int {
+  0
+}
+"#,
+    );
+    let lockfile_path = app_root.join("muga.lock");
+    let malformed_lockfile = r#"
+# muga.lock -- generated by muga; do not edit by hand
+lockfile_version = 1
+muga_version = "banana"
+"#
+    .trim_start();
+    fs::write(&lockfile_path, malformed_lockfile).expect("malformed lockfile should be written");
+
+    let diagnostics = muga::build_package_artifacts(&entry)
+        .expect_err("build should reject malformed muga_version");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK026"
+                && diagnostic.message.contains("invalid package lockfile")
+                && diagnostic
+                    .message
+                    .contains("must be a `MAJOR.MINOR.PATCH` version")
+        }),
+        "{diagnostics:#?}"
+    );
+    let retained_lockfile =
+        fs::read_to_string(&lockfile_path).expect("malformed lockfile should remain");
+    assert_eq!(retained_lockfile, malformed_lockfile);
+}
+
+#[test]
+fn build_refreshes_lockfile_recorded_by_older_muga() {
+    let app_root = temp_package_root("build-older-muga-lockfile");
+    write_package_file(
+        &app_root,
+        "muga.toml",
+        r#"
+[package]
+name = "app"
+language_revision = 1
+source = "src"
+"#,
+    );
+    let entry = write_package_file(
+        &app_root,
+        "src/main/main.muga",
+        r#"
+fn main(): Int {
+  0
+}
+"#,
+    );
+    let lockfile_path = app_root.join("muga.lock");
+
+    muga::build_package_artifacts(&entry).expect("first build should write the lockfile");
+    let current_line = format!("muga_version = \"{}\"", env!("CARGO_PKG_VERSION"));
+    let first_lockfile = fs::read_to_string(&lockfile_path).expect("lockfile should be written");
+    assert!(first_lockfile.contains(&current_line), "{first_lockfile}");
+
+    let downgraded_lockfile = first_lockfile.replace(&current_line, "muga_version = \"0.0.1\"");
+    assert_ne!(first_lockfile, downgraded_lockfile);
+    fs::write(&lockfile_path, &downgraded_lockfile).expect("downgraded lockfile should be written");
+
+    muga::build_package_artifacts(&entry)
+        .expect("build should accept and refresh lockfile recorded by older muga");
+    let refreshed_lockfile =
+        fs::read_to_string(&lockfile_path).expect("refreshed lockfile should exist");
+    assert!(
+        refreshed_lockfile.contains(&current_line),
+        "{refreshed_lockfile}"
+    );
+    assert!(
+        !refreshed_lockfile.contains("muga_version = \"0.0.1\""),
+        "{refreshed_lockfile}"
+    );
+}
+
+#[cfg(unix)]
+fn set_directory_mode(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .expect("directory metadata should be readable")
+        .permissions();
+    permissions.set_mode(mode);
+    fs::set_permissions(path, permissions).expect("directory permissions should be set");
+}
+
+/// Names the sibling temporary files a crash-safe write creates, so a test can
+/// prove a failed write left none of them behind.
+fn crash_safe_temporary_names(root: &Path) -> Vec<String> {
+    fs::read_dir(root)
+        .expect("directory should be readable")
+        .map(|entry| {
+            entry
+                .expect("directory entry should be readable")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|name| name.contains(".tmp-"))
+        .collect()
+}
+
+fn write_lockfile_write_failure_fixture(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let workspace = temp_package_root(name);
+    let app_root = workspace.join("app");
+    let shared_root = workspace.join("shared");
+    write_package_file(
+        &shared_root,
+        "muga.toml",
+        r#"
+[package]
+name = "shared"
+language_revision = 1
+source = "src"
+"#,
+    );
+    write_package_file(
+        &shared_root,
+        "src/logging/main.muga",
+        r#"
+pub fn value(): Int {
+  11
+}
+"#,
+    );
+    write_package_file(
+        &app_root,
+        "muga.toml",
+        r#"
+[package]
+name = "app"
+language_revision = 1
+source = "src"
+
+[dependencies]
+shared = { path = "../shared" }
+"#,
+    );
+    let entry = write_package_file(
+        &app_root,
+        "src/main/main.muga",
+        r#"
+import shared::logging as logging
+
+fn main(): Int {
+  logging::value() + 1
+}
+"#,
+    );
+    (app_root, entry)
+}
+
+#[cfg(unix)]
+#[test]
+fn build_keeps_the_last_valid_lockfile_when_the_replacement_fails() {
+    let (app_root, entry) = write_lockfile_write_failure_fixture("build-lockfile-write-failure");
+    let dependency = app_root
+        .parent()
+        .expect("app root should have a workspace parent")
+        .join("shared/src/logging/main.muga");
+
+    muga::build_package_artifacts(&entry).expect("first build should write the lockfile");
+    let lockfile_path = app_root.join("muga.lock");
+    let first_lockfile = fs::read_to_string(&lockfile_path).expect("lockfile should be written");
+
+    // Change the dependency so the recorded source hash is stale and the next
+    // build has to replace the lockfile.
+    fs::write(
+        &dependency,
+        r#"
+pub fn value(): Int {
+  99
+}
+"#
+        .trim_start(),
+    )
+    .expect("dependency source should be overwritten");
+    set_directory_mode(&app_root, 0o555);
+    let result = muga::build_package_artifacts(&entry);
+    set_directory_mode(&app_root, 0o755);
+
+    let diagnostics = result.expect_err("build should fail when the lockfile cannot be replaced");
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PK025"
+                && diagnostic
+                    .message
+                    .contains("failed to write package lockfile")
+        }),
+        "{diagnostics:#?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&lockfile_path).expect("lockfile should still exist"),
+        first_lockfile
+    );
+    assert!(
+        crash_safe_temporary_names(&app_root).is_empty(),
+        "{:?}",
+        crash_safe_temporary_names(&app_root)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn build_keeps_the_last_valid_artifact_when_the_replacement_fails() {
+    let (app_root, entry) = write_lockfile_write_failure_fixture("build-artifact-write-failure");
+    let source = app_root.join("src/main/main.muga");
+
+    muga::build_package_artifacts(&entry).expect("first build should write artifacts");
+    let artifact_root = app_root.join(".muga/build");
+    let artifact_path = artifact_root.join("app__main.mgi");
+    let first_artifact =
+        fs::read_to_string(&artifact_path).expect("interface artifact should be written");
+
+    // Change the entry package so its artifacts are stale and the next build
+    // has to replace them.
+    fs::write(
+        &source,
+        r#"
+import shared::logging as logging
+
+pub fn extra(): Int {
+  7
+}
+
+fn main(): Int {
+  logging::value() + extra()
+}
+"#
+        .trim_start(),
+    )
+    .expect("entry source should be overwritten");
+    set_directory_mode(&artifact_root, 0o555);
+    let result = muga::build_package_artifacts(&entry);
+    set_directory_mode(&artifact_root, 0o755);
+
+    let diagnostics = result.expect_err("build should fail when an artifact cannot be replaced");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("failed to write")),
+        "{diagnostics:#?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&artifact_path).expect("interface artifact should still exist"),
+        first_artifact
+    );
+    assert!(
+        crash_safe_temporary_names(&artifact_root).is_empty(),
+        "{:?}",
+        crash_safe_temporary_names(&artifact_root)
+    );
+}
+
+#[test]
 fn build_orders_package_artifacts_by_dependency_levels() {
     let workspace = temp_package_root("build-dependency-level-order");
     let app_root = workspace.join("app");
@@ -10465,6 +11035,7 @@ fn build_orders_package_artifacts_by_dependency_levels() {
         r#"
 [package]
 name = "alpha"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -10483,6 +11054,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "beta"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -10501,6 +11073,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -10560,6 +11133,7 @@ fn manifest_local_path_dependency_requires_dependency_manifest() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -10598,6 +11172,7 @@ fn manifest_local_path_dependency_name_must_match_target_manifest() {
         r#"
 [package]
 name = "other"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -10607,6 +11182,7 @@ source = "src"
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -10645,6 +11221,7 @@ fn manifest_local_path_dependency_rejects_overlapping_package_roots() {
         r#"
 [package]
 name = "app::shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -10654,6 +11231,7 @@ source = "src"
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -12635,6 +13213,7 @@ fn package_interface_persists_public_doc_comments_without_hashing_them() {
         r#"
 [package]
 name = "doc_hash"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -12729,6 +13308,7 @@ fn package_interface_hash_ignores_diagnostic_spans() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -14381,6 +14961,37 @@ fn main(): Int {
     assert_ne!(before.stable_hash(), after.stable_hash());
 }
 
+/// Only one language revision exists, so this pins the declaration into the
+/// fingerprint the cache key hashes rather than comparing two revisions.
+#[test]
+fn package_cache_key_covers_the_declared_language_revision() {
+    let root = temp_package_root("cache-key-language-revision");
+    write_package_file(
+        &root,
+        "muga.toml",
+        r#"
+[package]
+name = "revision_cache_probe"
+language_revision = 1
+source = "src"
+"#,
+    );
+    let entry = write_package_file(
+        &root,
+        "src/main/main.muga",
+        r#"
+fn main(): Int {
+  1
+}
+"#,
+    );
+
+    let input = muga::package::source_fingerprint_input_from_entry(&entry)
+        .expect("fingerprint input should be computed");
+
+    assert!(input.contains("revision\t1"), "{input}");
+}
+
 #[test]
 fn package_cache_key_changes_when_dependency_interface_hash_changes() {
     let provider = muga::compile_typed_path(Path::new("samples/packages/app/main/main.muga"))
@@ -15272,6 +15883,7 @@ fn cli_emit_package_archive_writes_archive_and_hash() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -15355,6 +15967,7 @@ fn cli_verify_package_archive_validates_hash_from_filename() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -15688,6 +16301,7 @@ fn cli_emit_package_archive_dependency_snippet_drives_local_archive_workflow() {
         r#"
 [package]
 name = "company::shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -15735,6 +16349,7 @@ pub fn value(): Int {
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -15800,6 +16415,7 @@ fn default_build_artifact_root_uses_manifest_project_root() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -15854,6 +16470,7 @@ fn cli_build_writes_default_project_artifacts() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -15962,6 +16579,7 @@ fn cli_build_json_reports_artifact_status_contract() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16050,6 +16668,7 @@ fn cli_build_json_reports_diagnostic_contract_on_stdout() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16105,6 +16724,7 @@ fn cli_why_rebuild_json_reports_fresh_artifact_states() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16196,6 +16816,7 @@ fn cli_why_rebuild_text_reports_fresh_artifact_states() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16266,6 +16887,7 @@ fn cli_why_rebuild_json_reports_missing_explicit_artifacts() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16321,6 +16943,7 @@ fn cli_why_rebuild_text_reports_missing_explicit_artifacts() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16390,6 +17013,7 @@ fn cli_why_rebuild_json_reports_stale_source_artifacts() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16455,6 +17079,7 @@ fn cli_why_rebuild_json_reports_stale_dependency_interface_artifacts() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16622,6 +17247,7 @@ fn cli_why_rebuild_json_reports_stale_local_path_lockfile_metadata() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16640,6 +17266,7 @@ pub fn value(): Int {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -16723,6 +17350,7 @@ fn cli_why_rebuild_json_reports_fresh_local_archive_lockfile_metadata() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16749,6 +17377,7 @@ pub fn value(): Int {
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -16834,6 +17463,7 @@ fn cli_why_rebuild_text_reports_lockfile_and_archive_cache_metadata() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -16860,6 +17490,7 @@ pub fn value(): Int {
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -16926,6 +17557,7 @@ fn cli_why_rebuild_json_reports_invalid_and_hash_mismatched_artifacts() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17001,6 +17633,7 @@ fn cli_check_built_uses_default_project_artifacts_without_dependency_source_body
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17068,6 +17701,7 @@ fn cli_check_built_reports_missing_default_build_artifacts() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17122,6 +17756,7 @@ fn cli_check_built_reports_missing_default_check_cache_artifact() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17189,6 +17824,7 @@ fn cli_check_built_reports_stale_default_check_cache_artifact() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17262,6 +17898,7 @@ fn cli_run_built_uses_default_project_implementation_artifacts() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17329,6 +17966,7 @@ fn cli_run_built_preserves_json_validation_metadata() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17651,6 +18289,7 @@ fn cli_run_built_reports_missing_default_check_cache_artifact() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17707,6 +18346,7 @@ fn cli_run_built_reports_stale_default_check_cache_artifact() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17767,6 +18407,7 @@ fn cli_run_built_reports_missing_default_implementation_artifact() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -17835,6 +18476,7 @@ fn cli_run_built_reports_stale_default_implementation_artifact() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -18490,6 +19132,7 @@ fn cli_built_run_passes_program_args_after_separator() {
         r#"
 [package]
 name = "demo"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -36434,6 +37077,7 @@ fn standard_fs_read_resource_text_reads_manifest_entry_resources_for_source_and_
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -36476,6 +37120,7 @@ fn standard_fs_read_resource_text_reads_archive_dependency_resources_from_cache(
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -36507,6 +37152,7 @@ pub fn banner(): Result[String, io::IOError] {
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -36564,6 +37210,7 @@ fn standard_fs_read_resource_bytes_reads_manifest_entry_resources_for_source_and
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -36611,6 +37258,7 @@ fn standard_fs_read_resource_bytes_reads_archive_dependency_resources_from_cache
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -36644,6 +37292,7 @@ pub fn logo_size(): Result[Int, io::IOError] {
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -36866,6 +37515,7 @@ fn standard_fs_read_resource_text_reports_invalid_paths_and_missing_roots() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -36906,6 +37556,7 @@ fn standard_fs_read_resource_text_is_available_to_package_tests() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -36942,6 +37593,7 @@ fn cli_emit_app_bundle_writes_source_backed_layout_and_launcher() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -37073,6 +37725,7 @@ fn emit_app_bundle_reports_bundle_local_artifact_paths() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -37127,6 +37780,7 @@ fn cli_emit_app_bundle_writes_dependency_aware_layout_and_launcher() {
         r#"
 [package]
 name = "base"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -37150,6 +37804,7 @@ pub fn value(): Result[String, io::IOError] {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -37175,6 +37830,7 @@ pub fn value(): Result[String, io::IOError] {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -37288,6 +37944,7 @@ fn cli_emit_app_bundle_source_free_uses_artifacts_without_bundle_sources() {
         r#"
 [package]
 name = "base"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -37311,6 +37968,7 @@ pub fn value(): Result[String, io::IOError] {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -37336,6 +37994,7 @@ pub fn value(): Result[String, io::IOError] {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -37598,6 +38257,7 @@ fn cli_emit_app_bundle_rejects_output_inside_dependency_source_root() {
         r#"
 [package]
 name = "shared"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -37616,6 +38276,7 @@ pub fn value(): String {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]
@@ -37683,6 +38344,7 @@ fn cli_install_app_writes_non_mutating_launcher_for_bundle() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -38029,6 +38691,7 @@ fn cli_list_installed_apps_reports_owned_launchers() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -38218,6 +38881,7 @@ fn cli_install_and_archive_reject_broken_app_bundle_without_writes() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -38350,6 +39014,7 @@ fn cli_emit_and_unpack_app_archive_round_trips_bundle_launcher() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 resources = "resources"
 "#,
@@ -38701,6 +39366,7 @@ fn cli_unpack_app_archive_validates_hash_from_filename() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -38971,6 +39637,7 @@ fn cli_emit_app_archive_rejects_archive_root_inside_bundle() {
         r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -44479,6 +45146,7 @@ fn write_local_archive_dependency_fixture(
             r#"
 [package]
 name = "{archive_package_name}"
+language_revision = 1
 source = "src"
 "#
         ),
@@ -44518,6 +45186,7 @@ fn write_local_archive_dependency_app(
             r#"
 [package]
 name = "app"
+language_revision = 1
 source = "src"
 
 [dependencies]

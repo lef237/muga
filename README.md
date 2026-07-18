@@ -24,6 +24,10 @@ criteria.
 
 ## Why Muga
 
+Muga is a quiet, statically typed language for building self-contained tools
+and reliable services, designed for local reasoning and machine-assisted
+development.
+
 - **Small surface, one spelling per operation.** No classes, inheritance,
   traits, or overloading. Records hold data, ordinary functions define
   behavior, and dot calls are just function calls — so any line of code can

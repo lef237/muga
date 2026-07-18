@@ -13,6 +13,7 @@ use crate::{
     diagnostic::{
         Diagnostic, artifact_file_context, artifact_hash_context, regeneration_command_context,
     },
+    durable_write,
     identity::{BindingId, BindingKind, LocalId, PackageItemId},
     interface::{PackageInterfaceGraph, stable_hash_hex},
     json_decode::JsonDecodeSchema,
@@ -173,7 +174,7 @@ impl PackageImplementationArtifact {
                 ))
             })?;
         }
-        fs::write(&path, self.to_persisted_text()).map_err(|error| {
+        durable_write::replace_file(&path, self.to_persisted_text()).map_err(|error| {
             implementation_artifact_diagnostic(format!(
                 "failed to write package implementation artifact `{}`: {error}",
                 path.display()

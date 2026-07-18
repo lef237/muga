@@ -47,10 +47,28 @@ Muga samples.
   unused/unreachable/discarded-`Result` warnings that the lint contract in
   `errors.md` still requires. Diagnostics remain error-only
   (`severity: "error"` is fixed in `src/diagnostic.rs`).
-- [ ] **NOW:** work the "Current P0: Compatibility And Durability" list below.
-  Strict `muga.toml` validation landed on 2026-07-17; next is `muga.lock`
-  `muga_version` enforcement, then crash-safe compiler-owned writes with
-  failure-path tests.
+- [x] **DONE:** recorded "Positioning And Differentiation" on 2026-07-17
+  after a competitive-landscape review: self-contained distribution, a
+  completed structured-concurrency contract, machine-consumable tooling, an
+  approachable imperative surface, and focused domains, with explicit
+  non-goals. The review confirmed the current P0-before-surface priority
+  order; a standalone-executable design item was queued under "Maturity
+  Track P2: Distribution Path".
+- [x] **DONE:** completed "Current P0: Compatibility And Durability" on
+  2026-07-17: strict `muga.toml` validation, `muga.lock` `muga_version`
+  enforcement, crash-safe compiler-owned writes with failure-path tests, and
+  the required `[package] language_revision` source-compatibility
+  declaration. Each item's remaining scope is recorded under it; none of them
+  blocks the P1 work below.
+- [ ] **NOW:** work "Current P1: Diagnostics, Robustness, And Portability"
+  below. Start with the diagnostic severity model, because several finished
+  items are already waiting on it: the lint contract in `errors.md` still
+  needs warn/deny policy and the unused/unreachable/discarded-`Result`
+  warnings, `muga.lock` `muga_version` cannot warn on an
+  accepted-but-different version, and the `Result`-unused warning is a
+  prerequisite for the typo-warning decision under "Language And
+  Standard-Library Maturity". Diagnostics remain error-only
+  (`severity: "error"` is fixed in `src/diagnostic.rs`).
   The 2026-07-12 maturity audit promoted these over expanding the language
   surface because they prevent silent misconfiguration, accidental
   reinterpretation, and corrupted build state. The earlier benchmark and
@@ -117,6 +135,64 @@ These are direction-setting commitments, not just missing implementation work.
   source bodies.
 - [x] Muga prefers explicit recoverable error values over implicit exceptions.
 
+## Positioning And Differentiation
+
+Recorded on 2026-07-17 after a competitive-landscape review of established
+statically typed languages. The review confirmed the existing priority order —
+compatibility and durability P0 work before surface growth — and recorded
+where Muga should differentiate instead of imitating. Muga does not compete on
+feature count, package count, ecosystem breadth, or the maturity of other
+runtimes. The one-sentence positioning is:
+
+> Muga is a quiet, statically typed language for building self-contained
+> tools and reliable services, designed for local reasoning and
+> machine-assisted development.
+
+The long-term differentiation bets, each building on work already tracked on
+this roadmap:
+
+- **Self-contained distribution.** A deployed Muga program should eventually
+  be one executable that needs no separately installed runtime, interpreter,
+  or VM on the target machine. The first practical step is embedding the
+  reference VM and built artifacts into a small launcher (tracked under
+  "Maturity Track P2: Distribution Path"); native code generation stays
+  deferred until that path shows measured pressure.
+- **A completed structured-concurrency contract, not more concurrency
+  surface.** The differentiator is `group` / `spawn` / `Task` with real
+  overlapping progress, sibling cancellation, failure propagation, capture
+  safety, resource cleanup, and deterministic test scheduling — the Phase 1
+  stability gate already tracked under "Language And Standard-Library
+  Maturity" — not channels, `select`, or actor systems. Parked concurrency
+  syntax stays parked until that contract is proven.
+- **Machine-consumable tooling as a product surface.** Stable machine-readable
+  diagnostics, editor/agent queries, API diffing, and explainable rebuilds are
+  a primary interface of the language, not an accessory. The language
+  semantics stay analysis-friendly on purpose: no overloading, no implicit
+  conversions, no shadowing, no hidden dispatch, one spelling per operation,
+  so automated edits cannot silently change meaning.
+- **An approachable imperative surface with strong static guarantees.**
+  Familiar `while` / `for` / `mut` control flow combined with
+  immutability-by-default, `Option` / `Result`, prefix `try`, and exhaustive
+  `match` targets programmers coming from mainstream imperative languages who
+  want stronger compile-time guarantees without adopting a class hierarchy,
+  a trait system, or a primarily functional style.
+- **Focused domains before breadth.** Prove the language on command-line and
+  developer tools first, then automation and data processing, then small
+  reliable services (behind the existing Service IO gate). Each domain should
+  get one canonical, template-supported path rather than many alternatives.
+
+Explicit non-goals for differentiation, in addition to "Not Planned":
+
+- do not add alternate compilation or runtime targets to chase the reach of
+  other ecosystems
+- do not build or operate a remote package registry before local archive
+  identity, lockfile behavior, and install inventory are stable (already
+  deferred under "Maturity Track P2: Distribution Path")
+- do not publish performance claims without repeatable benchmark scenarios
+  (tracked under "Current P1: Runtime Performance Foundations")
+- do not compete on type-system expressiveness; the "Not Planned" list stays
+  authoritative
+
 ## Continuous Improvement And Versioning
 
 Muga improves through small releases without treating `1.0.0` as a feature
@@ -182,20 +258,55 @@ build state.
   header, and malformed lines as `PK014` with the offending manifest line.
   Remaining: the schema is still unversioned, and spans cover the whole line
   rather than the offending key or value.
-- [ ] Design a source-compatibility declaration for manifest projects as
-  changes accumulate. Decide whether this is a language revision,
-  edition, compiler compatibility range, or a combination, and define how an
-  older project is diagnosed or migrated by a newer compiler.
-- [ ] Enforce the recorded `muga_version` compatibility policy when reading an
-  existing `muga.lock`. The current parser validates only that the field exists
-  and is a string; it does not compare it with the running compiler.
-- [ ] Make compiler-owned writes crash-safe. Write lockfiles, `.mgi`, `.mgb`,
-  `.mgc`, archives, bundle metadata, and installation ownership metadata to a
-  sibling temporary file, flush as required by the durability policy, and
-  atomically replace the destination only after successful serialization.
-- [ ] Add interruption and failure-path tests proving that a failed write does
+- [x] Design a source-compatibility declaration for manifest projects as
+  changes accumulate. Done on 2026-07-17: manifests declare a required
+  `[package] language_revision = 1`, a bare number on its own compatibility
+  axis, separate from the compiler version, the lockfile fields, and the
+  artifact formats. The compiler implements exactly one revision and refuses
+  every other one rather than reinterpreting source; an edition-style
+  mechanism that keeps older semantics working was rejected because it would
+  freeze what `0.x` exists to keep changing, and the manifest format does not
+  depend on that choice. Absence is an error, not a default, since an
+  undeclared project is exactly the one a later compiler would silently
+  reinterpret. The declaration participates in package content identity
+  (`muga.toml` is hashed) and in check cache keys (it is fingerprinted with
+  the sources), and emitted bundles carry each package's revision. Migration
+  during `0.x` is the release that bumps the revision and documents the
+  change. Remaining: the revision is not yet recorded inside artifacts or
+  `muga.lock` as semantic interpretation metadata, and the manifest schema
+  itself is still unversioned; see
+  spec/006-packages.md#41-manifest-validation-and-compatibility-target.
+- [x] Enforce the recorded `muga_version` compatibility policy when reading an
+  existing `muga.lock`. Done on 2026-07-17: the reader requires a
+  `MAJOR.MINOR.PATCH` value (pre-release/build metadata accepted but ignored
+  by comparison), rejects lockfiles recorded by a newer compiler with `PK026`
+  without rewriting them, and keeps accepting same-or-older recorded
+  versions, which the next successful build refreshes to the running
+  compiler's version. Remaining: warning-level reporting for
+  accepted-but-different versions waits for the diagnostic severity model,
+  and full published-package lockfile enforcement stays deferred.
+- [x] Make compiler-owned writes crash-safe. Done on 2026-07-17: a shared
+  writer in `src/durable_write.rs` creates a uniquely named sibling temporary
+  file with `create_new` so it cannot follow a symlink or reuse a leftover,
+  flushes the file, atomically renames it over the destination, flushes the
+  parent directory on hosts that need it, and removes its temporary file on
+  failure. Lockfiles, `.mgi`, `.mgb`, `.mgc`, `.mgp`, `.mga`, bundle metadata,
+  launchers, generated completion packages, and installation ownership
+  metadata all go through it.
+- [x] Add interruption and failure-path tests proving that a failed write does
   not destroy the last valid lockfile, artifact, archive, or installation
-  record.
+  record. Done on 2026-07-17: unit tests cover creation, replacement,
+  temporary-file cleanup on a failed replacement, and symlinked destinations;
+  integration tests prove a failed lockfile and a failed artifact replacement
+  leave the last valid file byte-identical with no temporary left behind.
+  Remaining: nothing sweeps temporary files abandoned by a killed process,
+  because a safe sweep cannot yet distinguish them from a concurrent build's;
+  see spec/006-packages.md#1711-crash-safe-compiler-writes.
+- [ ] Decide whether ordinary source rewrites (`muga fmt`, `muga lint --fix`)
+  should join the crash-safe protocol. They are user-owned rather than
+  compiler-owned state, and atomic replacement would replace a symlinked
+  source file with a regular file, so the change needs a deliberate decision
+  rather than consistency alone.
 
 ## Current P1: Diagnostics, Robustness, And Portability
 
@@ -362,6 +473,15 @@ above. Performance claims still require evidence.
 
 Distribution should build on the existing `.mgp` / `.mga` work.
 
+- [ ] Design a self-contained executable output (working name
+  `muga build --standalone`): embed the reference VM, built `.mgi` / `.mgb`
+  artifacts, and declared resources into one launcher binary so deployment is
+  copying a single file with no separately installed runtime. Reuse the
+  source-free app bundle model as the content source. Start with the current
+  host only; cross-compilation, signing, and reproducible output follow after
+  the single-host slice works. This is the distribution bet recorded under
+  "Positioning And Differentiation" and does not unpark native code
+  generation.
 - [ ] Harden install inventory UX and diagnostics around app bundle ownership.
 - [ ] Add more source-free bundle smoke cases for std packages that use host
   effects.
@@ -506,12 +626,18 @@ future backlog items.
 
 Muga shipped `0.5.0`, shipped structured task groups
 (`group` / `spawn` / `std::task::join`) as `0.6.0`, and then added
-`task::spawn_map` to close the dynamic fan-out gap. The next maturity work is
-to establish representative benchmarks and real-program workloads, reduce
-duplicated standard-library and CLI surfaces, improve `Map` and aggregate
-representations, and make evidence-backed decisions on numeric scope, ranges,
-equality/hash, and whether task syntax is ready to become stable or should
-remain experimental.
+`task::spawn_map` to close the dynamic fan-out gap. Since then it finished the
+P0 compatibility and durability work: strict manifests, an enforced
+`muga_version` in `muga.lock`, crash-safe replacement of every compiler-owned
+file, and a required `[package] language_revision` that this compiler enforces
+against the single revision it implements. None of that is released yet. The
+next maturity work is a diagnostic severity model and lint pipeline, then
+fuzzing, input limits, a supported host matrix with cross-platform CI, and a
+stable CLI process contract; after that, establish representative benchmarks
+and real-program workloads, reduce duplicated standard-library and CLI
+surfaces, improve `Map` and aggregate representations, and make
+evidence-backed decisions on numeric scope, ranges, equality/hash, and whether
+task syntax is ready to become stable or should remain experimental.
 `scripts/release-gate.sh` remains the baseline release-quality command, but
 passing it does not by itself establish `1.0.0` readiness.
 Channels, `select`, service IO, remote registries, broad collection systems,
