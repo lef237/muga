@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{diagnostic::Diagnostic, span::Span};
+use crate::{diagnostic::Diagnostic, package, span::Span};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProjectTemplate {
@@ -111,8 +111,9 @@ pub fn create_project_template(
 
 fn manifest_for_template(template: ProjectTemplate, package_name: &str) -> String {
     let mut manifest = format!(
-        "[package]\nname = \"{}\"\nsource = \"src\"\n",
-        escape_manifest_string(package_name)
+        "[package]\nname = \"{}\"\nlanguage_revision = {}\nsource = \"src\"\n",
+        escape_manifest_string(package_name),
+        package::SUPPORTED_LANGUAGE_REVISION
     );
     if template == ProjectTemplate::ResourceExport {
         manifest.push_str("resources = \"resources\"\n");
@@ -167,6 +168,10 @@ fn render_template_text(text: &str, context: &TemplateRenderContext<'_>) -> Stri
     .replace(
         "{{shared_package_name}}",
         &escape_muga_string(&context.shared_package_name),
+    )
+    .replace(
+        "{{language_revision}}",
+        &package::SUPPORTED_LANGUAGE_REVISION.to_string(),
     )
 }
 
@@ -304,6 +309,7 @@ Muga does not edit shell startup files.
             relative: "app/muga.toml",
             text: r#"[package]
 name = "{{app_package_name}}"
+language_revision = {{language_revision}}
 source = "src"
 
 [dependencies]
@@ -337,6 +343,7 @@ fn main(): String {
             relative: "shared/muga.toml",
             text: r#"[package]
 name = "{{shared_package_name}}"
+language_revision = {{language_revision}}
 source = "src"
 "#,
         },

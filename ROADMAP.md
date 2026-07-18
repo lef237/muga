@@ -54,15 +54,21 @@ Muga samples.
   non-goals. The review confirmed the current P0-before-surface priority
   order; a standalone-executable design item was queued under "Maturity
   Track P2: Distribution Path".
-- [ ] **NOW:** work the "Current P0: Compatibility And Durability" list below.
-  Strict `muga.toml` validation, `muga.lock` `muga_version` enforcement, and
-  crash-safe compiler-owned writes with failure-path tests all landed on
-  2026-07-17. The one item left on that list is the source-compatibility
-  declaration for manifest projects (language revision, edition, or compiler
-  compatibility range); it is a design decision, so start by choosing the
-  mechanism against the criteria recorded under the item. Once it lands, the
-  P0 list is complete and "Current P1: Diagnostics, Robustness, And
-  Portability" becomes the next slice.
+- [x] **DONE:** completed "Current P0: Compatibility And Durability" on
+  2026-07-17: strict `muga.toml` validation, `muga.lock` `muga_version`
+  enforcement, crash-safe compiler-owned writes with failure-path tests, and
+  the required `[package] language_revision` source-compatibility
+  declaration. Each item's remaining scope is recorded under it; none of them
+  blocks the P1 work below.
+- [ ] **NOW:** work "Current P1: Diagnostics, Robustness, And Portability"
+  below. Start with the diagnostic severity model, because several finished
+  items are already waiting on it: the lint contract in `errors.md` still
+  needs warn/deny policy and the unused/unreachable/discarded-`Result`
+  warnings, `muga.lock` `muga_version` cannot warn on an
+  accepted-but-different version, and the `Result`-unused warning is a
+  prerequisite for the typo-warning decision under "Language And
+  Standard-Library Maturity". Diagnostics remain error-only
+  (`severity: "error"` is fixed in `src/diagnostic.rs`).
   The 2026-07-12 maturity audit promoted these over expanding the language
   surface because they prevent silent misconfiguration, accidental
   reinterpretation, and corrupted build state. The earlier benchmark and
@@ -252,10 +258,24 @@ build state.
   header, and malformed lines as `PK014` with the offending manifest line.
   Remaining: the schema is still unversioned, and spans cover the whole line
   rather than the offending key or value.
-- [ ] Design a source-compatibility declaration for manifest projects as
-  changes accumulate. Decide whether this is a language revision,
-  edition, compiler compatibility range, or a combination, and define how an
-  older project is diagnosed or migrated by a newer compiler.
+- [x] Design a source-compatibility declaration for manifest projects as
+  changes accumulate. Done on 2026-07-17: manifests declare a required
+  `[package] language_revision = 1`, a bare number on its own compatibility
+  axis, separate from the compiler version, the lockfile fields, and the
+  artifact formats. The compiler implements exactly one revision and refuses
+  every other one rather than reinterpreting source; an edition-style
+  mechanism that keeps older semantics working was rejected because it would
+  freeze what `0.x` exists to keep changing, and the manifest format does not
+  depend on that choice. Absence is an error, not a default, since an
+  undeclared project is exactly the one a later compiler would silently
+  reinterpret. The declaration participates in package content identity
+  (`muga.toml` is hashed) and in check cache keys (it is fingerprinted with
+  the sources), and emitted bundles carry each package's revision. Migration
+  during `0.x` is the release that bumps the revision and documents the
+  change. Remaining: the revision is not yet recorded inside artifacts or
+  `muga.lock` as semantic interpretation metadata, and the manifest schema
+  itself is still unversioned; see
+  spec/006-packages.md#41-manifest-validation-and-compatibility-target.
 - [x] Enforce the recorded `muga_version` compatibility policy when reading an
   existing `muga.lock`. Done on 2026-07-17: the reader requires a
   `MAJOR.MINOR.PATCH` value (pre-release/build metadata accepted but ignored
@@ -606,12 +626,18 @@ future backlog items.
 
 Muga shipped `0.5.0`, shipped structured task groups
 (`group` / `spawn` / `std::task::join`) as `0.6.0`, and then added
-`task::spawn_map` to close the dynamic fan-out gap. The next maturity work is
-to establish representative benchmarks and real-program workloads, reduce
-duplicated standard-library and CLI surfaces, improve `Map` and aggregate
-representations, and make evidence-backed decisions on numeric scope, ranges,
-equality/hash, and whether task syntax is ready to become stable or should
-remain experimental.
+`task::spawn_map` to close the dynamic fan-out gap. Since then it finished the
+P0 compatibility and durability work: strict manifests, an enforced
+`muga_version` in `muga.lock`, crash-safe replacement of every compiler-owned
+file, and a required `[package] language_revision` that this compiler enforces
+against the single revision it implements. None of that is released yet. The
+next maturity work is a diagnostic severity model and lint pipeline, then
+fuzzing, input limits, a supported host matrix with cross-platform CI, and a
+stable CLI process contract; after that, establish representative benchmarks
+and real-program workloads, reduce duplicated standard-library and CLI
+surfaces, improve `Map` and aggregate representations, and make
+evidence-backed decisions on numeric scope, ranges, equality/hash, and whether
+task syntax is ready to become stable or should remain experimental.
 `scripts/release-gate.sh` remains the baseline release-quality command, but
 passing it does not by itself establish `1.0.0` readiness.
 Channels, `select`, service IO, remote registries, broad collection systems,

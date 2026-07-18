@@ -1,5 +1,6 @@
 [package]
 name = "local_app"
+language_revision = 1
 source = "src"
 
 [dependencies]

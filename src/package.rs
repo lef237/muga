@@ -11,6 +11,21 @@ use crate::interface::{PackageExportGraph, PackageInterface, PackageInterfaceGra
 use crate::span::{Position, Span};
 use crate::symbol::SymbolTable;
 
+/// The one source-language revision this compiler implements.
+///
+/// A manifest project declares the revision it was written for through
+/// `[package] language_revision`, and this compiler builds only that
+/// revision: it refuses anything else rather than reinterpreting the
+/// project's source under different rules. The number is bumped only when a
+/// release changes what existing source means, so ordinary releases leave
+/// every manifest alone. It is independent of the compiler version, the
+/// lockfile format version, and the artifact formats.
+///
+/// While Muga is in `0.x` the compiler implements exactly one revision at a
+/// time and does not keep older ones working; see
+/// spec/006-packages.md#41-manifest-validation-and-compatibility-target.
+pub const SUPPORTED_LANGUAGE_REVISION: u32 = 1;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PackageArchiveOutput {
     pub path: PathBuf,
@@ -41,6 +56,7 @@ pub struct ProjectManifestMetadata {
     pub source_root: PathBuf,
     pub resource_root: Option<PathBuf>,
     pub package_path: String,
+    pub language_revision: u32,
     pub direct_dependencies: Vec<String>,
     pub dependencies: Vec<ProjectManifestDependencyMetadata>,
 }
@@ -51,6 +67,7 @@ pub struct ProjectManifestDependencyMetadata {
     pub root: PathBuf,
     pub source_root: PathBuf,
     pub resource_root: Option<PathBuf>,
+    pub language_revision: u32,
     pub source_kind: PackageLockfileDependencySourceKind,
     pub source: String,
     pub hash: Option<String>,
@@ -1632,6 +1649,7 @@ struct ProjectManifest {
     source_root: PathBuf,
     resource_root: Option<PathBuf>,
     name: String,
+    language_revision: u32,
     direct_dependencies: Vec<String>,
     dependencies: HashMap<String, ProjectDependency>,
 }
@@ -1642,6 +1660,7 @@ struct ProjectDependency {
     source_root: PathBuf,
     resource_root: Option<PathBuf>,
     name: String,
+    language_revision: u32,
     source: ProjectDependencySource,
     dependencies: Vec<String>,
 }
@@ -1904,6 +1923,13 @@ impl PackageLoader {
         }
 
         let mut input = format!("package\t{entry_package}\n");
+        // The declared revision decides what the same source text means, so a
+        // cached check made under one revision must not be reused under
+        // another. File-based package mode has no manifest and therefore no
+        // declaration to fingerprint.
+        if let Some(manifest) = self.manifest.as_ref() {
+            input.push_str(&format!("revision\t{}\n", manifest.language_revision));
+        }
         for file in files {
             input.push_str(&format!(
                 "file\t{}\t{}\n{}\n",
@@ -4167,6 +4193,7 @@ fn parse_manifest_inner_impl(
     let mut section = None;
     let mut seen_sections = HashSet::new();
     let mut name = None;
+    let mut language_revision = None;
     let mut source_dir = None;
     let mut resource_dir = None;
     let mut dependency_sources: Vec<(String, ManifestDependencySource)> = Vec::new();
@@ -4247,7 +4274,7 @@ fn parse_manifest_inner_impl(
             dependency_sources.push((package_name, dependency_source));
             continue;
         }
-        if !matches!(key, "name" | "source" | "resources") {
+        if !matches!(key, "name" | "source" | "resources" | "language_revision") {
             return Err(vec![
                 manifest_diagnostic(
                     format!(
@@ -4258,9 +4285,20 @@ fn parse_manifest_inner_impl(
                     span,
                 )
                 .with_suggestion(
-                    "[package] currently supports only `name`, `source`, and `resources`",
+                    "[package] currently supports only `name`, `language_revision`, `source`, and `resources`",
                 ),
             ]);
+        }
+        if key == "language_revision" {
+            let declared = parse_manifest_language_revision(value.trim(), path, span)?;
+            if language_revision.replace(declared).is_some() {
+                return Err(vec![manifest_duplicate_diagnostic(
+                    "`language_revision`",
+                    path,
+                    span,
+                )]);
+            }
+            continue;
         }
         let Some(value) = parse_manifest_string(value.trim()) else {
             return Err(vec![manifest_diagnostic(
@@ -4318,6 +4356,30 @@ fn parse_manifest_inner_impl(
             Span::default(),
         )]);
     }
+    // Absence is an error rather than a default: a project that never declared
+    // a revision is exactly the project a later compiler would silently
+    // reinterpret.
+    let Some(language_revision) = language_revision else {
+        return Err(vec![
+            Diagnostic::new(
+                "PK014",
+                format!(
+                    "manifest {} must declare [package] language_revision",
+                    path.display()
+                ),
+                Span::default(),
+            )
+            .with_context(DiagnosticContext::source(
+                "manifest",
+                path.display().to_string(),
+                file_uri_for_path(path),
+            ))
+            .with_suggestion(format!(
+                "add `language_revision = {SUPPORTED_LANGUAGE_REVISION}` under [package] to \
+                 declare the source-language revision this project is written for"
+            )),
+        ]);
+    };
 
     let root = path.parent().map(Path::to_path_buf).unwrap_or_default();
     let source_root = root.join(source_dir);
@@ -4334,9 +4396,79 @@ fn parse_manifest_inner_impl(
         source_root,
         resource_root,
         name,
+        language_revision,
         direct_dependencies,
         dependencies,
     })
+}
+
+/// Reads `[package] language_revision` and holds the compiler to the one
+/// revision it implements. Refusing an unimplemented revision is the whole
+/// point of the field: the alternative is compiling the project's source
+/// under rules it was never written for.
+fn parse_manifest_language_revision(
+    value: &str,
+    path: &Path,
+    span: Span,
+) -> Result<u32, Vec<Diagnostic>> {
+    if parse_manifest_string(value).is_some() {
+        return Err(vec![
+            manifest_diagnostic(
+                format!(
+                    "manifest [package] language_revision in {} must be a number, not a string",
+                    path.display()
+                ),
+                path,
+                span,
+            )
+            .with_suggestion(format!(
+                "write `language_revision = {SUPPORTED_LANGUAGE_REVISION}`"
+            )),
+        ]);
+    }
+    let Ok(declared) = value.parse::<u32>() else {
+        return Err(vec![
+            manifest_diagnostic(
+                format!(
+                    "manifest [package] language_revision `{value}` in {} is not a revision number",
+                    path.display()
+                ),
+                path,
+                span,
+            )
+            .with_suggestion(format!(
+                "write `language_revision = {SUPPORTED_LANGUAGE_REVISION}`"
+            )),
+        ]);
+    };
+    if declared == SUPPORTED_LANGUAGE_REVISION {
+        return Ok(declared);
+    }
+    let message = if declared > SUPPORTED_LANGUAGE_REVISION {
+        format!(
+            "manifest {} declares language revision {declared}, which this muga does not \
+             implement; it implements revision {SUPPORTED_LANGUAGE_REVISION}",
+            path.display()
+        )
+    } else {
+        format!(
+            "manifest {} declares language revision {declared}, which this muga no longer \
+             implements; it implements revision {SUPPORTED_LANGUAGE_REVISION}",
+            path.display()
+        )
+    };
+    let suggestion = if declared > SUPPORTED_LANGUAGE_REVISION {
+        "upgrade muga to a release that implements this revision".to_string()
+    } else {
+        format!(
+            "migrate the project to revision {SUPPORTED_LANGUAGE_REVISION} and set \
+             `language_revision = {SUPPORTED_LANGUAGE_REVISION}`; see the release notes for the \
+             revision change"
+        )
+    };
+    Err(vec![
+        manifest_diagnostic(message, path, span).with_suggestion(suggestion),
+    ])
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -4598,6 +4730,7 @@ fn parse_manifest_dependencies(
                 source_root: dependency_manifest.source_root.clone(),
                 resource_root: dependency_manifest.resource_root.clone(),
                 name: dependency_manifest.name.clone(),
+                language_revision: dependency_manifest.language_revision,
                 source,
                 dependencies: dependency_manifest.direct_dependencies.clone(),
             },
@@ -4808,6 +4941,7 @@ fn project_manifest_metadata(manifest: &ProjectManifest) -> ProjectManifestMetad
         source_root: manifest.source_root.clone(),
         resource_root: manifest.resource_root.clone(),
         package_path: manifest.name.clone(),
+        language_revision: manifest.language_revision,
         direct_dependencies,
         dependencies,
     }
@@ -4839,6 +4973,7 @@ fn project_manifest_dependency_metadata(
         root: dependency.root.clone(),
         source_root: dependency.source_root.clone(),
         resource_root: dependency.resource_root.clone(),
+        language_revision: dependency.language_revision,
         source_kind,
         source,
         hash,

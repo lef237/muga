@@ -1,3 +1,4 @@
 [package]
 name = "cli_tool"
+language_revision = 1
 source = "src"

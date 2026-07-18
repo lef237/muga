@@ -216,6 +216,7 @@ fn cli_api_diff_reports_text_and_json_from_artifacts() {
         r#"
 [package]
 name = "api_app"
+language_revision = 1
 source = "src"
 "#,
     );
@@ -723,6 +724,7 @@ fn write_api_diff_manifest(project: &Path) {
         r#"
 [package]
 name = "api_app"
+language_revision = 1
 source = "src"
 "#,
     );
