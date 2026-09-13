@@ -1288,6 +1288,33 @@ fn cli_explain_reports_catalog_entry_on_stdout() {
 }
 
 #[test]
+fn cli_explain_distinguishes_lexer_and_style_diagnostics() {
+    let lexer = muga_command()
+        .arg("explain")
+        .arg("L001")
+        .output()
+        .expect("muga command should run");
+    let lexer_stdout = String::from_utf8_lossy(&lexer.stdout);
+    assert!(lexer.status.success(), "{lexer:#?}");
+    assert!(
+        lexer_stdout.starts_with("L001: unexpected character\n"),
+        "{lexer_stdout}"
+    );
+
+    let style = muga_command()
+        .arg("explain")
+        .arg("S001")
+        .output()
+        .expect("muga command should run");
+    let style_stdout = String::from_utf8_lossy(&style.stdout);
+    assert!(style.status.success(), "{style:#?}");
+    assert!(
+        style_stdout.starts_with("S001: named function call should use chained-call syntax\n"),
+        "{style_stdout}"
+    );
+}
+
+#[test]
 fn cli_explain_reports_known_family_for_uncataloged_code() {
     let output = muga_command()
         .arg("explain")
@@ -25498,6 +25525,128 @@ fn main(): Int {
         text.contains("note:") && text.contains("called `explode` here"),
         "{text}"
     );
+}
+
+#[test]
+fn package_runtime_errors_hide_internal_mangled_function_names() {
+    let root = temp_package_root("runtime-display-name");
+    let entry = write_package_file(
+        &root,
+        "app/runtime_display_name/main.muga",
+        r#"
+package app::runtime_display_name
+
+fn explode(): Int {
+  1 / 0
+}
+
+fn main(): Int {
+  explode()
+}
+"#,
+    );
+
+    let diagnostics = muga::run_path(&entry).expect_err("expected runtime error");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == "R013")
+        .expect("division diagnostic should exist");
+    assert!(
+        diagnostic
+            .related
+            .iter()
+            .any(|note| note.message == "called `explode` here"),
+        "{diagnostics:#?}"
+    );
+    assert!(
+        diagnostic
+            .related
+            .iter()
+            .all(|note| !note.message.contains("__muga_")),
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn cli_check_json_reports_excessive_syntax_nesting_without_aborting() {
+    let root = temp_package_root("syntax-nesting-limit");
+    let source = format!(
+        "fn main(): Int {{\n  {}1{}\n}}\n",
+        "(".repeat(200),
+        ")".repeat(200)
+    );
+    let entry = write_package_file(&root, "main.muga", &source);
+
+    let output = muga_command()
+        .arg("check")
+        .arg("--format=json")
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+    assert!(stdout.contains("\"code\":\"P019\""), "{stdout}");
+    assert!(stdout.contains("nesting exceeds"), "{stdout}");
+}
+
+#[test]
+fn cli_run_json_accepts_the_function_call_nesting_boundary() {
+    let root = temp_package_root("runtime-call-nesting-boundary");
+    let source = recursive_countdown_source(62);
+    let entry = write_package_file(&root, "main.muga", &source);
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--format=json")
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+    assert!(stdout.contains("\"status\":\"ok\""), "{stdout}");
+    assert!(stdout.contains("\"mainResult\":\"0\""), "{stdout}");
+}
+
+#[test]
+fn cli_run_json_reports_the_first_excessive_function_call_without_aborting() {
+    let root = temp_package_root("runtime-call-nesting-limit");
+    let source = recursive_countdown_source(63);
+    let entry = write_package_file(&root, "main.muga", &source);
+
+    let output = muga_command()
+        .arg("run")
+        .arg("--format=json")
+        .arg(&entry)
+        .output()
+        .expect("muga command should run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(!output.status.success(), "{output:#?}");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+    assert!(stdout.contains("\"code\":\"R023\""), "{stdout}");
+    assert!(stdout.contains("function call nesting exceeds"), "{stdout}");
+}
+
+fn recursive_countdown_source(remaining: usize) -> String {
+    format!(
+        r#"
+fn recurse(remaining: Int): Int {{
+  if remaining == 0 {{
+    0
+  }} else {{
+    recurse(remaining - 1)
+  }}
+}}
+
+fn main(): Int {{
+  recurse({remaining})
+}}
+"#
+    )
 }
 
 #[test]

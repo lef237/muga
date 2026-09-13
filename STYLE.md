@@ -33,7 +33,7 @@ Suppress one lint code for calls that begin on the next physical line with an
 explicit comment:
 
 ```muga
-// muga-lint: allow-next-line L001 -- arguments are intentionally symmetric
+// muga-lint: allow-next-line S001 -- arguments are intentionally symmetric
 result = equals(expected, actual)
 ```
 

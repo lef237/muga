@@ -39,7 +39,7 @@ Muga samples.
   spec/007-concurrency-draft.md#58-spawn_map-fan-out-over-a-runtime-sized-collection
   and `samples/packages/app/std_task_spawn_map/main.muga`.
 - [x] **DONE:** shipped a first `muga lint` slice on 2026-07-17 (unreleased):
-  the `L001` chained-call style lint, `muga lint --fix` rewriting with `L002`
+  the `S001` chained-call style lint, `muga lint --fix` rewriting with `S002`
   for write failures, `// muga-lint: allow-next-line <codes>` suppressions,
   migrated samples and conformance fixtures, and blank-line preservation in
   the formatter. This built the lint command, suppression, and autofix

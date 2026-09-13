@@ -4,6 +4,8 @@ use crate::identity::{ExprId, StmtId};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
+const PARSE_NESTING_LIMIT: usize = 128;
+
 pub fn parse(tokens: Vec<Token>) -> Result<Program, Vec<Diagnostic>> {
     let mut parser = Parser::new(tokens);
     parser
@@ -27,6 +29,11 @@ struct Parser {
     next_expr_id: u32,
     next_stmt_id: u32,
     allow_struct_literal: bool,
+    expression_depth: usize,
+    unary_depth: usize,
+    type_depth: usize,
+    block_depth: usize,
+    conditional_depth: usize,
 }
 
 impl Parser {
@@ -37,7 +44,21 @@ impl Parser {
             next_expr_id: 0,
             next_stmt_id: 0,
             allow_struct_literal: true,
+            expression_depth: 0,
+            unary_depth: 0,
+            type_depth: 0,
+            block_depth: 0,
+            conditional_depth: 0,
         }
+    }
+
+    fn nesting_limit_diagnostic(&self, construct: &str) -> Diagnostic {
+        Diagnostic::new(
+            "P019",
+            format!("{construct} nesting exceeds the supported limit of {PARSE_NESTING_LIMIT}"),
+            self.current_span(),
+        )
+        .with_suggestion("reduce the nesting by extracting named functions or intermediate values")
     }
 
     fn parse_expr_without_struct_literal(&mut self) -> Result<Expr, Diagnostic> {
@@ -1320,6 +1341,16 @@ impl Parser {
     }
 
     fn parse_type_expr(&mut self) -> Result<(TypeExpr, Span), Diagnostic> {
+        if self.type_depth >= PARSE_NESTING_LIMIT {
+            return Err(self.nesting_limit_diagnostic("type expression"));
+        }
+        self.type_depth += 1;
+        let result = self.parse_type_expr_inner();
+        self.type_depth -= 1;
+        result
+    }
+
+    fn parse_type_expr_inner(&mut self) -> Result<(TypeExpr, Span), Diagnostic> {
         let (domain, span) = self.parse_type_domain()?;
         if self.matches_simple(&TokenKind::Arrow) {
             let (ret, ret_span) = self.parse_type_expr()?;
@@ -1430,6 +1461,16 @@ impl Parser {
     }
 
     fn parse_if_stmt_or_expr_stmt(&mut self) -> Result<Stmt, Diagnostic> {
+        if self.conditional_depth >= PARSE_NESTING_LIMIT {
+            return Err(self.nesting_limit_diagnostic("conditional"));
+        }
+        self.conditional_depth += 1;
+        let result = self.parse_if_stmt_or_expr_stmt_inner();
+        self.conditional_depth -= 1;
+        result
+    }
+
+    fn parse_if_stmt_or_expr_stmt_inner(&mut self) -> Result<Stmt, Diagnostic> {
         let start = self.current_span();
         self.expect_simple(TokenKind::If, "expected `if`")?;
         let condition = self.parse_expr_without_struct_literal()?;
@@ -1573,10 +1614,15 @@ impl Parser {
     }
 
     fn parse_block(&mut self) -> Result<Block, Diagnostic> {
+        if self.block_depth >= PARSE_NESTING_LIMIT {
+            return Err(self.nesting_limit_diagnostic("block"));
+        }
+        self.block_depth += 1;
         let saved = self.allow_struct_literal;
         self.allow_struct_literal = true;
         let result = self.parse_block_inner();
         self.allow_struct_literal = saved;
+        self.block_depth -= 1;
         result
     }
 
@@ -1606,6 +1652,16 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, Diagnostic> {
+        if self.expression_depth >= PARSE_NESTING_LIMIT {
+            return Err(self.nesting_limit_diagnostic("expression"));
+        }
+        self.expression_depth += 1;
+        let result = self.parse_expr_inner();
+        self.expression_depth -= 1;
+        result
+    }
+
+    fn parse_expr_inner(&mut self) -> Result<Expr, Diagnostic> {
         if matches!(self.peek_kind(), TokenKind::If) {
             return self.parse_if_expr();
         }
@@ -1662,6 +1718,16 @@ impl Parser {
     }
 
     fn parse_if_expr(&mut self) -> Result<Expr, Diagnostic> {
+        if self.conditional_depth >= PARSE_NESTING_LIMIT {
+            return Err(self.nesting_limit_diagnostic("conditional"));
+        }
+        self.conditional_depth += 1;
+        let result = self.parse_if_expr_inner();
+        self.conditional_depth -= 1;
+        result
+    }
+
+    fn parse_if_expr_inner(&mut self) -> Result<Expr, Diagnostic> {
         let start = self.current_span();
         self.expect_simple(TokenKind::If, "expected `if`")?;
         let condition = self.parse_expr_without_struct_literal()?;
@@ -1931,6 +1997,16 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, Diagnostic> {
+        if self.unary_depth >= PARSE_NESTING_LIMIT {
+            return Err(self.nesting_limit_diagnostic("unary expression"));
+        }
+        self.unary_depth += 1;
+        let result = self.parse_unary_inner();
+        self.unary_depth -= 1;
+        result
+    }
+
+    fn parse_unary_inner(&mut self) -> Result<Expr, Diagnostic> {
         match self.peek_kind() {
             TokenKind::Minus => {
                 let start = self.current_span();

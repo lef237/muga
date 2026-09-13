@@ -18,6 +18,7 @@ Current code families:
 | Prefix | Area |
 |---|---|
 | `L` | lexing |
+| `S` | style linting and lint fixes |
 | `P` | parsing |
 | `N` | unresolved names |
 | `E` | core resolver/typechecker errors from the original catalog |
@@ -409,6 +410,19 @@ Required guidance:
 - use a hard runtime diagnostic for stale or already-closed handle aliases
 - mention the invalid handle state in the primary message
 
+## P019: Syntax Nesting Limit Exceeded
+
+`P019` reports expressions, unary expressions, type expressions, blocks, or
+conditionals nested beyond the parser's supported limit. Reduce the nesting by
+extracting named functions or intermediate values.
+
+## R023: Function Call Nesting Limit Exceeded
+
+`R023` reports a function call that would exceed the VM's supported call-depth
+limit. Rewrite deep recursion as a loop or reduce the recursive input depth.
+The VM must report this diagnostic instead of overflowing the host process
+stack.
+
 ## Package And Artifact Workflows
 
 Artifact-backed commands are deliberately explicit. Diagnostics for package artifacts must:
@@ -432,21 +446,38 @@ Lockfile `muga_version` values must be `MAJOR.MINOR.PATCH` versions (pre-release
 
 Syntax reserved for future features should fail as unsupported or invalid syntax. It should not be documented or tested as runnable sample source until the feature is implemented. Examples include channels, `select`, optional chaining, postfix Result propagation, broad catch-all matching, references, and call-site type arguments. `group`, `spawn`, and `std::task::join` are implemented structured task group syntax, not future syntax; their diagnostics are `T030` and `E013` above.
 
-# Lint diagnostics
+# Lexing diagnostics
 
-## L001: named function call should use chained-call syntax
+## L001: unexpected character
+
+The source contains a character that is not part of Muga's lexical grammar.
+Replace it with supported syntax or remove it.
+
+## L002: unsupported string escape
+
+A string literal contains an unsupported escape sequence. Supported escapes
+are `\\`, `\"`, `\n`, and `\t`.
+
+## L003: unterminated string literal
+
+A string literal reaches a newline or the end of the source before its closing
+double quote. Close the string on the same line.
+
+# Style lint diagnostics
+
+## S001: named function call should use chained-call syntax
 
 A named function with one or more value arguments was called using ordinary
 call syntax. Move the first argument before the function name and use it as the
 chain receiver. Zero-argument named functions, calls through function values,
 and enum variant constructors keep ordinary-call syntax.
 
-## L002: failed to write lint fix
+## S002: failed to write lint fix
 
 `muga lint --fix` could not write a rewritten source file. Check the reported
 path, permissions, and available storage, then run the command again.
 
-## L003: enum constructor should use ordinary-call syntax
+## S003: enum constructor should use ordinary-call syntax
 
 An enum constructor was written as a chained call. Move the receiver into the
 constructor argument list. Enum construction is the canonical exception to

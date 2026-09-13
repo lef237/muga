@@ -599,7 +599,7 @@ pub fn fix_lint_path(path: &Path) -> Result<LintFixOutcome, Vec<Diagnostic>> {
 fn write_lint_fix(path: &Path, source: String) -> Result<(), Vec<Diagnostic>> {
     fs::write(path, source).map_err(|error| {
         vec![Diagnostic::new(
-            "L002",
+            "S002",
             format!("failed to write lint fix to `{}`: {error}", path.display()),
             Default::default(),
         )]

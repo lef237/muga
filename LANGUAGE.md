@@ -141,6 +141,10 @@ Core expression and statement forms include:
 - `try expr` propagation for `Result[T, E]`
 - package declarations and imports in package mode
 
+The parser supports at most 128 nested expression, unary-expression,
+type-expression, block, or conditional levels. Inputs beyond that boundary
+are rejected with `P019` instead of exhausting the host process stack.
+
 Type annotations use `:`:
 
 ```muga
@@ -207,6 +211,12 @@ fn double(x) {
 Annotations remain required when inference is ambiguous, recursive constraints need a stable starting point, or the current implementation has an explicit boundary such as public package signatures.
 
 Function bodies produce their final expression. Use `return expr` only for an explicit early exit from the nearest named or anonymous function; top-level `return` is rejected. `break` and `continue` target the nearest enclosing loop in the same function and are rejected outside loops.
+
+The reference VM supports at most 64 simultaneously active Muga function call
+frames, including the entrypoint frame. A call that would exceed that boundary
+is rejected with `R023` instead of exhausting the host process stack. This is
+an implementation limit of the current recursively entered VM; an explicit VM
+call stack may allow a higher limit in a future release.
 
 Higher-order functions are supported:
 

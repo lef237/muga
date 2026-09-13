@@ -858,6 +858,10 @@ fn path_value(path: String) -> Value {
 }
 
 const JSON_NESTING_LIMIT: usize = 128;
+// Keep this below the host-stack failure point in both debug and release
+// builds. Raising it safely requires executing Muga calls on an explicit VM
+// call stack instead of recursively entering `execute_chunk`.
+const FUNCTION_CALL_NESTING_LIMIT: usize = 64;
 
 #[derive(Clone, Copy, Debug)]
 enum JsonErrorKind {
@@ -2192,6 +2196,19 @@ fn call_value(
 ) -> Result<Value, Vec<Diagnostic>> {
     match callee {
         Value::Function(function) => {
+            let call_depth = env.borrow().call_stack.borrow().len();
+            if call_depth >= FUNCTION_CALL_NESTING_LIMIT {
+                return Err(vec![Diagnostic::new(
+                    "R023",
+                    format!(
+                        "function call nesting exceeds the supported limit of {FUNCTION_CALL_NESTING_LIMIT}"
+                    ),
+                    span,
+                )
+                .with_suggestion(
+                    "rewrite the recursion as a loop or reduce the recursive input depth",
+                )]);
+            }
             let label = function_runtime_label(program, &function);
             let frame_message = format!("called {label} here");
             push_runtime_call_frame(env, frame_message.clone(), span);
@@ -2262,7 +2279,7 @@ fn call_function(
 
 fn function_runtime_label(program: &Program, function: &ClosureValue) -> String {
     match function.definition(program).name {
-        Some(name) => quoted_runtime_name(symbol_name(program, name)),
+        Some(name) => quoted_runtime_name(runtime_display_name(symbol_name(program, name))),
         None => "anonymous function".to_string(),
     }
 }
@@ -5080,11 +5097,14 @@ fn cli_required_usage_metavar(program: &Program, schema: &CliValueSchema) -> Str
 }
 
 fn cli_usage_type_name(program: &Program, type_name: Symbol) -> String {
-    let name = symbol_name(program, type_name);
+    runtime_display_name(symbol_name(program, type_name)).to_string()
+}
+
+fn runtime_display_name(name: &str) -> &str {
     if name.starts_with("__muga_pkg__") || name.starts_with("__muga_mod__") {
-        return name.rsplit("__").next().unwrap_or(name).to_string();
+        return name.rsplit("__").next().unwrap_or(name);
     }
-    name.to_string()
+    name
 }
 
 fn cli_default_label(value: &Value) -> Option<String> {

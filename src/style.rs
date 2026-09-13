@@ -330,7 +330,7 @@ fn fix_expr(
                 && !expr.args.is_empty()
                 && expr.type_args.is_empty()
                 && eligible.contains(&expr.id)
-                && !is_suppressed(suppressions, expr.span.start.line, "L001")
+                && !is_suppressed(suppressions, expr.span.start.line, "S001")
             {
                 expr.origin = CallOrigin::Chained;
                 *fixed += 1;
@@ -338,7 +338,7 @@ fn fix_expr(
                 expr.origin,
                 CallOrigin::Chained | CallOrigin::QualifiedChained
             ) && enum_constructors.contains(&expr.id)
-                && !is_suppressed(suppressions, expr.span.start.line, "L003")
+                && !is_suppressed(suppressions, expr.span.start.line, "S003")
             {
                 expr.origin = CallOrigin::Ordinary;
                 *fixed += 1;
@@ -597,11 +597,11 @@ fn visit_expr(
                 && !expr.args.is_empty()
                 && expr.type_args.is_empty()
                 && resolved_callee.is_some_and(|callee| is_named_function(callee, binding_kinds))
-                && !is_suppressed(suppressions, expr.span.start.line, "L001")
+                && !is_suppressed(suppressions, expr.span.start.line, "S001")
             {
                 diagnostics.push(
                     Diagnostic::new(
-                        "L001",
+                        "S001",
                         "named functions with arguments use chained-call syntax",
                         expr.span,
                     )
@@ -613,11 +613,11 @@ fn visit_expr(
                 expr.origin,
                 CallOrigin::Chained | CallOrigin::QualifiedChained
             ) && resolved_callee.is_some_and(is_enum_constructor)
-                && !is_suppressed(suppressions, expr.span.start.line, "L003")
+                && !is_suppressed(suppressions, expr.span.start.line, "S003")
             {
                 diagnostics.push(
                     Diagnostic::new(
-                        "L003",
+                        "S003",
                         "enum constructors use ordinary-call syntax",
                         expr.span,
                     )
@@ -766,7 +766,7 @@ fn main(): Int { inc(1) }
 "#,
         );
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "L001");
+        assert_eq!(diagnostics[0].code, "S001");
     }
 
     #[test]
@@ -801,7 +801,7 @@ fn main(): Value { Value::Number(1) }
         let types = typing::typecheck_program(&program);
         let diagnostics = lint_call_style(&program, &types);
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "L003");
+        assert_eq!(diagnostics[0].code, "S003");
         assert_eq!(fix_call_style(&mut program, &types), 1);
         let formatted = formatter::format_program_preserving_comments(&program, source);
         assert!(formatted.contains("Result::Ok(1)"), "{formatted}");
@@ -827,7 +827,7 @@ fn main(): Int { apply(inc(1), inc) }
     fn allow_next_line_suppresses_lint_and_fix_only_on_the_next_line() {
         let source = r#"fn inc(value: Int): Int { value + 1 }
 fn main(): Int {
-  // muga-lint: allow-next-line L001 -- intentionally ordinary
+  // muga-lint: allow-next-line S001 -- intentionally ordinary
   first = inc(1)
   inc(first)
 }
@@ -844,7 +844,7 @@ fn main(): Int {
         assert!(formatted.contains("first = inc(1)"), "{formatted}");
         assert!(formatted.contains("first.inc()"), "{formatted}");
         assert!(
-            formatted.contains("// muga-lint: allow-next-line L001 -- intentionally ordinary"),
+            formatted.contains("// muga-lint: allow-next-line S001 -- intentionally ordinary"),
             "{formatted}"
         );
     }
