@@ -448,6 +448,14 @@ Syntax reserved for future features should fail as unsupported or invalid syntax
 
 # Lexing diagnostics
 
+## P009: non-final expression in a value block
+
+Only the final item in a function or other value-producing block may be a bare
+expression. Write `_ = expr` to evaluate an earlier expression and discard its
+value without introducing a binding. To propagate a recoverable error, write
+`_ = try expr` in a compatible `Result`-returning function; `_ = expr` alone
+also discards an error value.
+
 ## L001: unexpected character
 
 The source contains a character that is not part of Muga's lexical grammar.

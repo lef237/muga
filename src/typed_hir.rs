@@ -1585,6 +1585,11 @@ impl<'a> Lowerer<'a> {
 
     fn lower_stmt(&self, statement: &ast::Stmt) -> Stmt {
         match statement {
+            ast::Stmt::Assign(stmt) if stmt.name == "_" && !stmt.mutable => Stmt::Expr(ExprStmt {
+                id: stmt.id,
+                expr: self.lower_expr(&stmt.value),
+                span: stmt.span,
+            }),
             ast::Stmt::Assign(stmt) => {
                 let target = self.assignment_target(stmt.id);
                 Stmt::Assign(AssignStmt {

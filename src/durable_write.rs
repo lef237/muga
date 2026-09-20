@@ -33,9 +33,24 @@ const TEMPORARY_NAME_ATTEMPTS: u32 = 32;
 /// are safely on disk. On failure the destination keeps its previous
 /// contents and no temporary file is left behind.
 pub fn replace_file(path: &Path, contents: impl AsRef<[u8]>) -> io::Result<()> {
+    replace_file_before_rename(path, contents.as_ref(), || Ok(()))
+}
+
+fn replace_file_before_rename(
+    path: &Path,
+    contents: &[u8],
+    before_rename: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
     let parent = destination_parent(path);
     let (temporary_path, file) = create_temporary_sibling(path, &parent)?;
-    match write_temporary_then_replace(file, &temporary_path, path, &parent, contents.as_ref()) {
+    match write_temporary_then_replace(
+        file,
+        &temporary_path,
+        path,
+        &parent,
+        contents,
+        before_rename,
+    ) {
         Ok(()) => Ok(()),
         Err(error) => {
             let _ = fs::remove_file(&temporary_path);
@@ -50,10 +65,12 @@ fn write_temporary_then_replace(
     path: &Path,
     parent: &Path,
     contents: &[u8],
+    before_rename: impl FnOnce() -> io::Result<()>,
 ) -> io::Result<()> {
     file.write_all(contents)?;
     file.sync_all()?;
     drop(file);
+    before_rename()?;
     fs::rename(temporary_path, path)?;
     sync_directory(parent)
 }
@@ -145,6 +162,19 @@ mod tests {
             .collect::<Vec<_>>();
         names.sort();
         names
+    }
+
+    #[test]
+    fn failed_commit_preserves_the_same_destination_and_cleans_up() {
+        let root = temp_root("injected-commit-failure");
+        let path = root.join("muga.lock");
+        fs::write(&path, "previous").unwrap();
+        let result = super::replace_file_before_rename(&path, b"next", || {
+            Err(std::io::Error::other("injected commit failure"))
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "previous");
+        assert_eq!(directory_entry_names(&root), vec!["muga.lock"]);
     }
 
     #[test]

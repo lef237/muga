@@ -1,6 +1,6 @@
 fn main(): Int {
-  prefix = "value = ".print()
-  shown = 10.print()
-  line = " done".println()
+  _ = "value = ".print()
+  _ = 10.print()
+  _ = " done".println()
   10
 }

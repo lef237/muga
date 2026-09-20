@@ -337,6 +337,9 @@ impl Resolver {
 
     fn resolve_assign(&mut self, stmt: &AssignStmt) {
         self.resolve_expr(&stmt.value);
+        if stmt.name == "_" && !stmt.mutable {
+            return;
+        }
         let name = self.symbol(&stmt.name);
         if stmt.mutable {
             if let Some(binding) = self.current_scope_binding(name) {

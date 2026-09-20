@@ -34,8 +34,10 @@ performance claims are made until benchmarks back them (see
   control flow.
 - **Value semantics everywhere.** Ordinary code never sees pointers,
   references, or ownership syntax; updates return new values.
-- **Structured concurrency by construction.** `group { ... }` and `spawn`
-  make task lifetimes lexical: child tasks can never outlive their group.
+- **Experimental structured task groups.** `group { ... }` and `spawn`
+  constrain task lifetimes lexically. The current VM executes each child
+  immediately and sequentially; overlapping progress and cancellation of
+  running siblings are not implemented.
 - **Tooling is part of the language.** `check`, `run`, `test`, `fmt`, `doc`,
   `build`, `explain`, and editor queries (`hover`, `definition`,
   `completions`, …) ship in one binary, and most commands speak
@@ -128,6 +130,15 @@ muga build path/to/package/main.muga
 
 Many commands also support `--format json` for editor and tooling workflows.
 
+Text-mode `run` (including the default invocation and `run-app-bundle`)
+writes only program output to stdout and program error output to stderr,
+without appending a return value, `ok`, or a newline. To inspect `main`'s return
+value, use `run --format json` and read `mainResult`; JSON also reports the
+program's `stdout` and `stderr` separately. Returning an `Int` does not set the
+process exit status. A returned `Result::Err` is also a value, not a runtime
+diagnostic: CLI programs should explicitly handle errors and print them with
+`eprintln` when needed.
+
 ## Language Snapshot
 
 - Bindings are immutable by default; use `mut` for mutation.
@@ -137,7 +148,7 @@ Many commands also support `--format json` for editor and tooling workflows.
 - Data is modeled with nominal `record` and `enum` declarations.
 - `Option[T]` and `Result[T, E]` are explicit, with `match` and prefix
   `try expr`.
-- Structured task groups use `group { ... }` scopes, `spawn expr`, and
+- Experimental structured task groups use `group { ... }` scopes, `spawn expr`, and
   `std::task` joins; child tasks never outlive their group.
 - Packages use `package`, `import`, `pub`, and manifest files.
 - Package artifact files use `.mgi`, `.mgc`, and `.mgb`.

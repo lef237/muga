@@ -435,3 +435,13 @@ Invalid:
 x = 1
 x = 2   // error: immutable binding cannot be updated
 ```
+
+## Explicit value discard
+
+`_ = expr` evaluates the expression and discards its value without introducing
+or updating a binding. Repeated discards may have different types. An optional
+`_: Type = expr` annotation constrains the expression as in a local binding.
+The formatter preserves this spelling. In a value block, discard statements
+may precede the final value expression; a bare non-final expression is `P009`.
+Use `_ = try expr` when a recoverable error must propagate rather than be
+silently discarded. Existing `mut` declarations are not discard statements.

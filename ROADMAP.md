@@ -219,6 +219,10 @@ machine-readable baselines so later phases compare against them.
   and peak memory; emit machine-readable results; never use noisy wall-clock
   thresholds as correctness tests. This replaces the one-shot millisecond health
   checks.
+  - [ ] Reproduce collection scaling with repeated release measurements before
+    Phase 1 decides the value representation. Deep aggregate cloning and linear
+    Map lookup remain real implementation costs; COW alone will not make
+    repeated immutable updates linear while the old binding retains a reference.
 - [ ] Port the mini-git AI-authoring benchmark to Muga with the same
   specification and tests as mame/ai-coding-lang-bench, starting from a `muga
   new` scaffold so setup cost is measured separately from agent time. Measure
@@ -345,6 +349,11 @@ runnable with bounded authority.
 - [ ] Define and test nesting, recursion, graph, file-count, and byte-size
   limits at untrusted input boundaries. Limit failures must use stable,
   actionable diagnostics.
+- [ ] Complete the diagnostic catalog and split overly broad codes where
+  distinct recovery actions justify separate identifiers (`PK031`, `R014`,
+  `T004`, and `P014` need review).
+- [ ] Support single-file `hover`, `definition`, `references`, and
+  `completions`; these still require package-aware checking.
 - [ ] Define the supported host matrix and run CI on at least Linux, macOS, and
   Windows for path, process, filesystem, archive, bundle, install/uninstall,
   line-ending, and artifact reproducibility behavior.

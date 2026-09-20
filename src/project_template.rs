@@ -1037,7 +1037,7 @@ fn main(): Result[String, io::IOError] {
   wrote = try fs::write_bytes_path(output, data)
   metadata = try fs::path_metadata_path(output)
   written = try fs::read_bytes_path(output)
-  Result::Ok(render_result(bytes::size(written), metadata, digest, output))
+  Result::Ok(println(render_result(bytes::size(written), metadata, digest, output)))
 }
 "#,
                 },

@@ -166,7 +166,8 @@ The task boundary is the `spawn` operand.
 
 ### 5.5 Execution model, failure, and cancellation
 
-Phase 1 fixes the observable structure, not a scheduler:
+Phase 1 is experimental and implements task structure without a scheduler.
+Execution order and failure timing may change with a future scheduler:
 
 - Task execution order is implementation-defined within the structure that
   `group`, `spawn`, and `join` allow. Programs must not rely on sibling
@@ -178,7 +179,7 @@ Phase 1 fixes the observable structure, not a scheduler:
   the enclosing `group` as a runtime failure at the spawn site. Sibling
   tasks that were not spawned yet never start. This is the Phase 1 form of
   "one failure cancels the remaining siblings"; a parallel runtime must
-  preserve the same observable guarantee with real cancellation.
+  define the revised failure timing and implement real sibling cancellation.
 - Recoverable errors stay explicit values: a task whose operand evaluates to
   `Result[T, E]` produces a `Task[Result[T, E]]`, and the caller handles the
   `Result` after `join` as usual; `try handle.task::join()` composes normally
@@ -250,8 +251,8 @@ Phase 1 syntax is implemented, but implementation alone does not guarantee it
 belongs in the stable language surface. Before stabilization, Muga must validate the
 same contract with at least one runtime that provides overlapping progress for
 suspended or blocking tasks, actual parallel execution, or both. That runtime
-must implement real sibling cancellation and failure propagation, preserve the
-observable rules in section 5.5, enforce capture safety, and clean up resources
+must implement real sibling cancellation and failure propagation, explicitly revise the sequential
+execution and failure-timing rules in section 5.5, enforce capture safety, and clean up resources
 when a group exits. CPU parallel speedup is not an admission requirement;
 structured concurrency may earn its value through IO overlap, lifetime control,
 and cancellation.

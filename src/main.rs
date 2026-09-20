@@ -8511,24 +8511,8 @@ fn push_json_string(output: &mut String, value: &str) {
 }
 
 fn print_run_outcome(outcome: &muga::runtime::RunOutcome) {
-    let has_output = !outcome.output_text.is_empty();
-    if has_output {
-        print!("{}", outcome.output_text);
-    }
-    if !outcome.stderr_text.is_empty() {
-        eprint!("{}", outcome.stderr_text);
-    }
-    if let Some(value) = &outcome.main_result {
-        if has_output && !outcome.output_text.ends_with('\n') {
-            println!();
-        }
-        println!("{value}");
-    } else {
-        if has_output && !outcome.output_text.ends_with('\n') {
-            println!();
-        }
-        println!("ok");
-    }
+    print!("{}", outcome.output_text);
+    eprint!("{}", outcome.stderr_text);
 }
 
 fn print_test_outcome(outcome: &muga::TestRunOutcome) {

@@ -51,6 +51,13 @@ under "Not Planned" in [ROADMAP.md](./ROADMAP.md). Parked extensions and active
 decisions also live there; until a decision is implemented and promoted into
 this overview, the current grammar and typing rules remain authoritative.
 
+`group`, `spawn`, and `std::task` are experimental. In the current reference
+VM, `spawn` evaluates its operand immediately to completion and `join` returns
+that completed value. A runtime failure stops execution at the spawn site.
+There is no overlapping task progress or cancellation of already-running
+siblings. These execution and failure rules may change as the scheduler is
+implemented; see [the concurrency specification](./spec/007-concurrency-draft.md#55-execution-model-failure-and-cancellation).
+
 ## Core Rules
 
 Bindings are immutable by default:
@@ -73,6 +80,22 @@ Rules:
 - shadowing is prohibited
 - nested blocks in the same function may update enclosing mutable bindings
 - inner functions may read outer bindings but may not update them
+
+Use `_ = expr` to evaluate an expression for its effects and discard the
+result. It creates no binding and may be repeated with different value types:
+
+```muga
+fn main(): Int {
+  _ = "one".println()
+  _ = "two".println()
+  3
+}
+```
+
+An optional annotation such as `_: Int = expr` still checks the value's type.
+A bare non-final expression in a value block is rejected with `P009`.
+`_ = try expr` propagates `Result::Err` before discarding the success value;
+`_ = expr` alone discards the entire result, including any error.
 
 ## Syntax
 

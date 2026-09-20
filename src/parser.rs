@@ -1807,7 +1807,8 @@ impl Parser {
                     "P009",
                     "only the final item in a value block may be an expression",
                     stmt.span(),
-                ));
+                )
+                .with_suggestion("write `_ = expr` to evaluate and discard a non-final expression; use `_ = try expr` to propagate Result errors"));
             }
             prefix.push(stmt);
         }

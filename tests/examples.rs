@@ -3387,10 +3387,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
         .output()
         .expect("muga command should run");
     assert!(app_run.status.success(), "{app_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&app_run.stdout),
-        "hello Muga\nhello Muga\n"
-    );
+    assert_eq!(String::from_utf8_lossy(&app_run.stdout), "hello Muga\n");
     assert_eq!(String::from_utf8_lossy(&app_run.stderr), "");
 
     let app_positional_run = muga_command()
@@ -3406,7 +3403,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
     );
     assert_eq!(
         String::from_utf8_lossy(&app_positional_run.stdout),
-        "hello Ada\nhello Ada\n"
+        "hello Ada\n"
     );
     assert_eq!(String::from_utf8_lossy(&app_positional_run.stderr), "");
 
@@ -3420,7 +3417,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
     assert!(app_option_run.status.success(), "{app_option_run:#?}");
     assert_eq!(
         String::from_utf8_lossy(&app_option_run.stdout),
-        "hello Grace\nhello Grace\n"
+        "hello Grace\n"
     );
     assert_eq!(String::from_utf8_lossy(&app_option_run.stderr), "");
 
@@ -3444,7 +3441,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
     assert!(app_built_run.status.success(), "{app_built_run:#?}");
     assert_eq!(
         String::from_utf8_lossy(&app_built_run.stdout),
-        "hello Lin\nhello Lin\n"
+        "hello Lin\n"
     );
     assert_eq!(String::from_utf8_lossy(&app_built_run.stderr), "");
 
@@ -3457,7 +3454,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
     let app_package_stdout = String::from_utf8_lossy(&app_package_run.stdout);
     assert!(app_package_run.status.success(), "{app_package_run:#?}");
     assert_eq!(String::from_utf8_lossy(&app_package_run.stderr), "");
-    assert!(app_package_stdout.contains("hello Ada\nhello Ada\n"));
+    assert!(app_package_stdout.contains("hello Ada\n"));
     assert!(
         app_package_stdout.contains("status\tok"),
         "{app_package_stdout}"
@@ -3720,7 +3717,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
     assert!(config_run.status.success(), "{config_run:#?}");
     assert_eq!(
         String::from_utf8_lossy(&config_run.stdout),
-        "config Grace|9090|true|1|ops|none|2|9000|4\nResult::Ok(Grace|9090|true|1|ops|none|2|9000|4)\n"
+        "config Grace|9090|true|1|ops|none|2|9000|4\n"
     );
     assert_eq!(String::from_utf8_lossy(&config_run.stderr), "");
 
@@ -3733,7 +3730,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
     assert!(config_script_run.status.success(), "{config_script_run:#?}");
     assert_eq!(
         String::from_utf8_lossy(&config_script_run.stdout),
-        "config Ada|6061|false|2|ops|none|2|9000|4\nResult::Ok(Ada|6061|false|2|ops|none|2|9000|4)\n"
+        "config Ada|6061|false|2|ops|none|2|9000|4\n"
     );
     assert_eq!(String::from_utf8_lossy(&config_script_run.stderr), "");
 
@@ -3770,7 +3767,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
     assert!(config_env_run.status.success(), "{config_env_run:#?}");
     assert_eq!(
         String::from_utf8_lossy(&config_env_run.stdout),
-        "config Env|6060|true|2|env-owner|platform|1|7071|6\nResult::Ok(Env|6060|true|2|env-owner|platform|1|7071|6)\n"
+        "config Env|6060|true|2|env-owner|platform|1|7071|6\n"
     );
     assert_eq!(String::from_utf8_lossy(&config_env_run.stderr), "");
 
@@ -3797,7 +3794,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
     assert!(config_built_run.status.success(), "{config_built_run:#?}");
     assert_eq!(
         String::from_utf8_lossy(&config_built_run.stdout),
-        "config Ada|5050|false|1|ops|none|2|9000|4\nResult::Ok(Ada|5050|false|1|ops|none|2|9000|4)\n"
+        "config Ada|5050|false|1|ops|none|2|9000|4\n"
     );
     assert_eq!(String::from_utf8_lossy(&config_built_run.stderr), "");
 
@@ -3817,7 +3814,7 @@ fn cli_new_creates_app_lib_and_test_templates() {
         "{config_package_stdout}"
     );
     assert!(
-        config_package_stdout.contains("Result::Ok(Ada|4040|false|1|ops|none|2|9000|4)"),
+        !config_package_stdout.contains("Result::Ok("),
         "{config_package_stdout}"
     );
     assert!(
@@ -4067,7 +4064,7 @@ fn cli_new_creates_cli_tool_template() {
     );
     assert_eq!(String::from_utf8_lossy(&package_script_output.stderr), "");
     assert!(
-        package_stdout.contains("Result::Ok(run|service|3|Audit|false|none|none)"),
+        package_stdout.contains("cli-tool run|service|3|Audit|false|none|none"),
         "{package_stdout}"
     );
     assert!(package_stdout.contains("status\tok"), "{package_stdout}");
@@ -4155,7 +4152,6 @@ fn cli_new_creates_cli_tool_template() {
         "Global Options:",
         "-p, --profile <String>  Execution profile",
         "-h, --help  Show this help",
-        "Result::Ok(Usage: cli-tool [global-options] <command> [args]",
     ] {
         assert!(
             help_stdout.contains(required),
@@ -4184,7 +4180,6 @@ fn cli_new_creates_cli_tool_template() {
         "-T, --tag <String>  repeatable; aliases: --tags; Tag filter",
         "-o, --owner <String>  Optional owner",
         "-h, --help  Show this help",
-        "Result::Ok(Usage: cli-tool run [options]",
     ] {
         assert!(
             run_help_stdout.contains(required),
@@ -4208,7 +4203,7 @@ fn cli_new_creates_cli_tool_template() {
     assert!(run.status.success(), "{run:#?}");
     assert_eq!(
         String::from_utf8_lossy(&run.stdout),
-        "cli-tool run|service|3|Apply|true|ops,prod|Kai\nResult::Ok(run|service|3|Apply|true|ops,prod|Kai)\n"
+        "cli-tool run|service|3|Apply|true|ops,prod|Kai\n"
     );
     assert_eq!(String::from_utf8_lossy(&run.stderr), "");
 
@@ -4227,7 +4222,7 @@ fn cli_new_creates_cli_tool_template() {
     assert!(profile_run.status.success(), "{profile_run:#?}");
     assert_eq!(
         String::from_utf8_lossy(&profile_run.stdout),
-        "cli-tool profile|dev|run|service|3|Audit|false|none|none\nResult::Ok(profile|dev|run|service|3|Audit|false|none|none)\n"
+        "cli-tool profile|dev|run|service|3|Audit|false|none|none\n"
     );
     assert_eq!(String::from_utf8_lossy(&profile_run.stderr), "");
 
@@ -4243,12 +4238,13 @@ fn cli_new_creates_cli_tool_template() {
     assert!(inspect.status.success(), "{inspect:#?}");
     assert_eq!(
         String::from_utf8_lossy(&inspect.stdout),
-        "cli-tool inspect|service|true\nResult::Ok(inspect|service|true)\n"
+        "cli-tool inspect|service|true\n"
     );
     assert_eq!(String::from_utf8_lossy(&inspect.stderr), "");
 
     let missing = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg(&entry)
         .arg("--")
         .arg("run")
@@ -4258,14 +4254,15 @@ fn cli_new_creates_cli_tool_template() {
         .output()
         .expect("muga command should run");
     assert!(missing.status.success(), "{missing:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&missing.stdout),
-        "Result::Err(cli MissingArgument <target>: missing required CLI positional `<target>`)\n"
+    assert_cli_main_result(
+        &missing,
+        "Result::Err(cli MissingArgument <target>: missing required CLI positional `<target>`)",
     );
     assert_eq!(String::from_utf8_lossy(&missing.stderr), "");
 
     let validation = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg(&entry)
         .arg("--")
         .arg("run")
@@ -4276,9 +4273,9 @@ fn cli_new_creates_cli_tool_template() {
         .output()
         .expect("muga command should run");
     assert!(validation.status.success(), "{validation:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&validation.stdout),
-        "Result::Err(cli Validation --count: validation failed at path --count: expected Int >= 1)\n"
+    assert_cli_main_result(
+        &validation,
+        "Result::Err(cli Validation --count: validation failed at path --count: expected Int >= 1)",
     );
     assert_eq!(String::from_utf8_lossy(&validation.stderr), "");
 
@@ -4310,7 +4307,7 @@ fn cli_new_creates_cli_tool_template() {
         "{built_help_stdout}"
     );
     assert!(
-        built_help_stdout.contains("Result::Ok(Usage: cli-tool [global-options] <command> [args]"),
+        !built_help_stdout.contains("Result::Ok("),
         "{built_help_stdout}"
     );
 
@@ -4483,7 +4480,6 @@ fn cli_new_creates_report_app_template() {
         "source: data/daily.txt",
         "bytes: 23",
         "output: data/daily.summary.txt",
-        "Result::Ok(daily: launch metrics healthy)",
     ] {
         assert!(
             run_stdout.contains(required),
@@ -4550,7 +4546,6 @@ fn cli_new_creates_report_app_template() {
     assert_eq!(String::from_utf8_lossy(&package_run.stderr), "");
     assert!(
         package_stdout.contains("summary: daily: launch metrics healthy")
-            && package_stdout.contains("Result::Ok(daily: launch metrics healthy)")
             && package_stdout.contains("status\tok"),
         "{package_stdout}"
     );
@@ -4688,8 +4683,7 @@ fn cli_new_creates_resource_export_template() {
     assert!(run.status.success(), "{run:#?}");
     assert_eq!(String::from_utf8_lossy(&run.stderr), "");
     assert!(
-        run_stdout.contains("Result::Ok(22|file|true|")
-            && run_stdout.contains("|dist/payload.bin)"),
+        run_stdout.contains("22|file|true|") && run_stdout.contains("|dist/payload.bin"),
         "{run_stdout}"
     );
     assert_eq!(
@@ -4719,8 +4713,7 @@ fn cli_new_creates_resource_export_template() {
     assert!(built_run.status.success(), "{built_run:#?}");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
     assert!(
-        built_stdout.contains("Result::Ok(22|")
-            && built_stdout.contains("|dist/built-payload.bin)"),
+        built_stdout.contains("22|") && built_stdout.contains("|dist/built-payload.bin"),
         "{built_stdout}"
     );
     assert_eq!(
@@ -4738,7 +4731,7 @@ fn cli_new_creates_resource_export_template() {
     assert!(package_run.status.success(), "{package_run:#?}");
     assert_eq!(String::from_utf8_lossy(&package_run.stderr), "");
     assert!(
-        package_stdout.contains("Result::Ok(22|") && package_stdout.contains("status\tok"),
+        package_stdout.contains("22|") && package_stdout.contains("status\tok"),
         "{package_stdout}"
     );
     assert!(
@@ -7482,6 +7475,7 @@ fn manifest_resource_export_source_free_bundle_runs_without_sources() {
 
     let run = muga_command()
         .arg("run-app-bundle")
+        .arg("--format=json")
         .arg(&bundle)
         .arg("--")
         .arg(&output)
@@ -7871,7 +7865,7 @@ fn manifest_config_project_sample_uses_env_config_path_default() {
     assert!(output.status.success(), "{output:#?}");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "config Env|6060|true|2|config|platform|1|7071|6\nResult::Ok(Env|6060|true|2|config|platform|1|7071|6)\n"
+        "config Env|6060|true|2|config|platform|1|7071|6\n"
     );
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
@@ -8233,19 +8227,21 @@ pub fn value(): Int {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&built_run.stdout), "12\n");
+    assert_cli_main_result(&built_run, "12");
 
     let source_run = muga_command()
+        .arg("--format=json")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(source_run.status.success(), "{source_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&source_run.stdout), "100\n");
+    assert_cli_main_result(&source_run, "100");
 }
 
 #[test]
@@ -8626,6 +8622,7 @@ pub fn value(): Int {
 
     let implementation_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
@@ -8634,7 +8631,7 @@ pub fn value(): Int {
         implementation_run.status.success(),
         "{implementation_run:#?}"
     );
-    assert_eq!(String::from_utf8_lossy(&implementation_run.stdout), "100\n");
+    assert_cli_main_result(&implementation_run, "100");
 
     fs::write(
         &dependency,
@@ -8679,12 +8676,13 @@ pub fn extra(): Int {
 
     let public_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(public_run.status.success(), "{public_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&public_run.stdout), "101\n");
+    assert_cli_main_result(&public_run, "101");
 }
 
 #[test]
@@ -9003,12 +9001,13 @@ pub fn value(): Int {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&built_run.stdout), "100\n");
+    assert_cli_main_result(&built_run, "100");
 }
 
 #[test]
@@ -10882,6 +10881,34 @@ fn set_directory_mode(path: &Path, mode: u32) {
     fs::set_permissions(path, permissions).expect("directory permissions should be set");
 }
 
+// Mode bits do not prevent writes for privileged users (for example root in
+// Docker). Probe the capability instead of assuming the effective user ID.
+#[cfg(unix)]
+fn make_directory_unwritable(path: &Path) -> bool {
+    set_directory_mode(path, 0o555);
+    let probe = path.join("permission-probe");
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+    {
+        Ok(file) => {
+            drop(file);
+            fs::remove_file(probe).expect("permission probe should be removed");
+            set_directory_mode(path, 0o755);
+            eprintln!(
+                "skipping mode-bit failure injection: this user can write to read-only directories"
+            );
+            false
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => true,
+        Err(error) => {
+            set_directory_mode(path, 0o755);
+            panic!("unexpected permission probe error: {error}");
+        }
+    }
+}
+
 /// Names the sibling temporary files a crash-safe write creates, so a test can
 /// prove a failed write left none of them behind.
 fn crash_safe_temporary_names(root: &Path) -> Vec<String> {
@@ -10973,7 +11000,9 @@ pub fn value(): Int {
         .trim_start(),
     )
     .expect("dependency source should be overwritten");
-    set_directory_mode(&app_root, 0o555);
+    if !make_directory_unwritable(&app_root) {
+        return;
+    }
     let result = muga::build_package_artifacts(&entry);
     set_directory_mode(&app_root, 0o755);
 
@@ -11028,7 +11057,9 @@ fn main(): Int {
         .trim_start(),
     )
     .expect("entry source should be overwritten");
-    set_directory_mode(&artifact_root, 0o555);
+    if !make_directory_unwritable(&artifact_root) {
+        return;
+    }
     let result = muga::build_package_artifacts(&entry);
     set_directory_mode(&artifact_root, 0o755);
 
@@ -16398,11 +16429,12 @@ fn main(): Int {
     );
 
     let run_output = muga_command()
+        .arg("--format=json")
         .arg(&app_entry)
         .output()
         .expect("muga command should run");
     assert!(run_output.status.success(), "{run_output:#?}");
-    assert_eq!(String::from_utf8_lossy(&run_output.stdout), "42\n");
+    assert_cli_main_result(&run_output, "42");
     assert_eq!(String::from_utf8_lossy(&run_output.stderr), "");
 
     let expected_hash = muga::package_content_hash(&shared_entry)
@@ -16581,20 +16613,22 @@ fn main(): Int {
 
     let artifact_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--artifact-root")
         .arg(&artifact_root)
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(artifact_run.status.success(), "{artifact_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&artifact_run.stdout), "12\n");
+    assert_cli_main_result(&artifact_run, "12");
 
     let default_run = muga_command()
+        .arg("--format=json")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(default_run.status.success(), "{default_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&default_run.stdout), "12\n");
+    assert_cli_main_result(&default_run, "12");
 }
 
 #[test]
@@ -17968,20 +18002,22 @@ pub fn value(): Int {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&built_run.stdout), "12\n");
+    assert_cli_main_result(&built_run, "12");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 
     let source_run = muga_command()
+        .arg("--format=json")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(source_run.status.success(), "{source_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&source_run.stdout), "100\n");
+    assert_cli_main_result(&source_run, "100");
 }
 
 #[test]
@@ -18031,14 +18067,15 @@ fn main(): Result[String, json::Error] {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Result::Ok(validation failed at path .port: expected Int >= 1)\n"
+    assert_cli_main_result(
+        &built_run,
+        "Result::Ok(validation failed at path .port: expected Int >= 1)",
     );
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
@@ -18628,12 +18665,13 @@ fn cli_emit_artifacts_can_drive_cli_artifact_check() {
 #[test]
 fn cli_default_run_without_artifact_root_remains_source_compatible() {
     let output = muga_command()
+        .arg("--format=json")
         .arg("samples/packages/app/artifact_facade/main.muga")
         .output()
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "26\n");
+    assert_cli_main_result(&output, "26");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -18650,12 +18688,13 @@ fn cli_artifact_generation_does_not_change_default_run_behavior() {
     assert!(emitted.status.success(), "{emitted:#?}");
 
     let output = muga_command()
+        .arg("--format=json")
         .arg("samples/packages/app/artifact_facade/main.muga")
         .output()
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "26\n");
+    assert_cli_main_result(&output, "26");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -18698,6 +18737,7 @@ fn main(): Int {
 
     let output = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--artifact-root")
         .arg(&artifact_root)
         .arg(&entry)
@@ -18705,7 +18745,7 @@ fn main(): Int {
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "9\n");
+    assert_cli_main_result(&output, "9");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -18837,6 +18877,7 @@ fn main(): String {
     );
 
     let output = muga_command()
+        .arg("--format=json")
         .arg(&entry)
         .arg("--")
         .arg("alpha")
@@ -18845,7 +18886,7 @@ fn main(): String {
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "alpha/beta/2\n");
+    assert_cli_main_result(&output, "alpha/beta/2");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -18905,7 +18946,7 @@ fn main(): Int {
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "out\n7\n");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "out\n");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "warn\n");
 }
 
@@ -19137,6 +19178,7 @@ fn main(): String {
 
     let output = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--artifact-root")
         .arg(&artifact_root)
         .arg(&entry)
@@ -19146,7 +19188,7 @@ fn main(): String {
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "artifact-arg\n");
+    assert_cli_main_result(&output, "artifact-arg");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -19190,6 +19232,7 @@ fn main(): String {
 
     let output = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .arg("--")
@@ -19198,7 +19241,7 @@ fn main(): String {
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "built-arg\n");
+    assert_cli_main_result(&output, "built-arg");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -19783,6 +19826,7 @@ fn main(): Int {
 
     let output = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--artifact-root")
         .arg(&artifact_root)
         .arg(&consumer_entry)
@@ -19790,7 +19834,7 @@ fn main(): Int {
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "22\n");
+    assert_cli_main_result(&output, "22");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -19865,6 +19909,7 @@ fn main(): Int {
 
     let output = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--artifact-root")
         .arg(&artifact_root)
         .arg(&consumer_entry)
@@ -19872,7 +19917,7 @@ fn main(): Int {
         .expect("muga command should run");
 
     assert!(output.status.success(), "{output:#?}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "23\n");
+    assert_cli_main_result(&output, "23");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -29457,15 +29502,13 @@ fn main(): Result[String, cli::Error] {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Result::Ok(artifact|9000)\n"
-    );
+    assert_cli_main_result(&built_run, "Result::Ok(artifact|9000)");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -29847,14 +29890,15 @@ fn main(): String {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Usage: cli-tool [options]\n\nRun artifact-backed commands\n  --target <String>  required; Target resource name\n  --action <Action>  required; values: Audit, Apply; Command action\n"
+    assert_cli_main_result(
+        &built_run,
+        "Usage: cli-tool [options]\n\nRun artifact-backed commands\n  --target <String>  required; Target resource name\n  --action <Action>  required; values: Audit, Apply; Command action",
     );
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
@@ -30005,14 +30049,15 @@ fn main(): String {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Usage: cli-tool [options] <target>\n\nRun artifact-backed commands\n\nArguments:\n  <target>  required; Target resource name\n\nOptions:\n  --action <Action>  required; values: Audit, Apply; Command action\n  -h, --help  Show this help\n"
+    assert_cli_main_result(
+        &built_run,
+        "Usage: cli-tool [options] <target>\n\nRun artifact-backed commands\n\nArguments:\n  <target>  required; Target resource name\n\nOptions:\n  --action <Action>  required; values: Audit, Apply; Command action\n  -h, --help  Show this help",
     );
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
@@ -30192,12 +30237,13 @@ fn main(): String {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(String::from_utf8_lossy(&built_run.stdout), "artifact|7\n");
+    assert_cli_main_result(&built_run, "artifact|7");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -30971,15 +31017,13 @@ fn main(): String {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "artifact.muga|2\n"
-    );
+    assert_cli_main_result(&built_run, "artifact.muga|2");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -31627,15 +31671,13 @@ fn main(): String {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "true|artifact.muga\n"
-    );
+    assert_cli_main_result(&built_run, "true|artifact.muga");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -31896,6 +31938,7 @@ fn main(): Result[String, cli::Error] {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
@@ -32249,15 +32292,13 @@ fn main(): String {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "artifact|9000\n"
-    );
+    assert_cli_main_result(&built_run, "artifact|9000");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -34076,15 +34117,13 @@ fn main(): Result[String, json::Error] {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Result::Ok({\"name\":\"Ada\",\"retries\":3})\n"
-    );
+    assert_cli_main_result(&built_run, "Result::Ok({\"name\":\"Ada\",\"retries\":3})");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -36109,15 +36148,13 @@ fn main(): Result[String, json::Error] {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Result::Ok(Ada|9090|1)\n"
-    );
+    assert_cli_main_result(&built_run, "Result::Ok(Ada|9090|1)");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -36194,15 +36231,13 @@ fn main(): Result[String, json::Error] {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Result::Ok(ops|9090|8)\n"
-    );
+    assert_cli_main_result(&built_run, "Result::Ok(ops|9090|8)");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -36267,15 +36302,13 @@ fn main(): Result[String, json::Error] {
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Result::Ok(scale:7)\n"
-    );
+    assert_cli_main_result(&built_run, "Result::Ok(scale:7)");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -36888,15 +36921,13 @@ fn main(): Result[String, config::Error] {{
 
     let built_run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga command should run");
     assert!(built_run.status.success(), "{built_run:#?}");
-    assert_eq!(
-        String::from_utf8_lossy(&built_run.stdout),
-        "Result::Ok(ops|9090|7|8080)\n"
-    );
+    assert_cli_main_result(&built_run, "Result::Ok(ops|9090|7|8080)");
     assert_eq!(String::from_utf8_lossy(&built_run.stderr), "");
 }
 
@@ -37760,7 +37791,7 @@ import std::io
 fn main(): Result[String, io::IOError] {
   text = try fs::read_resource_text("app", "messages/greeting.txt")
   arg = cli::positional_or(env::args(), 0, "none")
-  Result::Ok(text.concat("|").concat(arg))
+  Result::Ok(text.concat("|").concat(arg).println())
 }
 "#,
     );
@@ -37858,10 +37889,7 @@ fn main(): Result[String, io::IOError] {
     let run_stderr = String::from_utf8_lossy(&run.stderr);
 
     assert!(run.status.success(), "{run:#?}");
-    assert!(
-        run_stdout.contains("Result::Ok(bundle|Ada)"),
-        "{run_stdout}"
-    );
+    assert!(run_stdout.contains("bundle|Ada"), "{run_stdout}");
     assert_eq!(run_stderr, "");
 }
 
@@ -37998,7 +38026,7 @@ import shared::logging as logging
 fn main(): Result[String, io::IOError] {
   text = try logging::value()
   arg = cli::positional_or(env::args(), 0, "none")
-  Result::Ok(text.concat("|").concat(arg))
+  Result::Ok(text.concat("|").concat(arg).println())
 }
 "#,
     );
@@ -38074,10 +38102,7 @@ fn main(): Result[String, io::IOError] {
     let run_stderr = String::from_utf8_lossy(&run.stderr);
 
     assert!(run.status.success(), "{run:#?}");
-    assert!(
-        run_stdout.contains("Result::Ok(base|shared|Ada)"),
-        "{run_stdout}"
-    );
+    assert!(run_stdout.contains("base|shared|Ada"), "{run_stdout}");
     assert_eq!(run_stderr, "");
 }
 
@@ -38162,7 +38187,7 @@ import shared::logging as logging
 fn main(): Result[String, io::IOError] {
   text = try logging::value()
   arg = cli::positional_or(env::args(), 0, "none")
-  Result::Ok(text.concat("|").concat(arg))
+  Result::Ok(text.concat("|").concat(arg).println())
 }
 "#,
     );
@@ -38231,10 +38256,7 @@ fn main(): Result[String, io::IOError] {
     let direct_stderr = String::from_utf8_lossy(&direct.stderr);
 
     assert!(direct.status.success(), "{direct:#?}");
-    assert!(
-        direct_stdout.contains("Result::Ok(base|shared|Ada)"),
-        "{direct_stdout}"
-    );
+    assert!(direct_stdout.contains("base|shared|Ada"), "{direct_stdout}");
     assert_eq!(direct_stderr, "");
 
     let launcher = Command::new("sh")
@@ -38248,7 +38270,7 @@ fn main(): Result[String, io::IOError] {
 
     assert!(launcher.status.success(), "{launcher:#?}");
     assert!(
-        launcher_stdout.contains("Result::Ok(base|shared|Ada)"),
+        launcher_stdout.contains("base|shared|Ada"),
         "{launcher_stdout}"
     );
     assert_eq!(launcher_stderr, "");
@@ -38505,7 +38527,7 @@ import std::cli
 import std::env
 
 fn main(): String {
-  cli::positional_or(env::args(), 0, "none")
+  cli::positional_or(env::args(), 0, "none").println()
 }
 "#,
     );
@@ -38710,7 +38732,7 @@ import std::cli
 import std::env
 
 fn main(): String {
-  "updated|".concat(cli::positional_or(env::args(), 0, "none"))
+  "updated|".concat(cli::positional_or(env::args(), 0, "none")).println()
 }
 "#,
     );
@@ -39181,7 +39203,7 @@ import std::io
 fn main(): Result[String, io::IOError] {
   text = try fs::read_resource_text("app", "messages/greeting.txt")
   arg = cli::positional_or(env::args(), 0, "none")
-  Result::Ok(text.concat("|").concat(arg))
+  Result::Ok(text.concat("|").concat(arg).println())
 }
 "#,
     );
@@ -39499,10 +39521,7 @@ fn main(): Result[String, io::IOError] {
     let run_stderr = String::from_utf8_lossy(&run.stderr);
 
     assert!(run.status.success(), "{run:#?}");
-    assert!(
-        run_stdout.contains("Result::Ok(archived|Ada)"),
-        "{run_stdout}"
-    );
+    assert!(run_stdout.contains("archived|Ada"), "{run_stdout}");
     assert_eq!(run_stderr, "");
 }
 
@@ -44910,6 +44929,13 @@ fn unix_millis_now() -> i64 {
     i64::try_from(duration.as_millis()).expect("current Unix milliseconds should fit in Int")
 }
 
+fn assert_cli_main_result(output: &std::process::Output, expected: &str) {
+    assert!(output.status.success(), "{output:#?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let field = format!("\"mainResult\":{}", muga_string_literal(expected));
+    assert!(stdout.contains(&field), "expected {field} in {stdout}");
+}
+
 fn muga_string_literal(value: &str) -> String {
     format!(
         "\"{}\"",
@@ -46678,10 +46704,11 @@ fn main(): Int {
 
     let run = muga_command()
         .arg("run")
+        .arg("--format=json")
         .arg("--built")
         .arg(&entry)
         .output()
         .expect("muga run --built should run");
     assert!(run.status.success(), "{run:#?}");
-    assert_eq!(String::from_utf8_lossy(&run.stdout), "42\n");
+    assert_cli_main_result(&run, "42");
 }

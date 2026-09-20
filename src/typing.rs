@@ -1309,6 +1309,9 @@ impl TypeChecker {
             Some(expected) => self.check_expr_with_expected(&stmt.value, Some(expected)),
             None => self.check_expr(&stmt.value),
         };
+        if stmt.name == "_" && !stmt.mutable {
+            return;
+        }
         let binding_ty = annotation_ty.unwrap_or_else(|| value_ty.clone());
         let name = self.symbol(&stmt.name);
         if stmt.mutable {
