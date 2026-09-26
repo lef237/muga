@@ -15,8 +15,9 @@ Muga prioritizes:
 - static typing with minimal annotations
 - fast compiler architecture
 - predictable package boundaries
+- code that both people and AI coding agents can write and review reliably
 
-The language is compiler-first. The current VM is a reference execution backend, not a separate semantics engine.
+The language is compiler-first. The reference VM is the development backend for `check`, `run`, and `test`; a planned native backend that emits Rust will serve release builds (see [ROADMAP.md](./ROADMAP.md)). Both must implement the same semantics; neither is a separate semantics engine.
 
 ## Specification Status
 
@@ -76,7 +77,7 @@ important workflow:
 The following are active maturity decisions rather than accepted syntax or
 permanently parked ideas:
 
-- whether the general-purpose language requires explicit `Float64`
+- an explicit `Float64` type (decided; not yet implemented)
 - allocation-free integer ranges and a small eager collection helper core
 - opt-in compiler-derived equality/hash without traits or overloaded dispatch
 - whether function values may be stored in records with an explicit non-dot
@@ -86,7 +87,7 @@ permanently parked ideas:
   remain experimental
 - consolidation of duplicate filesystem, CLI, JSON, and artifact-command APIs
 - indexed `Map` lookup, shared/copy-on-write aggregate representations, and a
-  repeatable benchmark contract before backend expansion
+  repeatable benchmark contract that the native backend is measured against
 
 The decision criteria and implementation order live in
 [ROADMAP.md](./ROADMAP.md); detailed constraints live in the topic specs. Until
@@ -519,7 +520,8 @@ roadmap explicitly promotes a decision or implementation slice.
 - source-level consuming parameter declarations, broader runtime-backed
   resource-handle families, `using` expressions/multiple bindings, and
   aggregate cleanup errors
-- control-flow-oriented MIR and native backend
+- the native backend that emits Rust for release builds (planned; see
+  [ROADMAP.md](./ROADMAP.md))
 - concurrency beyond structured task groups: channels, `select`, timeouts,
   deadlines, detached tasks, and any parallel scheduler behind the
   deterministic reference execution
