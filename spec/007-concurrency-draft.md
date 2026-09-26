@@ -2,11 +2,9 @@
 
 Status: Phase 1 (structured task groups: `group`, `spawn`, `join`) is
 implemented in the Rust compiler and reference VM. Section 5 is the
-specification for the implemented behavior. Sections describing channels,
-selection, time, and service IO remain design drafts and are not
-implementation queues.
-
-This document narrows the recommended direction for Muga concurrency into phases, so the first implemented core stays small, readable, and compiler-friendly.
+specification for the implemented behavior. The remaining sections record
+design constraints for future runtime and IO work; they are not implementation
+queues. Further concurrency surface is parked in [ROADMAP.md](../ROADMAP.md).
 
 ## 1. Design Goals
 
@@ -19,10 +17,6 @@ Muga's concurrency model should aim for all of the following:
 - high runtime performance
 - a compiler-friendly design that does not force expensive global analysis
 
-This draft is intentionally positive and forward-looking.
-
-It is not meant to criticize any existing language. The goal is to combine the clearest parts of modern concurrency design into something that fits Muga.
-
 ## 2. Core Direction
 
 The recommended direction is:
@@ -33,65 +27,20 @@ The recommended direction is:
 - explicit joins and cancellation
 - no async function coloring as the primary user model
 
-The most important recommendation is that **Muga should stabilize task groups first**. Channels, `select`, timeouts, and service-style runtime features should come later.
-
-In practical terms, the preferred base model is:
+The base model is:
 
 - `group { ... }` creates a task scope
 - `spawn expr` starts lightweight concurrent work inside that scope
 - `task.join()` waits for a task and returns its result
 
-This draft still recommends typed channels, but **not as part of the smallest first implementation**.
+## 3. Scope
 
-## 3. Phased Rollout
-
-### 3.1 Phase 1: Structured task core
-
-Phase 1 defines and implements:
-
-- `group`
-- `spawn`
-- `join()`
-- structured failure propagation
-- structured cancellation
-- task-boundary capture rules
-
-Phase 1 is implemented; section 5 specifies the implemented behavior.
-
-### 3.2 Phase 2: Typed channels
-
-Only after the task core is clear should Muga add:
-
-- typed channels
-- buffered and unbuffered channel behavior
-- `send` / `recv`
-- channel close semantics
-- worker-pool style coordination
-
-This phase depends on a clearer story for task and channel types.
-
-### 3.3 Phase 3: Selection and time
-
-After channels are stable, Muga can add:
-
-- `select` or equivalent multi-wait syntax
-- timeout support
-- deadline support
-- cancellation-token style APIs if they are still needed
-
-This should come after real usage and benchmarks exist for the smaller core.
-
-### 3.4 Later phases
-
-The following are intentionally later topics:
-
-- detached background tasks
-- supervision trees
-- long-lived service runtimes
-- async IO integration details
-- distributed runtime or actor-style features
-
-These may matter for web systems, but they should not shape the smallest useful core.
+Phase 1 defines and implements `group`, `spawn`, `join()`, structured failure
+propagation, structured cancellation, and task-boundary capture rules; section
+5 specifies the implemented behavior. Channels, `select`, timeouts, detached
+tasks, supervision, and actor-style features are not planned until the
+stability gate (5.9) is resolved and real programs show that a standard-package
+abstraction such as `task::spawn_map` is not enough.
 
 ## 4. Why This Fits Muga
 
@@ -213,9 +162,7 @@ The task boundary is the `spawn` operand.
 - Runtime-backed handles such as `fs::File` may be captured and used inside
   `spawn` operands in Phase 1; deterministic reference execution makes this
   safe. Handle send/share rules must be revisited before parallel execution,
-  as section 11 already requires.
-- Channels and ownership transfer remain the preferred coordination style
-  once they exist (Phase 2).
+  as section 10 already requires.
 
 ### 5.5 Execution model, failure, and cancellation
 
@@ -239,62 +186,30 @@ Phase 1 fixes the observable structure, not a scheduler:
 
 ### 5.6 What Phase 1 does not include
 
-- no channels, `select`, timeouts, deadlines, or detached tasks; those stay
-  in later phases and remain drafts
+- no channels, `select`, timeouts, deadlines, or detached tasks (see
+  section 3)
 - no source-level `Task[T]` type syntax and no user-nameable task type
 - no timeout API: Phase 1 does not promise async IO behavior, so time-based
-  cancellation waits for the IO/runtime integration path in section 11
-- no async function coloring, in line with section 7
+  cancellation waits for the IO/runtime integration path in section 10
+- no async function coloring, in line with section 6
 
 ### 5.7 Phase 1 usage notes
 
-These notes come from writing realistic `group` / `spawn` / `join` programs
-against the implemented Phase 1 core, gathered to judge whether Phase 2
-(channels) is the right next step. See
-`samples/packages/app/std_task_result/main.muga`,
+Realistic programs (see `samples/packages/app/std_task_result/main.muga`,
 `samples/packages/app/std_task_list/main.muga`,
 `samples/packages/app/std_task_for/main.muga`, and
-`samples/projects/task_app/src/main/main.muga`.
+`samples/projects/task_app/src/main/main.muga`) showed:
 
-What works well for fixed-shape fan-out, the case section 8.1 targets:
-
-- A literal list of spawned tasks joined through `list::map` and `list::fold`
-  reads naturally: `tasks = [spawn work(1), spawn work(2), spawn work(3)]`
-  then `list::map(tasks, fn(t) { t.task::join() })`. The closure passed to
-  `list::map` only calls `join`, never `spawn`, so it never crosses a task
-  boundary.
-- `try handle.task::join()` and `try task::join(handle)` both compose inside
-  `Result`-returning functions, so recoverable-error fan-out (spawn several
-  fallible calls, `try`-join each, combine) reads like ordinary sequential
-  `Result` code.
-- Fire-and-forget `spawn` inside a `for` loop over a runtime-sized collection
-  works: the loop is not a function boundary, so each iteration can `spawn`
-  directly, and the enclosing `group` still waits for every iteration's task
-  before it returns. This covers batch side-effecting work where no result
-  needs to flow back.
-
-What did not work before `task::spawn_map` (5.8) closed the gap:
-
-- Dynamic, result-collecting fan-out over a runtime-sized collection had no
-  expressible form using `spawn` directly. `list::map`'s callback is an
-  ordinary `fn` value, and function boundaries reset the group context
-  (5.2), so `spawn` inside a mapped closure is rejected with `T030` even
-  though the mapped closure runs inside the same `group`. `List` does have
-  user-facing mutation (`push`, used by `list::map` itself), so building a
-  list by hand is not the blocker; the blocker is that a user-written `mut`
-  binding or return type cannot name `List[Task[T]]`, because `T013` forbids
-  `Task[T]` syntax outside `std::task` (5.3).
-- In practice this meant fan-out whose arity is known at the call site
-  (a fixed literal list, or a fixed number of named `spawn` bindings) worked,
-  but "spawn one task per row of this query result" or "one task per file in
-  this directory listing" could not be written without giving up on
-  collecting per-task results.
-
-This gap was narrower than what channels solve. Channels (section 6) target
-streaming and worker-pool coordination between independently-scheduled
-tasks; the missing piece here was simpler: a way to spawn and join over an
-existing collection without a user ever naming `Task[T]`. `task::spawn_map`
-(5.8) closes it as a `std::task` library function, not new syntax.
+- A literal list of spawned tasks joined through `list::map` reads naturally,
+  because the mapped closure only calls `join`, never `spawn`.
+- `try handle.task::join()` composes inside `Result`-returning functions, so
+  fallible fan-out reads like ordinary sequential `Result` code.
+- Fire-and-forget `spawn` inside a `for` loop works, because a loop is not a
+  function boundary.
+- Result-collecting fan-out over a runtime-sized collection cannot use `spawn`
+  directly: `spawn` inside a mapped closure is rejected with `T030` (5.2), and
+  `T013` forbids naming `List[Task[T]]` (5.3). `task::spawn_map` (5.8) covers
+  this case as a library function instead of new syntax.
 
 ### 5.8 `spawn_map`: fan-out over a runtime-sized collection
 
@@ -345,53 +260,10 @@ If that contract is not ready to stabilize, the implemented syntax may remain
 available as an explicitly experimental feature, but `group`, `spawn`,
 `join`, `spawn_map`, and the internal `Task` contract should be deferred from
 the stable language contract. Deferral does not require deleting the implementation.
-Channels, `select`, and a stable service-IO surface must wait for this gate;
+Further concurrency surface and a stable service-IO surface must wait for this gate;
 focused IO prototypes may be used to test suspension and cancellation.
 
-## 6. Phase 2: Typed Channels
-
-After the task core is stable, the recommended first coordination primitive is a typed channel.
-
-Suggested construction form:
-
-```muga
-jobs = channel(Job, capacity: 64)
-results = channel(Result, capacity: 64)
-```
-
-Suggested operations:
-
-```muga
-jobs.send(job)
-job = jobs.recv()
-```
-
-Recommended properties:
-
-- channels are typed
-- channels may be buffered
-- send and receive block according to channel state
-- channel use should be easy to read in source
-
-This keeps the syntax consistent with the rest of Muga:
-
-- method-like surface forms
-- explicit values
-- no special symbolic arrows required
-
-### 6.1 Why channels are not Phase 1
-
-Channels depend on unresolved questions that do not need to block the task core:
-
-- generic type story for `Channel[T]`
-- close semantics
-- `recv()` behavior at end-of-stream
-- buffering guarantees
-- fairness and wake-up policy
-
-Those are real design questions, but they are easier to answer after the simpler task core exists.
-
-## 7. No Async Function Coloring As The Primary Model
+## 6. No Async Function Coloring As The Primary Model
 
 The recommended direction is to avoid making the entire language revolve around `async fn` and `await` coloring.
 
@@ -408,9 +280,9 @@ This does not forbid future async-specific APIs.
 
 It only means they should not become the main model unless there is strong evidence they are necessary.
 
-## 8. Example Usage
+## 7. Example Usage
 
-### 8.1 Phase 1 fan-out in a request handler
+### 7.1 Phase 1 fan-out in a request handler
 
 ```muga
 fn handle(req: http::Request): http::Response {
@@ -434,7 +306,7 @@ This is the clearest first target for Muga concurrency:
 - a few lightweight spawned tasks
 - explicit joins at the point where results are needed
 
-### 8.2 Phase 1 package-qualified chained call inside a task
+### 7.2 Phase 1 package-qualified chained call inside a task
 
 ```muga
 group {
@@ -445,57 +317,23 @@ group {
 
 This sample shows that Muga's normal expression style should remain usable inside concurrent code.
 
-### 8.3 Phase 2 worker pipeline
-
-```muga
-group {
-  jobs = channel(Int, capacity: 64)
-  results = channel(Int, capacity: 64)
-
-  producer = spawn produce_jobs(jobs)
-  worker1 = spawn worker(jobs, results)
-  worker2 = spawn worker(jobs, results)
-
-  first = results.recv()
-  second = results.recv()
-
-  producer.join()
-  worker1.join()
-  worker2.join()
-
-  first + second
-}
-```
-
-This style is still recommended, but it should come after the smaller task core is working well.
-
-## 9. Open Design Constraints
+## 8. Open Design Constraints
 
 The following constraints should stay visible while this draft evolves:
 
 - concurrency syntax alone does not determine performance
-- scheduler quality, allocation behavior, synchronization costs, and backend quality will dominate real results
+- scheduler quality, allocation behavior, synchronization costs, and backend quality will dominate real results; performance is validated through benchmarks rather than assumptions
 - the task core should be implementable without requiring expensive global effect analysis
 - diagnostics for task failure, cancellation, and cross-task source spans will matter early
-- task and channel designs should fit future typed HIR and MIR lowering cleanly
+- task designs should fit typed HIR and MIR lowering and the native backend cleanly
 
-## 10. Deferred Topics
+## 9. Deferred Topics
 
-This draft does not yet fix the full design of:
+This document does not yet fix detached tasks, async IO integration, scheduler
+details, or task type syntax in source. Decide them after the native runtime
+exists and benchmark data is available.
 
-- `select` or multi-channel wait syntax
-- channel closing semantics
-- detached tasks
-- supervisor-style task trees
-- async IO integration
-- scheduler details
-- task type syntax in source
-- channel type syntax in source
-- interaction with generic types
-
-Those topics should be decided after the compiler core is stronger and after benchmarking data exists.
-
-## 11. Runtime And IO Integration Path
+## 10. Runtime And IO Integration Path
 
 The task model and the IO runtime are separate decisions.
 
@@ -508,7 +346,7 @@ After the structured task core exists, the IO path should be:
 3. integrate handles with cancellation so a cancelled task can stop pending IO promptly
 4. distinguish scheduler-aware nonblocking APIs from host APIs that may block an OS thread
 5. add deadlines and timeouts as ordinary typed APIs that compose with task cancellation
-6. use bounded channels, stream APIs, or explicit readiness to represent backpressure
+6. use bounded queues, stream APIs, or explicit readiness to represent backpressure
 7. benchmark large numbers of mostly-idle connections before designing higher-level service APIs
 
 HTTP, SSE, WebSocket, and any future RPC streaming support should be layered above these lower decisions. They should not smuggle scheduler, cancellation, or backpressure semantics into framework conventions.
@@ -530,46 +368,3 @@ The important constraints are:
 - cancellation behavior is specified at the API boundary
 - hidden async suspension does not become ordinary function-call behavior
 - task and resource facts can be represented in typed HIR, MIR, and package interfaces
-
-## 12. Performance Target
-
-The performance goal is ambitious:
-
-- very lightweight task creation
-- low scheduling overhead
-- strong throughput under large numbers of concurrent tasks
-- practical competitiveness with established lightweight-concurrency runtimes
-
-However, syntax alone does not guarantee this.
-
-Real results will depend on:
-
-- scheduler design
-- memory allocation behavior
-- synchronization costs
-- channel implementation
-- native backend quality
-
-So the right policy is:
-
-- keep the syntax small and clear
-- make the semantics structured and safe
-- validate performance through benchmarks rather than assumptions
-
-## 13. Recommendation
-
-The recommended Muga concurrency direction is:
-
-1. stabilize `group`
-2. stabilize `spawn`
-3. stabilize `join`
-4. define structured failure and cancellation
-5. add typed channels only after the task core is solid
-6. add `select` and time-based waiting only after channels are proven out
-
-This is the clearest path toward concurrency that is:
-
-- easy to write
-- easy to read
-- safe by default
-- compatible with Muga's compiler and runtime goals
