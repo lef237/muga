@@ -7,86 +7,15 @@ Muga samples.
 
 ## Resume Cursor
 
-- [x] **DONE:** `0.5.0` shipped on 2026-07-02: version bump, release gate
-  with publish dry run, `v0.5.0` tag, crates.io publish through the release
-  workflow, and GitHub Release all verified. Muga stays in the `0.x` series;
-  the `1.0.0` compatibility promise has not started.
-- [x] **DONE:** structured task groups Phase 1 implemented on 2026-07-03:
-  `group` / `spawn` syntax, the `std::task` package with `join`, capture and
-  scope diagnostics (`T030`, `E013`), artifact support, conformance
-  fixtures, and samples.
-- [x] **DONE:** `0.6.0` shipped on 2026-07-03 with the structured task
-  groups slice: version bump, release gate with publish dry run, `v0.6.0`
-  tag, crates.io publish through the release workflow, and GitHub Release
-  all verified.
-- [x] **DONE:** gathered real task-group usage on 2026-07-05: added
-  `std_task_result`, `std_task_list`, and `std_task_for` package samples plus
-  a `task_app` project sample with bundle coverage, fixed a `try`/generic
-  return-type typing bug (`try` rejected any call whose *unspecialized*
-  generic signature had a bare type-parameter return, including
-  `task::join`), and recorded findings in
-  spec/007-concurrency-draft.md#57-phase-1-usage-notes. Conclusion: fixed-
-  arity fan-out (literal task lists, or fire-and-forget `spawn` inside a
-  `for` loop) works well; dynamic, result-collecting fan-out over a
-  runtime-sized collection has no expressible form (`T030` inside mapped
-  closures, `T013` blocks a hand-written `List[Task[T]]`). This gap is
-  narrower than channels; a small `std::task` fan-out combinator could close
-  it without Phase 2.
-- [x] **DONE:** closed the dynamic-fan-out gap on 2026-07-05 with
-  `task::spawn_map[T, U](items: List[T], f: T -> U): List[U]`, a `std::task`
-  package function (no new syntax or diagnostics) that spawns `f` over every
-  item and joins all results before returning; see
-  spec/007-concurrency-draft.md#58-spawn_map-fan-out-over-a-runtime-sized-collection
-  and `samples/packages/app/std_task_spawn_map/main.muga`.
-- [x] **DONE:** shipped a first `muga lint` slice on 2026-07-17 (unreleased):
-  the `S001` chained-call style lint, `muga lint --fix` rewriting with `S002`
-  for write failures, `// muga-lint: allow-next-line <codes>` suppressions,
-  migrated samples and conformance fixtures, and blank-line preservation in
-  the formatter. This built the lint command, suppression, and autofix
-  plumbing; it did not add the severity model, warn/deny policy, or the
-  unused/unreachable/discarded-`Result` warnings that the lint contract in
-  `errors.md` still requires. Diagnostics remain error-only
-  (`severity: "error"` is fixed in `src/diagnostic.rs`).
-- [x] **DONE:** recorded "Positioning And Differentiation" on 2026-07-17
-  after a competitive-landscape review: self-contained distribution, a
-  completed structured-concurrency contract, machine-consumable tooling, an
-  approachable imperative surface, and focused domains, with explicit
-  non-goals. The review confirmed the current P0-before-surface priority
-  order; a standalone-executable design item was queued under "Maturity
-  Track P2: Distribution Path".
-- [x] **DONE:** completed "Current P0: Compatibility And Durability" on
-  2026-07-17: strict `muga.toml` validation, `muga.lock` `muga_version`
-  enforcement, crash-safe compiler-owned writes with failure-path tests, and
-  the required `[package] language_revision` source-compatibility
-  declaration. Each item's remaining scope is recorded under it; none of them
-  blocks the P1 work below.
-- [x] **DONE:** reset the long-term direction on 2026-09-26 (see
-  "Direction"): Muga aims to outperform Go through a native backend that emits
-  Rust, while staying easy for both people and AI coding agents to read and
-  write. Decisions recorded: emit Rust for native release builds, keep the
-  reference VM as the development backend for `check` / `run` / `test`,
-  implement `Float64`, and de-risk native performance (Phase 1) before the
-  AI-authoring work (Phase 2), which may proceed in parallel where the work is
-  independent. The previous P1 diagnostics, runtime-performance, and
-  API-reduction items were redistributed into the phases below; none was
-  dropped.
 - [ ] **NOW:** work "Phase 0: Measurement Baseline". Order: the runtime
   benchmark suite with Go and Rust baselines (Phase 1's gate depends on it),
   then the mini-git AI-authoring benchmark port, then edit-check loop latency,
   then the diagnostic severity model. Diagnostics remain error-only
   (`severity: "error"` is fixed in `src/diagnostic.rs`).
 - [ ] **NEXT:** "Phase 1: Native Backend Feasibility".
-- [ ] **NEXT:** `v0.6.0` is the last published release; the lint slice and the
-  formatter change are user-visible and still unreleased. Decide a `0.6.1`
-  release independently of the phase work, following `RELEASING.md`.
-
-Baseline checks recorded during the 2026-06-05 implementation audit:
-
-- [x] `cargo fmt --check`
-- [x] `git diff --check`
-- [x] `scripts/clippy-check.sh`
-- [x] `cargo test --locked`
-- [x] `scripts/release-gate.sh`
+- [ ] **NEXT:** decide a `0.6.1` release independently of the phase work,
+  following `RELEASING.md`. `v0.6.0` is the last published release; the
+  compatibility work, the lint slice, and the formatter change are unreleased.
 
 ## Current State
 
@@ -117,6 +46,11 @@ Muga currently has:
   `std::result`, `std::json`, `std::config`, `std::task`, and `std::test`
 - [x] diagnostic JSON context for source, package, artifact-root, concrete
   artifacts, hashes, and regeneration commands where available
+- [x] `muga lint` with the `S001` chained-call style lint, `--fix`, and
+  `// muga-lint: allow-next-line <codes>` suppressions
+- [x] strict `muga.toml` validation, a required `[package] language_revision`,
+  `muga.lock` `muga_version` enforcement, and crash-safe compiler-owned writes
+  (see spec/006-packages.md)
 
 ## Design Commitments
 
@@ -143,9 +77,7 @@ These are direction-setting commitments, not just missing implementation work.
 
 ## Direction
 
-Reset on 2026-09-26. This replaces the 2026-07-17 "Positioning And
-Differentiation" record, which aimed at self-contained tools through an
-embedded VM and kept native code generation deferred. The one-sentence goal is:
+Recorded on 2026-09-26. The one-sentence goal is:
 
 > Muga is a quiet, statically typed language that aims to run faster than Go
 > while staying easy for both people and AI coding agents to read and write.
@@ -228,27 +160,15 @@ measure its own behavior in Phase 0, not as settled conclusions.
   generated Rust faster; performance work belongs in value representation and
   the compiler
 - do not build or operate a remote package registry before local archive
-  identity, lockfile behavior, and install inventory are stable (deferred
-  under "Maturity Track P2: Distribution Path")
+  identity, lockfile behavior, and install inventory are stable
 - do not compete on type-system expressiveness; the "Not Planned" list stays
   authoritative
 
-## Continuous Improvement And Versioning
+## Versioning
 
-Muga improves through small releases without treating `1.0.0` as a feature
-bucket or deadline. Work is promoted because it improves the current language,
-not because it is labeled “for 1.0” or “after 1.0”.
-
-- [ ] Increment `Z` for normal releases (`0.6.0` to `0.6.1`, then `0.6.2`,
-  and so on), including features, fixes, redesigns, and removals during `0.x`.
-- [ ] Leave every decision to increment `Y` to the maintainer. No task type,
-  release count, or roadmap milestone changes `Y` automatically.
-- [ ] Continue testing the language on sustained, non-trivial programs and let
-  the current specification grow, shrink, or change when usage exposes a gap.
-- [ ] Keep specifications, diagnostics, samples, and `conformance/current/`
-  aligned with every user-visible change.
-- [ ] Treat `scripts/release-gate.sh` as the minimum quality gate for every
-  release, not as evidence that foundational design is complete.
+Muga improves through small `0.x` releases; `RELEASING.md` owns the version
+numbering policy. `scripts/release-gate.sh` is the minimum quality gate for
+every release, not evidence that foundational design is complete.
 
 ### 1.0 Readiness Criteria
 
@@ -281,72 +201,6 @@ roadmap. All of these are required before the first `1.0.0` release candidate:
 Meeting these criteria permits a `1.0.0-rc.N`; it does not require every parked
 idea to be implemented. Until then Muga simply continues its normal `0.x`
 release sequence.
-
-## Current P0: Compatibility And Durability
-
-These are foundational requirements discovered during the 2026-07-12 maturity
-audit. They take priority over expanding the language surface because they
-prevent silent misconfiguration, accidental reinterpretation, and corrupted
-build state.
-
-- [x] Make `muga.toml` validation strict: reject unknown sections and fields,
-  duplicate fields, and malformed non-comment lines with source locations and
-  actionable diagnostics instead of silently ignoring them. Done on 2026-07-17:
-  the reader accepts only `[package]` / `[dependencies]`, only `name`,
-  `source`, and `resources` under `[package]`, and rejects unknown sections and
-  fields, duplicate sections/fields/dependency names, fields before any section
-  header, and malformed lines as `PK014` with the offending manifest line.
-  Remaining: the schema is still unversioned, and spans cover the whole line
-  rather than the offending key or value.
-- [x] Design a source-compatibility declaration for manifest projects as
-  changes accumulate. Done on 2026-07-17: manifests declare a required
-  `[package] language_revision = 1`, a bare number on its own compatibility
-  axis, separate from the compiler version, the lockfile fields, and the
-  artifact formats. The compiler implements exactly one revision and refuses
-  every other one rather than reinterpreting source; an edition-style
-  mechanism that keeps older semantics working was rejected because it would
-  freeze what `0.x` exists to keep changing, and the manifest format does not
-  depend on that choice. Absence is an error, not a default, since an
-  undeclared project is exactly the one a later compiler would silently
-  reinterpret. The declaration participates in package content identity
-  (`muga.toml` is hashed) and in check cache keys (it is fingerprinted with
-  the sources), and emitted bundles carry each package's revision. Migration
-  during `0.x` is the release that bumps the revision and documents the
-  change. Remaining: the revision is not yet recorded inside artifacts or
-  `muga.lock` as semantic interpretation metadata, and the manifest schema
-  itself is still unversioned; see
-  spec/006-packages.md#41-manifest-validation-and-compatibility-target.
-- [x] Enforce the recorded `muga_version` compatibility policy when reading an
-  existing `muga.lock`. Done on 2026-07-17: the reader requires a
-  `MAJOR.MINOR.PATCH` value (pre-release/build metadata accepted but ignored
-  by comparison), rejects lockfiles recorded by a newer compiler with `PK026`
-  without rewriting them, and keeps accepting same-or-older recorded
-  versions, which the next successful build refreshes to the running
-  compiler's version. Remaining: warning-level reporting for
-  accepted-but-different versions waits for the diagnostic severity model,
-  and full published-package lockfile enforcement stays deferred.
-- [x] Make compiler-owned writes crash-safe. Done on 2026-07-17: a shared
-  writer in `src/durable_write.rs` creates a uniquely named sibling temporary
-  file with `create_new` so it cannot follow a symlink or reuse a leftover,
-  flushes the file, atomically renames it over the destination, flushes the
-  parent directory on hosts that need it, and removes its temporary file on
-  failure. Lockfiles, `.mgi`, `.mgb`, `.mgc`, `.mgp`, `.mga`, bundle metadata,
-  launchers, generated completion packages, and installation ownership
-  metadata all go through it.
-- [x] Add interruption and failure-path tests proving that a failed write does
-  not destroy the last valid lockfile, artifact, archive, or installation
-  record. Done on 2026-07-17: unit tests cover creation, replacement,
-  temporary-file cleanup on a failed replacement, and symlinked destinations;
-  integration tests prove a failed lockfile and a failed artifact replacement
-  leave the last valid file byte-identical with no temporary left behind.
-  Remaining: nothing sweeps temporary files abandoned by a killed process,
-  because a safe sweep cannot yet distinguish them from a concurrent build's;
-  see spec/006-packages.md#1711-crash-safe-compiler-writes.
-- [ ] Decide whether ordinary source rewrites (`muga fmt`, `muga lint --fix`)
-  should join the crash-safe protocol. They are user-owned rather than
-  compiler-owned state, and atomic replacement would replace a symlinked
-  source file with a regular file, so the change needs a deliberate decision
-  rather than consistency alone.
 
 ## Phase 0: Measurement Baseline
 
@@ -492,6 +346,18 @@ runnable with bounded authority.
 - [ ] Stabilize the CLI process contract: exit status classes, stdout/stderr
   ownership in text and JSON modes, broken-pipe handling, and Ctrl-C behavior
   including cleanup of child processes, tasks, and partial output.
+- [ ] Decide whether ordinary source rewrites (`muga fmt`, `muga lint --fix`)
+  should join the crash-safe write protocol. They are user-owned rather than
+  compiler-owned state, and atomic replacement would replace a symlinked
+  source file with a regular file.
+- [ ] Version the `muga.toml` schema, narrow `PK014` spans to the offending key
+  or value, and record `language_revision` in artifacts and `muga.lock` as
+  semantic interpretation metadata.
+- [ ] Sweep temporary files abandoned by a killed process once they can be
+  told apart from a concurrent build's.
+- [ ] Harden install inventory UX and diagnostics around app bundle ownership,
+  and add source-free bundle smoke cases for std packages that use host
+  effects.
 
 ## Ongoing: Language And Standard-Library Maturity
 
@@ -539,72 +405,6 @@ future version label.
   instead of treating `group` / `spawn` / `Task` as stable or deleting the code
   merely to satisfy the gate. The Phase 3 native runtime is the intended
   parallel runtime for this validation.
-
-## Completed Milestones
-
-Finished work is summarized here. Full checklists, audit notes, and decision
-logs live in git history; the resulting rules live in the specs, `errors.md`,
-and `RELEASING.md`.
-
-- [x] `std::process` (the last capability under the previous near-term 1.0
-  plan): narrow
-  recoverable process execution through explicit `Options` / `Output` records,
-  nonzero child exits captured as `Result::Ok(Output)`, no shell
-  interpolation, `path::Path` cwd, explicit env overrides, and source-free
-  bundle coverage.
-- [x] Previous 1.0-oriented release-hardening pass: aligned the then-current language
-  boundary with the implementation, audited unfinished work, added
-  template/sample/bundle test coverage, and established the release-quality
-  gate. This pass is historical evidence, not a declaration of 1.0 readiness or
-  a permanent feature freeze.
-- [x] Implementation audit (2026-06-05): hotspot review across parser,
-  resolver, typing, MIR/VM, artifacts, and CLI contracts; production
-  panic-site classification; regression tests for formatter idempotence,
-  `using` cleanup paths, package visibility, reserved `std` package paths,
-  and the `T027` `using` diagnostic split.
-- [x] Release candidate preparation: chose to stay in the `0.x` series rather
-  than start the `1.0.0` compatibility promise; `0.5.0` shipped 2026-07-02 and
-  `0.6.0` shipped 2026-07-03 through the release workflow (see `RELEASING.md`
-  for the process).
-- [x] Structured task groups Phase 1: `group` / `spawn` syntax with `T030` /
-  `E013` diagnostics, the internal `Task[T]` handle, `std::task` with `join`
-  and `spawn_map`, artifact and conformance coverage, and benchmark-health
-  checks. Design decisions and semantics are recorded in
-  [spec/007-concurrency-draft.md](./spec/007-concurrency-draft.md) section 5.
-
-## Maturity Track P2: Service IO
-
-Deprioritized behind Phases 0 through 3.
-
-Do not stabilize service IO before the structured-task-group stability gate
-is resolved and task lifetime, shutdown, and backpressure semantics are explicit.
-Focused IO prototypes may still be used to validate scheduler suspension,
-cancellation, and cleanup behavior before either surface is committed.
-
-- [ ] Choose the first service IO target: sockets or minimal HTTP/JSON.
-- [ ] Keep resource handles opaque and closeable.
-- [ ] Define shutdown behavior before exposing listeners or streams.
-- [ ] Define backpressure behavior before exposing streaming request/response
-  APIs.
-- [ ] Keep JSON integration explicit through `std::json` schemas.
-- [ ] Prove source, built-artifact, and source-free bundle execution.
-
-## Maturity Track P2: Distribution Path
-
-Distribution should build on the existing `.mgp` / `.mga` work.
-
-- [x] Decided on 2026-09-26: `muga build --release` in Phase 3 delivers the
-  self-contained executable through the native backend. Revisit a launcher
-  that embeds the reference VM only if a deployment target without a Rust
-  toolchain needs one.
-- [ ] Harden install inventory UX and diagnostics around app bundle ownership.
-- [ ] Add more source-free bundle smoke cases for std packages that use host
-  effects.
-- [ ] Decide whether project-mode artifact-root configuration is needed after
-  more build/reuse evidence.
-- [ ] Keep package identity tied to `.mgp` content hashes.
-- [ ] Defer URL/Git/registry fetching until local archive identity, lockfile
-  behavior, and install inventory remain stable across releases.
 
 ## Parked Non-Blockers
 
@@ -655,13 +455,17 @@ Move a parked item into active work only when all of these are true:
   promoted above and should not imply a broad crypto or streaming framework.
 - [ ] URL/Git/registry dependencies, remote fetching, publishing workflows,
   package signing, SBOMs, and full published-package lockfile enforcement;
-  revisit after local `.mgp` / `.mga` workflows are stable in real use.
-- [ ] concurrency features beyond implemented Phase 1 structured task groups:
-  channels, `select`, timeouts, and the later phases in
-  `spec/007-concurrency-draft.md`; the draft is not an implementation queue.
-  Before any further concurrency syntax is added, re-confirm whether Muga
-  needs syntax at all or whether a standard package abstraction (like
-  `task::spawn_map`) is simpler.
+  revisit after local `.mgp` / `.mga` workflows are stable in real use. Keep
+  package identity tied to `.mgp` content hashes.
+- [ ] concurrency features beyond the implemented structured task groups:
+  channels, `select`, timeouts, detached tasks, and supervision. Before any
+  further concurrency syntax is added, re-confirm whether Muga needs syntax at
+  all or whether a standard package abstraction (like `task::spawn_map`) is
+  simpler.
+- [ ] service IO (sockets or minimal HTTP/JSON). Do not start before the
+  structured-task-group stability gate is resolved and task lifetime,
+  shutdown, and backpressure semantics are explicit; keep resource handles
+  opaque and closeable and JSON integration explicit through `std::json`.
 - [ ] `pub opaque record` for user-defined hidden record representations; this
   is not in the current language. Revisit only after real package APIs need
   smart constructors while hiding ordinary Muga record fields. Keep this
@@ -733,24 +537,3 @@ future backlog items.
 - [x] do not add behavior-conformance systems, protocol bounds, trait bounds,
   typeclass solving, default implementations, blanket implementations,
   protocol objects, or conformance-based dot lookup
-
-## Short Version
-
-On 2026-09-26 Muga reset its direction: it aims to run faster than Go while
-staying easy for both people and AI coding agents to read and write. Release
-builds will emit Rust and compile it with rustc; the reference VM stays the
-fast development backend for `check`, `run`, and `test`, and conformance runs
-on both. The work proceeds in phases: Phase 0 builds the evidence (a runtime
-benchmark suite against Go and Rust, the mini-git AI-authoring benchmark,
-edit-check latency, and the diagnostic severity model); Phase 1 proves native
-performance on a language subset; Phase 2 makes Muga AI-authorable through a
-compact reference, habit-translating diagnostics, and a smaller standard
-library; Phase 3 completes the native backend with `muga build --release`,
-`Float64`, shared aggregates, and parallel tasks; Phase 4 makes effects
-visible and adds run-time permissions. Robustness, portability, and language
-maturity work continues alongside. `v0.6.0` is the last published release;
-the P0 compatibility work and the lint slice are unreleased.
-`scripts/release-gate.sh` remains the baseline release-quality command, but
-passing it does not by itself establish `1.0.0` readiness. Channels,
-`select`, service IO, remote registries, broad collection systems, and
-further compilation targets stay deferred.
