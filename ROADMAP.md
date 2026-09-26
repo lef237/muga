@@ -440,6 +440,10 @@ Move a parked item into active work only when all of these are true:
   cross-field, or user-defined validation beyond the implemented narrow
   field-level `@validate(...)` slice; revisit after the current concrete
   schema slice is exercised.
+- [ ] explicit call-site type arguments such as `id[Int](1)`, wildcard or
+  selective imports, re-export syntax, package top-level execution,
+  `String.len()`, substring/slice indexing, and richer parse error types;
+  revisit only when real programs need them and their semantics are chosen.
 - [ ] future `expr.try`, `T?`, and `Option`-only optional chaining; revisit
   only if explicit `try`, `Option`, and helper packages become too noisy in
   real code. Do not add them merely as shorter spellings.

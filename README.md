@@ -8,19 +8,10 @@ Muga emphasizes both code aesthetics and efficiency, providing an environment wh
 
 ## Project Status
 
-Muga is under active development in the `0.x` series. The language is improved
-continuously through small releases; features, corrections, redesigns, and
-removals are chosen because they improve the current language, not because they
-must fit a predetermined `1.0.0` feature list.
-
-Releases normally advance the patch component (`Z`) one step at a time, for
-example `0.6.0` to `0.6.1`. Whether to advance the minor component (`Y`) is a
-separate maintainer decision. Version `1.0.0` will name the point at which
-continued experience shows that Muga no longer needs foundational redesign and
-is ready for a long-lived compatibility promise. See
+Muga is under active development in the `0.x` series, so the language, standard
+packages, tools, and artifact formats may still change. See
 [RELEASING.md](./RELEASING.md) for the versioning policy and
-[ROADMAP.md](./ROADMAP.md) for current work and the independent 1.0 readiness
-criteria.
+[ROADMAP.md](./ROADMAP.md) for current work.
 
 ## Why Muga
 

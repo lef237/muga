@@ -45,54 +45,11 @@ The current grammar includes:
 - explicit declaration type parameters on records, enums, and functions
 - generic type expressions in annotations and signatures
 
-The following are not planned for ordinary Muga code:
-
-- `class`, inheritance, member-owned methods, member ownership semantics, or class-style encapsulation
-- method dispatch as a separate semantic category from ordinary function calls
-- overloaded function dispatch, overloaded operator dispatch, or user-defined overload sets
-- general `type` declarations or type aliases as alternate spellings for `record`, `enum`, or enum-plus-record combinations
-- type aliases added only to shorten public API shapes or avoid explicit `record` / `enum` declarations; package-mode `pub opaque type` is a separate narrow form, not a type alias
-- source-level references such as `ref T`, `mut ref T`, `&value`, `*value`, pointer syntax, ownership syntax, borrowing syntax, raw pointer arithmetic, or general writable aliases
-- implicit exceptions or `throws`
-- postfix Result propagation `expr?`
-- `protocol`, `trait`, `interface`, or `typeclass` declarations for shared behavior
-- behavior-conformance systems, protocol bounds, trait bounds, typeclass solving, default implementations, blanket implementations, protocol objects, or conformance-based dot lookup
-
-The following are not currently planned or active implementation work.
-Reconsider them only after real Muga programs show that
-the current explicit forms are hard to read, easy to misuse, or blocking an
-important workflow:
-
-- future Result chain propagation `expr.try`, optional shorthand `T?`, and
-  Option-only optional chaining `?.`
-- explicit call-site type arguments such as `id[Int](1)`
-- wildcard imports, selective imports, re-export syntax, or package top-level execution
-- broad catch-all wildcard match arms, nested patterns, match guards, multi-payload enum variants, or named-field enum variants
-- map literals, `Set[T]`, arbitrary `Map` key types, broad collection APIs, or iterator abstractions
-- `pub opaque record` for user-defined hidden record representations
-- concurrency features beyond the implemented structured task groups
-  (`group` / `spawn` / `std::task`): channels, `select`, `async`, or `await`
-- `String.len()`, substring/slice indexing, and richer parse error types until their semantics are explicitly chosen
-
-The following are active maturity decisions rather than accepted syntax or
-permanently parked ideas:
-
-- an explicit `Float64` type (decided; not yet implemented)
-- allocation-free integer ranges and a small eager collection helper core
-- opt-in compiler-derived equality/hash without traits or overloaded dispatch
-- whether function values may be stored in records with an explicit non-dot
-  invocation form
-- whether `group` / `spawn` demonstrate overlapping progress, cancellation,
-  capture safety, and cleanup strongly enough to become stable or should
-  remain experimental
-- consolidation of duplicate filesystem, CLI, JSON, and artifact-command APIs
-- indexed `Map` lookup, shared/copy-on-write aggregate representations, and a
-  repeatable benchmark contract that the native backend is measured against
-
-The decision criteria and implementation order live in
-[ROADMAP.md](./ROADMAP.md); detailed constraints live in the topic specs. Until
-a decision is implemented and promoted into this overview, the current grammar
-and typing rules remain authoritative.
+Features that conflict with Muga's design (classes, traits, overloading,
+source-level references, implicit exceptions, and postfix `expr?`) are listed
+under "Not Planned" in [ROADMAP.md](./ROADMAP.md). Parked extensions and active
+decisions also live there; until a decision is implemented and promoted into
+this overview, the current grammar and typing rules remain authoritative.
 
 ## Core Rules
 
@@ -346,24 +303,13 @@ Package interfaces and implementation artifacts are explicit workflow artifacts:
 
 `muga syntax --format json <entry>` lexes and parses one source file for faster editor feedback. It emits the same diagnostic JSON envelope as `check`, including entry source context in `diagnostics[].context`, but does not run resolver, typechecker, package import loading, or artifact checks. Package `check --format json` diagnostics add entry package context when available, and artifact-backed checks also add artifact-root context. Artifact diagnostics that know a concrete `.mgi`, `.mgc`, or `.mgb` path add artifact-file context with the artifact kind and `file://` URI. Stale or hash-mismatched artifact diagnostics also add artifact hash, source hash, dependency interface hash, and regeneration-command context when the compiler has that data. `muga run --format json <entry>` reports captured program stdout, the currently empty program stderr channel, the returned `main` value when present, and compiler/runtime diagnostics as one schema-versioned JSON object. `muga explain <diagnostic-code>` prints `errors.md` diagnostic guidance for exact catalog entries or stable diagnostic-code families. `muga test --format json <entry>` reports discovered tests, pass/fail status, failure messages, per-test stdout, summary counts, and pre-run compiler diagnostics as one schema-versioned JSON object.
 
-### CLI Process Contract Target
+### CLI Process Contract
 
-Before its process behavior becomes stable, every command must share a documented process-level contract in
-addition to its text and JSON payload schema. The contract must define:
-
-- stable exit-status classes for success, program/compiler/runtime failure,
-  invalid CLI use, and interruption
-- which stream owns human-readable diagnostics and which stream owns JSON
-  output, without mixing non-JSON text into a machine-readable response
-- successful broken-pipe handling when output is intentionally truncated by a
-  downstream consumer
-- Ctrl-C and host-signal behavior, including cleanup of spawned child
-  processes, structured tasks, temporary files, and partially installed output
-
-The current CLI commonly uses status `0` for success, `1` for command or
-program failure, and `2` for argument parsing failure, but this has not yet been
-specified and tested as the complete stable contract. Existing behavior must
-not be treated as final where commands are inconsistent.
+The CLI commonly uses status `0` for success, `1` for command or program
+failure, and `2` for argument parsing failure. This is not yet a stable
+contract: exit-status classes, stream ownership in text and JSON modes,
+broken-pipe handling, and Ctrl-C cleanup are still to be specified (see
+[ROADMAP.md](./ROADMAP.md)).
 
 `muga metadata --format json <entry>` checks a package entrypoint and emits
 package/module/item/export metadata plus public interface docs and rendered
@@ -497,34 +443,9 @@ with the validation message and offset.
 Generic enum decoding, record-level or cross-field validation, user-defined
 validator functions, and TOML remain outside the current JSON/config decoder surface.
 
-Not implemented:
-
-`std::process` and structured task groups (`group` / `spawn` / `std::task`)
-are implemented. Implemented task syntax still must pass the roadmap's
-stability gate. The remaining items in this list are parked work unless the
-roadmap explicitly promotes a decision or implementation slice.
-
-- public-signature inference for `pub fn`
-- URL/Git/registry dependency forms, remote package fetching, publishing/install workflows, and full published-package lockfile enforcement
-- project-mode artifact-root configuration and full incremental package artifact reuse
-- opt-in derived equality/hash is an active decision; map literals,
-  `Set[T]`, arbitrary `Map` key types, and broad collection systems remain
-  parked until that decision provides a sound foundation
-- broader JSON schema decoding targets such as generic records, generic enums,
-  nested `Option[Option[T]]`, non-string map keys, record-level or cross-field
-  validation, user-defined validators, or stricter schema policies beyond the implemented
-  `json::decode_or[T]`, `json::decode[T]`, `config::load_json_or[T]`, and
-  `config::load_json[T]`
-  target set plus opt-in `@json(deny_unknown_fields)` and input-only
-  `@json(alias: "...")` / field-level `@validate(...)`
-- source-level consuming parameter declarations, broader runtime-backed
-  resource-handle families, `using` expressions/multiple bindings, and
-  aggregate cleanup errors
-- the native backend that emits Rust for release builds (planned; see
-  [ROADMAP.md](./ROADMAP.md))
-- concurrency beyond structured task groups: channels, `select`, timeouts,
-  deadlines, detached tasks, and any parallel scheduler behind the
-  deterministic reference execution
+Structured task groups are implemented but must still pass the stability gate
+in [ROADMAP.md](./ROADMAP.md), which also tracks everything not implemented yet,
+including the native backend.
 
 ## Detailed References
 
