@@ -17,7 +17,7 @@ Muga prioritizes:
 - predictable package boundaries
 - code that both people and AI coding agents can write and review reliably
 
-The language is compiler-first. The reference VM is the development backend for `check`, `run`, and `test`; a planned native backend that emits Rust will serve release builds (see [ROADMAP.md](./ROADMAP.md)). Both must implement the same semantics; neither is a separate semantics engine.
+The language is compiler-first. The reference VM is the development backend for `check`, `run`, and `test`; a planned native backend will serve release builds, with Rust generation as the leading candidate (see [ROADMAP.md](./ROADMAP.md)). Both must implement the same semantics; neither is a separate semantics engine.
 
 ## Specification Status
 

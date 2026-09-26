@@ -18,8 +18,8 @@ packages, tools, and artifact formats may still change. See
 Muga is a quiet, statically typed language that aims to run faster than Go
 while staying easy for both people and AI coding agents to read and write. It
 is designed for local reasoning and machine-assisted development. Today Muga
-runs on a reference VM; a native backend that emits Rust for release builds is
-planned, and no performance claims are made until benchmarks back them (see
+runs on a reference VM; a native backend for release builds is planned, and no
+performance claims are made until benchmarks back them (see
 [ROADMAP.md](./ROADMAP.md)).
 
 - **Small surface, one spelling per operation.** No classes, inheritance,

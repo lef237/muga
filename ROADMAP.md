@@ -71,7 +71,7 @@ These are direction-setting commitments, not just missing implementation work.
   source bodies.
 - [x] Muga prefers explicit recoverable error values over implicit exceptions.
 - [x] Muga has one semantics and two backends: the reference VM serves the
-  development loop (`check`, `run`, `test`) and Rust generation serves
+  development loop (`check`, `run`, `test`) and a native backend serves
   release builds. Neither backend is a separate semantics engine; running
   conformance on both proves they agree.
 
@@ -124,12 +124,16 @@ measure its own behavior in Phase 0, not as settled conclusions.
 
 ### Bets
 
-- **Native performance through Rust generation.** Release builds emit Rust and
+- **Native performance through an optimizing native backend.** Rust
+  generation is the leading candidate: release builds would emit Rust and
   compile it with rustc, so LLVM optimizes the result and the existing Rust
   runtime code can be reused. Muga's source model (value semantics, no
   source-level references, no traits, 64-bit `Int`) lets generated Rust avoid
-  lifetimes entirely, so generated code must always compile: a rustc error is
-  a Muga compiler bug, never a user-facing diagnostic.
+  lifetimes entirely, so generated code must always compile: a rustc error
+  would be a Muga compiler bug, never a user-facing diagnostic. The known
+  cost is that release builds need a Rust toolchain. Phase 1 confirms the
+  choice by prototype and comparison with Go; if Rust generation falls short,
+  C generation or Cranelift is tried next.
 - **A fast feedback loop through the reference VM.** `check`, `run`, and `test`
   stay on the fast-starting VM. The slow native build never enters the
   edit-check loop that people and AI agents repeat.
@@ -151,13 +155,13 @@ measure its own behavior in Phase 0, not as settled conclusions.
 
 ### Non-Goals
 
-- do not add further compilation targets (JavaScript, WebAssembly, C, or
-  others) beside the VM and Rust generation; revisit only if Phase 1 shows
-  Rust generation cannot meet the performance metric
+- do not add compilation targets beside the reference VM and the one native
+  backend chosen in Phase 1; in particular, JavaScript and WebAssembly are out
+  of scope
 - do not require the native build for `check`, `run`, or `test`
 - do not publish performance claims without repeatable benchmark results
 - do not expose ownership, borrowing, or lifetimes in Muga source to make
-  generated Rust faster; performance work belongs in value representation and
+  generated code faster; performance work belongs in value representation and
   the compiler
 - do not build or operate a remote package registry before local archive
   identity, lockfile behavior, and install inventory are stable
@@ -235,7 +239,8 @@ machine-readable baselines so later phases compare against them.
 ## Phase 1: Native Backend Feasibility
 
 Phase 1 answers the largest technical risk first: can Muga's source model reach
-Go-level performance through Rust generation?
+Go-level performance through a native backend? It starts with the leading
+candidate, Rust generation, and ends by recording the backend choice.
 
 - [ ] Choose the emission input (typed HIR or MIR) and record why. Introduce a
   control-flow-oriented MIR only if that choice needs it.
@@ -293,14 +298,14 @@ Re-run the AI-authoring benchmark after each item and record the result.
 
 - [ ] Split the standard-package runtime out of the VM's `Value` into a typed
   runtime crate (working name `muga-rt`) used by both backends.
-- [ ] Extend Rust generation to the whole current language: closures, generics,
-  `Option` / `Result` / `try`, `String`, `List`, `Map`, `Bytes`, packages and
-  artifacts, `using`, and the standard packages.
+- [ ] Extend the native backend chosen in Phase 1 to the whole current language:
+  closures, generics, `Option` / `Result` / `try`, `String`, `List`, `Map`,
+  `Bytes`, packages and artifacts, `using`, and the standard packages.
 - [ ] Run the full conformance suite on both backends in CI; any divergence is a
   bug in one of them.
 - [ ] Add `muga build --release` producing one self-contained executable, with
-  the source-free app bundle model as the content source. Report a missing Rust
-  toolchain as a stable, actionable diagnostic.
+  the source-free app bundle model as the content source. Report a missing
+  native toolchain as a stable, actionable diagnostic.
 - [ ] Implement the Phase 1 representation: shared immutable or copy-on-write
   storage for `String`, `Bytes`, `List`, `Map`, records, and enum payloads.
   Preserve source-level value semantics while measuring and eliminating
