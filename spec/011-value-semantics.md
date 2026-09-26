@@ -202,27 +202,12 @@ The performance goal should be:
 
 The main risk is a naive implementation that copies large aggregates repeatedly. That is an IR and backend problem, not a reason to expose pointer syntax in ordinary Muga code.
 
-### 6.1 Current Representation Priorities
+### 6.1 Representation Plan
 
-Before control-flow MIR or a native backend, measure and address the costs that
-already exist in the reference VM:
-
-1. add repeatable benchmark scenarios with warm-up, multiple iterations,
-   median/tail latency, allocation counts, peak memory, large aggregates,
-   compiler stages, cold/warm package builds, and VM instruction throughput
-2. replace linear `Map` operations with an indexed representation that retains
-   deterministic insertion-order iteration
-3. move `String`, `Bytes`, `List`, `Map`, records, and enum payloads to shared
-   immutable or copy-on-write storage where source-observable value semantics
-   stay unchanged
-4. measure clone elimination for field access, indexing, lookup, calls, and
-   non-destructive updates
-5. only then optimize lower-impact front-end allocations such as the lexer's
-   whole-source `Vec[char]` copy or repeated runtime name strings
-
-Benchmark output should have a machine-readable comparison form. Noisy
-wall-clock thresholds should not become correctness tests, and native-backend
-work should not substitute for fixing avoidable costs in the reference path.
+The representation shared by the reference VM and the native backend is
+decided in Phase 1 and implemented in Phase 3 of [ROADMAP.md](../ROADMAP.md).
+Measure before optimizing: Phase 0 benchmarks establish the costs, and noisy
+wall-clock thresholds must not become correctness tests.
 
 ## 7. Top-Tier Compiled-Language Performance
 
@@ -305,7 +290,8 @@ For concurrency:
 - immutable values may be shareable across tasks when their representation is safe
 - resource handles must define their own send/share rules
 - mutable aliases should not cross task boundaries because ordinary Muga should not expose them
-- task capture rules should be specified before structured concurrency is implemented
+- task capture rules must be revisited before a parallel runtime lands
+  (spec/007-concurrency-draft.md section 5.4)
 
 ## 10. Open Questions
 
