@@ -76,6 +76,9 @@ The report also records the upstream input hashes, runner hash, Muga and
 adapter binary hashes, requested model, and model actually reported by the CLI.
 If a timeout stops the CLI before its final result event, its cost is unknown
 in the report even though the transcript is preserved.
+Provider API errors (including a session limit) stop the run immediately and
+are left unscored. Retry with a new output directory after service access
+returns; those errors must not be counted as language failures.
 Raw CLI transcripts can contain account and session metadata. The local
 `benchmarks/ai_authoring/runs/` directory is Git ignored for retaining them;
 review them before sharing.

@@ -151,6 +151,7 @@ def claude_data(output):
             "num_turns": data.get("num_turns"),
             "usage": usage,
             "is_error": data.get("is_error", True),
+            "api_error_status": data.get("api_error_status"),
             "terminal_reason": data.get("terminal_reason", "missing_result_event")}
 
 
@@ -343,6 +344,11 @@ def main():
                                               agent["claude"]["is_error"] is False)
                 item["agent"] = agent
                 persist(report, result_file)
+                if agent["claude"] and agent["claude"]["terminal_reason"] == "api_error":
+                    status = agent["claude"]["api_error_status"]
+                    log("[%s/%s] provider API error (HTTP %s); stopping without scoring this stage" %
+                        (name, stage, status))
+                    raise SystemExit(2)
                 log("[%s/%s] agent finished in %.1fs (exit %s); running original tests" %
                     (name, stage, agent["elapsed_seconds"], agent["exit_code"]))
                 stage_files = UPSTREAM_FILES[:2] if stage == "v1" else UPSTREAM_FILES[2:]
