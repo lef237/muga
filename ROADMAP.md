@@ -219,13 +219,16 @@ machine-readable baselines so later phases compare against them.
   and peak memory; emit machine-readable results; never use noisy wall-clock
   thresholds as correctness tests. This replaces the one-shot millisecond health
   checks.
-- [ ] Port the mini-git AI-authoring benchmark to Muga with the same
-  specification and tests as mame/ai-coding-lang-bench, starting from a `muga
-  new` scaffold so setup cost is measured separately from agent time. Measure
-  pass rate, agent time, and cost with no Muga reference, and again with the
-  compact reference once Phase 2 provides it. Run Go under the same harness as
-  the comparison baseline, and keep transcripts: they are the input for the
-  Phase 2 diagnostics.
+- [x] Port the mini-git AI-authoring benchmark to Muga with the pinned
+  specification and tests from mame/ai-coding-lang-bench. Start from a `muga
+  new` scaffold, time setup separately, run Go through the same harness, and
+  retain per-trial transcripts for Phase 2 diagnosis.
+- [ ] Establish a multi-trial mini-git baseline for Muga and Go without a
+  supplied Muga reference. Report pass rate, agent time, and CLI-reported cost
+  with the same model and limits; use enough trials to estimate success rates
+  rather than treating the single pipeline pilot as a probability estimate.
+- [ ] Repeat the Muga mini-git trials with the compact reference once Phase 2
+  provides it, keeping the other benchmark settings matched.
 - [ ] Measure the edit-check loop: `muga check`, `muga run`, and `muga test`
   latency on small and medium projects, cold and warm.
 - [ ] Add a first-class diagnostic severity model and lint pipeline. Start with

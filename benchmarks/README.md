@@ -1,5 +1,8 @@
 # Runtime benchmark suite
 
+For the separate mini-git AI authoring benchmark, see
+[ai_authoring/README.md](ai_authoring/README.md).
+
 This is the Phase 0 measurement baseline for the reference VM, Go, and Rust.
 It checks the result of every invocation before recording a measurement. The
 three implementations use the same input, operation counts, and final checksum.
@@ -79,3 +82,10 @@ wall-clock pass/fail thresholds or support public performance claims from one
 run. The older `scripts/benchmark-health-check.sh` remains a local smoke tool
 for compiler stages and artifact reuse; its one-shot timings are not part of
 this runtime comparison.
+
+The first committed machine-readable baseline is
+[`results/2026-09-27-macos-arm64.json`](results/2026-09-27-macos-arm64.json).
+It was captured on clean commit `17148a28bc3a316034d9bdbea7437a872c153efc`
+with 3 warm-up and 20 measured runs per case and implementation. Keep the raw
+samples and host metadata when reviewing changes; this one host run is a
+starting point, not a universal speed claim.
