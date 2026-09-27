@@ -1,0 +1,14 @@
+import std::test
+
+fn double(value: Int): Int {
+  value * 2
+}
+
+fn main(): Int {
+  21.double()
+}
+
+@test
+fn doubles_value(): Result[Unit, String] {
+  test::assert_eq_int(42, 21.double())
+}

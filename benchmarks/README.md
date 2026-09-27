@@ -4,6 +4,10 @@ For the separate mini-git AI authoring benchmark, see
 [ai_authoring/README.md](ai_authoring/README.md). Run that token-intensive
 benchmark only for releases that materially affect AI authoring.
 
+For CLI startup and edit-check loop latency, see
+[edit_check/README.md](edit_check/README.md). This benchmark does not invoke
+an AI agent.
+
 This is the Phase 0 measurement baseline for the reference VM, Go, and Rust.
 It checks the result of every invocation before recording a measurement. The
 three implementations use the same input, operation counts, and final checksum.

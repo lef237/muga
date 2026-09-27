@@ -233,8 +233,11 @@ machine-readable baselines so later phases compare against them.
   estimate is needed.
 - [ ] At the first release that includes the compact reference, repeat the Muga
   mini-git trials with it, keeping the other benchmark settings matched.
-- [ ] Measure the edit-check loop: `muga check`, `muga run`, and `muga test`
-  latency on small and medium projects, cold and warm.
+- [x] Measure the edit-check loop: `muga check`, `muga run`, and `muga test`
+  latency on small and medium projects. The baseline records first use of fresh
+  project copies and repeated use of the same path, with a fresh CLI process
+  for every sample; the OS file cache is not purged. See
+  `benchmarks/edit_check/README.md`.
 - [ ] Add a first-class diagnostic severity model and lint pipeline. Start with
   unused imports, bindings, and parameters, unreachable code, and discarded
   `Result` values; define command-line and machine-readable allow/warn/deny

@@ -1,0 +1,4 @@
+[package]
+name = "edit_check_small"
+language_revision = 1
+source = "src"
