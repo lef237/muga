@@ -1,0 +1,21 @@
+package bench::text
+
+import std::env
+import std::fs
+
+fn main(): Int {
+  path = match env::args().get(0) {
+    Option::Some(value) => value
+    Option::None => ""
+  }
+  text = match path.fs::read_text() {
+    Result::Ok(value) => value
+    Result::Err(_) => ""
+  }
+  lines = text.split("\n")
+  mut total = 0
+  for line in lines {
+    if line.contains("error") { total = total + 1 }
+  }
+  total
+}

@@ -1,0 +1,10 @@
+fn main(): Int {
+  mut text = ""
+  mut i = 0
+  while i < 300 {
+    text = text.concat("alpha,beta,gamma|")
+    i = i + 1
+  }
+  parts = text.split("|")
+  parts.len() + text.byte_len()
+}

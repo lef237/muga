@@ -186,3 +186,6 @@ Run benchmark health checks:
 ```bash
 scripts/benchmark-health-check.sh
 ```
+
+For repeatable VM, Go, and Rust runtime measurements, use the
+[benchmark suite](./benchmarks/README.md).

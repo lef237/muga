@@ -1,0 +1,33 @@
+package bench::json
+
+import std::env
+import std::fs
+import std::json
+
+fn main(): Int {
+  path = match env::args().get(0) {
+    Option::Some(value) => value
+    Option::None => ""
+  }
+  text = match path.fs::read_text() {
+    Result::Ok(value) => value
+    Result::Err(_) => ""
+  }
+  parsed = match text.json::parse() {
+    Result::Ok(value) => value
+    Result::Err(_) => json::Value::Null
+  }
+  records = match parsed.json::as_array() {
+    Result::Ok(value) => value
+    Result::Err(_) => []
+  }
+  mut total = 0
+  for item in records {
+    score = match item.json::object_int_required("score") {
+      Result::Ok(value) => value
+      Result::Err(_) => 0
+    }
+    total = total + score
+  }
+  total
+}

@@ -1,0 +1,17 @@
+package bench::directory
+
+import std::env
+import std::fs
+import std::path
+
+fn main(): Int {
+  root = match env::args().get(0) {
+    Option::Some(value) => value
+    Option::None => ""
+  }
+  files = match root.path::from_string().fs::read_dir_recursive_path() {
+    Result::Ok(value) => value
+    Result::Err(_) => []
+  }
+  files.len()
+}

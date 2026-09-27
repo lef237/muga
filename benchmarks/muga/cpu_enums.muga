@@ -1,0 +1,22 @@
+enum Step {
+  Add(Int)
+  Sub(Int)
+}
+
+fn main(): Int {
+  mut total = 0
+  mut state = 1
+  mut i = 0
+  while i < 20000 {
+    next = state * 33 + i
+    state = next - (next / 1000003) * 1000003
+    step = if (i / 2) * 2 == i { Step::Add(state) } else { Step::Sub(state) }
+    delta = match step {
+      Step::Add(value) => value
+      Step::Sub(value) => 0 - value
+    }
+    total = total + delta
+    i = i + 1
+  }
+  total
+}

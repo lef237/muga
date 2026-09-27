@@ -1,0 +1,19 @@
+fn main(): Int {
+  mut items: Map[String, Int] = Map.empty()
+  mut i = 0
+  while i < 300 {
+    items = items.insert(i.to_string(), i)
+    i = i + 1
+  }
+  mut total = 0
+  i = 0
+  while i < 300 {
+    value = match items.get(i.to_string()) {
+      Option::Some(value) => value
+      Option::None => 0
+    }
+    total = total + value
+    i = i + 1
+  }
+  total
+}

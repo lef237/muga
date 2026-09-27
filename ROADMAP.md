@@ -7,10 +7,10 @@ Muga samples.
 
 ## Resume Cursor
 
-- [ ] **NOW:** work "Phase 0: Measurement Baseline". Order: the runtime
-  benchmark suite with Go and Rust baselines (Phase 1's gate depends on it),
-  then the mini-git AI-authoring benchmark port, then edit-check loop latency,
-  then the diagnostic severity model. Diagnostics remain error-only
+- [ ] **NOW:** continue "Phase 0: Measurement Baseline". The runtime benchmark
+  suite with Go and Rust baselines is in `benchmarks/`. Next port the mini-git
+  AI-authoring benchmark, then measure edit-check loop latency, then add the
+  diagnostic severity model. Diagnostics remain error-only
   (`severity: "error"` is fixed in `src/diagnostic.rs`).
 - [ ] **NEXT:** "Phase 1: Native Backend Feasibility".
 - [ ] **NEXT:** decide a `0.6.1` release independently of the phase work,
@@ -211,7 +211,7 @@ release sequence.
 Phase 0 creates the evidence the direction metrics depend on. Record results as
 machine-readable baselines so later phases compare against them.
 
-- [ ] Build a repeatable runtime benchmark suite with Go and Rust reference
+- [x] Build a repeatable runtime benchmark suite with Go and Rust reference
   implementations of the same programs. Cover CPU-bound work (integer loops,
   recursion, records, enums with `match`), `String` / `List` / `Map` heavy work,
   and CLI-realistic work (JSON processing, directory traversal, text

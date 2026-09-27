@@ -1,0 +1,13 @@
+fn main(): Int {
+  mut values: List[Int] = []
+  mut i = 0
+  while i < 800 {
+    values = values.push(i)
+    i = i + 1
+  }
+  mut sum = 0
+  for value in values {
+    sum = sum + value
+  }
+  sum
+}

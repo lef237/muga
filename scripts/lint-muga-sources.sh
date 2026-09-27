@@ -29,4 +29,8 @@ while IFS= read -r file; do
   "$muga_bin" lint "$file" >/dev/null
 done < <(find conformance/current/package-artifacts -name 'main.muga' -type f | sort)
 
+while IFS= read -r file; do
+  "$muga_bin" lint "$file" >/dev/null
+done < <(find benchmarks/muga -name '*.muga' -type f | sort)
+
 echo "Muga source lint passed"

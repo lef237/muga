@@ -1,0 +1,24 @@
+record Point {
+  x: Int
+  y: Int
+}
+
+fn main(): Int {
+  mut point = Point {
+    x: 1
+    y: 2
+  }
+  mut i = 0
+  while i < 10000 {
+    next_x = point.x * 33 + i
+    x = next_x - (next_x / 1000003) * 1000003
+    next_y = point.y * 17 + x
+    y = next_y - (next_y / 1000003) * 1000003
+    point = Point {
+      x: x
+      y: y
+    }
+    i = i + 1
+  }
+  point.x + point.y
+}

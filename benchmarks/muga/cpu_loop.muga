@@ -1,0 +1,10 @@
+fn main(): Int {
+  mut sum = 0
+  mut i = 0
+  while i < 200000 {
+    next = sum * 33 + i * 17 + 3
+    sum = next - (next / 1000003) * 1000003
+    i = i + 1
+  }
+  sum
+}
