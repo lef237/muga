@@ -7,11 +7,14 @@ Muga samples.
 
 ## Resume Cursor
 
-- [ ] **NOW:** continue "Phase 0: Measurement Baseline". The runtime benchmark
-  suite with Go and Rust baselines and the mini-git AI-authoring baseline are
-  in `benchmarks/`. Measure edit-check loop latency, then add the diagnostic
-  severity model. Diagnostics remain error-only
-  (`severity: "error"` is fixed in `src/diagnostic.rs`).
+- [ ] **NOW:** finish "Phase 0: Measurement Baseline" by implementing the
+  diagnostic severity model and lint pipeline. Runtime, mini-git AI-authoring,
+  and edit-check latency baselines are recorded in `benchmarks/`; no further
+  baseline run is required before implementation. The existing `muga lint`
+  covers only the `S001` style rule, and diagnostic JSON still fixes
+  `severity: "error"` in `src/diagnostic.rs`. Define allow/warn/deny behavior
+  for CLI and JSON output, then add the Phase 0 warning rules. Defer the
+  compact-guide AI remeasurement until its qualifying milestone release.
 - [ ] **NEXT:** "Phase 1: Native Backend Feasibility".
 - [ ] **NEXT:** decide a `0.6.1` release independently of the phase work,
   following `RELEASING.md`. `v0.6.0` is the last published release; the
