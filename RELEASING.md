@@ -86,17 +86,23 @@ scripts/release-gate.sh --with-publish-dry-run
 
 This may contact crates.io. Fix any errors before tagging.
 
-### 5. Run the AI authoring benchmark once
+### 5. Check whether this is an AI authoring milestone
 
-On the final release candidate, run the mini-git AI authoring benchmark once
-on a local host signed in to Codex. Follow
+Run the mini-git AI authoring benchmark only when the release materially
+changes how an agent writes Muga: for example, language syntax or semantics,
+standard-library APIs, compiler diagnostics, the CLI scaffold, or the compact
+language guide. Also run it for a major release candidate such as `v1.0.0-rc.1`.
+Skip it for routine fixes, performance-only changes, and unrelated docs.
+
+For a qualifying release, run it once on the final release candidate on a
+local host signed in to Codex. Follow
 [the benchmark instructions](./benchmarks/ai_authoring/README.md), pass the
 new version with `--for-release vX.Y.Z`, and save a shareable summary under
 `benchmarks/ai_authoring/results/` alongside the previous baseline. Keep raw
 transcripts in the Git-ignored `benchmarks/ai_authoring/runs/` directory.
 This benchmark consumes AI tokens, so do not add it to
 `scripts/release-gate.sh`, CI, or the tag-triggered release workflow. Do not
-rerun it for individual changes between releases.
+rerun it for individual changes between milestone releases.
 
 ### 6. Create an annotated tag
 

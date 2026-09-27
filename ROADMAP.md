@@ -229,7 +229,8 @@ machine-readable baselines so later phases compare against them.
   pass rate, agent time, and CLI-reported token usage with the same time limit.
   The first three-trial baseline is in
   `benchmarks/ai_authoring/results/2026-09-27-luna-high.json`. At a future
-  release, use more trials only if a success-rate estimate is needed.
+  qualifying milestone release, use more trials only if a success-rate
+  estimate is needed.
 - [ ] At the first release that includes the compact reference, repeat the Muga
   mini-git trials with it, keeping the other benchmark settings matched.
 - [ ] Measure the edit-check loop: `muga check`, `muga run`, and `muga test`
@@ -267,8 +268,9 @@ candidate, Rust generation, and ends by recording the backend choice.
 
 Phase 2 may proceed in parallel with Phase 1 where the work is independent.
 Use the existing transcripts while developing. Run the token-intensive
-AI-authoring benchmark only once while preparing each new release, and record
-that result. Do not rerun it after individual Phase 2 items.
+AI-authoring benchmark only for milestone releases that materially change how
+an agent writes Muga, at most once on the final release candidate. Record that
+result. Skip routine releases and individual Phase 2 items.
 
 - [ ] Add a compact, versioned language reference for AI agents and people
   (working name `muga guide`), printed by the `muga` binary so it always matches

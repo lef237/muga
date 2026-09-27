@@ -8,11 +8,15 @@ matches that commit and records SHA-256 hashes of all four files. The specs
 and tests live in the upstream checkout and are copied into isolated trial
 directories at run time; they are not maintained here.
 
-Run this token-intensive benchmark **only once while preparing a new release**.
-Do not run it after individual changes, in CI, or as part of the routine
-release-quality gate. The runner requires `--for-release vX.Y.Z` before it will
-start an agent. `--prepare-only` remains available for checking setup without
-using AI tokens.
+Run this token-intensive benchmark **only for milestone releases that materially
+affect AI authoring**, at most once on the final release candidate. Relevant
+changes include Muga syntax or semantics, standard-library APIs, compiler
+diagnostics, the CLI scaffold, or the compact language guide; a major release
+candidate also qualifies. Skip routine fixes, performance-only changes, and
+unrelated docs. Do not run it after individual changes, in CI, or as part of
+the routine release-quality gate. The runner requires `--for-release vX.Y.Z`
+before it will start an agent. `--prepare-only` checks setup without using AI
+tokens.
 
 ## Prepare
 
@@ -36,8 +40,8 @@ uv run --python 3.13 benchmarks/ai_authoring/run.py \
   --output-dir /tmp/muga-ai-prepared --prepare-only
 ```
 
-Use a **new** output directory for each release. A release run with three trials
-per language (six v1 and six v2 agent invocations) is:
+Use a **new** output directory for each qualifying release. A run with three
+trials per language (six v1 and six v2 agent invocations) is:
 
 ```sh
 uv run --python 3.13 benchmarks/ai_authoring/run.py \
