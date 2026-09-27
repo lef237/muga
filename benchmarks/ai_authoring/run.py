@@ -57,7 +57,7 @@ def run_logged(command, cwd, prefix, timeout, environment=None):
     stderr_path = Path(str(prefix) + ".stderr.log")
     with stdout_path.open("w", encoding="utf-8") as stdout_file, \
             stderr_path.open("w", encoding="utf-8") as stderr_file:
-        process = subprocess.Popen(command, cwd=cwd, env=environment,
+        process = subprocess.Popen(command, cwd=cwd, env=environment, stdin=subprocess.DEVNULL,
                                    stdout=stdout_file, stderr=stderr_file,
                                    start_new_session=True)
         timed_out = False
@@ -112,7 +112,7 @@ def setup_go(workspace):
     return None
 
 
-def prompt(language, stage, guide):
+def prompt(language, stage, guide, muga_binary):
     if stage == "v1":
         intro = ("Implement minigit as described in SPEC-v1.txt. "
                  "The executable must be named minigit and runnable as ./minigit. ")
@@ -122,37 +122,34 @@ def prompt(language, stage, guide):
         details = ("Use Muga for the implementation in src/main/main.muga. "
                    "The existing minigit launcher runs that source and maps main's Int "
                    "return value (0 for success, nonzero for errors) to the process exit code. "
-                   "Keep the launcher unchanged. Use the supplied muga command to check code. ")
+                   "Keep the launcher unchanged. Use only " + str(muga_binary) +
+                   " for Muga commands; other installed muga versions may differ. ")
     else:
         details = ("Use Go. The provided Makefile builds ./minigit; keep it. ")
     reference = "Read REFERENCE.md first. " if guide else ""
-    return reference + intro + details + "Verify by running bash test-%s.sh." % stage
+    return (reference + intro + details +
+            "Inspect only this workspace; do not search "
+            "home directories, other repositories, or previous run logs. "
+            "Verify by running bash test-%s.sh." % stage)
 
 
-def claude_data(output):
+def codex_data(output):
     events = []
     for line in output.splitlines():
         try:
             events.append(json.loads(line))
         except ValueError:
             continue
-    actual_model = next((item.get("model") for item in events
-                         if isinstance(item, dict) and item.get("type") == "system"
-                         and item.get("subtype") == "init"), None)
-    data = next((item for item in reversed(events)
-                 if isinstance(item, dict) and item.get("type") == "result"), {})
-    if not data and not actual_model:
-        return None
-    usage = data.get("usage") or {}
-    return {"actual_model": actual_model,
-            "model_usage": data.get("modelUsage"),
-            "cost_usd": data.get("total_cost_usd"),
-            "duration_ms": data.get("duration_ms"),
-            "num_turns": data.get("num_turns"),
-            "usage": usage,
-            "is_error": data.get("is_error", True),
-            "api_error_status": data.get("api_error_status"),
-            "terminal_reason": data.get("terminal_reason", "missing_result_event")}
+    completed = next((item for item in reversed(events)
+                      if isinstance(item, dict) and item.get("type") == "turn.completed"), None)
+    failed = next((item for item in reversed(events)
+                   if isinstance(item, dict) and item.get("type") == "turn.failed"), None)
+    started = next((item for item in events
+                    if isinstance(item, dict) and item.get("type") == "thread.started"), None)
+    return {"thread_id": started.get("thread_id") if started else None,
+            "usage": completed.get("usage") if completed else None,
+            "completed": completed is not None,
+            "error": failed.get("error") if failed else None}
 
 
 def grade(workspace, stage, prefix, timeout):
@@ -180,9 +177,15 @@ def summary(report):
             items = [run["stages"][stage] for run in report["runs"]
                      if run["language"] == language and "tests" in run["stages"].get(stage, {})]
             times = [item["agent"]["elapsed_seconds"] for item in items]
-            costs = [item["agent"]["claude"]["cost_usd"] for item in items
-                     if item["agent"]["claude"] and
-                     item["agent"]["claude"]["cost_usd"] is not None]
+            input_tokens = [item["agent"]["codex"]["usage"]["input_tokens"] for item in items
+                            if item["agent"]["codex"]["usage"] and
+                            item["agent"]["codex"]["usage"].get("input_tokens") is not None]
+            output_tokens = [item["agent"]["codex"]["usage"]["output_tokens"] for item in items
+                             if item["agent"]["codex"]["usage"] and
+                             item["agent"]["codex"]["usage"].get("output_tokens") is not None]
+            cached_tokens = [item["agent"]["codex"]["usage"]["cached_input_tokens"] for item in items
+                             if item["agent"]["codex"]["usage"] and
+                             item["agent"]["codex"]["usage"].get("cached_input_tokens") is not None]
             successes = sum(bool(item["agent"]["completed_attempt"] and
                                  item["tests"]["all_passed"] and
                                  all(item["inputs_unchanged_after_agent"].values()) and
@@ -191,7 +194,11 @@ def summary(report):
                 "graded_attempts": len(items), "successful_attempts": successes,
                 "pass_rate": successes / len(items) if items else None,
                 "median_agent_wall_seconds": statistics.median(times) if times else None,
-                "median_cli_reported_cost_usd": statistics.median(costs) if costs else None,
+                "median_tests_passed": statistics.median(item["tests"]["passed"] for item in items)
+                                       if items else None,
+                "median_input_tokens": statistics.median(input_tokens) if input_tokens else None,
+                "median_cached_input_tokens": statistics.median(cached_tokens) if cached_tokens else None,
+                "median_output_tokens": statistics.median(output_tokens) if output_tokens else None,
             }
     return result
 
@@ -212,18 +219,18 @@ def main():
     parser.add_argument("--language", action="append", choices=("muga", "go"),
                         help="repeat to select languages (default: both)")
     parser.add_argument("--trials", type=int, default=1)
-    parser.add_argument("--model", help="Claude model ID or alias; recorded in results")
-    parser.add_argument("--max-budget-usd", type=float, default=2.0,
-                        help="Claude limit per language/stage invocation (default: 2)")
-    parser.add_argument("--agent-timeout", type=int, default=1200)
+    parser.add_argument("--model", default="gpt-6-luna", help="Codex model ID (default: gpt-6-luna)")
+    parser.add_argument("--reasoning-effort", default="high",
+                        choices=("none", "low", "medium", "high", "xhigh", "max"))
+    parser.add_argument("--agent-timeout", type=int, default=900)
     parser.add_argument("--test-timeout", type=int, default=180)
     parser.add_argument("--guide", type=Path,
                         help="optional compact Muga reference, copied as REFERENCE.md")
     parser.add_argument("--prepare-only", action="store_true",
-                        help="create workspaces and prompts without invoking Claude or tests")
+                        help="create workspaces and prompts without invoking Codex or tests")
     args = parser.parse_args()
-    if args.trials < 1 or args.agent_timeout < 1 or args.test_timeout < 1 or args.max_budget_usd <= 0:
-        parser.error("trials, timeouts, and budget must be positive")
+    if args.trials < 1 or args.agent_timeout < 1 or args.test_timeout < 1:
+        parser.error("trials and timeouts must be positive")
     languages = tuple(dict.fromkeys(args.language or ("muga", "go")))
     upstream = args.upstream_dir.resolve()
     output = args.output_dir.resolve()
@@ -239,12 +246,8 @@ def main():
     guide = args.guide.resolve() if args.guide else None
     if guide and (not guide.is_file() or "muga" not in languages):
         parser.error("--guide must be a file and requires --language muga")
-    if not args.prepare_only and not shutil.which("claude"):
-        parser.error("claude CLI is required; use --prepare-only to inspect workspaces")
-    if not args.prepare_only and subprocess.run(
-            ["claude", "auth", "status"], stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, check=False).returncode != 0:
-        parser.error("Claude Code CLI is not authenticated; run `claude auth login` first")
+    if not args.prepare_only and not shutil.which("codex"):
+        parser.error("codex CLI is required; use --prepare-only to inspect workspaces")
 
     built_muga = ROOT / "target/debug/muga"
     built_adapter = ROOT / "benchmarks/ai_authoring/adapter/target/release/muga-minigit-adapter"
@@ -272,14 +275,14 @@ def main():
         "muga_dirty_at_start": bool(version("git", "-C", str(ROOT), "status", "--porcelain")),
         "runner_sha256": sha256(Path(__file__)),
         "host": {"platform": platform.platform(), "machine": platform.machine()},
-        "toolchains": {"claude": version("claude", "--version"),
+        "toolchains": {"codex": version("codex", "--version"),
                        "muga": version(str(muga_binary), "--version") if "muga" in languages else None,
                        "go": version("go", "version") if "go" in languages else None},
         "tool_sha256": {"muga": sha256(muga_binary), "adapter": sha256(adapter_binary)}
                        if "muga" in languages else {},
         "tooling_setup_seconds": tooling_setup_seconds,
         "config": {"languages": languages, "trials": args.trials, "model": args.model,
-                   "max_budget_usd_per_stage": args.max_budget_usd,
+                   "reasoning_effort": args.reasoning_effort,
                    "agent_timeout_seconds": args.agent_timeout,
                    "test_timeout_seconds": args.test_timeout,
                    "condition_by_language": {
@@ -292,7 +295,6 @@ def main():
     result_file = output / "result.json"
     persist(report, result_file)
     environment = os.environ.copy()
-    environment.pop("CLAUDECODE", None)
     environment["PATH"] = str(muga_binary.parent) + os.pathsep + environment.get("PATH", "")
 
     for trial in range(1, args.trials + 1):
@@ -321,7 +323,8 @@ def main():
                     if language == "muga":
                         stage_launcher_hash = write_launcher(v2, adapter_binary)
                     setup_seconds = round(time.monotonic() - started, 3)
-                current_prompt = prompt(language, stage, guide is not None and language == "muga")
+                current_prompt = prompt(language, stage, guide is not None and language == "muga",
+                                        muga_binary)
                 (workspace / "PROMPT.txt").write_text(current_prompt + "\n", encoding="utf-8")
                 item = {"workspace": str(workspace), "setup_seconds": setup_seconds,
                         "prompt": current_prompt}
@@ -329,25 +332,22 @@ def main():
                 persist(report, result_file)
                 if args.prepare_only:
                     continue
-                command = ["claude", "-p", current_prompt, "--output-format", "stream-json",
-                           "--verbose", "--no-session-persistence", "--safe-mode",
-                           "--permission-mode", "auto", "--max-budget-usd", str(args.max_budget_usd)]
-                if args.model:
-                    command.extend(("--model", args.model))
+                command = ["codex", "exec", "--json", "--ephemeral", "--ignore-user-config",
+                           "--skip-git-repo-check", "--sandbox", "workspace-write",
+                           "-C", str(workspace), "--model", args.model,
+                           "-c", 'model_reasoning_effort="%s"' % args.reasoning_effort,
+                           current_prompt]
                 log("[%s/%s] agent running (timeout %ds)" % (name, stage, args.agent_timeout))
                 agent, response = run_logged(command, workspace, output / (name + "-" + stage + "-agent"),
                                              args.agent_timeout, environment)
-                agent["claude"] = claude_data(response)
+                agent["codex"] = codex_data(response)
                 agent["completed_attempt"] = (agent["exit_code"] == 0 and
                                               not agent["timed_out"] and
-                                              agent["claude"] is not None and
-                                              agent["claude"]["is_error"] is False)
+                                              agent["codex"]["completed"])
                 item["agent"] = agent
                 persist(report, result_file)
-                if agent["claude"] and agent["claude"]["terminal_reason"] == "api_error":
-                    status = agent["claude"]["api_error_status"]
-                    log("[%s/%s] provider API error (HTTP %s); stopping without scoring this stage" %
-                        (name, stage, status))
+                if agent["codex"]["error"] or (agent["exit_code"] != 0 and not agent["timed_out"]):
+                    log("[%s/%s] Codex failed; stopping without scoring this stage" % (name, stage))
                     raise SystemExit(2)
                 log("[%s/%s] agent finished in %.1fs (exit %s); running original tests" %
                     (name, stage, agent["elapsed_seconds"], agent["exit_code"]))

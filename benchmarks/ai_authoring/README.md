@@ -10,9 +10,8 @@ directories at run time; they are not maintained here.
 
 ## Prepare
 
-On macOS or Linux, install Rust/Cargo, Go, Bash, Python 3.9+, and the Claude
-Code CLI. Authenticate the CLI before starting (`claude auth login`); the
-runner checks this before launching an agent. The runner uses only Python's
+On macOS or Linux, install Rust/Cargo, Go, Bash, Python 3.9+, and the Codex
+CLI. Sign in to Codex before starting (`codex login`). The runner uses only Python's
 standard library, so uv is optional. Checkout the exact upstream revision:
 
 ```sh
@@ -36,16 +35,19 @@ language (six v1 and six v2 agent invocations) is:
 ```sh
 uv run --python 3.13 benchmarks/ai_authoring/run.py \
   --upstream-dir /tmp/muga-ai-coding-lang-bench \
-  --output-dir /tmp/muga-ai-no-reference-01 --trials 3 --model sonnet
+  --output-dir /tmp/muga-ai-luna-high-01 --trials 3
 ```
 
-`python3` can replace `uv run --python 3.13`. Each agent invocation has a
-default USD 2 API budget and 20 minute timeout; set `--max-budget-usd` and
-`--agent-timeout` explicitly for a different experiment. The runner uses
-Claude's automatic permission mode and safe mode. Run it in an isolated
-environment if agent authored shell commands require stronger containment.
-At the defaults, the three trial, two language example allows up to USD 24
-of CLI reported API cost across its 12 agent invocations.
+`python3` can replace `uv run --python 3.13`. The default agent is Codex
+`gpt-6-luna` with `high` reasoning. Each invocation has a 15 minute timeout;
+change it with `--agent-timeout`. The runner starts a fresh ephemeral Codex
+session in each trial workspace, uses workspace-write sandboxing, and ignores
+user configuration. There is no CLI dollar budget or known per-run billing
+figure; monitor account usage separately. The run has 12 agent invocations.
+Both prompts ask the agent to inspect only its trial workspace. The Muga prompt
+names the exact benchmark-built compiler path, avoiding any other installed
+`muga` version. Check the raw transcript if strict input isolation matters:
+the Codex sandbox can still read files outside the workspace.
 
 ## What is measured
 
@@ -65,18 +67,18 @@ runs, and the result records whether it stayed unchanged. The agent writes
 the mini-git behavior in Muga source. Go's Makefile builds the executable
 with the same test entry point, `./minigit`.
 
-Each stage stores the agent prompt, wall time, CLI result, cost and token usage
+Each stage stores the agent prompt, wall time, CLI result, token usage
 when reported, original test pass/fail counts, and raw agent/test stdout and
 stderr logs. `result.json` is updated after every stage so interrupted runs
 retain completed measurements. Agent stdout is JSONL and contains the tool
 transcript. Workspaces and logs remain in the chosen output directory for
-diagnosis. A run with an agent error or budget/timeout exhaustion is recorded
+diagnosis. A run with an agent error or timeout is recorded
 as such; a test result from that run is not evidence of a completed attempt.
 The report also records the upstream input hashes, runner hash, Muga and
-adapter binary hashes, requested model, and model actually reported by the CLI.
-If a timeout stops the CLI before its final result event, its cost is unknown
-in the report even though the transcript is preserved.
-Provider API errors (including a session limit) stop the run immediately and
+adapter binary hashes, requested model, and reasoning effort. Codex JSONL does
+not confirm the actual model or provide a per-run dollar cost. If a timeout
+stops the CLI before its final result event, its token usage is unknown.
+Provider or CLI errors stop the run immediately and
 are left unscored. Retry with a new output directory after service access
 returns; those errors must not be counted as language failures.
 Raw CLI transcripts can contain account and session metadata. The local
@@ -87,21 +89,21 @@ launcher, and restores the pinned test before official grading. If the test
 script exits before its summary, the report counts observed passes against
 the known 11 (v1) or 30 (v2) tests and marks the script incomplete.
 
-For a balanced comparison, use the same agent CLI and model, budget, trial
+For a balanced comparison, use the same agent CLI, model, reasoning effort, trial
 count, host, upstream commit, and time period for Muga and Go. Report per-stage
-pass rates together with median agent wall time and reported cost. A single
+pass rates together with median agent wall time, tests passed, and reported token
+usage. Cached input tokens are recorded separately. A single
 trial is a pipeline check, not an estimate of success probability. The
 upstream project used 20 runs per language; use at least that many independent
-trials for a comparable distribution. Costs and wall times may differ from
-published upstream numbers because the agent version, model, prompts, and
-provided scaffolds differ.
+trials for a comparable distribution. These Codex Luna results cannot be
+directly compared with results from a different agent or model. Wall times
+also depend on the prompts and provided scaffolds.
 
 The default condition supplies **no additional Muga language reference**
-beyond the generated scaffold. The agent still has its normal CLI and file
-access, so it may discover installed documentation or source on the host; the
-transcript records that exploration. Once the compact reference planned in
-Phase 2 exists,
-rerun the Muga arm with `--language muga --guide PATH` and a new output
+beyond the generated scaffold. The agent may use documentation surfaced by
+the pinned `muga` executable. The transcript records that exploration. Once
+the compact reference planned in Phase 2 exists, rerun the Muga arm with
+`--language muga --guide PATH` and a new output
 directory. The guide is copied as `REFERENCE.md`; its hash and condition are
 recorded. Keep the Go arm and other settings matched. Do not compare the two
 Muga conditions until that reference is fixed and versioned.
