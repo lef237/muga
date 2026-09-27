@@ -1,7 +1,8 @@
 # Runtime benchmark suite
 
 For the separate mini-git AI authoring benchmark, see
-[ai_authoring/README.md](ai_authoring/README.md).
+[ai_authoring/README.md](ai_authoring/README.md). Run that token-intensive
+benchmark only when preparing a new release.
 
 This is the Phase 0 measurement baseline for the reference VM, Go, and Rust.
 It checks the result of every invocation before recording a measurement. The

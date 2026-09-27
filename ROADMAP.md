@@ -140,7 +140,8 @@ measure its own behavior in Phase 0, not as settled conclusions.
 - **AI-authorable by evidence.** Muga has no training-data familiarity, so it
   compensates with a compact reference, diagnostics that translate habits from
   other languages into Muga, and a small standard-library surface. Design
-  choices are checked against the AI-authoring benchmark instead of intuition.
+  choices are checked against AI-authoring transcripts and release-time
+  measurements instead of intuition.
 - **A readable surface without ownership syntax.** Familiar imperative control
   flow with immutability by default, `Option` / `Result`, prefix `try`, and
   exhaustive `match`; no classes, traits, overloading, implicit conversions,
@@ -227,10 +228,10 @@ machine-readable baselines so later phases compare against them.
   supplied Muga reference. Use Codex `gpt-6-luna` with `high` reasoning; report
   pass rate, agent time, and CLI-reported token usage with the same time limit.
   The first three-trial baseline is in
-  `benchmarks/ai_authoring/results/2026-09-27-luna-high.json`; repeat with more
-  trials before estimating success rates.
-- [ ] Repeat the Muga mini-git trials with the compact reference once Phase 2
-  provides it, keeping the other benchmark settings matched.
+  `benchmarks/ai_authoring/results/2026-09-27-luna-high.json`. At a future
+  release, use more trials only if a success-rate estimate is needed.
+- [ ] At the first release that includes the compact reference, repeat the Muga
+  mini-git trials with it, keeping the other benchmark settings matched.
 - [ ] Measure the edit-check loop: `muga check`, `muga run`, and `muga test`
   latency on small and medium projects, cold and warm.
 - [ ] Add a first-class diagnostic severity model and lint pipeline. Start with
@@ -265,7 +266,9 @@ candidate, Rust generation, and ends by recording the backend choice.
 ## Phase 2: AI Authoring
 
 Phase 2 may proceed in parallel with Phase 1 where the work is independent.
-Re-run the AI-authoring benchmark after each item and record the result.
+Use the existing transcripts while developing. Run the token-intensive
+AI-authoring benchmark only once while preparing each new release, and record
+that result. Do not rerun it after individual Phase 2 items.
 
 - [ ] Add a compact, versioned language reference for AI agents and people
   (working name `muga guide`), printed by the `muga` binary so it always matches

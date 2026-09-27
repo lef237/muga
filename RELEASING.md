@@ -86,7 +86,19 @@ scripts/release-gate.sh --with-publish-dry-run
 
 This may contact crates.io. Fix any errors before tagging.
 
-### 5. Create an annotated tag
+### 5. Run the AI authoring benchmark once
+
+On the final release candidate, run the mini-git AI authoring benchmark once
+on a local host signed in to Codex. Follow
+[the benchmark instructions](./benchmarks/ai_authoring/README.md), pass the
+new version with `--for-release vX.Y.Z`, and save a shareable summary under
+`benchmarks/ai_authoring/results/` alongside the previous baseline. Keep raw
+transcripts in the Git-ignored `benchmarks/ai_authoring/runs/` directory.
+This benchmark consumes AI tokens, so do not add it to
+`scripts/release-gate.sh`, CI, or the tag-triggered release workflow. Do not
+rerun it for individual changes between releases.
+
+### 6. Create an annotated tag
 
 ```bash
 git tag -a vX.Y.Z -m "muga vX.Y.Z"
@@ -98,7 +110,7 @@ Verify the tag was created correctly:
 git tag -n | tail -5
 ```
 
-### 6. Push
+### 7. Push
 
 ```bash
 git push origin main
@@ -109,7 +121,7 @@ Pushing a `v*` tag triggers the `release.yml` GitHub Actions workflow, which
 runs `scripts/release-gate.sh --with-publish-dry-run`, publishes it to
 crates.io, and creates a GitHub Release.
 
-### 7. Verify the release
+### 8. Verify the release
 
 1. Check the Actions tab on GitHub and confirm the workflow succeeded.
 2. Confirm the new version appears on [crates.io/crates/muga](https://crates.io/crates/muga).

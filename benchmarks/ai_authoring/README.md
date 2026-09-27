@@ -8,11 +8,18 @@ matches that commit and records SHA-256 hashes of all four files. The specs
 and tests live in the upstream checkout and are copied into isolated trial
 directories at run time; they are not maintained here.
 
+Run this token-intensive benchmark **only once while preparing a new release**.
+Do not run it after individual changes, in CI, or as part of the routine
+release-quality gate. The runner requires `--for-release vX.Y.Z` before it will
+start an agent. `--prepare-only` remains available for checking setup without
+using AI tokens.
+
 ## Prepare
 
 On macOS or Linux, install Rust/Cargo, Go, Bash, Python 3.9+, and the Codex
-CLI. Sign in to Codex before starting (`codex login`). The runner uses only Python's
-standard library, so uv is optional. Checkout the exact upstream revision:
+CLI. Sign in to Codex before starting (`codex login`). The runner uses only
+Python's standard library, so uv is optional. Checkout the exact upstream
+revision:
 
 ```sh
 git clone https://github.com/mame/ai-coding-lang-bench.git /tmp/muga-ai-coding-lang-bench
@@ -29,18 +36,20 @@ uv run --python 3.13 benchmarks/ai_authoring/run.py \
   --output-dir /tmp/muga-ai-prepared --prepare-only
 ```
 
-Use a **new** output directory for each run. A full run with three trials per
-language (six v1 and six v2 agent invocations) is:
+Use a **new** output directory for each release. A release run with three trials
+per language (six v1 and six v2 agent invocations) is:
 
 ```sh
 uv run --python 3.13 benchmarks/ai_authoring/run.py \
   --upstream-dir /tmp/muga-ai-coding-lang-bench \
-  --output-dir /tmp/muga-ai-luna-high-01 --trials 3
+  --output-dir /tmp/muga-ai-luna-high-v0.6.1 --trials 3 \
+  --for-release v0.6.1
 ```
 
-`python3` can replace `uv run --python 3.13`. The default agent is Codex
-`gpt-6-luna` with `high` reasoning. Each invocation has a 15 minute timeout;
-change it with `--agent-timeout`. The runner starts a fresh ephemeral Codex
+Replace `v0.6.1` with the version being prepared. `python3` can replace
+`uv run --python 3.13`. The default agent is Codex `gpt-6-luna` with `high`
+reasoning. Each invocation has a 15 minute timeout; change it with
+`--agent-timeout`. The runner starts a fresh ephemeral Codex
 session in each trial workspace, uses workspace-write sandboxing, and ignores
 user configuration. There is no CLI dollar budget or known per-run billing
 figure; monitor account usage separately. The run has 12 agent invocations.
@@ -94,17 +103,17 @@ count, host, upstream commit, and time period for Muga and Go. Report per-stage
 pass rates together with median agent wall time, tests passed, and reported token
 usage. Cached input tokens are recorded separately. A single
 trial is a pipeline check, not an estimate of success probability. The
-upstream project used 20 runs per language; use at least that many independent
-trials for a comparable distribution. These Codex Luna results cannot be
-directly compared with results from a different agent or model. Wall times
-also depend on the prompts and provided scaffolds.
+upstream project used 20 runs per language, so the three-trial release check
+does not estimate a comparable success-rate distribution. These Codex Luna
+results cannot be directly compared with results from a different agent or
+model. Wall times also depend on the prompts and provided scaffolds.
 
 The default condition supplies **no additional Muga language reference**
 beyond the generated scaffold. The agent may use documentation surfaced by
 the pinned `muga` executable. The transcript records that exploration. Once
-the compact reference planned in Phase 2 exists, rerun the Muga arm with
-`--language muga --guide PATH` and a new output
-directory. The guide is copied as `REFERENCE.md`; its hash and condition are
+the compact reference planned in Phase 2 exists, evaluate it at the next
+release with `--language muga --guide PATH` and a new output directory. The
+guide is copied as `REFERENCE.md`; its hash and condition are
 recorded. Keep the Go arm and other settings matched. Do not compare the two
 Muga conditions until that reference is fixed and versioned.
 

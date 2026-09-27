@@ -219,6 +219,8 @@ def main():
     parser.add_argument("--language", action="append", choices=("muga", "go"),
                         help="repeat to select languages (default: both)")
     parser.add_argument("--trials", type=int, default=1)
+    parser.add_argument("--for-release", metavar="vX.Y.Z",
+                        help="release version being evaluated; required to run an agent")
     parser.add_argument("--model", default="gpt-6-luna", help="Codex model ID (default: gpt-6-luna)")
     parser.add_argument("--reasoning-effort", default="high",
                         choices=("none", "low", "medium", "high", "xhigh", "max"))
@@ -231,6 +233,10 @@ def main():
     args = parser.parse_args()
     if args.trials < 1 or args.agent_timeout < 1 or args.test_timeout < 1:
         parser.error("trials and timeouts must be positive")
+    if not args.prepare_only and not args.for_release:
+        parser.error("AI authoring runs are release-only; pass --for-release vX.Y.Z")
+    if args.for_release and not re.fullmatch(r"v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", args.for_release):
+        parser.error("--for-release must be a version such as v0.6.1 or v1.0.0-rc.1")
     languages = tuple(dict.fromkeys(args.language or ("muga", "go")))
     upstream = args.upstream_dir.resolve()
     output = args.output_dir.resolve()
@@ -282,6 +288,7 @@ def main():
                        if "muga" in languages else {},
         "tooling_setup_seconds": tooling_setup_seconds,
         "config": {"languages": languages, "trials": args.trials, "model": args.model,
+                   "for_release": args.for_release,
                    "reasoning_effort": args.reasoning_effort,
                    "agent_timeout_seconds": args.agent_timeout,
                    "test_timeout_seconds": args.test_timeout,

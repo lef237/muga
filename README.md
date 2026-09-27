@@ -181,7 +181,7 @@ Run the local release-quality gate:
 scripts/release-gate.sh
 ```
 
-Run benchmark health checks:
+Run local runtime benchmark health checks (no AI agent):
 
 ```bash
 scripts/benchmark-health-check.sh
