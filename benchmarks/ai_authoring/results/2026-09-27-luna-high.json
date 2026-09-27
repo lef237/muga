@@ -1,0 +1,409 @@
+{
+  "config": {
+    "agent_timeout_seconds": 900,
+    "condition_by_language": {
+      "go": "no_reference",
+      "muga": "no_reference"
+    },
+    "guide_sha256": null,
+    "languages": [
+      "muga",
+      "go"
+    ],
+    "model": "gpt-6-luna",
+    "prepare_only": false,
+    "reasoning_effort": "high",
+    "test_timeout_seconds": 180,
+    "trials": 3
+  },
+  "created_at_utc": "2026-09-27T07:14:55.254758+00:00",
+  "host": {
+    "machine": "arm64",
+    "platform": "macOS-27.0-arm64-arm-64bit-Mach-O"
+  },
+  "muga_commit": "3102762d4d27f712c5255d05e2ecd00c4b2ede5c",
+  "muga_dirty_at_start": false,
+  "report_type": "ai_authoring_published_summary",
+  "runner_sha256": "a03b2e7fc74f00a13236e65e8d22356790589436b0efbdd190501ae0bf0d6c02",
+  "runs": [
+    {
+      "language": "muga",
+      "stages": {
+        "v1": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 661.243,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v1.txt": true,
+            "test-v1.sh": true
+          },
+          "launcher_unchanged": true,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 11,
+          "tests_total": 11,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 2000896,
+            "input_tokens": 2095229,
+            "output_tokens": 26123,
+            "reasoning_output_tokens": 13087
+          }
+        },
+        "v2": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 385.774,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v2.txt": true,
+            "test-v2.sh": true
+          },
+          "launcher_unchanged": true,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 30,
+          "tests_total": 30,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 1369344,
+            "input_tokens": 1443460,
+            "output_tokens": 15851,
+            "reasoning_output_tokens": 4262
+          }
+        }
+      },
+      "trial": 1
+    },
+    {
+      "language": "go",
+      "stages": {
+        "v1": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 111.481,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v1.txt": true,
+            "test-v1.sh": true
+          },
+          "launcher_unchanged": null,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 11,
+          "tests_total": 11,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 178688,
+            "input_tokens": 197291,
+            "output_tokens": 4252,
+            "reasoning_output_tokens": 1041
+          }
+        },
+        "v2": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 180.221,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v2.txt": true,
+            "test-v2.sh": true
+          },
+          "launcher_unchanged": null,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 30,
+          "tests_total": 30,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 110080,
+            "input_tokens": 131249,
+            "output_tokens": 4238,
+            "reasoning_output_tokens": 1159
+          }
+        }
+      },
+      "trial": 1
+    },
+    {
+      "language": "muga",
+      "stages": {
+        "v1": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 568.359,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v1.txt": true,
+            "test-v1.sh": true
+          },
+          "launcher_unchanged": true,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 11,
+          "tests_total": 11,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 2730496,
+            "input_tokens": 2820573,
+            "output_tokens": 23173,
+            "reasoning_output_tokens": 8280
+          }
+        },
+        "v2": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 535.633,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v2.txt": true,
+            "test-v2.sh": true
+          },
+          "launcher_unchanged": true,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 30,
+          "tests_total": 30,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 1955328,
+            "input_tokens": 2080335,
+            "output_tokens": 20526,
+            "reasoning_output_tokens": 9374
+          }
+        }
+      },
+      "trial": 2
+    },
+    {
+      "language": "go",
+      "stages": {
+        "v1": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 174.413,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v1.txt": true,
+            "test-v1.sh": true
+          },
+          "launcher_unchanged": null,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 11,
+          "tests_total": 11,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 203008,
+            "input_tokens": 222836,
+            "output_tokens": 4180,
+            "reasoning_output_tokens": 872
+          }
+        },
+        "v2": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 77.16,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v2.txt": true,
+            "test-v2.sh": true
+          },
+          "launcher_unchanged": null,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 30,
+          "tests_total": 30,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 153600,
+            "input_tokens": 173438,
+            "output_tokens": 3335,
+            "reasoning_output_tokens": 242
+          }
+        }
+      },
+      "trial": 2
+    },
+    {
+      "language": "muga",
+      "stages": {
+        "v1": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 583.306,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v1.txt": true,
+            "test-v1.sh": true
+          },
+          "launcher_unchanged": true,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 11,
+          "tests_total": 11,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 1992192,
+            "input_tokens": 2070193,
+            "output_tokens": 23158,
+            "reasoning_output_tokens": 8474
+          }
+        },
+        "v2": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 199.06,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v2.txt": true,
+            "test-v2.sh": true
+          },
+          "launcher_unchanged": true,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 30,
+          "tests_total": 30,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 614912,
+            "input_tokens": 653828,
+            "output_tokens": 8301,
+            "reasoning_output_tokens": 2613
+          }
+        }
+      },
+      "trial": 3
+    },
+    {
+      "language": "go",
+      "stages": {
+        "v1": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 105.086,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v1.txt": true,
+            "test-v1.sh": true
+          },
+          "launcher_unchanged": null,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 11,
+          "tests_total": 11,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 186880,
+            "input_tokens": 204189,
+            "output_tokens": 4780,
+            "reasoning_output_tokens": 1541
+          }
+        },
+        "v2": {
+          "agent_completed_attempt": true,
+          "agent_elapsed_seconds": 105.805,
+          "agent_exit_code": 0,
+          "agent_timed_out": false,
+          "inputs_unchanged_after_agent": {
+            "SPEC-v2.txt": true,
+            "test-v2.sh": true
+          },
+          "launcher_unchanged": null,
+          "test_script_completed": true,
+          "tests_all_passed": true,
+          "tests_failed": 0,
+          "tests_passed": 30,
+          "tests_total": 30,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 183040,
+            "input_tokens": 208123,
+            "output_tokens": 4026,
+            "reasoning_output_tokens": 1062
+          }
+        }
+      },
+      "trial": 3
+    }
+  ],
+  "source_result_sha256": "62982c5d270e66603f17c6e07d55eadcdfe7c6cd31bce620ea101427eaa50bf0",
+  "summary": {
+    "go": {
+      "v1": {
+        "graded_attempts": 3,
+        "median_agent_wall_seconds": 111.481,
+        "median_cached_input_tokens": 186880,
+        "median_input_tokens": 204189,
+        "median_output_tokens": 4252,
+        "median_tests_passed": 11,
+        "pass_rate": 1.0,
+        "successful_attempts": 3
+      },
+      "v2": {
+        "graded_attempts": 3,
+        "median_agent_wall_seconds": 105.805,
+        "median_cached_input_tokens": 153600,
+        "median_input_tokens": 173438,
+        "median_output_tokens": 4026,
+        "median_tests_passed": 30,
+        "pass_rate": 1.0,
+        "successful_attempts": 3
+      }
+    },
+    "muga": {
+      "v1": {
+        "graded_attempts": 3,
+        "median_agent_wall_seconds": 583.306,
+        "median_cached_input_tokens": 2000896,
+        "median_input_tokens": 2095229,
+        "median_output_tokens": 23173,
+        "median_tests_passed": 11,
+        "pass_rate": 1.0,
+        "successful_attempts": 3
+      },
+      "v2": {
+        "graded_attempts": 3,
+        "median_agent_wall_seconds": 385.774,
+        "median_cached_input_tokens": 1369344,
+        "median_input_tokens": 1443460,
+        "median_output_tokens": 15851,
+        "median_tests_passed": 30,
+        "pass_rate": 1.0,
+        "successful_attempts": 3
+      }
+    }
+  },
+  "tool_sha256": {
+    "adapter": "dda20f2ad461de5768d1a5f0e1a9ab7afdb702e6611cee4bd499b54a919752db",
+    "muga": "05a00f1144351aae51e2edbceb9eed8eb6b8ab3027856dd305703e19754981d9"
+  },
+  "toolchains": {
+    "codex": "codex-cli 0.155.1",
+    "go": "go version go1.27.1 darwin/arm64",
+    "muga": "muga 0.6.0"
+  },
+  "tooling_setup_seconds": 0.15,
+  "upstream": {
+    "commit": "7f6ffdc8c61a3ec7b7f2a64301a6f47d1eaceeb5",
+    "files_sha256": {
+      "SPEC-v1.txt": "cee6af8fee3f80717809369f090c8e7915a063876d681c5316ae152233145061",
+      "SPEC-v2.txt": "519064772d1c08c28885d4e4441481c8a741c64059128018f3538996eda8bf81",
+      "test-v1.sh": "b7ae57d6ecfb30480f0d63a093b17069eead1dd3782ad38b18cf7d3a110f10e6",
+      "test-v2.sh": "f106bf7cd1686527af5ae87278b650c3eac659a7ce2e889f042a8abf7997824c"
+    },
+    "repository": "https://github.com/mame/ai-coding-lang-bench"
+  }
+}

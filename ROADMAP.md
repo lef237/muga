@@ -8,9 +8,9 @@ Muga samples.
 ## Resume Cursor
 
 - [ ] **NOW:** continue "Phase 0: Measurement Baseline". The runtime benchmark
-  suite with Go and Rust baselines is in `benchmarks/`. Run the mini-git
-  AI-authoring baseline with Codex Luna high, then measure edit-check loop
-  latency and add the diagnostic severity model. Diagnostics remain error-only
+  suite with Go and Rust baselines and the mini-git AI-authoring baseline are
+  in `benchmarks/`. Measure edit-check loop latency, then add the diagnostic
+  severity model. Diagnostics remain error-only
   (`severity: "error"` is fixed in `src/diagnostic.rs`).
 - [ ] **NEXT:** "Phase 1: Native Backend Feasibility".
 - [ ] **NEXT:** decide a `0.6.1` release independently of the phase work,
@@ -223,11 +223,12 @@ machine-readable baselines so later phases compare against them.
   specification and tests from mame/ai-coding-lang-bench. Start from a `muga
   new` scaffold, time setup separately, run Go through the same harness, and
   retain per-trial transcripts for Phase 2 diagnosis.
-- [ ] Establish a multi-trial mini-git baseline for Muga and Go without a
+- [x] Establish a multi-trial mini-git baseline for Muga and Go without a
   supplied Muga reference. Use Codex `gpt-6-luna` with `high` reasoning; report
   pass rate, agent time, and CLI-reported token usage with the same time limit.
-  Use enough trials to estimate success rates rather than treating the single
-  pipeline pilot as a probability estimate.
+  The first three-trial baseline is in
+  `benchmarks/ai_authoring/results/2026-09-27-luna-high.json`; repeat with more
+  trials before estimating success rates.
 - [ ] Repeat the Muga mini-git trials with the compact reference once Phase 2
   provides it, keeping the other benchmark settings matched.
 - [ ] Measure the edit-check loop: `muga check`, `muga run`, and `muga test`

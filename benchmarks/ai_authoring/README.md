@@ -107,3 +107,30 @@ the compact reference planned in Phase 2 exists, rerun the Muga arm with
 directory. The guide is copied as `REFERENCE.md`; its hash and condition are
 recorded. Keep the Go arm and other settings matched. Do not compare the two
 Muga conditions until that reference is fixed and versioned.
+
+## Recorded Luna high baseline
+
+The [2026-09-27 result](results/2026-09-27-luna-high.json) uses Codex CLI
+0.155.1, `gpt-6-luna`, `high` reasoning, a 15 minute limit per stage, and
+three fresh trials per language on macOS arm64. The repository was clean at
+commit `3102762d4d27f712c5255d05e2ecd00c4b2ede5c`. All supplied inputs and
+the Muga launcher remained unchanged.
+
+| Language | Stage | Complete passes | Median agent time | Median input tokens (cached) | Median output tokens |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Muga | v1 | 3/3 (11/11 tests) | 583.3 s | 2,095,229 (2,000,896) | 23,173 |
+| Go | v1 | 3/3 (11/11 tests) | 111.5 s | 204,189 (186,880) | 4,252 |
+| Muga | v2 | 3/3 (30/30 tests) | 385.8 s | 1,443,460 (1,369,344) | 15,851 |
+| Go | v2 | 3/3 (30/30 tests) | 105.8 s | 173,438 (153,600) | 4,026 |
+
+Muga succeeded in all six stages, but its median agent time was 5.23 times
+Go's for v1 and 3.65 times Go's for v2. The large cached share means logical
+input tokens are not equivalent to newly processed tokens or a billed cost.
+Codex CLI did not provide a per-stage dollar amount. Three trials are enough
+for a first baseline, not a precise success-rate estimate. Keep the model,
+reasoning effort, prompt, and timeout fixed when comparing future changes.
+
+The complete workspaces and JSONL transcripts are retained locally in the
+Git-ignored `benchmarks/ai_authoring/runs/luna-high-2026-09-27/` directory,
+excluding rebuildable binaries and Go build caches. Review these logs before
+sharing them because they may include session metadata.
