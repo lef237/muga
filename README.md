@@ -22,10 +22,11 @@ runs on a reference VM; a native backend for release builds is planned, and no
 performance claims are made until benchmarks back them (see
 [ROADMAP.md](./ROADMAP.md)).
 
-- **Small surface, one spelling per operation.** No classes, inheritance,
-  traits, or overloading. Records hold data, ordinary functions define
-  behavior, and dot calls are just function calls — so any line of code can
-  be read locally, without hunting for hidden dispatch.
+- **Function calls and method chains, one meaning.** Write `f(value, arg)`
+  or `value.f(arg)` using the same ordinary function. Records hold data,
+  functions define behavior, and dot calls are just function calls. No
+  classes, inheritance, traits, or overloading — so any line of code can be
+  read locally, without hunting for hidden dispatch.
 - **Safe defaults with little ceremony.** Bindings are immutable unless
   marked `mut`, shadowing is rejected, and local type inference keeps
   annotations to where they actually help.
@@ -87,6 +88,9 @@ muga new --list-templates
 
 ## A Small Program
 
+Muga supports both function-call style and method-chain style. Here is a
+small program using ordinary function calls:
+
 ```muga
 fn sum_to(n: Int) {
   mut i = 0
@@ -105,7 +109,24 @@ fn main(): Int {
 }
 ```
 
-Run it with:
+Using the same `sum_to` function, you can write `main` as a method chain:
+
+```muga
+fn main(): Int {
+  5.sum_to().println()
+}
+```
+
+Both versions print `10`. A chained call passes the value on its left as the
+function's first argument: `value.f(arg)` means `f(value, arg)`. You can
+chain your own functions just like built-in functions, with no separate
+method declarations.
+
+Both call styles are accepted by `muga check` and `muga run`. The
+[canonical style](./STYLE.md) prefers chained calls for named functions with
+value arguments, and `muga lint --fix` can rewrite eligible ordinary calls.
+
+Run the method-chain version from the samples:
 
 ```bash
 muga run samples/println_sum.muga
