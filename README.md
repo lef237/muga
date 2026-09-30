@@ -109,7 +109,7 @@ fn main(): Int {
 }
 ```
 
-Using the same `sum_to` function, you can write `main` as a method chain:
+The same function calls can also be written as a method chain:
 
 ```muga
 fn main(): Int {
