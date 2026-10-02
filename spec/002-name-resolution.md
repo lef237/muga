@@ -262,9 +262,9 @@ coutn = count + 1
 ```
 
 If `coutn` is not otherwise defined, the resolver accepts it as a new immutable
-binding. An ordinary unused-binding warning can catch the common case where the
-mistyped name is never read. A specialized similar-name warning should be added
+binding. The `W002` unused-binding lint reported by `muga lint` catches the
+common case where the mistyped name is never read. A specialized similar-name warning should be added
 only if real programs show recurring mistakes that escape unused warnings, and
 then should be limited to plain introductions close to an earlier mutable
 binding in the same function without changing name-resolution semantics. See
-the planned warning contract in [errors.md](../errors.md#planned-warning-and-lint-contract).
+the warning contract in [errors.md](../errors.md#warning-and-lint-contract).

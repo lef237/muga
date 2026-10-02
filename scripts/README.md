@@ -16,8 +16,9 @@ checks.
   representative warm/cold workloads, repeated latency and allocation/memory
   measurements, and machine-readable cross-release comparison output.
 - `scripts/clippy-check.sh`: clippy policy wrapper used by the release gate.
-- `scripts/lint-muga-sources.sh`: checks canonical Muga call style across valid
-  samples, projects, packages, and conformance fixtures.
+- `scripts/lint-muga-sources.sh`: runs `muga lint --deny-warnings` across valid
+  samples, projects, packages, conformance fixtures, and benchmark programs, so
+  they stay free of style lints and warnings.
 
 ## Privacy Guard
 

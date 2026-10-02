@@ -8,8 +8,8 @@ fn main(): Result[String, io::IOError] {
   root = "samples/packages/app/std_fs_remove_dir_all/generated".path::from_string()
   nested = root.path::join("nested")
   payload = nested.path::join("payload.txt")
-  created = try nested.fs::create_dir_all_path()
-  written = try payload.fs::write_text_path("payload")
-  removed = try root.fs::remove_dir_all_path()
+  _ = try nested.fs::create_dir_all_path()
+  _ = try payload.fs::write_text_path("payload")
+  _ = try root.fs::remove_dir_all_path()
   Result::Ok(root.fs::exists_path().to_string())
 }

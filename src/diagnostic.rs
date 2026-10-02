@@ -10,11 +10,32 @@ pub const JSON_SCHEMA_VERSION: u32 = 1;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
     pub code: DiagnosticCode,
+    pub severity: Severity,
     pub message: String,
     pub span: Span,
     pub related: DiagnosticList<RelatedNote>,
     pub suggestions: DiagnosticList<DiagnosticSuggestion>,
     pub context: DiagnosticList<DiagnosticContext>,
+}
+
+/// Whether a diagnostic rejects the program or only reports feedback.
+///
+/// Every compiler diagnostic is an error. Lints start as warnings and become
+/// errors when their configured level is `deny`.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum Severity {
+    #[default]
+    Error,
+    Warning,
+}
+
+impl Severity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warning => "warning",
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -64,18 +85,21 @@ impl fmt::Display for DiagnosticCode {
     }
 }
 
+/// A list attached to a diagnostic. Most diagnostics carry none, so an empty
+/// list stays one pointer wide to keep `Diagnostic` small in `Result` errors.
+// The boxed `Vec` is deliberate: it keeps the list one pointer wide, which a
+// boxed slice or a bare `Vec` would not.
+#[allow(clippy::box_collection)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DiagnosticList<T>(Box<[T]>);
+pub struct DiagnosticList<T>(Option<Box<Vec<T>>>);
 
 impl<T> DiagnosticList<T> {
     pub fn new() -> Self {
-        Self(Vec::new().into_boxed_slice())
+        Self(None)
     }
 
     pub fn push(&mut self, item: T) {
-        let mut items = std::mem::take(&mut self.0).into_vec();
-        items.push(item);
-        self.0 = items.into_boxed_slice();
+        self.0.get_or_insert_with(Box::default).push(item);
     }
 
     pub fn iter(&self) -> std::slice::Iter<'_, T> {
@@ -83,7 +107,7 @@ impl<T> DiagnosticList<T> {
     }
 
     pub fn as_slice(&self) -> &[T] {
-        &self.0
+        self.0.as_deref().map_or(&[], Vec::as_slice)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -243,12 +267,22 @@ impl Diagnostic {
     pub fn new(code: &'static str, message: impl Into<String>, span: Span) -> Self {
         Self {
             code: DiagnosticCode(code),
+            severity: Severity::Error,
             message: message.into(),
             span,
             related: DiagnosticList::new(),
             suggestions: DiagnosticList::new(),
             context: DiagnosticList::new(),
         }
+    }
+
+    pub fn with_severity(mut self, severity: Severity) -> Self {
+        self.severity = severity;
+        self
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.severity == Severity::Error
     }
 
     pub fn with_related(mut self, message: impl Into<String>, span: Span) -> Self {
@@ -300,7 +334,8 @@ impl Diagnostic {
         output.push('{');
         output.push_str("\"code\":");
         push_json_string(&mut output, self.code.as_str());
-        output.push_str(",\"severity\":\"error\"");
+        output.push_str(",\"severity\":");
+        push_json_string(&mut output, self.severity.as_str());
         output.push_str(",\"message\":");
         push_json_string(&mut output, &self.message);
         output.push_str(",\"span\":");
@@ -564,9 +599,13 @@ impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}:{}: {} {}",
-            self.span.start.line, self.span.start.column, self.code, self.message
+            "{}:{}: {} ",
+            self.span.start.line, self.span.start.column, self.code
         )?;
+        if self.severity == Severity::Warning {
+            f.write_str("warning: ")?;
+        }
+        f.write_str(&self.message)?;
         for note in &self.related {
             write!(
                 f,
@@ -576,6 +615,11 @@ impl fmt::Display for Diagnostic {
         }
         for suggestion in &self.suggestions {
             match (suggestion.span, suggestion.replacement.as_ref()) {
+                (Some(span), Some(replacement)) if replacement.is_empty() => write!(
+                    f,
+                    "\n  help: {}:{}: {}",
+                    span.start.line, span.start.column, suggestion.message
+                )?,
                 (Some(span), Some(replacement)) => write!(
                     f,
                     "\n  help: {}:{}: {}; replace with `{}`",

@@ -10,6 +10,6 @@ fn compute(): Result[Int, String] {
 fn main(): Int {
   match compute() {
     Result::Ok(value) => value
-    Result::Err(message) => 0
+    Result::Err(_) => 0
   }
 }

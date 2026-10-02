@@ -7,7 +7,7 @@ fn main(): String {
   source = "samples/packages/app/std_fs_copy_file/missing.txt".path::from_string()
   target = "samples/packages/app/std_fs_copy_file/copied.txt".path::from_string()
   match source.fs::copy_file_path(target) {
-    Result::Ok(value) => "copied"
+    Result::Ok(_) => "copied"
     Result::Err(error) => error.operation
   }
 }

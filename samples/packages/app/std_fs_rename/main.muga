@@ -7,7 +7,7 @@ fn main(): String {
   source = "samples/packages/app/std_fs_rename/missing.txt".path::from_string()
   target = "samples/packages/app/std_fs_rename/renamed.txt".path::from_string()
   match source.fs::rename_path(target) {
-    Result::Ok(value) => "renamed"
+    Result::Ok(_) => "renamed"
     Result::Err(error) => error.operation
   }
 }

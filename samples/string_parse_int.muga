@@ -7,6 +7,6 @@ fn parse_pair(): Result[Int, String] {
 fn main(): Int {
   match parse_pair() {
     Result::Ok(value) => value
-    Result::Err(message) => 0
+    Result::Err(_) => 0
   }
 }

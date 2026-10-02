@@ -16,6 +16,6 @@ fn main(): Int {
   }
   match result {
     Result::Ok(value) => value
-    Result::Err(message) => 0
+    Result::Err(_) => 0
   }
 }

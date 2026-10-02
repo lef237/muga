@@ -114,7 +114,7 @@ fn settings_args(args: List[String]): List[String] {
 }
 
 fn emit_usage(usage: String): Result[String, String] {
-  printed = usage.println()
+  _ = usage.println()
   Result::Ok(usage)
 }
 
@@ -152,7 +152,7 @@ fn run_config(args: List[String]): Result[String, String] {
   configured = try config_path.config::load_json_or(default_settings()).result::map_err(config_error_message)
   settings = try args.settings_args().cli::parse_or(configured).result::map_err(cli_error_message)
   rendered = settings.render_settings()
-  printed = ["config ", rendered].string::concat_all().println()
+  _ = ["config ", rendered].string::concat_all().println()
   Result::Ok(rendered)
 }
 

@@ -2,6 +2,6 @@ import my_service::users
 
 fn main(): Int {
   user = users::User { name: "Ada", age: 20 }
-  printed = user.users::display_name().println()
+  _ = user.users::display_name().println()
   user.users::next_age()
 }

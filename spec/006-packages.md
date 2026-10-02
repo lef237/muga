@@ -1019,9 +1019,9 @@ not silently reinterpret or downgrade metadata resolved by a newer one; the
 diagnostic tells the user to upgrade muga or deliberately delete `muga.lock`
 and rebuild. A lockfile recorded by the same or an older compiler is
 accepted, and the next successful `muga build` refreshes it to the running
-compiler's version. Warning-level reporting for accepted-but-different
-recorded versions is deferred until diagnostics gain a warning severity;
-today the policy is binary accept-or-reject.
+compiler's version. Diagnostics now carry a warning severity, but
+warning-level reporting for accepted-but-different recorded versions is not
+implemented yet; today the policy is binary accept-or-reject.
 
 The lockfile records, for every direct and transitive dependency:
 

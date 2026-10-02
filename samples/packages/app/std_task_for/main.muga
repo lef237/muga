@@ -1,6 +1,5 @@
 package app::std_task_for
 
-import std::task
 import std::list
 
 fn announce(label: String): String {
@@ -13,7 +12,7 @@ fn main(): Int {
     for label in labels {
       spawn label.announce()
     }
-    labels.list::fold(0, fn(total, label) {
+    labels.list::fold(0, fn(total, _label) {
       total + 1
     })
   }

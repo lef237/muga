@@ -10,8 +10,8 @@ fn main(): Result[String, io::IOError] {
   data = try "samples/packages/app/std_hash/payload.bin".fs::read_bytes()
   tmp_dir = try env::temp_dir()
   target = tmp_dir.path::join("muga-std-fs-write-bytes-sample.bin")
-  done = try target.fs::write_bytes_path(data)
+  _ = try target.fs::write_bytes_path(data)
   written = try target.fs::read_bytes_path()
-  removed = try target.fs::remove_file_path()
+  _ = try target.fs::remove_file_path()
   Result::Ok(written.bytes::size().to_string())
 }

@@ -33,9 +33,9 @@ fn main(): Result[String, io::IOError] {
   data = try "resource_export".fs::read_resource_bytes("static/payload.bin")
   digest = data.hash::sha256_hex()
   target = try export_path()
-  wrote = try target.fs::write_bytes_path(data)
+  _ = try target.fs::write_bytes_path(data)
   metadata = try target.fs::path_metadata_path()
   written = try target.fs::read_bytes_path()
-  removed = try target.fs::remove_file_path()
+  _ = try target.fs::remove_file_path()
   Result::Ok(written.bytes::size().render_result(metadata, digest))
 }

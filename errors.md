@@ -19,6 +19,7 @@ Current code families:
 |---|---|
 | `L` | lexing |
 | `S` | style linting and lint fixes |
+| `W` | warning lints for likely mistakes |
 | `P` | parsing |
 | `N` | unresolved names |
 | `E` | core resolver/typechecker errors from the original catalog |
@@ -29,18 +30,50 @@ Current code families:
 
 When adding a new public diagnostic code or changing the trigger for an existing code, update this catalog and add or adjust a focused test.
 
-### Planned Warning And Lint Contract
+### Warning And Lint Contract
 
-The current diagnostic model emits errors only; machine-readable output uses
-`severity: "error"` for every diagnostic. Diagnostics should gain a
-first-class severity and lint policy rather than encoding warnings as prose or
-one-off command behavior.
+Every diagnostic has a severity, `error` or `warning`, reported as `severity`
+in machine-readable output. Compiler diagnostics are always errors. Lints are
+reported only by `muga lint`, which runs them after the program checks without
+errors; `check`, `run`, `test`, and `build` never report or fail on lints.
 
-The first warning candidates are:
+Each lint has a stable code and a default level:
 
-- unused imports, local bindings, and parameters
-- unreachable statements or expressions
-- a `Result` value is discarded where failure is likely to be accidental
+| Code | Name | Default |
+|---|---|---|
+| `S001` | `chained-call-style` | `deny` |
+| `S003` | `enum-constructor-call-style` | `deny` |
+| `W001` | `unused-import` | `warn` |
+| `W002` | `unused-binding` | `warn` |
+| `W003` | `unused-parameter` | `warn` |
+| `W004` | `unreachable-code` | `warn` |
+| `W005` | `discarded-result` | `warn` |
+
+Levels:
+
+- `allow` drops the lint.
+- `warn` reports it with `severity: "warning"`; warnings do not fail
+  `muga lint`.
+- `deny` reports it with `severity: "error"` and makes `muga lint` exit with
+  status `1`.
+
+`muga lint` accepts `--allow <codes>`, `--warn <codes>`, and `--deny <codes>`
+with comma-separated lint codes. Options may repeat; a later option for the
+same code wins. `--deny-warnings` is the CI mode: it reports every lint whose
+level is still `warn` as an error. Unknown codes and non-lint codes such as
+`E001` are command-line errors. Text output prints each diagnostic to stderr,
+with `warning:` before the message of a warning, and prints `ok` to stdout when
+the command succeeds. `muga lint --format json` prints the standard command
+envelope with `"command":"lint"` and `status` `ok` or `error`; lint
+diagnostics found in package modules carry a `source` context with role
+`module` naming their file.
+
+`// muga-lint: allow-next-line <codes>` suppresses the listed codes for
+diagnostics that start on the next physical line. Text after `--` is a reason
+and is ignored. There is no file-wide or manifest configuration yet.
+
+Names that start with `_` are intentionally unused and never reported by
+`W002` or `W003`; `_ = expr` and the `_` match payload create no binding.
 
 A similar-name lint is not a baseline requirement. First use the ordinary
 unused warnings and real-program evidence to determine whether misspelled
@@ -49,12 +82,6 @@ for a plain `name = value` introduction that differs by a small edit from an
 earlier mutable binding in the same function. It should not compare every
 identifier in scope, and it must remain configurable because intentional pairs
 such as `user` / `users` or `item` / `items` are common.
-
-The lint design must define stable lint identifiers, default levels,
-allow/warn/deny configuration, a command-line `--deny-warnings`-style CI mode,
-suppression scope, and JSON severity. Warnings must not change whether a program
-is accepted unless their configured level is `deny`. The exact configuration
-syntax is not yet committed.
 
 The machine-readable diagnostic schema and CLI output envelope are defined by
 the CLI `--format json` implementations and pinned by Rust tests. Tools should
@@ -490,3 +517,36 @@ path, permissions, and available storage, then run the command again.
 An enum constructor was written as a chained call. Move the receiver into the
 constructor argument list. Enum construction is the canonical exception to
 the named-function chained-call rule.
+
+# Warning lint diagnostics
+
+## W001: unused import
+
+An `import` is never used through its `alias::` qualifier in the importing
+file. Remove the import. The suggestion's replacement deletes the declaration.
+
+## W002: unused binding
+
+A local binding, `for` item, or match payload binding is never read. This
+includes a misspelled update such as `coutn = count + 1`, which introduces a
+new binding instead of updating `count`. Fix the name, remove the binding, or
+replace the name with `_` (or start it with `_`) when the value is
+intentionally unused. Updates do not count as reads. Bindings introduced by
+`using` are exempt because their cleanup uses them.
+
+## W003: unused parameter
+
+A function or anonymous-function parameter is never read in the body. Remove
+it, or start its name with `_` when a signature requires it.
+
+## W004: unreachable code
+
+Statements or a final expression follow a `return`, `break`, or `continue` in
+the same block and can never run. Remove them or move them before the exit. A
+related note points at the exit.
+
+## W005: discarded result
+
+An expression statement produces a `Result` and drops it, so an error would be
+ignored silently. Handle it with `match`, propagate the error with
+`_ = try expr`, or discard it explicitly with `_ = expr`.

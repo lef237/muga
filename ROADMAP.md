@@ -7,18 +7,13 @@ Muga samples.
 
 ## Resume Cursor
 
-- [ ] **NOW:** finish "Phase 0: Measurement Baseline" by implementing the
-  diagnostic severity model and lint pipeline. Runtime, mini-git AI-authoring,
-  and edit-check latency baselines are recorded in `benchmarks/`; no further
-  baseline run is required before implementation. The existing `muga lint`
-  covers only the `S001` style rule, and diagnostic JSON still fixes
-  `severity: "error"` in `src/diagnostic.rs`. Define allow/warn/deny behavior
-  for CLI and JSON output, then add the Phase 0 warning rules. Defer the
-  compact-guide AI remeasurement until its qualifying milestone release.
-- [ ] **NEXT:** "Phase 1: Native Backend Feasibility".
+- [ ] **NOW:** start "Phase 1: Native Backend Feasibility" by choosing the
+  emission input. Phase 0 is complete except the compact-guide AI
+  remeasurement, which waits for its qualifying milestone release.
 - [ ] **NEXT:** decide a `0.6.1` release independently of the phase work,
   following `RELEASING.md`. `v0.6.0` is the last published release; the
-  compatibility work, the lint slice, and the formatter change are unreleased.
+  compatibility work, the lint pipeline and warning lints, and the formatter
+  change are unreleased.
 
 ## Current State
 
@@ -49,7 +44,9 @@ Muga currently has:
   `std::result`, `std::json`, `std::config`, `std::task`, and `std::test`
 - [x] diagnostic JSON context for source, package, artifact-root, concrete
   artifacts, hashes, and regeneration commands where available
-- [x] `muga lint` with the `S001` chained-call style lint, `--fix`, and
+- [x] diagnostic severities and `muga lint` with the `S001` / `S003` style
+  lints, `W001`-`W005` warning lints, allow/warn/deny levels,
+  `--deny-warnings`, JSON output, `--fix`, and
   `// muga-lint: allow-next-line <codes>` suppressions
 - [x] strict `muga.toml` validation, a required `[package] language_revision`,
   `muga.lock` `muga_version` enforcement, and crash-safe compiler-owned writes
@@ -241,13 +238,10 @@ machine-readable baselines so later phases compare against them.
   project copies and repeated use of the same path, with a fresh CLI process
   for every sample; the OS file cache is not purged. See
   `benchmarks/edit_check/README.md`.
-- [ ] Add a first-class diagnostic severity model and lint pipeline. Start with
-  unused imports, bindings, and parameters, unreachable code, and discarded
-  `Result` values; define command-line and machine-readable allow/warn/deny
-  behavior before stabilizing it. Warnings are feedback that AI agents act on,
-  and finished items wait on this model: the `errors.md` lint contract,
-  `muga.lock` `muga_version` warnings for accepted-but-different versions, and
-  the typo-created-binding decision in Phase 2.
+- [x] Add a first-class diagnostic severity model and lint pipeline: unused
+  imports, bindings, and parameters, unreachable code, and discarded `Result`
+  values (`W001`-`W005`), with command-line and JSON allow/warn/deny behavior.
+  The contract is in `errors.md`.
 
 ## Phase 1: Native Backend Feasibility
 
@@ -301,6 +295,10 @@ result. Skip routine releases and individual Phase 2 items.
     interface/cache/artifact emission under one clearly advanced namespace or
     mark it unstable instead of stabilizing several overlapping top-level
     commands.
+- [ ] Decide whether `muga check` should also report lint warnings, so agents
+  see them in the edit-check loop without a separate `muga lint` run. Measure
+  the latency cost against the edit-check baseline first, and keep warnings
+  from changing exit status unless denied.
 - [ ] Decide the `x = e` binding/update rule with evidence. After ordinary
   unused warnings exist, test typo-created bindings in real programs and in
   AI-authoring benchmark transcripts. Add a narrowly scoped similar-name warning
@@ -379,6 +377,9 @@ runnable with bounded authority.
 - [ ] Version the `muga.toml` schema, narrow `PK014` spans to the offending key
   or value, and record `language_revision` in artifacts and `muga.lock` as
   semantic interpretation metadata.
+- [ ] Report a `muga.lock` recorded `muga_version` that is accepted but
+  different from the running compiler as a warning instead of silently
+  refreshing it.
 - [ ] Sweep temporary files abandoned by a killed process once they can be
   told apart from a concurrent build's.
 - [ ] Harden install inventory UX and diagnostics around app bundle ownership,

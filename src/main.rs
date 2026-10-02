@@ -722,20 +722,12 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Mode::Lint => match if cli.lint_fix {
-            muga::fix_lint_path(Path::new(&cli.path)).map(Some)
-        } else {
-            muga::lint_path(Path::new(&cli.path)).map(|()| None)
-        } {
+        Mode::Lint if cli.lint_fix => match muga::fix_lint_path(Path::new(&cli.path)) {
             Ok(outcome) => {
-                if let Some(outcome) = outcome {
-                    for path in &outcome.changed_files {
-                        println!("fixed\t{}", path.display());
-                    }
-                    println!("fixed {} call(s)", outcome.fixed_calls);
-                } else {
-                    println!("ok");
+                for path in &outcome.changed_files {
+                    println!("fixed\t{}", path.display());
                 }
+                println!("fixed {} call(s)", outcome.fixed_calls);
                 ExitCode::SUCCESS
             }
             Err(diagnostics) => {
@@ -745,6 +737,44 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Mode::Lint => {
+            let (diagnostics, failed) =
+                match muga::lint_path(Path::new(&cli.path), &cli.lint_config) {
+                    Ok(diagnostics) => {
+                        let failed = diagnostics
+                            .iter()
+                            .any(muga::diagnostic::Diagnostic::is_error);
+                        (diagnostics, failed)
+                    }
+                    Err(diagnostics) => (diagnostics, true),
+                };
+            match cli.output_format {
+                OutputFormat::Text => {
+                    for diagnostic in &diagnostics {
+                        eprintln!("{diagnostic}");
+                    }
+                    if !failed {
+                        println!("ok");
+                    }
+                }
+                OutputFormat::Json => {
+                    println!(
+                        "{}",
+                        command_diagnostic_json_output(
+                            Path::new(&cli.path),
+                            "lint",
+                            if failed { "error" } else { "ok" },
+                            &diagnostics
+                        )
+                    );
+                }
+            }
+            if failed {
+                ExitCode::from(1)
+            } else {
+                ExitCode::SUCCESS
+            }
+        }
         Mode::Metadata => match muga::check_package_aware_path(Path::new(&cli.path)) {
             Ok(check) => {
                 println!("{}", metadata_json_output(Path::new(&cli.path), &check));
@@ -1535,6 +1565,8 @@ struct Cli {
     output_format: OutputFormat,
     format_check: bool,
     lint_fix: bool,
+    lint_config: muga::lint::LintConfig,
+    lint_config_was_set: bool,
     source_free_app_bundle: bool,
     replace_owned_install: bool,
     new_template: muga::ProjectTemplate,
@@ -1598,6 +1630,8 @@ impl Cli {
             output_format: OutputFormat::Text,
             format_check: false,
             lint_fix: false,
+            lint_config: muga::lint::LintConfig::default(),
+            lint_config_was_set: false,
             source_free_app_bundle: false,
             replace_owned_install: false,
             new_template: muga::ProjectTemplate::App,
@@ -1746,6 +1780,8 @@ impl Cli {
         let mut output_format_was_set = false;
         let mut format_check = false;
         let mut lint_fix = false;
+        let mut lint_config = muga::lint::LintConfig::default();
+        let mut lint_config_was_set = false;
         let mut source_free_app_bundle = false;
         let mut replace_owned_install = false;
         let mut new_template = muga::ProjectTemplate::App;
@@ -1909,6 +1945,35 @@ impl Cli {
                     return Err("--fix was provided more than once".to_string());
                 }
                 lint_fix = true;
+            } else if let Some((flag, level)) = lint_level_flag(arg) {
+                let codes = if let Some(codes) = arg.strip_prefix(&format!("{flag}=")) {
+                    codes
+                } else {
+                    index += 1;
+                    let Some(codes) = args.get(index) else {
+                        return Err(format!("missing value for {flag}"));
+                    };
+                    codes.as_str()
+                };
+                let mut any_code = false;
+                for code in codes
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|code| !code.is_empty())
+                {
+                    lint_config.set_level(code, level)?;
+                    any_code = true;
+                }
+                if !any_code {
+                    return Err(format!("missing value for {flag}"));
+                }
+                lint_config_was_set = true;
+            } else if arg == "--deny-warnings" {
+                if lint_config.deny_warnings {
+                    return Err("--deny-warnings was provided more than once".to_string());
+                }
+                lint_config.deny_warnings = true;
+                lint_config_was_set = true;
             } else if arg == "--source-free" {
                 if source_free_app_bundle {
                     return Err("--source-free was provided more than once".to_string());
@@ -2197,6 +2262,7 @@ impl Cli {
                 Mode::Doctor
                     | Mode::Syntax
                     | Mode::Check
+                    | Mode::Lint
                     | Mode::Run
                     | Mode::RunAppBundle
                     | Mode::Test
@@ -2230,7 +2296,7 @@ impl Cli {
             )
         {
             return Err(
-                "--format json is currently supported only with `doctor`, `syntax`, `check`, `run`, `run-app-bundle`, `test`, `cli-completions`, `emit-cli-completions`, `emit-app-completions`, `metadata`, `schema`, `workspace`, `why-rebuild`, `api-diff`, `emit-app-bundle`, `install-app`, `uninstall-app`, `emit-package-archive`, `emit-app-archive`, `verify-app-archive`, `verify-package-archive`, `unpack-app-archive`, `unpack-package-archive`, `list-installed-apps`, `completions`, `definition`, `references`, `hover`, `emit-interface`, `emit-check-cache`, `emit-artifacts`, `build`, or `new --list-templates`"
+                "--format json is currently supported only with `doctor`, `syntax`, `check`, `lint`, `run`, `run-app-bundle`, `test`, `cli-completions`, `emit-cli-completions`, `emit-app-completions`, `metadata`, `schema`, `workspace`, `why-rebuild`, `api-diff`, `emit-app-bundle`, `install-app`, `uninstall-app`, `emit-package-archive`, `emit-app-archive`, `verify-app-archive`, `verify-package-archive`, `unpack-app-archive`, `unpack-package-archive`, `list-installed-apps`, `completions`, `definition`, `references`, `hover`, `emit-interface`, `emit-check-cache`, `emit-artifacts`, `build`, or `new --list-templates`"
                     .to_string(),
             );
         }
@@ -2266,6 +2332,17 @@ impl Cli {
         }
         if lint_fix && mode != Mode::Lint {
             return Err("--fix is only supported with `lint`".to_string());
+        }
+        if lint_config_was_set && mode != Mode::Lint {
+            return Err(
+                "--allow, --warn, --deny, and --deny-warnings are only supported with `lint`"
+                    .to_string(),
+            );
+        }
+        if lint_fix && (lint_config_was_set || output_format == OutputFormat::Json) {
+            return Err(
+                "--fix cannot be combined with --format json or lint level options".to_string(),
+            );
         }
         if source_free_app_bundle && mode != Mode::EmitAppBundle {
             return Err("--source-free is only supported with `emit-app-bundle`".to_string());
@@ -2554,6 +2631,8 @@ impl Cli {
             output_format,
             format_check,
             lint_fix,
+            lint_config,
+            lint_config_was_set,
             source_free_app_bundle,
             replace_owned_install,
             new_template,
@@ -2632,7 +2711,8 @@ fn usage() -> &'static str {
         "       muga emit-app-completions [--format text|json] --output-dir <dir> [--program <name>] --type <type> [--package <package>] <bundle-dir>\n",
         "       muga syntax --format json <source-file>\n",
         "       muga check [--format text|json] [--artifact-root <dir>|--built] <source-file>\n",
-        "       muga lint [--fix] <source-file>\n",
+        "       muga lint [--format text|json] [--allow <codes>] [--warn <codes>] [--deny <codes>] [--deny-warnings] <source-file>\n",
+        "       muga lint --fix <source-file>\n",
         "       muga run [--format text|json] [--artifact-root <dir>|--built] <source-file> [-- <program-arg>...]\n",
         "       muga run-app-bundle [--format text|json] <bundle-dir> [-- <program-arg>...]\n",
         "       muga test [--format text|json] <source-file>\n",
@@ -2853,6 +2933,23 @@ fn project_template_list_json_output() -> String {
     output
 }
 
+/// Matches `--allow`, `--warn`, and `--deny`, with or without `=<codes>`.
+fn lint_level_flag(arg: &str) -> Option<(&'static str, muga::lint::LintLevel)> {
+    use muga::lint::LintLevel;
+    [
+        ("--allow", LintLevel::Allow),
+        ("--warn", LintLevel::Warn),
+        ("--deny", LintLevel::Deny),
+    ]
+    .into_iter()
+    .find(|(flag, _)| {
+        arg == *flag
+            || arg
+                .strip_prefix(flag)
+                .is_some_and(|rest| rest.starts_with('='))
+    })
+}
+
 fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
     match value {
         "text" => Ok(OutputFormat::Text),
@@ -2914,6 +3011,7 @@ const SHELL_COMPLETION_COMMANDS: &[&str] = &[
     "unpack-package-archive",
     "syntax",
     "check",
+    "lint",
     "run",
     "run-app-bundle",
     "test",
@@ -2956,6 +3054,11 @@ const SHELL_COMPLETION_OPTIONS: &[&str] = &[
     "--template",
     "--list-templates",
     "--check",
+    "--fix",
+    "--allow",
+    "--warn",
+    "--deny",
+    "--deny-warnings",
     "--replace-owned",
 ];
 

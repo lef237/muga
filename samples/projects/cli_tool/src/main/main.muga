@@ -112,13 +112,13 @@ fn cli_error_message(error: cli::Error): String {
 }
 
 fn emit_usage(usage: String): Result[String, String] {
-  printed = usage.println()
+  _ = usage.println()
   Result::Ok(usage)
 }
 
 fn run_command(root: Root): Result[String, String] {
   rendered = root.render_root()
-  printed = ["cli-tool ", rendered].string::concat_all().println()
+  _ = ["cli-tool ", rendered].string::concat_all().println()
   Result::Ok(rendered)
 }
 

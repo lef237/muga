@@ -13,6 +13,7 @@ pub mod interface;
 pub mod json_decode;
 pub mod known_enum;
 pub mod lexer;
+pub mod lint;
 pub mod mir;
 pub mod package;
 pub mod package_signature;
@@ -460,8 +461,15 @@ pub fn check_path(path: &Path) -> Result<Program, Vec<Diagnostic>> {
     }
 }
 
-/// Typechecks a source entry and enforces Muga's canonical call style.
-pub fn lint_path(path: &Path) -> Result<(), Vec<Diagnostic>> {
+/// Typechecks a source entry and runs every lint over its source modules.
+///
+/// Compile errors are returned as `Err` because lints run only on accepted
+/// programs. `Ok` holds the lint diagnostics left after `config`, each with the
+/// severity of its configured level; any error among them fails `muga lint`.
+pub fn lint_path(
+    path: &Path,
+    config: &lint::LintConfig,
+) -> Result<Vec<Diagnostic>, Vec<Diagnostic>> {
     if package::entry_package_path_from_entry(path)?.is_some() {
         let check = check_package_aware_path(path)?;
         let mut diagnostics = Vec::new();
@@ -488,36 +496,32 @@ pub fn lint_path(path: &Path) -> Result<(), Vec<Diagnostic>> {
             else {
                 continue;
             };
-            if file.path.is_some() {
-                diagnostics.extend(style::lint_call_style_with_source(
-                    &file.program,
-                    &module_check.type_output,
-                    &file.source,
-                ));
-            }
+            let Some(source_path) = &file.path else {
+                continue;
+            };
+            let context = diagnostic::DiagnosticContext::source(
+                "module",
+                source_path.display().to_string(),
+                diagnostic::file_uri_for_path(source_path),
+            );
+            diagnostics.extend(
+                lint::lint_module(&file.program, &module_check.type_output, &file.source)
+                    .into_iter()
+                    .map(|diagnostic| diagnostic.with_context(context.clone())),
+            );
         }
-        return if diagnostics.is_empty() {
-            Ok(())
-        } else {
-            Err(diagnostics)
-        };
+        return Ok(config.apply(diagnostics));
     }
 
     let program = package::load_flattened_program_from_entry(path)?;
     let mut diagnostics = resolver::resolve(&program);
     let types = typing::typecheck_program(&program);
     diagnostics.extend(types.diagnostics.clone());
-    if diagnostics.is_empty() {
-        let source = read_format_source(path)?;
-        diagnostics.extend(style::lint_call_style_with_source(
-            &program, &types, &source,
-        ));
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
     }
-    if diagnostics.is_empty() {
-        Ok(())
-    } else {
-        Err(diagnostics)
-    }
+    let source = read_format_source(path)?;
+    Ok(config.apply(lint::lint_module(&program, &types, &source)))
 }
 
 /// Rewrites lint-eligible calls and formats each changed source file.

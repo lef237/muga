@@ -722,7 +722,7 @@ fn is_enum_constructor(callee: TypedCalleeInfo) -> bool {
     }
 }
 
-fn lint_suppressions(source: &str) -> HashSet<(usize, String)> {
+pub(crate) fn lint_suppressions(source: &str) -> HashSet<(usize, String)> {
     let mut suppressions = HashSet::new();
     for (index, line) in source.lines().enumerate() {
         let Some(codes) = line.trim().strip_prefix("// muga-lint: allow-next-line ") else {

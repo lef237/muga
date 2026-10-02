@@ -11,7 +11,7 @@ fn main(): String {
   empty = "abcdef".fmt::truncate_chars(0)
   rendered = match "{} {{ok}} {}".fmt::format_values(["Muga", "fmt"]) {
     Result::Ok(value) => value
-    Result::Err(error) => "format error"
+    Result::Err(_) => "format error"
   }
   [ruler, left, right, clipped, empty, rendered].string::join("|")
 }

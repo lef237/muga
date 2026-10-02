@@ -10,8 +10,8 @@ fn copied_payload_summary(base: path::Path, target: path::Path): String {
     Result::Err(error) => error.operation
   }
   removed = match base.fs::remove_dir_all_path() {
-    Result::Ok(value) => true
-    Result::Err(error) => false
+    Result::Ok(_) => true
+    Result::Err(_) => false
   }
   text.concat("|").concat(removed.to_string()).concat("|").concat(base.fs::exists_path().to_string())
 }
@@ -23,9 +23,9 @@ fn main(): String {
   target = base.path::join("target")
   payload = nested.path::join("payload.txt")
   match nested.fs::create_dir_all_path() {
-    Result::Ok(created) => match payload.fs::write_text_path("payload") {
-      Result::Ok(written) => match source.fs::copy_dir_all_path(target) {
-        Result::Ok(copied) => base.copied_payload_summary(target)
+    Result::Ok(_) => match payload.fs::write_text_path("payload") {
+      Result::Ok(_) => match source.fs::copy_dir_all_path(target) {
+        Result::Ok(_) => base.copied_payload_summary(target)
         Result::Err(error) => error.operation
       }
       Result::Err(error) => error.operation

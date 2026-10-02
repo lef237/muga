@@ -8,9 +8,9 @@ fn double(n: Int): Int {
 fn main(): Int {
   base = 40
   group {
-    t = spawn base.double()
-    u = spawn group {
-      v = spawn (base + 1)
+    _ = spawn base.double()
+    _ = spawn group {
+      _ = spawn (base + 1)
       2
     }
     42

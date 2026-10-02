@@ -11,9 +11,9 @@ fn moved_payload_summary(base: path::Path, source: path::Path, target: path::Pat
   }
   source_exists = source.fs::exists_path()
   target_exists = target.fs::exists_path()
-  removed = match base.fs::remove_dir_all_path() {
-    Result::Ok(value) => true
-    Result::Err(error) => false
+  _ = match base.fs::remove_dir_all_path() {
+    Result::Ok(_) => true
+    Result::Err(_) => false
   }
   text.concat("|").concat(source_exists.to_string()).concat("|").concat(target_exists.to_string()).concat("|").concat(base.fs::exists_path().to_string())
 }
@@ -25,9 +25,9 @@ fn main(): String {
   target = base.path::join("target")
   payload = nested.path::join("payload.txt")
   match nested.fs::create_dir_all_path() {
-    Result::Ok(created) => match payload.fs::write_text_path("payload") {
-      Result::Ok(written) => match source.fs::move_dir_all_path(target) {
-        Result::Ok(moved) => base.moved_payload_summary(source, target)
+    Result::Ok(_) => match payload.fs::write_text_path("payload") {
+      Result::Ok(_) => match source.fs::move_dir_all_path(target) {
+        Result::Ok(_) => base.moved_payload_summary(source, target)
         Result::Err(error) => error.operation
       }
       Result::Err(error) => error.operation
