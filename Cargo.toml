@@ -11,6 +11,7 @@ keywords = ["language", "compiler", "interpreter"]
 
 [lints.rust]
 warnings = "deny"
+unsafe_code = "forbid"
 
 [lints.clippy]
 all = "deny"
