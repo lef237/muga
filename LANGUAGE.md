@@ -1,5 +1,9 @@
 # Muga Language Specification
 
+> **Legacy (2026-10-23).** This document and [spec/](./spec) describe the
+> legacy language. The redesigned language is specified in
+> [redesign/SPEC.md](./redesign/SPEC.md).
+
 This is the compact overview of the current Muga language. The split
 specifications in [spec/](./spec) are the detailed references; this file exists
 to show the whole language shape without duplicating every rule. During the

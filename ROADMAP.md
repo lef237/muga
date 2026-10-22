@@ -1,5 +1,9 @@
 # Muga Roadmap
 
+> **Suspended (2026-10-23).** This roadmap describes the legacy
+> implementation and is no longer active. Muga is being redesigned; follow
+> the resume cursor in [redesign/PLAN.md](./redesign/PLAN.md) instead.
+
 This file is the single working checklist for implementation order. Language
 rules belong in [LANGUAGE.md](./LANGUAGE.md) and [spec/](./spec/). Executable
 behavior should be proved with Rust tests, conformance fixtures, and runnable

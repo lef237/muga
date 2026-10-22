@@ -1,5 +1,10 @@
 # Muga
 
+> **Redesign in progress (October 2026).** Muga is being redesigned from
+> scratch. The vision, the settled decisions, the specification draft, and
+> the plan live in [redesign/](./redesign/README.md). The rest of this README
+> describes the legacy implementation (the `v0.6.x` line).
+
 "Muga（無我）" is a Japanese term meaning "selflessness" or "transcendence of self," referring to a state of being beyond personal limitations or free from self-centered thinking.
 
 This programming language incorporates the concept of muga, featuring a simple and intuitive syntax designed to immerse developers in coding while letting go of self-consciousness. 
