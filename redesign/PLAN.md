@@ -11,8 +11,12 @@ Update this section at the end of every working session.
   starting from the candidate list below.
 - [ ] **NEXT:** Phase C. Resolve the open questions in SPEC.md that the tasks
   need, one at a time with the maintainer.
-- Last updated: 2026-10-23. Phase A (design) is complete: VISION.md,
+- Last updated: 2026-11-21. Phase A (design) is complete: VISION.md,
   DECISIONS.md (D-01 to D-25), and the SPEC.md draft.
+- A design review on 2026-11-21 added the open questions O-25 to O-41 to
+  SPEC.md. It recommends resolving O-25 (the threat model and `--exec`) and
+  O-26 (the evaluation protocol) before Phase B, because they change what the
+  task suite contains. The maintainer has not confirmed that order yet.
 
 ## Phase A: Design
 

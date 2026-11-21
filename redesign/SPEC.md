@@ -408,3 +408,44 @@ needed for v1.
 | O-22 | Which operations are allowed on type parameters, such as `==`. |
 | O-23 | Whether local variables may carry type annotations. |
 | O-24 | Whether `match` supports guards. |
+
+### Added By The Design Review On 2026-11-21
+
+A review of VISION.md, DECISIONS.md, and this draft raised the questions
+below. None of them is settled.
+
+- O-25 and O-26 change what the task suite contains, so the review recommends
+  resolving them before Phase B. The maintainer has not confirmed that order
+  yet.
+- O-27, O-29, and O-38 touch a settled decision or a rule in README.md.
+  Reopening those needs explicit maintainer approval.
+
+| ID | Question |
+|---|---|
+| O-25 | The threat model, and what an `--exec` grant means under it. A `Command` grant is scoped only by program name, but many programs read or write arbitrary files, reach the network, or run other programs when given the right arguments (`curl` with a `file://` URL or `-o`; `git` with an alias that starts with `!`). One `--exec` grant can therefore undo `--read` and `--write` scoping, and D-05 routes HTTP through `--exec curl`. Decide who the attacker is and what promise 3 does not cover; whether `--exec` means full trust in that program or can be narrowed to argument prefixes such as `--exec "git log"`; whether the child inherits the environment; and how the program name is resolved. This takes over the `Command` part of O-15. |
+| O-26 | The evaluation protocol behind D-24. Which models run the suite, how many trials, how many check-and-fix rounds an agent gets, and the pass threshold. Whether some tasks are held out from tuning the language and the guide. Whether the definition of done also tests promise 3 (a suite of programs that try to exceed their grants and must all be stopped) and promise 2. |
+| O-27 | Whether a record field may hold a capability. D-25 allows it. If every function takes one record that bundles all capabilities, signatures stop showing which authority each function uses (promise 2). Related: a parameter of function type can carry any capability its creator captured, so the wording of promise 2 may need a caveat. |
+| O-28 | The cost of value updates (D-07, D-23). `names = names.push(x)` is the only way to grow a list, so an evaluator that copies on every update makes loops quadratic. The same holds for map updates and for building strings. Decide whether updating a uniquely held value in place is a required property of the implementation, and whether the typed intermediate representation marks `x = x.f(...)` so that the old value is moved instead of shared. |
+| O-29 | Whether Phase B ends with a review gate. The decisions were settled before any program of task size was written, and the Phase B sketches are their first test. A gate would let evidence from the sketches supersede a decision once, and freeze the decisions afterwards. This adjusts the "do not reopen" rule in README.md. Also whether to run a blind writing trial before Phase D: give agents only this draft, have them write the tasks, and count the habits that break the rules. |
+| O-30 | Namespaces. Whether modules, types, functions, and local values share one namespace. Under the no-shadowing rule (D-17), is `let config = config.load(files)?` an error when `config` is an imported module? Also how `a.f(x)` is resolved when `a` could be a module or a value, and when `f` could be a `self` function or a field that holds a function. |
+| O-31 | Element access. D-10 says out-of-range list access stops the program, but this draft has no index syntax, and `items.get(0)` returns an `Option`. Decide the spelling of the stopping access (such as `xs[i]`), the same for `Map`, and, if brackets are used, how `xs[i](x)` is told apart from the explicit type arguments in `f[T](x)`. |
+| O-32 | Line continuation. Statements end at line breaks (Provisional), but the examples put `.filter(...)` on its own line. Define exactly when a statement continues on the next line. |
+| O-33 | Whether `return` is an expression that fits any type, as in `let x = match opt { Some(v) => v, None => return 0 }`. Without `if let` (D-21), this is the main way to leave early on `None`. |
+| O-34 | `?` and `return` inside anonymous functions: which function they leave, and how fallible work inside `map` or `filter` is written, as in `paths.map(fn(p) { files.read(p)? })`. Also which form the guide treats as canonical for building a list: a `for` loop with an accumulator, or `map` and `filter` (promise 1). |
+| O-35 | Output failures. The examples call `out.println(...)` without `?`. Decide whether writes to `Stdout` and `Stderr` return `Result`, and what happens when the reader closes the pipe, as in `tool \| head`. |
+| O-36 | Time and randomness: capabilities, always available, or absent from v1. Without them, a program's result depends only on its granted inputs. |
+| O-37 | Calls on a type name. `ReadFiles.memory(...)` in section 11 is neither of the two call styles in D-09. Decide whether functions can be called through a type name, or give test fakes another spelling (with O-20). |
+| O-38 | The record update form. `u.with(age: u.age + 1)`, shown in D-07, is the only place where named arguments appear. Decide whether `with` is a special form, and its exact syntax. |
+| O-39 | `match` on values that are not enums, such as `match cmd { "add" => ..., _ => ... }`, which overlaps with `if` chains (promise 1). Also the pattern syntax for binding a field under another name, which the no-shadowing rule makes necessary. |
+| O-40 | Standard library scope that the candidate tasks imply (with O-1): what "pattern" means in tasks 6 and 7, since a regular expression engine is large without external crates; files that are not valid UTF-8; an argument parser over `Args`; and whether files are only read whole or also as a stream, which decides whether user code ever holds a resource handle. |
+| O-41 | The granularity of the request in `main`. The sample error in D-04 prints `--exec git` for a parameter `git: Command`, while section 10.2 supplies capabilities by type, each type at most once, so the runtime cannot know the program. Decide which is intended, whether `main` can state the path or program it needs, and whether an access outside the grant is an `Err` or stops the program. |
+
+Notes on earlier questions:
+
+- **O-11:** A pattern tells a variant such as `Empty` from a new binding by
+  case alone. If the naming convention is not enforced, a misspelled variant
+  can become a binding that matches everything, which conflicts with the
+  principle in D-17. The review recommends enforcing the convention.
+- **O-15:** With the standard library alone, path confinement is "resolve the
+  path, check it, then open it", which another process can race. Whether that
+  matters depends on the threat model in O-25.
